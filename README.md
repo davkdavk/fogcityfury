@@ -77,6 +77,17 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.3
+
+- **Showdown at the finish line**: the top three finishers fight on foot at the finish, not at a
+  separate site. The three cars are parked round the line and you get out beside them.
+- **Podium drivers fight**: the other two drivers are on foot too, as fighters with their own guns.
+- **Shrinking ring**: the ring starts wide, tightens after about 50 seconds of fighting, and closes
+  hard once two fighters are left. Outside it, your health drains in steps.
+- **Pick-ups**: guns, medkits and body armour lie around the ground during the 30 second grab phase.
+  Race places matter: the winner starts with 50 armour, second with 25.
+- **Better character and gun models**, with recoil, flinch and a fall animation.
+
 ## What's new in 1.2
 
 - **Showdown camera**: on foot, the view follows the person from behind, so you can see who you are
