@@ -121,7 +121,7 @@ static void drawShowdown(Prog& p) {
 // the ring and the beacon are drawn with sparks, so they need no mesh of their own
 static void showdownEffects() {
     if (!showdownOn) return;
-    if (shdPhase == SH_DRIVE) for (int k = 0; k < 3; k++) spawn(shdSite + V3(0, 3 + 6 * grng.f(), 0), V3(0, 2, 0), 0.9f, 0.4f, 0, V3(1, 0.4f, 0.2f), 1, 1, 0);   // beacon column
+    if (shdPhase == SH_DRIVE) for (int k = 0; k < 4; k++) spawn(shdSite + V3(0, 1 + 40 * grng.f(), 0), V3(0, 9, 0), 1.2f, 0.7f, 0, V3(1, 0.45f, 0.15f), 1, 1, 0);   // a beacon you can see from the road
     int n = 28;
     for (int i = 0; i < n; i++) {
         float a = (float)i / n * 2 * (float)M_PI + T * 0.4f;
@@ -133,11 +133,16 @@ static void showdownEffects() {
 static void drawShowdownHUD() {
     if (!showdownOn) return;
     V3 white(1, 1, 1), yel(1, 0.85f, 0.2f), red(1, 0.35f, 0.2f); char b[80];
-    if (shdPhase == SH_DRIVE) ui.text(ui.W / 2, 40, 3.2f, yel, "DRIVE TO THE MARKED SITE", 1);
-    else if (shdPhase == SH_PREP) { snprintf(b, sizeof b, "GRAB A GUN  %d", (int)ceilf(SH_PREP_LEN - shdT)); ui.text(ui.W / 2, 40, 4, yel, b, 1); }
+    if (shdPhase == SH_DRIVE) {
+        float dx = shdSite.x - player.pos.x, dz = shdSite.z - player.pos.z, a = atan2f(dx, dz) - player.yaw;
+        while (a > (float)M_PI) a -= 2 * (float)M_PI; while (a < -(float)M_PI) a += 2 * (float)M_PI;
+        const char* dir = fabsf(a) < 0.35f ? "AHEAD" : fabsf(a) > 2.4f ? "BEHIND" : a > 0 ? "RIGHT" : "LEFT";
+        snprintf(b, sizeof b, "SHOWDOWN SITE  %d m  %s", (int)flatDist(player.pos, shdSite), dir); ui.text(ui.W / 2, 150, 3.2f, yel, b, 1);
+    }
+    else if (shdPhase == SH_PREP) { snprintf(b, sizeof b, "GRAB A GUN  %d", (int)ceilf(SH_PREP_LEN - shdT)); ui.text(ui.W / 2, 150, 4, yel, b, 1); }
     else if (shdPhase == SH_FIGHT) {
-        snprintf(b, sizeof b, "%d STILL STANDING", shdAlive()); ui.text(ui.W / 2, 40, 3.2f, white, b, 1);
-        if (walker.on && flatDist(walker.pos, shdSite) > shdRing) ui.text(ui.W / 2, 90, 2.6f, red, "OUTSIDE THE RING - HEALTH DRAINS", 1);
+        snprintf(b, sizeof b, "%d STILL STANDING", shdAlive()); ui.text(ui.W / 2, 150, 3.2f, white, b, 1);
+        if (walker.on && flatDist(walker.pos, shdSite) > shdRing) ui.text(ui.W / 2, 200, 2.6f, red, "OUTSIDE THE RING - HEALTH DRAINS", 1);
     }
 }
 

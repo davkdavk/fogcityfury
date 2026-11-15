@@ -721,7 +721,7 @@ static void update(float dt) {
     const CarSpec& S = SPECS[player.type]; maxAir = std::max(maxAir, player.airT);
     // --- race bookkeeping ---
     if ((state == RACE || (netRace && state == PAUSED)) && go) {
-        raceT += dt; int n = W.n;
+        if (!showdownOn) raceT += dt; int n = W.n;   // the race clock stops at the finish
         int cpI = (player.nextCp % NCP) * n / NCP; float dx = player.pos.x - W.ts[cpI].x, dz = player.pos.z - W.ts[cpI].z;
         if (dx * dx + dz * dz < (ROADW + 16) * (ROADW + 16) && fabsf(player.pos.y - W.ts[cpI].y) < 5 && !player.dead) {
             if (player.nextCp % NCP == 0) {
@@ -1140,7 +1140,7 @@ static void drawHUD() {
             panel(20, 20, 230, 112); static const char* suf[7] = { "", "ST", "ND", "RD", "TH", "TH", "TH" }; int pl = state == RESULTS ? finalPlace : place;
             snprintf(b, sizeof b, "%d", pl); ui.text(36, 36, 9, yel, b, 0, 1, 0.12f); ui.text(96, 40, 4, yel, suf[pl]); snprintf(b, sizeof b, "/%d", netRace ? netRacers() : NAI + 1); ui.text(96, 72, 3, white, b);
             snprintf(b, sizeof b, "LAP %d/%d", std::min(std::max(player.lap, 1), raceLaps), raceLaps); ui.text(36, 106, 2.5f, white, b);
-            if (netRace) { char t2[32]; fmtTime(t2, raceT); ui.text(Wd / 2, 26, 5, white, t2, 1, 1, 0.12f); ui.text(Wd / 2, 70, 2, V3(0.5f, 0.9f, 1), "ONLINE", 1); } else {
+            if (netRace) { char t2[32]; fmtTime(t2, raceT); ui.text(Wd / 2, 26, 5, white, t2, 1, 1, 0.12f); ui.text(Wd / 2, 70, 2, V3(0.5f, 0.9f, 1), "ONLINE", 1); } else if (rampage) { char t3[32]; fmtTime(t3, raceT); ui.text(Wd / 2, 26, 5, white, t3, 1, 1, 0.12f); ui.text(Wd / 2, 100, 2, white, "RACE TIME", 1); } else {
             V3 tc = timeLeft < 10 ? (fmodf(T, 0.5f) < 0.25f ? V3(1, 0.2f, 0.1f) : white) : yel; snprintf(b, sizeof b, "%02d", (int)ceilf(timeLeft)); ui.text(Wd / 2, 22, 10, tc, b, 1, 1, 0.12f); ui.text(Wd / 2, 100, 2, white, "TIME", 1); }
         } else { panel(20, 20, 230, 50); ui.text(36, 36, 3, V3(0.4f, 1, 0.6f), "FREE ROAM"); }
         panel(Wd - 300, 20, 280, 86); char t[32]; fmtTime(t, player.lap > 0 ? raceT - lapStart : 0); snprintf(b, sizeof b, "LAP  %s", t); ui.text(Wd - 284, 34, 3, white, b);
@@ -1195,8 +1195,7 @@ static void render(int fbw, int fbh) {
         camLag += (clampf(player.accS, -40, 25) * 0.045f - camLag) * (1 - expf(-3.5f * dt));      // pulled back under power, shoved in on the brakes
         camRoll += ((player.grounded ? clampf(player.yawRate * clampf(sp / 40, 0, 1) * 0.07f, -0.09f, 0.09f) : 0) - camRoll) * (1 - expf(-5 * dt));
         V3 cf(sinf(camYaw), 0, cosf(camYaw)), cs(cosf(camYaw), 0, -sinf(camYaw)); float dist = (camMode == 1 ? 10.5f : 6.4f) + sp * 0.02f + camLag, hgt = camMode == 1 ? 4.2f : 2.2f;
-        if (showdownOn) { camPos = shdSite + V3(0, 150, -45); camTgt = shdSite; }   // the showdown: the site from above
-        else if (walker.on) {   // on foot: a chase view from behind the person
+        if (walker.on) {   // on foot: a chase view from behind the person
             V3 wf(sinf(walker.yaw), 0, cosf(walker.yaw)); camPos = walker.pos - wf * 4.6f + V3(0, 2.6f, 0); camTgt = walker.pos + V3(0, 1.3f, 0) + wf * 2;
         } else if (camMode == 2 && state != TITLE) { camPos = player.pos + V3(0, 1.25f + (player.type == 2 ? 0.7f : 0) + player.heave, 0) + f * 0.4f; camTgt = camPos + f * 10 + V3(0, sinf(player.pitch) * 10 - 0.6f, 0); }
         else {

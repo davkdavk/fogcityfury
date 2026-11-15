@@ -166,11 +166,12 @@ static float aiMinHp() { float m = 1e9f; for (auto& a : ai) if (!a.dead) m = std
 
 static void drawFootHUD() {
     V3 white(1, 1, 1), yel(1, 0.85f, 0.2f), org(1, 0.55f, 0.1f);
+    float X = ui.W / 2 - 135, Y = ui.H - 120;   // bottom centre: clear of the minimap and the car panel
     if (walker.on) {
-        ui.rect(20, ui.H - 120, 270, 100, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.rect(20, ui.H - 120, 270, 3, org, 0.9f);
-        char b[64]; snprintf(b, sizeof b, "GUN  %s", GUN_NAME[gun]); ui.text(34, ui.H - 106, 2.4f, yel, b);
-        ui.text(34, ui.H - 74, 2.2f, white, "HEALTH");
-        float hp = clampf(walker.hp / 100, 0, 1); ui.rect(34, ui.H - 52, 240, 14, V3(0.1f, 0.12f, 0.14f), 0.9f); ui.rect(34, ui.H - 52, 240 * hp, 14, V3(0.3f, 1, 0.4f), 0.95f);
+        ui.rect(X, Y, 270, 100, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.rect(X, Y, 270, 3, org, 0.9f);
+        char b[64]; snprintf(b, sizeof b, "GUN  %s", GUN_NAME[gun]); ui.text(X + 14, Y + 14, 2.4f, yel, b);
+        ui.text(X + 14, Y + 46, 2.2f, white, "HEALTH");
+        float hp = clampf(walker.hp / 100, 0, 1); ui.rect(X + 14, Y + 68, 242, 14, V3(0.1f, 0.12f, 0.14f), 0.9f); ui.rect(X + 14, Y + 68, 242 * hp, 14, V3(0.3f, 1, 0.4f), 0.95f);
     }
     if (unlockT > 0) ui.text(ui.W / 2, ui.H * 0.3f, 3, yel, unlockMsg, 1);
 }
