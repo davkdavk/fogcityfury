@@ -343,3 +343,10 @@ The font only has ASCII 32..90 (upper case, digits, basic punctuation).
   `touchHolds`, tap buttons go through `handleKey` or call the action). Menus hide their keyboard
   hints when `touchOn`. Test flags `--touch`, `--tap T:LABEL`, `--touchhold LABEL`; report fields
   `touch`, `touchBtns`, `hdr`.
+
+## On foot, guns and the showdown (rampage mode)
+- `src/foot.h`: the person (`walker`). G gets out of a car that has almost stopped and back in when beside it; the car stays where it was left. Walking uses steer/gas/brake and stops on walls (`W.collide`) and the car's footprint. The SMG fires while held, the other guns once per press. Guns: pistol, SMG, shotgun, rocket launcher (`GUN_KEYS`: unlocked by total keys across all levels, 5 / 10 / 20). Shots are hitscan (`shootLine`) against racers and showdown bots; rockets are `shells`.
+- `src/showdown.h`: after the race in RAMPAGE mode (`rampage`, mode 2 of the menu), `showdownStart()` marks a site halfway round the track. The winner drives there, gets out, has 30 s (`SH_PREP_LEN`) to grab guns (`drops`), then fights. A ring (`shdRing`) closes to `SH_RING_END` once two fighters are left and drains health outside it. Last one standing wins; then RESULTS.
+- Test hooks: `--faceai` (get out facing the nearest racer or bot), `--gun N`, `--sdnow` (start the showdown with the player on the site). Report fields: `onFoot`, `walkX/Z/Yaw`, `walkHp`, `gun`, `shells`, `aiMinHp`, `aiDead`, `shdPhase`, `shdAlive`, `shdRing`, `drops`, `bots`.
+- Input: GET OUT/IN (G, dpad down), CHANGE WEAPON (Q). Touch: OUT and WEAPON buttons in the race layout; ROCKET fires the gun on foot.
+- Known gaps: bots and drops use the same person mesh (no colour difference); bots don't collect drops; the showdown is single-player only; no multiplayer for on-foot yet.

@@ -60,8 +60,9 @@ struct Car {
     bool grounded = true, dead = false, sunk = false, braking = false, wheelspin = false, offroad = false, wet = false; float deadT = 0, airT = 0;
     // AI / race bookkeeping
     float stot = 0, lat = 0, latT = 0, speed = 0, aiTop = 60, progress = 0, finishT = -1; int lap = 0, nextCp = 0;
+    float hp = 100;   // shot damage on foot: a car with no hp left is wrecked
 };
-struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false; };
+struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false, fire = false; };
 
 // ------------------------------------------------------------------ particles
 struct Particle { V3 p, v; float life, maxLife, size, grow; V3 col; float a, add, seed, buoy, stretch; };   // stretch > 0: drawn as a streak along its velocity, not a billboard
@@ -89,10 +90,12 @@ static const int CUBE = 256, SHADOW = 2048, CUBE_FACES = 2;
 #endif
 static M4 lightVP;
 static float T = 0, raceT = 0, countdown = 0, timeLeft = 0, lapStart = 0, bestLapRace = 0, lastLap = 0, msgT = 0, wrongT = 0, shake = 0, resultsT = 0;
-static char msg[64] = ""; static V3 msgCol(1, 1, 1);
+static char msg[96] = ""; static V3 msgCol(1, 1, 1);
 static int selWeather = W_CLEAR, selRow = 0, weatherOf[NTRACKS] = {};
 static int selCar = 0, selPaint = 0, selTrack = 0, selMode = 0, camMode = 0, aiFinished = 0, finalPlace = 0, place = 1, gear = 1, cubeFace = 0, frameNo = 0;
 static bool noSave = false; static float maxAir = 0; static int gasOnly = 0;
+static const int NMODES = 3;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown)
+static bool rampage = false, showdownOn = false;
 static bool exploreMode = false, timeUp = false, chromeUnlocked = false, quit = false, debugTop = false, autoDrive = false, hideUI = false;
 static float rpm = 0, camYaw = 0, topH = 900; static V3 camPos, camTgt; static bool camInit = false, fixedCam = false;
 static unsigned keysGot[NTRACKS] = {}; static float bestLap[NTRACKS] = {};
@@ -174,13 +177,13 @@ static void srvPump(float dt) {
     srvRefresh += dt; if (srvRefresh > 4) { srvRefresh = 0; for (auto& e : servers) if (e.st == 1 || e.st == 2 || e.st == 3) srvAsk(e); }   // keep the list fresh
 }
 // ---- settings: key bindings and video options, kept in fogcityfury.cfg beside the save file ----
-enum Bind { B_LEFT, B_RIGHT, B_GAS, B_BRAKE, B_HB, B_NITRO, B_FIRE, B_RESET, B_CAM, NBIND };
-static const char* BIND_NAME[NBIND] = { "STEER LEFT", "STEER RIGHT", "ACCELERATE", "BRAKE / REVERSE", "HANDBRAKE", "NITRO", "FIRE ROCKET", "BACK ON TRACK", "CHANGE CAMERA" };
+enum Bind { B_LEFT, B_RIGHT, B_GAS, B_BRAKE, B_HB, B_NITRO, B_FIRE, B_RESET, B_CAM, B_EXIT, B_WEAPON, NBIND };
+static const char* BIND_NAME[NBIND] = { "STEER LEFT", "STEER RIGHT", "ACCELERATE", "BRAKE / REVERSE", "HANDBRAKE", "NITRO", "FIRE ROCKET / GUN", "BACK ON TRACK", "CHANGE CAMERA", "GET OUT / IN", "CHANGE WEAPON" };
 static const int BIND_DEF[NBIND][2] = { { SDL_SCANCODE_LEFT, SDL_SCANCODE_A }, { SDL_SCANCODE_RIGHT, SDL_SCANCODE_D }, { SDL_SCANCODE_UP, SDL_SCANCODE_W }, { SDL_SCANCODE_DOWN, SDL_SCANCODE_S }, { SDL_SCANCODE_SPACE, 0 },
-    { SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT }, { SDL_SCANCODE_F, SDL_SCANCODE_E }, { SDL_SCANCODE_R, SDL_SCANCODE_BACKSPACE }, { SDL_SCANCODE_C, 0 } };
+    { SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT }, { SDL_SCANCODE_F, SDL_SCANCODE_E }, { SDL_SCANCODE_R, SDL_SCANCODE_BACKSPACE }, { SDL_SCANCODE_C, 0 }, { SDL_SCANCODE_G, 0 }, { SDL_SCANCODE_Q, 0 } };
 static std::vector<int> heldKeys; static int binds[NBIND][2];
 // ---- touch screens: on-screen buttons. Shown once a finger touches the screen (always on Android), or with --touch ----
-enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM };
+enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON };
 struct TouchBtn { const char* label; float x, y, w, h; int hold; int act; SDL_Keycode key; };   // hold: a Bind held while a finger is on it (-1: a tap button)
 struct Finger { SDL_FingerID id; int btn; };
 static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBtn> tbtn; static std::vector<Finger> fingers; static int touchLaid = -1;
@@ -214,6 +217,7 @@ static void touchLayout() {
         hold("GAS", W - 175, H - 180, 155, 165, B_GAS); hold("BRAKE", W - 345, H - 180, 155, 165, B_BRAKE);
         hold("NITRO", W - 480, H - 180, 125, 78, B_NITRO); hold("DRIFT", W - 480, H - 93, 125, 78, B_HB);
         act("ROCKET", W - 615, H - 180, 125, 78, TA_FIRE); act("RESET", W - 615, H - 93, 125, 78, TA_RESET);
+        act("OUT", W - 745, H - 180, 125, 78, TA_EXIT); act("WEAPON", W - 745, H - 93, 125, 78, TA_WEAPON);
         key("II", 270, 20, 90, 62, SDLK_ESCAPE); act("CAM", 370, 20, 90, 62, TA_CAM); break;
     case TITLE: key("RACE", bx, by, 130, 80, SDLK_RETURN); key("ONLINE", bx - 150, by, 140, 80, SDLK_o); key("OPTIONS", bx - 310, by, 150, 80, SDLK_F1); break;
     case CARSEL: arrows(); side(0, "OK", SDLK_RETURN); side(1, "BACK", SDLK_ESCAPE); break;
@@ -299,6 +303,9 @@ static std::vector<Wreck> wrecks; static std::vector<Debris> debris; static std:
 static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
 static bool cratesOn() { return rocketLap != player.lap; }
 static float goneOf(float age) { return clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); }   // 0 solid .. 1 faded away
+// the person on foot: walker.on while they stand outside the car (player is the car they got out of)
+struct Walker { V3 pos, vel; float yaw = 0, bob = 0, hp = 100, hurtT = 0; bool on = false, firePrev = false; };
+static Walker walker;
 static float fireCD = 0, resetCD = 0, resetHint = 0, ammoFlash = 0; static V3 boltDir(0, 0.5f, 1), rainRel;
 static std::vector<float> fireAt, resetAt;                                   // --fire T / --reset T (tests)
 static Mesh boxMesh, rocketMesh, crateMesh;
@@ -306,7 +313,7 @@ static float introT = 0; static const float INTRO_LEN = 3.4f;   // race intro: t
 static V3 aiGrid[NAI]; static bool fullCountdown = false;   // where each opponent was put on the grid; --countdown keeps the real countdown with --state 3
 static void placeOnGrid(Car& c, float s, float lat) {
     V3 p; float yaw; W.at(s, lat, p, yaw); c.pos = V3(p.x, W.ground(p.x, p.z, p.y + 1), p.z); c.yaw = yaw; c.vel = V3(); c.pitch = c.roll = c.lean = c.steer = c.vf = c.slip = 0;
-    c.dead = false; c.grounded = true; c.heave = c.heaveV = c.squat = c.accS = c.prevVf = c.droop = c.yawRate = c.brakeS = c.boost = 0; c.nitro = 1; c.nitroLock = false; c.stot = s; c.lat = c.latT = lat; c.speed = 0; c.lap = 0; c.nextCp = 0; c.finishT = -1; c.progress = s;
+    c.dead = false; c.hp = 100; c.grounded = true; c.heave = c.heaveV = c.squat = c.accS = c.prevVf = c.droop = c.yawRate = c.brakeS = c.boost = 0; c.nitro = 1; c.nitroLock = false; c.stot = s; c.lat = c.latT = lat; c.speed = 0; c.lap = 0; c.nextCp = 0; c.finishT = -1; c.progress = s;
 }
 static void setupCars(bool race) {
     for (int k = 0; k < NAI; k++) { ai[k].type = (selCar + 1 + k) % 3; ai[k].paint = (selPaint + 1 + k) % 7; placeOnGrid(ai[k], gridS(k), gridLat(k)); aiGrid[k] = ai[k].pos; ai[k].aiTop = SPECS[selCar].top * (0.995f - 0.025f * k); }
@@ -316,10 +323,13 @@ static void setupCars(bool race) {
     for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
 static void loadTrack(int t) { if (W.id != t) W.build(t); setupCars(false); }
+static void footReset();
 static void startRace() {
-    netRace = false; raceLaps = LAPS; weather = selWeather; exploreMode = selMode == 1; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
+    footReset();
+    netRace = false; raceLaps = LAPS; weather = selWeather; exploreMode = selMode == 1; rampage = selMode == 2; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
     if (exploreMode) say("FREE ROAM - FIND THE KEYS", V3(1, 0.85f, 0.3f), 3.5f);
+    if (rampage) say("RAMPAGE - GUNS ON FOOT, THEN THE SHOWDOWN", V3(1, 0.4f, 0.2f), 3.5f);
 }
 
 // ---- multiplayer: react to what the server says ----
@@ -467,13 +477,14 @@ static void stepRockets(float dt) {
 static void respawn(Car& c);
 static void doReset() {
     if (state != RACE || player.dead || countdown > 0 || resetCD > 0) return;
+    walker.on = false;   // back on track means back in the car
     respawn(player); resetCD = 1.0f; resetHint = 0; tm.resets++; tone(520, 0.1f, 0.4f, 2); tone(780, 0.16f, 0.4f, 2, 0, 0.08f); say("BACK ON TRACK", V3(0.6f, 0.9f, 1), 1.2f);
 }
 static void respawn(Car& c) {
     int i = W.nearest(c.pos.x, c.pos.z, c.pos.y); const TS& s = W.ts[i]; c.pos = V3(s.x, s.y + 0.2f, s.z);
     // never respawn on top of a wreck: move across the road, to the side traffic does not use to pass it (see dodge)
     for (auto& w : wrecks) { float dx = w.pos.x - s.x, dz = w.pos.z - s.z; if (dx * dx + dz * dz < 4.5f * 4.5f) { float l = w.lat > 0 ? w.lat + 4.6f : w.lat - 4.6f; if (fabsf(l) > ROADW - 1.5f) l = w.lat > 0 ? w.lat - 4.6f : w.lat + 4.6f; c.pos.x += s.tz * l; c.pos.z -= s.tx * l; break; } }
-    c.yaw = atan2f(s.tx, s.tz); c.vel = V3(); c.dead = false; c.pitch = c.roll = c.yawRate = 0; c.grounded = true; camInit = false;
+    c.yaw = atan2f(s.tx, s.tz); c.vel = V3(); c.dead = false; c.hp = 100; c.pitch = c.roll = c.yawRate = 0; c.grounded = true; camInit = false;
 }
 
 // Chase-camera heading: follow the car, leaning a little towards where it is actually travelling.
@@ -632,24 +643,29 @@ static Input readInput() {
     Input in; const Uint8* k = SDL_GetKeyboardState(nullptr);
     auto key = [&](int sc) { if (!sc) return false; for (int h : heldKeys) if (h == sc) return true; return k[sc] != 0; };   // heldKeys: --hold (tests)
     auto dn = [&](int b) { return key(binds[b][0]) || key(binds[b][1]) || touchHolds(b); };   // bindings: see the controls screen
-    if (dn(B_LEFT)) in.steer += 1; if (dn(B_RIGHT)) in.steer -= 1; if (dn(B_GAS)) in.gas = 1; if (dn(B_BRAKE)) in.brake = 1; in.hb = dn(B_HB); in.nitro = dn(B_NITRO);
+    if (dn(B_LEFT)) in.steer += 1; if (dn(B_RIGHT)) in.steer -= 1; if (dn(B_GAS)) in.gas = 1; if (dn(B_BRAKE)) in.brake = 1; in.hb = dn(B_HB); in.nitro = dn(B_NITRO); in.fire = dn(B_FIRE);
     if (pad) {
         float ax = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.f; if (fabsf(ax) > 0.12f) in.steer = clampf(in.steer - ax, -1, 1);
         in.gas = std::max(in.gas, SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.f); in.brake = std::max(in.brake, SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.f);
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_A)) in.gas = 1; if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_X)) in.hb = true; if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_B)) in.brake = 1;
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) in.nitro = true;   // the left shoulder fires rockets
+        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER)) in.fire = true;     // ...or, on foot, the gun (held for the SMG)
     }
     return in;
 }
 
+static void showdownStart();
 static void finishRace(bool tu) {
     if (netRace) { nc.finished = true; nc.finishT = raceT; finalPlace = nc.myPlace; timeUp = false; state = RESULTS; resultsT = 0; tone(523, 0.3f, 0.5f, 2); tone(784, 0.6f, 0.5f, 2, 0, 0.2f); writeSave(); return; }
+    if (rampage && !tu) { showdownStart(); return; }   // the race is won: the showdown takes over from here
     timeUp = tu; int ahead = 0; for (auto& a : ai) if (a.finishT >= 0 || (tu && a.progress > player.progress)) ahead++;
     finalPlace = ahead + 1; state = RESULTS; resultsT = 0;
     if (!tu) { tone(523, 0.3f, 0.5f, 2); tone(659, 0.3f, 0.5f, 2, 0, 0.15f); tone(784, 0.6f, 0.5f, 2, 0, 0.3f); } else tone(200, 0.9f, 0.6f, 2, -80);
     writeSave();
 }
 
+#include "foot.h"
+#include "showdown.h"
 static void update(float dt) {
     T += dt; frameNo++;
     netPump(dt, state == NETLOBBY); netReact();
@@ -677,7 +693,7 @@ static void update(float dt) {
         const int sub = std::max(1, (int)ceilf(dt / (1 / 120.f)));
         for (int s = 0; s < sub; s++) {
             float h = dt / sub; Input pin = in; if (!go) pin.gas = 0;
-            stepPlayer(player, pin, h);
+            if (walker.on) stepWalker(pin, h); else stepPlayer(player, pin, h);
             if (netRace) for (auto& r : nc.r) {   // other players: push our own car out of theirs
                 if (!r.present || !r.racing || r.car.dead || player.dead) continue; const Car& a = r.car;
                 float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz);
@@ -723,7 +739,7 @@ static void update(float dt) {
         if (netRace) place = nc.myPlace;
         const TS& s = W.ts[pi]; float fd = sinf(player.yaw) * s.tx + cosf(player.yaw) * s.tz;
         if (fd < -0.4f && player.vf > 6 && W.RD(player.pos.x, player.pos.z) < 20) wrongT += dt; else wrongT = 0;
-        if (!exploreMode && !netRace && state == RACE) { timeLeft -= dt; if (timeLeft <= 0) { timeLeft = 0; finishRace(true); } else if (timeLeft < 10 && (int)(timeLeft + dt) != (int)timeLeft) tone(1200, 0.08f, 0.35f, 2); }
+        if (!exploreMode && !rampage && !netRace && state == RACE) { timeLeft -= dt; if (timeLeft <= 0) { timeLeft = 0; finishRace(true); } else if (timeLeft < 10 && (int)(timeLeft + dt) != (int)timeLeft) tone(1200, 0.08f, 0.35f, 2); }
     }
     // --- rockets, wreckage, reset ---
     if (state == RACE) {
@@ -735,17 +751,17 @@ static void update(float dt) {
             for (int i = 0; i < 24; i++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(-0.3f, 1), grng.r(-1, 1))); spawn(c.p, dd * grng.r(2, 8), grng.r(0.4f, 0.8f), 0.22f, 0, V3(4, 1.4f, 0.4f), 1, 1, -3); }
             break;
         }
-        bool stuck = go && !player.dead && fabsf(player.vf) < 2.5f && (in.gas > 0.3f || in.brake > 0.3f), lost = go && !player.dead && !exploreMode && (W.RD(player.pos.x, player.pos.z) > ROADW + 28 || wrongT > 3);
+        bool stuck = go && !walker.on && !player.dead && fabsf(player.vf) < 2.5f && (in.gas > 0.3f || in.brake > 0.3f), lost = go && !walker.on && !player.dead && !exploreMode && !rampage && (W.RD(player.pos.x, player.pos.z) > ROADW + 28 || wrongT > 3);
         resetHint = stuck || lost ? resetHint + dt : std::max(0.0f, resetHint - dt * 3);
     }
     resetCD = std::max(0.0f, resetCD - dt); ammoFlash = std::max(0.0f, ammoFlash - dt * 1.5f);
     lockTgt = state == RACE && ammo > 0 && !player.dead ? pickTarget() : -1;
-    if (driving) { stepRockets(dt); stepWreckage(dt, state != TITLE); }
+    if (driving) { stepRockets(dt); stepWreckage(dt, state != TITLE); stepFoot(dt); stepShowdown(dt); showdownEffects(); sdTestHook(); }
     // --- keys ---
     if (state == RACE) for (size_t k = 0; k < W.keys.size(); k++) {
-        if (keysGot[W.id] >> k & 1) continue; V3 d = W.keys[k] - (player.pos + V3(0, 0.8f, 0));
-        if (dot(d, d) < 3.4f * 3.4f && !player.dead) {
-            keysGot[W.id] |= 1u << k; flashT = 0.6f; flashCol = V3(1, 0.85f, 0.3f); rumble(0.5f, 250); char b[64]; snprintf(b, sizeof b, "KEY FOUND!  %d/%d", keyCount(W.id), NKEYS); say(b, V3(1, 0.85f, 0.2f), 3);
+        if (keysGot[W.id] >> k & 1) continue; V3 d = W.keys[k] - (avatarPos() + V3(0, 0.8f, 0));
+        if (dot(d, d) < 3.4f * 3.4f && (!player.dead || walker.on)) {
+            int gunsBeforeKey = gunsUnlocked(); keysGot[W.id] |= 1u << k; gunUnlockCheck(gunsBeforeKey); flashT = 0.6f; flashCol = V3(1, 0.85f, 0.3f); rumble(0.5f, 250); char b[64]; snprintf(b, sizeof b, "KEY FOUND!  %d/%d", keyCount(W.id), NKEYS); say(b, V3(1, 0.85f, 0.2f), 3);
             for (int i = 0; i < 5; i++) tone(880 * powf(1.26f, (float)i), 0.25f, 0.4f, 0, 0, i * 0.07f);
             for (int i = 0; i < 40; i++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1))); spawn(W.keys[k], dd * grng.r(2, 9), grng.r(0.5f, 1.1f), 0.25f, 0, V3(4, 3, 0.6f), 1, 1, -3); }
             if (allKeys() && !chromeUnlocked) { chromeUnlocked = true; say("ALL KEYS! GOLD CHROME UNLOCKED", V3(1, 0.85f, 0.2f), 5); }
@@ -905,7 +921,7 @@ static void drawCar(const Car& c, Prog& p, bool lit) {
 }
 static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode : st == TITLE; }
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer) drawCar(player, p, lit); if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
-    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) drawCar(r.car, p, lit); }
+    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) drawCar(r.car, p, lit); drawWalker(p); drawShowdown(p); }
 
 // burnt shells, loose parts, rockets in flight and the pick-up crates
 static void drawWreckage(Prog& p, bool lit) {
@@ -992,6 +1008,7 @@ static void drawMap(float cx, float cy, float sc, bool cars) {
 static void panel(float x, float y, float w, float h, float a = 0.55f) { ui.rect(x, y, w, h, V3(0.02f, 0.03f, 0.06f), a); ui.rect(x, y, w, 3, V3(1, 0.55f, 0.1f), 0.9f); }
 
 static void drawHUD() {
+    drawFootHUD(); drawShowdownHUD();
     float Wd = ui.W, Hd = ui.H; char b[160]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f);
     if (state == OPTS) {
         ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.62f); ui.text(Wd / 2, 30, 6, yel, "OPTIONS", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f);
@@ -1076,7 +1093,8 @@ static void drawHUD() {
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
         snprintf(b, sizeof b, "WEATHER  %s %-7s %s  %s", selRow == 1 ? "<" : " ", WX[selWeather].name, selRow == 1 ? ">" : " ", WX[selWeather].sub);
         ui.text(96, ry[1], 2.8f, wcol[selWeather], b);
-        snprintf(b, sizeof b, "MODE     %s %-7s %s  %s", selRow == 2 ? "<" : " ", selMode ? "ROAM" : "RACE", selRow == 2 ? ">" : " ", selMode ? "NO CLOCK, NO TRAFFIC - KEY HUNT" : "3 LAPS AGAINST 5 OPPONENTS");
+        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE" }; static const char* MODE_BLURB[NMODES] = { "3 LAPS AGAINST 5 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "3 LAPS WITH GUNS, THEN THE SHOWDOWN" };
+        snprintf(b, sizeof b, "MODE     %s %-7s %s  %s", selRow == 2 ? "<" : " ", MODE_NAME[selMode], selRow == 2 ? ">" : " ", MODE_BLURB[selMode]);
         ui.text(96, ry[2], 2.8f, selMode ? V3(0.4f, 1, 0.6f) : org, b);
         panel(Wd - 400, 396, 340, 280); drawMap(Wd - 230, 536, 0.14f, false);
         if (!touchOn) ui.text(Wd - 60, 692, 2.5f, white, "UP / DOWN: PICK ROW   LEFT / RIGHT: CHANGE   ENTER: START   ESC: BACK", 2);
@@ -1177,7 +1195,10 @@ static void render(int fbw, int fbh) {
         camLag += (clampf(player.accS, -40, 25) * 0.045f - camLag) * (1 - expf(-3.5f * dt));      // pulled back under power, shoved in on the brakes
         camRoll += ((player.grounded ? clampf(player.yawRate * clampf(sp / 40, 0, 1) * 0.07f, -0.09f, 0.09f) : 0) - camRoll) * (1 - expf(-5 * dt));
         V3 cf(sinf(camYaw), 0, cosf(camYaw)), cs(cosf(camYaw), 0, -sinf(camYaw)); float dist = (camMode == 1 ? 10.5f : 6.4f) + sp * 0.02f + camLag, hgt = camMode == 1 ? 4.2f : 2.2f;
-        if (camMode == 2 && state != TITLE) { camPos = player.pos + V3(0, 1.25f + (player.type == 2 ? 0.7f : 0) + player.heave, 0) + f * 0.4f; camTgt = camPos + f * 10 + V3(0, sinf(player.pitch) * 10 - 0.6f, 0); }
+        if (showdownOn) { camPos = shdSite + V3(0, 150, -45); camTgt = shdSite; }   // the showdown: the site from above
+        else if (walker.on) {   // on foot: a chase view from behind the person
+            V3 wf(sinf(walker.yaw), 0, cosf(walker.yaw)); camPos = walker.pos - wf * 4.6f + V3(0, 2.6f, 0); camTgt = walker.pos + V3(0, 1.3f, 0) + wf * 2;
+        } else if (camMode == 2 && state != TITLE) { camPos = player.pos + V3(0, 1.25f + (player.type == 2 ? 0.7f : 0) + player.heave, 0) + f * 0.4f; camTgt = camPos + f * 10 + V3(0, sinf(player.pitch) * 10 - 0.6f, 0); }
         else {
             V3 w2 = player.pos - cf * dist + V3(0, hgt, 0); camPos.x = w2.x; camPos.z = w2.z; camPos.y += (w2.y - camPos.y) * (1 - expf(-9 * dt)); if (fabsf(camPos.y - w2.y) > 10) camPos.y = w2.y;
             camPos.y = std::max(camPos.y, W.H(camPos.x, camPos.z) + 0.8f); camTgt = player.pos + V3(0, 1.25f, 0) + f * (3.0f + sp * 0.05f);
@@ -1283,13 +1304,15 @@ static void onKey(SDL_Keycode k, int sc = 0) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
             if (selRow == 0) { selTrack = (selTrack + d + NTRACKS) % NTRACKS; loadTrack(selTrack); selWeather = weatherOf[selTrack]; }
             else if (selRow == 1) { selWeather = (selWeather + d + NWX) % NWX; weatherOf[selTrack] = selWeather; writeSave(); }
-            else selMode ^= 1;
+            else selMode = (selMode + d + NMODES) % NMODES;
         }
         if (k == SDLK_RETURN) { ok(); startRace(); } if (k == SDLK_ESCAPE) state = CARSEL; break;
     case RACE:
         if (k == SDLK_ESCAPE) { state = PAUSED; break; } if (introT > 0 && (k == SDLK_RETURN || k == SDLK_SPACE || bindHit(B_GAS, sc))) introT = 0;   // skip the fly-in
         if (bindHit(B_CAM, sc)) camMode = (camMode + 1) % 3;
-        if (bindHit(B_RESET, sc)) doReset(); if (bindHit(B_FIRE, sc)) fireRocket(); break;
+        if (bindHit(B_EXIT, sc)) footToggle();
+        if (bindHit(B_WEAPON, sc) && walker.on) cycleGun();
+        if (bindHit(B_RESET, sc)) doReset(); if (bindHit(B_FIRE, sc) && !walker.on) fireRocket(); break;
     case PAUSED: if (k == SDLK_ESCAPE || k == SDLK_RETURN) state = RACE; if (bindHit(B_RESET, sc)) { state = RACE; doReset(); } if (k == SDLK_q) { writeSave(); if (netRace) netLeave(""); else { state = TRACKSEL; setupCars(false); } } break;
     case RESULTS: if (netRace) { if (k == SDLK_ESCAPE) netLeave(""); } else if ((k == SDLK_RETURN || k == SDLK_ESCAPE) && resultsT > 1) { state = TRACKSEL; setupCars(false); } break;
     case NETJOIN:
@@ -1322,13 +1345,13 @@ static void printJSON(FILE* o) {
     std::string tbStr; if (touchOn) { touchLayout(); for (auto& t : tbtn) { if (!tbStr.empty()) tbStr += ","; tbStr += t.label; } }
     float remoteMoved = nc.maxMoved; std::string bindStr; for (int i = 0; i < NBIND; i++) { char t[32]; snprintf(t, sizeof t, "%s%d,%d", i ? ";" : "", binds[i][0], binds[i][1]); bindStr += t; }
     fprintf(o, "{\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
-        "\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
+        "\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"drops\":%d,\"bots\":%d,\"gun\":%d,\"walkHp\":%.1f,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
         "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
-        "\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\"}\n",
+        "\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\"}\n",
         W.id, player.type, weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id], (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft,
-        (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir, tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis,
+        (int)shdPhase, shdAlive(), shdRing, (int)drops.size(), (int)bots.size(), gun, walker.hp, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp(), (int)walker.on, walker.pos.x, walker.pos.y, walker.pos.z, walker.yaw, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir, tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis,
         tm.maxBeta, tm.maxSlipF, tm.maxSlipR, tm.maxSpeed, tm.maxYawRate, player.nitro, tm.minNitro, tm.boostT, tm.boosts, ammo, tm.rocketsFired, tm.rocketHits, tm.pickups, tm.resets, (int)wrecks.size(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y, wrecks.empty() ? 0.0f : wrecks.back().pos.z, (int)debris.size(), W.RD(player.pos.x, player.pos.z), tm.maxDeck, tm.maxGap, introT, tm.gridDrift, std::max(countdown, 0.0f), tm.offroadT, (int)W.cross.size(), tm.dist, tm.heading, tm.simT,
-        vidAA, vidAF, (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(), (int)hdrOK, (int)nc.connected, nc.id, (int)nc.phase, (int)nc.count, nc.maxCount, (int)nc.myPlace, (int)nc.placeFull, (int)netRace, remoteMoved, nc.error);
+        vidAA, vidAF, (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(), (int)hdrOK, deskW > 100000 ? 0 : deskW, deskH > 100000 ? 0 : deskH, (int)nc.connected, nc.id, (int)nc.phase, (int)nc.count, nc.maxCount, (int)nc.myPlace, (int)nc.placeFull, (int)netRace, remoteMoved, nc.error);
 }
 static void printDump(FILE* o) {
     fprintf(o, "{\"track\":%d,\"weather\":%d,\"name\":\"%s\",\"trackLen\":%d,\"start\":[%.1f,%.1f,%.1f],\"checkpoints\":[", W.id, weather, W.def->name, W.n, W.ts[0].x, W.ts[0].y, W.ts[0].z);
@@ -1359,7 +1382,8 @@ static void handleKey(SDL_Keycode k, int sc) {
 // fingers (and, with --touch, the mouse) on the on-screen buttons. x, y in HUD units
 static void touchPress(int b) {
     const TouchBtn t = tbtn[b];
-    if (t.act == TA_RESET) { if (state == PAUSED) state = RACE; doReset(); } else if (t.act == TA_FIRE) fireRocket(); else if (t.act == TA_CAM) camMode = (camMode + 1) % 3;
+    if (t.act == TA_RESET) { if (state == PAUSED) state = RACE; doReset(); } else if (t.act == TA_FIRE) { if (walker.on) fireGun(); else fireRocket(); } else if (t.act == TA_CAM) camMode = (camMode + 1) % 3;
+    else if (t.act == TA_EXIT) { if (state == RACE) footToggle(); } else if (t.act == TA_WEAPON) { if (walker.on) cycleGun(); }
     else if (t.key) handleKey(t.key, t.key == SDLK_RETURN ? SDL_SCANCODE_RETURN : 0);
 }
 static int touchHit(float x, float y) { for (size_t i = 0; i < tbtn.size(); i++) if (x >= tbtn[i].x && x <= tbtn[i].x + tbtn[i].w && y >= tbtn[i].y && y <= tbtn[i].y + tbtn[i].h) return (int)i; return -1; }
@@ -1392,7 +1416,7 @@ int main(int argc, char** argv) {
         std::string a = argv[i]; auto F = [&](int k) { return (float)atof(argv[i + k]); };
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = atoi(argv[++i]) % 3; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
-        else if (a == "--mode") selMode = atoi(argv[++i]) & 1; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
+        else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
         else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true;
         else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
@@ -1411,7 +1435,7 @@ int main(int argc, char** argv) {
         else if (a == "--touch") { touchOn = touchMouse = true; } else if (a == "--touchhold") { touchOn = true; touchHoldLabels.push_back(argv[++i]); }
         else if (a == "--tap") { touchOn = true; const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) taps.push_back({ (float)atof(q), std::string(c + 1) }); }
         else if (a == "--ldr") forceLDR = true;
-        else if (a == "--rockets") startAmmo = atoi(argv[++i]); else if (a == "--fire") fireAt.push_back((float)atof(argv[++i])); else if (a == "--reset") resetAt.push_back((float)atof(argv[++i]));
+        else if (a == "--rockets") startAmmo = atoi(argv[++i]); else if (a == "--faceai") faceAi = true; else if (a == "--sdnow") sdNow = true; else if (a == "--gun") gun = ((atoi(argv[++i]) % NGUNS) + NGUNS) % NGUNS; else if (a == "--fire") fireAt.push_back((float)atof(argv[++i])); else if (a == "--reset") resetAt.push_back((float)atof(argv[++i]));
         else if (a == "--script") { const char* p = argv[++i]; while (*p) { ScriptKey k = {}; int hb = 0, nos = 0, used = 0, u2 = 0; if (sscanf(p, "%f:%f,%f,%f,%d%n", &k.t, &k.steer, &k.gas, &k.brake, &hb, &used) < 5) break; k.hb = hb;
             if (p[used] == ',' && sscanf(p + used + 1, "%d%n", &nos, &u2) == 1) { k.nitro = nos; used += 1 + u2; }
             script.push_back(k); p += used; if (*p == ';') p++; } }
@@ -1443,6 +1467,9 @@ int main(int argc, char** argv) {
         for (int i = 0; i < skip; i++) { stepFixed(); if (netWanted || nc.on || state == NETJOIN || state == NETLOBBY) net::sleepMs(16); }   // online: the server runs in real time, so must we
         printJSON(stdout); netClose(""); return 0;
     }
+    // Windows display scaling (125%, 150%, 300% on a 4K TV...): without this Windows tells the game the screen is smaller than
+    // it is and stretches the picture, so 1920x1080 never appears in the video options. Ask for real pixels.
+    SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) { if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; } }
 #ifdef FCF_GLES
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3); SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0); SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -1519,7 +1546,7 @@ int main(int argc, char** argv) {
 #endif
 
     for (int t = 0; t < 3; t++) { MB m; buildCar(t, m); carMesh[t].upload(m); }
-    { MB m; buildWheel(m); wheelMesh.upload(m); } { MB m; buildKey(m); keyMesh.upload(m); }
+    { MB m; buildWheel(m); wheelMesh.upload(m); } { MB m; buildKey(m); keyMesh.upload(m); } { MB m; buildPerson(m); personMesh.upload(m); }
     { MB m; V3 c(0.5f, 0.5f, 0.5f); m.box(0, 0, 1, 1, 0, -1, 1, c, 0, c, 0); boxMesh.upload(m); }
     { MB m; V3 g(0.16f, 0.30f, 0.14f), y(0.95f, 0.72f, 0.05f); m.box(0, 0, 1, 1, 0, -1, 1, g, 0, g, 0); m.box(0, 0, 1.04f, 0.16f, 0, -0.16f, 0.16f, y, 0, y, 0); m.box(0, 0, 0.16f, 1.04f, 0, -0.16f, 0.16f, y, 0, y, 0); crateMesh.upload(m); }
     { MB m; V3 w(0.85f, 0.85f, 0.88f), r(0.85f, 0.10f, 0.06f); m.box(0, 0, 0.085f, 0.42f, 0, -0.085f, 0.085f, w, 0, w, 0); m.box(0, 0.50f, 0.055f, 0.09f, 0, -0.055f, 0.055f, r, 0, r, 0);
@@ -1548,9 +1575,9 @@ int main(int argc, char** argv) {
             if (e.type == SDL_CONTROLLERBUTTONDOWN) {
                 switch (e.cbutton.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); break;
                 case SDL_CONTROLLER_BUTTON_B: if (state != RACE) onKey(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_Y: if (state == RACE) camMode = (camMode + 1) % 3; else onKey(SDLK_q); break; case SDL_CONTROLLER_BUTTON_BACK: if (state == PAUSED) state = RACE; doReset(); break;
-                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else fireRocket(); break; case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); break;
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (walker.on) fireGun(); else fireRocket(); break; case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); break;
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break; case SDL_CONTROLLER_BUTTON_DPAD_UP: onKey(SDLK_UP); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: onKey(SDLK_DOWN); break; }
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break; case SDL_CONTROLLER_BUTTON_DPAD_UP: onKey(SDLK_UP); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: if (state == RACE) footToggle(); else onKey(SDLK_DOWN); break; }
             }
             if (e.type == SDL_CONTROLLERDEVICEADDED && !pad) pad = SDL_GameControllerOpen(e.cdevice.which);
             if (e.type == SDL_FINGERDOWN) touchDown(e.tfinger.fingerId, e.tfinger.x * uiW, e.tfinger.y * 720);

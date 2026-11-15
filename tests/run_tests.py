@@ -704,7 +704,7 @@ def options_controls_can_be_rebound():
     check(run(*drive, "--hold", "X")["dist"] < 1, "default: X does nothing", None)
     d = run(*_presses("F1", "DOWN", "DOWN", "RETURN", "X", "ESCAPE"))     # third row is ACCELERATE, first slot
     binds = [tuple(int(v) for v in b.split(",")) for b in d["binds"].split(";")]
-    check(len(binds) == 9 and binds[2] == (27, 26), "accelerate is now X, with W still as the second key", binds[2])
+    check(len(binds) == 11 and binds[2] == (27, 26), "accelerate is now X, with W still as the second key", binds[2])
     check(run(*drive, "--hold", "X")["dist"] > 10, "X accelerates after rebinding (and after a restart)", None)
     check(run(*drive, "--hold", "Up")["dist"] < 1, "Up no longer does", None)
     check(run(*drive, "--hold", "W")["dist"] > 10, "the second key still works", None)
@@ -719,7 +719,7 @@ def options_controls_can_be_rebound():
     d = run("--state", 3, "--mode", 1, "--rockets", 1, *_presses("G"), seconds=2)
     check(d["rocketsFired"] == 1, "after rebinding FIRE ROCKET to G, G fires", d["rocketsFired"])
     d = run(*_presses("F1", "F5", "ESCAPE"))
-    check(d["binds"] == "80,4;79,7;82,26;81,22;44,0;225,229;9,8;21,42;6,0", "F5 restores the defaults", d["binds"])
+    check(d["binds"] == "80,4;79,7;82,26;81,22;44,0;225,229;9,8;21,42;6,0;10,0;20,0", "F5 restores the defaults", d["binds"])
 
 
 # ----------------------------------------------------------------------------- touch screen
@@ -976,6 +976,53 @@ def main():
     bad = sum(1 for r in results if r[1] in ("FAIL", "ERROR"))
     print("\n%d passed, %d failed, %d skipped" % (sum(1 for r in results if r[1] == "PASS"), bad, sum(1 for r in results if r[1] == "SKIP")))
     return 1 if bad else 0
+
+
+# ----------------------------------------------------------------------------- on foot, guns, rampage
+@test
+def foot_get_out_walk_and_back_in():
+    out = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", seconds=1)
+    check(out["onFoot"] == 1 and abs(out["vf"]) < 0.01, "G gets out of a stopped car", (out["onFoot"], out["vf"]))
+    walk = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--hold", "W", seconds=3)
+    dist = ((walk["walkX"] - out["walkX"]) ** 2 + (walk["walkZ"] - out["walkZ"]) ** 2) ** 0.5
+    check(walk["onFoot"] == 1 and dist > 3, "walking forward moves the person", dist)
+    back = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--press", "0.5:G", seconds=1)
+    check(back["onFoot"] == 0, "G beside the car gets back in", back["onFoot"])
+    parked = sim("--track", 0, "--state", 3, "--mode", 1, "--hold", "W", seconds=2)
+    check(parked["onFoot"] == 0 and parked["vf"] > 10, "the car still drives with the walker code in", parked["vf"])
+
+
+@test
+def foot_steer_turns_the_way_the_car_does():
+    left = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--hold", "A", seconds=2)
+    right = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--hold", "D", seconds=2)
+    check(left["walkYaw"] > 0 and right["walkYaw"] < 0, "A turns the person the way A turns the car", (left["walkYaw"], right["walkYaw"]))
+
+
+@test
+def guns_hit_the_racers_on_the_grid():
+    base = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.2:G", "--faceai", seconds=1)
+    for gun, lo in ((0, 90), (1, 90), (2, 90), (3, 90)):
+        d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.2:G", "--hold", "F", "--faceai", "--gun", str(gun), seconds=1.2)
+        check(d["aiMinHp"] < lo, "gun %d hits a racer" % gun, d["aiMinHp"])
+    check(base["aiMinHp"] == 100.0, "nothing is hit before a shot", base["aiMinHp"])
+
+
+@test
+def rampage_mode_is_a_race_with_guns():
+    d = sim("--track", 0, "--state", 3, "--mode", 2, seconds=1)
+    check(d["state"] == 3 and d["timeUp"] == 0 and d["shdPhase"] == 0, "rampage starts as a race, with no clock and no showdown yet", (d["state"], d["timeUp"], d["shdPhase"]))
+
+
+@test
+def showdown_runs_drive_prep_fight_and_closes_the_ring():
+    d = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", seconds=3)
+    check(d["shdPhase"] == 2 and d["drops"] == 14 and d["bots"] == 2, "winner arrives, 30 s countdown, guns on the ground", (d["shdPhase"], d["drops"], d["bots"]))
+    f = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", seconds=40)
+    check(f["shdPhase"] == 3 and f["shdRing"] < 20, "the fight starts and the ring closes once two are left", (f["shdPhase"], f["shdAlive"], f["shdRing"]))
+    won = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", "--faceai", "--gun", "1", "--hold", "F", seconds=75)
+    check(won["state"] == 5 and won["shdPhase"] == 0, "the showdown ends on the results screen", (won["state"], won["shdPhase"]))
+
 
 
 if __name__ == "__main__":
