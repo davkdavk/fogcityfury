@@ -231,11 +231,11 @@ static void touchLayout() {
 static void drawTouch() {
     if (!touchOn) return; touchLayout();
     for (size_t i = 0; i < tbtn.size(); i++) {
+        // clean and see-through: a faint tinted fill with no frame, brighter while a finger is on it
         const TouchBtn& t = tbtn[i]; bool dn = false; for (auto& f : fingers) if (f.btn == (int)i) dn = true;
-        V3 edge = t.hold == B_GAS ? V3(0.3f, 1, 0.45f) : t.hold == B_BRAKE ? V3(1, 0.35f, 0.25f) : t.hold == B_NITRO ? V3(0.4f, 0.85f, 1) : t.act == TA_FIRE ? V3(1, 0.5f, 0.15f) : V3(1, 0.82f, 0.15f);
-        ui.rect(t.x, t.y, t.w, t.h, dn ? edge : V3(0.03f, 0.04f, 0.07f), dn ? 0.55f : 0.42f);
-        ui.rect(t.x, t.y, t.w, 3, edge, 0.9f); ui.rect(t.x, t.y + t.h - 3, t.w, 3, edge, 0.9f); ui.rect(t.x, t.y, 3, t.h, edge, 0.9f); ui.rect(t.x + t.w - 3, t.y, 3, t.h, edge, 0.9f);
-        float sc = strlen(t.label) <= 2 ? (t.h > 100 ? 9.0f : 4.5f) : std::min(3.2f, t.w / (strlen(t.label) * 6.6f)); ui.text(t.x + t.w / 2, t.y + t.h / 2 - sc * 3.5f, sc, V3(1, 1, 1), t.label, 1, dn ? 1.0f : 0.85f);
+        V3 tint = t.hold == B_GAS ? V3(0.3f, 1, 0.45f) : t.hold == B_BRAKE ? V3(1, 0.35f, 0.25f) : t.hold == B_NITRO ? V3(0.4f, 0.85f, 1) : t.act == TA_FIRE ? V3(1, 0.5f, 0.15f) : V3(0.85f, 0.9f, 1);
+        ui.rect(t.x, t.y, t.w, t.h, tint, dn ? 0.28f : 0.10f);
+        float sc = strlen(t.label) <= 2 ? (t.h > 100 ? 9.0f : 4.5f) : std::min(3.2f, t.w / (strlen(t.label) * 6.6f)); ui.text(t.x + t.w / 2, t.y + t.h / 2 - sc * 3.5f, sc, V3(1, 1, 1), t.label, 1, dn ? 0.9f : 0.5f);
     }
 }
 static std::string cfgPath() { std::string p = savePath(); return p.substr(0, p.size() - 3) + "cfg"; }
