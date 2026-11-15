@@ -528,14 +528,26 @@ def net_server_list_shows_what_each_server_is_running():
         # the wire format: a 48-byte question, a 42-byte answer (shorter than the question, so no amplification)
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(1.0)
-        s.sendto(struct.pack(HDR, NET_MAGIC, NET_PROTO, 4, 0xFF) + struct.pack("<I", 0xC0FFEE) + b"\0" * 36, ("127.0.0.1", srv.port))
-        data, _ = s.recvfrom(256)
+        # UDP has no delivery guarantee and the server may still be starting, so resend the question until it answers
+        query = struct.pack(HDR, NET_MAGIC, NET_PROTO, 4, 0xFF) + struct.pack("<I", 0xC0FFEE) + b"\0" * 36
+        for attempt in range(10):
+            s.sendto(query, ("127.0.0.1", srv.port))
+            try:
+                data, _ = s.recvfrom(256); break
+            except socket.timeout:
+                if attempt == 9: raise
+        s.settimeout(3.0)
         magic, proto, kind, _id = struct.unpack(HDR, data[:8])
         nonce, track, laps, phase, wx, count, maxp, name = struct.unpack("<IBBBBBB24s", data[8:42])
         check(len(data) == 42 and kind == 19 and nonce == 0xC0FFEE, "the server answers a query and echoes the nonce", (len(data), kind, hex(nonce)))
         check((track, count, maxp, phase) == (2, 0, 8, LOBBY) and name.split(b"\0")[0] == b"TEST BOX", "with its track, players and name", (track, count, maxp, name))
-        s.sendto(struct.pack(HDR, NET_MAGIC, 1, 4, 0xFF) + struct.pack("<I", 7) + b"\0" * 36, ("127.0.0.1", srv.port))
-        data, _ = s.recvfrom(256)
+        other = struct.pack(HDR, NET_MAGIC, 1, 4, 0xFF) + struct.pack("<I", 7) + b"\0" * 36
+        for attempt in range(10):
+            s.sendto(other, ("127.0.0.1", srv.port))
+            try:
+                data, _ = s.recvfrom(256); break
+            except socket.timeout:
+                if attempt == 9: raise
         check(struct.unpack(HDR, data[:8])[1:3] == (NET_PROTO, 19), "and answers other versions of the game too, saying which protocol it speaks", struct.unpack(HDR, data[:8]))
     check("joined" not in srv.log, "asking does not join the server", srv.log[-200:])
     with Server("--track", 2, "--name", "Test Box") as srv:   # the game's own list
