@@ -82,8 +82,8 @@ jobs:
   release:
     name: Publish release
     runs-on: ubuntu-22.04
-    needs: [linux, windows, arm64-server]
-    if: always() && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.arm64-server.result == 'success'
+    needs: [linux, windows, arm64-server, apk]
+    if: always() && needs.linux.result == 'success' && needs.windows.result == 'success' && needs.arm64-server.result == 'success' && needs.apk.result != 'cancelled'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -98,7 +98,11 @@ jobs:
           cp artifacts/windows/fogcityfury.exe        release/FogCityFury-Windows.exe
           cp artifacts/windows/fogcityfury-server.exe release/FogCityFury-Server-Windows.exe
           cp artifacts/arm64-server/fogcityfury-server-arm64 release/FogCityFury-Server-ARM64
-          if [ -f artifacts/apk/app-debug.apk ]; then cp artifacts/apk/app-debug.apk release/FogCityFury.apk; fi
+          if [ -f artifacts/apk/app-debug.apk ]; then
+            cp artifacts/apk/app-debug.apk release/FogCityFury.apk
+          else
+            echo "::warning::APK not found in artifacts; release will ship without it"
+          fi
           ls -la release/
       - name: Create or update release v1.0
         env:
