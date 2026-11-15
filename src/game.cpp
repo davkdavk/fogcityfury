@@ -1059,6 +1059,26 @@ static void drawHUD() {
             snprintf(b, sizeof b, "DRAWING AT %d X %d", lastRW, lastRH); ui.text(Wd / 2, 570, 2, dim, b, 1);
             if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, "UP / DOWN: SETTING    LEFT / RIGHT: CHANGE (APPLIED AT ONCE)    TAB: CONTROLS    ESC: BACK", 1);
         }
+    } else if (state == NETLOBBY) {
+        // the ready-up screen: who is on the server and who has pressed READY (the server sends each player's flag)
+        ui.text(Wd / 2, 30, 6, yel, "READY UP", 1, 1, 0.12f);
+        int n = std::min((int)nc.snap.count, (int)net::MAXP); int rows = std::max(n, 1);
+        panel(Wd / 2 - 360, 110, 720, 150 + 40 * rows, 0.72f);
+        int readyN = 0;
+        for (int k = 0; k < n; k++) {
+            const net::PlayerSnap& p = nc.snap.p[k]; bool rdy = p.s.flags & net::F_READY; readyN += rdy ? 1 : 0;
+            char nm[net::NAMELEN + 1]; memcpy(nm, p.name, net::NAMELEN); nm[net::NAMELEN] = 0;
+            snprintf(b, sizeof b, "%-16s %s", nm, rdy ? "READY" : "WAITING");
+            ui.text(Wd / 2 - 320, 140 + k * 40, 4, p.id == nc.id ? yel : white, b);
+            ui.text(Wd / 2 + 320, 140 + k * 40, 4, rdy ? V3(0.4f, 1, 0.6f) : V3(0.55f, 0.58f, 0.65f), rdy ? "OK" : "...", 2);
+        }
+        if (n == 0) ui.text(Wd / 2, 140, 3, V3(0.75f, 0.8f, 0.9f), "CONNECTING TO THE SERVER...", 1);
+        float yy = 140 + rows * 40 + 20;
+        snprintf(b, sizeof b, "%d OF %d READY", readyN, n); ui.text(Wd / 2, yy, 3, white, b, 1);
+        if (nc.phase == net::COUNTDOWN) { snprintf(b, sizeof b, "STARTING IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 4, yel, b, 1); }
+        else if (nc.phase == net::LOBBY && nc.phaseT > 0) { snprintf(b, sizeof b, "AUTO START IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 3, yel, b, 1); }
+        else if (nc.phase == net::RESULTS) ui.text(Wd / 2, yy + 40, 3, V3(0.75f, 0.8f, 0.9f), "RACE OVER - NEXT TRACK COMING UP", 1);
+        if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, nc.ready ? "YOU ARE READY   ENTER: NOT READY    ESC: BACK" : "ENTER: READY    ESC: BACK", 1);
     } else if (state == NETJOIN) {
         ui.text(Wd / 2, 30, 6, yel, "ONLINE RACE", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f), good(0.4f, 1, 0.6f), bad(1, 0.4f, 0.3f); bool blink = fmodf(T, 0.8f) < 0.5f;
         panel(Wd / 2 - 580, 110, 1160, 430, 0.72f); float x0 = Wd / 2 - 560;

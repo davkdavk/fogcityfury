@@ -82,6 +82,8 @@ in the options.
 - **West-coast funk soundtrack**: a new swung score with drums, a gliding bass, electric piano and a
   high sliding lead, replacing the metal soundtrack.
 - **Shorter grab phase**: the showdown countdown to grab guns and take position is 15 seconds, down from 30.
+- **Ready-up screen restored online**: the lobby lists every player with READY or WAITING, shows
+  how many are ready, and shows the start countdown.
 
 ## What's new in 1.3
 
