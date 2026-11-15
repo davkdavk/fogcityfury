@@ -104,11 +104,19 @@ jobs:
             echo "::warning::APK not found in artifacts; release will ship without it"
           fi
           ls -la release/
-      - name: Create or update release v1.0
+      - name: Create or update the release for this tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          NOTES="Fog City Fury v1.0, built from ${GITHUB_SHA}."
-          gh release view v1.0 >/dev/null 2>&1 \
-            && gh release upload v1.0 release/* --clobber \
-            || gh release create v1.0 release/* --title "Fog City Fury v1.0" --notes "$NOTES"
+          # Tag pushes publish their own version (v1.1); manual runs publish the newest "What's new" version.
+          if [[ "$GITHUB_REF_NAME" == v* ]]; then TAG="$GITHUB_REF_NAME"; else TAG=v1.1; fi
+          VER="${TAG#v}"
+          # Notes are the README's "What's new in <VER>" section, so the release page matches the repo.
+          awk -v v="$VER" '
+            $0 ~ "^## What.s new in " v "$" {on=1; next}
+            on && /^## / {exit}
+            on {print}' README.md > notes.md
+          [ -s notes.md ] || echo "Fog City Fury $TAG, built from ${GITHUB_SHA}." > notes.md
+          gh release view "$TAG" >/dev/null 2>&1 \
+            && gh release upload "$TAG" release/* --clobber \
+            || gh release create "$TAG" release/* --title "Fog City Fury $TAG" --notes-file notes.md

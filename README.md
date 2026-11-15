@@ -19,16 +19,33 @@ C++17, SDL2, OpenGL 3.3 core, GLSL 3.30.
     make
     ./fogcityfury              # add --fullscreen, or --size 1920 1080
 
-A prebuilt x86-64 binary (built on Ubuntu 24.04) is included; if it does not
-start on your distro, run `make`.
+Download prebuilt binaries from the [Actions tab](https://github.com/davkdavk/fogcityfury/actions) —
+every push builds them automatically (or click **"Run workflow"** to rebuild). Choose the artifact
+that matches your system:
+
+- **Linux client** (`FogCityFury-LinuxClient`): needs a distro with glibc 2.31+ and libstdc++ 7+.
+  Run `./fogcityfury --fullscreen`, or add `--size WIDTH HEIGHT`. If it does not start on your
+  distro, run `make` (see below). Progress is saved in `~/.fogcityfury.sav`.
+- **Linux server** (`FogCityFuryServer`): static x86-64 binary. Start with `./fogcityfury-server`; it
+  listens on UDP port 27015. Needs no graphics. For Raspberry Pi / SBCs, download the ARM64 build.
+- **Windows client** + **server** (`.exe`): single files, nothing to install. Needs 64-bit Windows
+  and a graphics driver with OpenGL 3.3. Progress is saved in `%APPDATA%\fogcityfury.sav`.
+- **ARM64 server** (`FogCityFury-ARM64Server`): statically linked for Raspberry Pi and other ARM
+  boards running Linux.
+
+### Build from source
+
+    sudo apt install g++ make pkg-config libsdl2-dev libgl1-mesa-dev   # Debian / Ubuntu / Mint
+    make                                                               # builds fogcityfury + fogcityfury-server
+    ./fogcityfury                                                      # add --fullscreen, or --size 1920 1080
+
+Fedora: `sudo dnf install gcc-c++ make pkgconf-pkg-config SDL2-devel mesa-libGL-devel`.
+Arch: `sudo pacman -S gcc make pkgconf sdl2 mesa`.
 
 ### Windows
 
-`fogcityfury.exe` (and `fogcityfury-server.exe`) are single files with nothing
-to install: double-click to play. Needs 64-bit Windows and a graphics driver
-with OpenGL 3.3. Progress is saved in `%APPDATA%\fogcityfury.sav`. They are
-cross-compiled from Linux with `make windows` (see `AGENTS.md`). Windows and
-Linux players can race each other, on a server running on either.
+Cross-compiled from Linux with MinGW-w64 (see `AGENTS.md`). Windows and Linux players can race each
+other on a server running on either platform.
 
 ## Android
 
@@ -59,6 +76,19 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
+
+## What's new in 1.1
+
+- **Rampage mode** (third option on the mode menu): a race, then a showdown. The winner drives to a site halfway
+  round the track, gets out, has 30 seconds to grab guns, then fights the others on foot. A ring
+  closes in once two fighters are left; stand outside it and your health drains. Last one standing wins.
+- **On foot**: press G to get out of a car that has almost stopped, and G again beside it to get
+  back in. Walk with the steering and throttle keys; walls and cars stop you.
+- **Guns**: pistol, SMG (hold to fire), shotgun and rocket launcher. Change weapon with Q. Guns unlock
+  as you collect hidden keys: 5, 10 and 20 keys in total.
+- **Cleaner touch controls** on Android: buttons are frameless and see-through, and light up while held.
+- **Build and release fixes**: the Windows and ARM64 server builds are now verified on every release,
+  and the Android APK ships with the release when it builds.
 
 ## What's in it
 
