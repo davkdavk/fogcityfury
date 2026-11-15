@@ -326,6 +326,23 @@ void main(){
 }
 )";
 
+// the showdown's ring: a wall of light. vUV.x runs round it in metres, vUV.y from the ground (0) to its top (1); vMisc.y = 1 while it is closing in
+static const char* FS_RING = R"(
+in vec3 vP; in vec2 vUV; in vec4 vC; in vec2 vMisc;
+void main(){
+  float u = vUV.x, v = vUV.y;
+  float bars = smoothstep(0.30, 0.5, abs(fract(u*0.35 - uTime*0.5 + v*1.6) - 0.5));       // slanted bands sliding round the wall
+  float lines = smoothstep(0.90, 1.0, fract(v*5.0 - uTime*0.3));                           // thin lines climbing it
+  float foot = exp(-v*11.0), fade = pow(clamp(1.0 - v, 0.0, 1.0), 1.5);
+  float d = length(vP - uCamPos), near = 1.0 - smoothstep(6.0, 45.0, d);                   // it thickens as you come up to it
+  float a = (0.05 + 0.16*bars + 0.30*lines + 1.5*foot)*fade*vC.a*(0.45 + 0.55*near);
+  vec3 c = vC.rgb*(1.0 + 2.0*foot)*(1.0 + vMisc.y*0.35*sin(uTime*10.0));
+  c = mix(c, uSkyHor, (1.0 - exp(-d*uFogDen))*0.5);
+  if(uHDR < 0.5) c = tonemap(c);
+  oCol = vec4(c*a, 0.0);
+}
+)";
+
 // post chain. uMode 0: bright pass + downsample, 1: gaussian blur, 2: final composite
 static const char* FS_POST = R"(#version 330 core
 in vec2 vNdc; out vec4 oCol;

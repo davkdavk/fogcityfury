@@ -12,7 +12,8 @@ fixed 60 Hz and prints one JSON line of state and metrics (fields are listed in 
 The simulation is deterministic, so thresholds here can be tight. If you change handling or a track
 on purpose, re-measure and update the numbers in the same commit, and say why in the commit message.
 """
-import json, math, os, shutil, socket, struct, subprocess, sys, tempfile, time, wave
+import json
+import math, os, shutil, socket, struct, subprocess, sys, tempfile, time, wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(ROOT, "fogcityfury")
@@ -752,6 +753,16 @@ def touch_buttons_drive_the_car_and_the_menus():
     check(d["state"] == 3 and d["car"] == 1 and d["track"] == 1, "title, car select and track select can be worked by tapping alone", (d["state"], d["car"], d["track"]))
     d = sim("--touch", "--tap", "0.3:OPTIONS", "--tap", "0.6:VIDEO", "--tap", "0.9:DOWN", "--tap", "1.2:DOWN", "--tap", "1.5:<", seconds=2)
     check(d["state"] == 8 and d["aa"] == 2, "so can the options", (d["state"], d["aa"]))
+    d = sim("--touch", "--state", 3, "--mode", 0, "--track", 0, "--faceai", "--tap", "0.2:OUT", "--touchhold", "FIRE", seconds=2)
+    check(d["onFoot"] == 1 and d["touchBtns"] == "FIRE,ROLL,RUN,GUN,CAR,II", "OUT gets out of the car, and the buttons change to the fighter's", d["touchBtns"])
+    check(d["footShots"] >= 3, "a thumb held on FIRE shoots", d["footShots"])
+    out = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", seconds=1)
+    d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--stick", "0,1", seconds=3)
+    check(math.hypot(d["walkX"] - out["walkX"], d["walkZ"] - out["walkZ"]) > 10, "the thumb-stick pushed forward runs", (d["walkX"], d["walkZ"]))
+    d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--tap", "0.8:CAR", seconds=1.2)
+    check(d["onFoot"] == 0 and d["touchBtns"].startswith("<,>,GAS"), "CAR gets back in", (d["onFoot"], d["touchBtns"]))
+    d = sim("--touch", "--state", 3, "--mode", 2, "--track", 0, "--sdnow", seconds=6)
+    check(d["touchBtns"] == "FIRE,ROLL,RUN,GUN,II,SKIP", "in the showdown there is no car to go back to", d["touchBtns"])
 
 
 # ----------------------------------------------------------------------------- nitro
@@ -887,6 +898,11 @@ def render_title_and_race():
     _shot("options_video", "--state", 8, "--optpage", 1)
     _shot("touch_race", "--touch", "--state", 3, "--auto", "--skip", 200)
     _shot("touch_menu", "--touch", "--state", 2)
+    _shot("foot_race", "--state", 3, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 1, "--skip", 90)
+    _shot("showdown_intro", "--state", 3, "--mode", 2, "--sdnow", "--skip", 170)
+    _shot("showdown_fight", "--track", 1, "--state", 3, "--mode", 2, "--sdnow", "--footai", "--skip", 2300)
+    _shot("showdown_night", "--track", 3, "--weather", 3, "--state", 3, "--mode", 2, "--sdnow", "--footai", "--skip", 2300, dark_ok=True)
+    _shot("showdown_touch", "--touch", "--state", 3, "--mode", 2, "--sdnow", "--stick", "0.5,1", "--skip", 500)
 
 
 def render_gles_build_draws_everything():
@@ -899,6 +915,8 @@ def render_gles_build_draws_everything():
     _shot("es_race", "--state", 3, "--auto", "--skip", 300, binary=gles)
     _shot("es_storm_night", "--track", 3, "--weather", 3, "--state", 3, "--auto", "--skip", 300, dark_ok=True, binary=gles)
     _shot("es_wreck", "--track", 1, "--state", 3, "--auto", "--rockets", 2, "--fire", 3.0, "--skip", 300, binary=gles)
+    _shot("es_showdown", "--track", 1, "--state", 3, "--mode", 2, "--sdnow", "--footai", "--skip", 2300, binary=gles)
+    _shot("es_showdown_touch", "--touch", "--state", 3, "--mode", 2, "--sdnow", "--stick", "0.5,1", "--skip", 500, binary=gles)
     _shot("es_touch", "--touch", "--state", 3, "--auto", "--skip", 200, binary=gles)
     check(_shot.last[1]["hdr"] == 1 and _shot.last[1]["touch"] == 1, "half-float render targets in use, touch buttons on", (_shot.last[1]["hdr"], _shot.last[1]["touch"]))
     _shot("es_8bit", "--ldr", "--state", 3, "--auto", "--skip", 200, binary=gles)
@@ -990,51 +1008,141 @@ def main():
     return 1 if bad else 0
 
 
-# ----------------------------------------------------------------------------- on foot, guns, rampage
+# ----------------------------------------------------------------------------- on foot, guns, the showdown
+# Test hooks: --faceai (step out facing the nearest racer), --gun N (holding that gun), --sdnow / --sdplace N (as if you had
+# just finished the race in that place), --footai (a bot plays your fighter). Fighters report as on|alive|hp|gun|kills|place.
+FOOT = ("--track", 0, "--state", 3, "--mode", 1, "--press", "0.05:G")
+SHOW = ("--state", 3, "--mode", 2, "--sdnow")
+T_PREP, T_FIGHT = 4.6, 34.6          # when the countdown and the fight start, seconds after the finish (1.3 beat + 3.2 fly-down + 30)
+
+
+def fighters(d):
+    return [dict(zip(("on", "alive", "hp", "gun", "kills", "place"), (int(v) for v in f.split("|")))) for f in d["fighters"].split(";")]
+
+
 @test
-def foot_get_out_walk_and_back_in():
-    out = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", seconds=1)
-    check(out["onFoot"] == 1 and abs(out["vf"]) < 0.01, "G gets out of a stopped car", (out["onFoot"], out["vf"]))
-    walk = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--hold", "W", seconds=3)
-    dist = ((walk["walkX"] - out["walkX"]) ** 2 + (walk["walkZ"] - out["walkZ"]) ** 2) ** 0.5
-    check(walk["onFoot"] == 1 and dist > 3, "walking forward moves the person", dist)
-    back = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--press", "0.5:G", seconds=1)
+def foot_get_out_run_and_get_back_in():
+    out = sim(*FOOT, seconds=1)
+    check(out["onFoot"] == 1 and abs(out["vf"]) < 0.01, "G gets out of a stopped car, which stays put", (out["onFoot"], out["vf"]))
+    run = sim(*FOOT, "--hold", "W", seconds=3)
+    dist = math.hypot(run["walkX"] - out["walkX"], run["walkZ"] - out["walkZ"])
+    between(run["walkSpeed"], 5.0, 5.4, "running speed (m/s)")
+    between(dist, 12, 16.5, "distance run in three seconds (m)")
+    fwd = (run["walkX"] - out["walkX"]) * math.sin(out["yaw"]) + (run["walkZ"] - out["walkZ"]) * math.cos(out["yaw"])
+    check(fwd > 0.9 * dist, "forward is the way the camera looks: the way the car was pointing", (fwd, dist))
+    back = sim(*FOOT, "--press", "0.5:G", seconds=1)
     check(back["onFoot"] == 0, "G beside the car gets back in", back["onFoot"])
-    parked = sim("--track", 0, "--state", 3, "--mode", 1, "--hold", "W", seconds=2)
-    check(parked["onFoot"] == 0 and parked["vf"] > 10, "the car still drives with the walker code in", parked["vf"])
+    far = sim(*FOOT, "--hold", "W", "--press", "2.5:G", seconds=3)
+    check(far["onFoot"] == 1, "but not from fifteen metres away", far["onFoot"])
+    moving = sim("--track", 0, "--state", 3, "--mode", 1, "--hold", "W", "--press", "2:G", seconds=3)
+    check(moving["onFoot"] == 0 and moving["vf"] > 10, "no jumping out of a moving car", (moving["onFoot"], moving["vf"]))
 
 
 @test
-def foot_steer_turns_the_way_the_car_does():
-    left = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--hold", "A", seconds=2)
-    right = sim("--track", 0, "--state", 3, "--mode", 1, "--press", "0.2:G", "--hold", "D", seconds=2)
-    check(left["walkYaw"] > 0 and right["walkYaw"] < 0, "A turns the person the way A turns the car", (left["walkYaw"], right["walkYaw"]))
+def foot_running_is_relative_to_the_camera():
+    out = sim(*FOOT, seconds=1)
+    left = sim(*FOOT, "--hold", "A", seconds=2)
+    side = (left["walkX"] - out["walkX"]) * -math.cos(out["yaw"]) + (left["walkZ"] - out["walkZ"]) * math.sin(out["yaw"])
+    check(side < -1, "A runs to the left of where the camera looks", side)
+    turn = (left["footYaw"] - out["footYaw"] + math.pi) % (2 * math.pi) - math.pi
+    check(turn > 0.8, "and the camera swings left with it, the way A steers the car", turn)
+    back = sim(*FOOT, "--hold", "S", seconds=2)
+    fwd = (back["walkX"] - out["walkX"]) * math.sin(out["yaw"]) + (back["walkZ"] - out["walkZ"]) * math.cos(out["yaw"])
+    check(fwd < -6, "S runs back towards the camera", fwd)
+    car = sim(*FOOT, "--hold", "D", seconds=2)
+    check(math.hypot(car["walkX"] - car["x"], car["walkZ"] - car["z"]) > 1.3, "the car is solid: running into it does not go through", (car["walkX"], car["walkZ"]))
 
 
 @test
-def guns_hit_the_racers_on_the_grid():
-    base = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.2:G", "--faceai", seconds=1)
-    for gun, lo in ((0, 90), (1, 90), (2, 90), (3, 90)):
-        d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.2:G", "--hold", "F", "--faceai", "--gun", str(gun), seconds=1.2)
-        check(d["aiMinHp"] < lo, "gun %d hits a racer" % gun, d["aiMinHp"])
-    check(base["aiMinHp"] == 100.0, "nothing is hit before a shot", base["aiMinHp"])
+def foot_sprint_and_roll_cost_stamina():
+    d = sim(*FOOT, "--hold", "W", "--hold", "Left Shift", seconds=3)
+    between(d["walkSpeed"], 7.5, 8.0, "sprinting speed (m/s)")
+    between(d["stamina"], 0.2, 0.5, "stamina left after three seconds of it")
+    d = sim(*FOOT, "--hold", "W", "--hold", "Left Shift", seconds=5.2)
+    check(d["stamina"] < 0.3 and d["walkSpeed"] < 5.5, "out of breath: back to a run until some of it recovers", (d["stamina"], d["walkSpeed"]))
+    d = sim(*FOOT, "--hold", "W", "--hold", "Left Shift", seconds=6.6)
+    check(d["walkSpeed"] > 7, "and then the sprint comes back", (d["stamina"], d["walkSpeed"]))
+    d = sim(*FOOT, "--hold", "W", "--hold", "Space", seconds=0.4)
+    check(d["rolling"] == 1 and d["walkSpeed"] > 7, "the handbrake key is a dodge roll, a burst of speed", (d["rolling"], d["walkSpeed"]))
+    between(d["stamina"], 0.7, 0.85, "a roll costs a quarter of the stamina")
+    d = sim(*FOOT, "--hold", "W", "--hold", "Space", seconds=1.5)
+    check(d["rolling"] == 0, "one roll per press", d["rolling"])
 
 
 @test
-def rampage_mode_is_a_race_with_guns():
-    d = sim("--track", 0, "--state", 3, "--mode", 2, seconds=1)
-    check(d["state"] == 3 and d["timeUp"] == 0 and d["shdPhase"] == 0, "rampage starts as a race, with no clock and no showdown yet", (d["state"], d["timeUp"], d["shdPhase"]))
+def guns_lock_on_and_hurt_the_racers():
+    base = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--faceai", seconds=1.5)
+    check(base["aiMinHp"] == 100.0 and base["footShots"] == 0 and base["lock"] == -1, "nothing is locked or hit before the trigger is pulled", (base["aiMinHp"], base["lock"]))
+    for gun, name, shots in ((0, "pistol", 3), (1, "SMG", 8), (2, "shotgun", 1), (3, "launcher", 1)):
+        d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", gun, seconds=1.5)
+        check(d["footShots"] >= shots, "%s: holding fire keeps shooting" % name, d["footShots"])
+        check(d["aiMinHp"] < 100 or d["aiDead"] > 0, "%s: the racer it locked on to is hurt" % name, (d["aiMinHp"], d["aiDead"]))
+    d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 2, seconds=4)
+    check(d["aiDead"] >= 1 and d["wrecks"] >= 1, "enough of it wrecks the car", (d["aiDead"], d["wrecks"]))
 
 
 @test
-def showdown_runs_drive_prep_fight_and_closes_the_ring():
-    d = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", seconds=3)
-    check(d["shdPhase"] == 2 and d["drops"] == 14 and d["bots"] == 2, "winner arrives, 30 s countdown, guns on the ground", (d["shdPhase"], d["drops"], d["bots"]))
-    f = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", seconds=40)
-    check(f["shdPhase"] == 3 and f["shdRing"] < 20, "the fight starts and the ring closes once two are left", (f["shdPhase"], f["shdAlive"], f["shdRing"]))
-    won = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", "--faceai", "--gun", "1", "--hold", "F", seconds=75)
-    check(won["state"] == 5 and won["shdPhase"] == 0, "the showdown ends on the results screen", (won["state"], won["shdPhase"]))
+def guns_run_dry_and_fall_back_to_the_pistol():
+    d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", seconds=12)
+    check(d["gun"] == 0 and d["footShots"] > 90, "the SMG you carry empties (90 rounds); the pistol never does", (d["gun"], d["footShots"]))
 
+
+@test
+def showdown_is_for_the_top_three():
+    d = sim("--track", 0, *SHOW, "--sdplace", 4, seconds=3)
+    check(d["state"] == 5 and d["shdPhase"] == 0 and d["onFoot"] == 0, "fourth place: straight to the results", (d["state"], d["shdPhase"]))
+    for place, armour in ((1, 50), (2, 25), (3, 0)):
+        d = sim("--track", 0, *SHOW, "--sdplace", place, seconds=3)
+        check(d["shdPhase"] == 1 and d["onFoot"] == 1 and d["armour"] == armour, "place %d: into the showdown with %d armour" % (place, armour), (d["shdPhase"], d["armour"]))
+
+
+@test
+def showdown_runs_intro_countdown_fight():
+    d = sim("--track", 0, *SHOW, seconds=1)
+    check(d["shdPhase"] == 1 and d["onFoot"] == 0, "the finish: still in the car, pulling up", (d["shdPhase"], d["onFoot"]))
+    d = sim("--track", 0, *SHOW, seconds=3)
+    fs = fighters(d)
+    check(d["shdPhase"] == 1 and all(f["on"] and f["alive"] for f in fs) and d["drops"] == 9, "the cut: three drivers out of their cars, nine pick-ups down", (d["shdPhase"], d["fighters"], d["drops"]))
+    check(d["aiDead"] == 3, "the rest of the field is gone", d["aiDead"])
+    d = sim("--track", 0, *SHOW, "--hold", "F", "--faceai", seconds=T_FIGHT - 1)
+    check(d["shdPhase"] == 2 and d["footShots"] == 0, "the countdown: nobody can shoot yet", (d["shdPhase"], d["footShots"]))
+    check(all(f["hp"] == 100 for f in fighters(d)), "so nobody is hurt", d["fighters"])
+    check(sum(f["gun"] > 0 for f in fighters(d)[1:]) >= 1 and d["drops"] < 9, "the others have used it to fetch guns", (d["fighters"], d["drops"]))
+    between(d["shdRing"], 51.9, 52.1, "the ring waits at full size")
+    d = sim("--track", 0, *SHOW, "--hold", "F", seconds=T_FIGHT + 6)
+    check(d["shdPhase"] >= 3 and d["footShots"] > 0, "then the guns are live", (d["shdPhase"], d["footShots"]))
+
+
+@test
+def showdown_ring_burns_and_closes():
+    d = sim("--track", 0, *SHOW, "--hold", "S", seconds=T_FIGHT - 1)
+    check(d["walkHp"] == 100, "running off during the countdown costs nothing", d["walkHp"])
+    d = sim("--track", 0, *SHOW, "--hold", "S", seconds=T_FIGHT + 30)
+    fs = fighters(d)
+    check(fs[0]["alive"] == 0 and fs[0]["place"] == 3 and d["footShots"] == 0, "outside the ring you burn: first out is third", d["fighters"])
+    check(d["shdRing"] < 24, "with two left the ring closes right in", d["shdRing"])
+
+
+@test
+def showdown_always_ends_with_one_winner():
+    for track in range(NTRACKS):
+        d = sim("--track", track, *SHOW, "--footai", seconds=170)
+        fs = fighters(d)
+        check(d["state"] == 5 and d["shdResult"] == 1, "track %d: the showdown reaches its results" % track, (d["state"], d["shdPhase"], d["fighters"]))
+        check(sorted(f["place"] for f in fs) == [1, 2, 3], "track %d: first, second and third are all decided" % track, d["fighters"])
+        check(fs[d["shdWinner"]]["place"] == 1 and sum(f["alive"] for f in fs) <= 1, "track %d: the winner is the last one standing" % track, d["fighters"])
+        check(sum(f["kills"] for f in fs) >= 1, "track %d: it was settled with guns, not just the ring" % track, d["fighters"])
+
+
+@test
+def showdown_can_be_skipped_once_you_are_out():
+    d = sim("--track", 0, *SHOW, "--hold", "S", "--press", "%.1f:RETURN" % (T_FIGHT + 13), seconds=T_FIGHT + 13.5)
+    check(d["state"] == 5 and d["shdResult"] == 1 and d["shdPlace"] == 3, "Enter goes to the results; the two still standing are placed by health", (d["state"], d["fighters"]))
+    check(sorted(f["place"] for f in fighters(d)) == [1, 2, 3], "all three places are filled", d["fighters"])
+    d = sim("--track", 0, *SHOW, "--press", "2:RETURN", seconds=2.5)
+    check(d["shdPhase"] == 2, "and Enter skips the fly-down", d["shdPhase"])
+    d = sim("--track", 0, *SHOW, "--press", "10:R", "--press", "11:G", seconds=12)
+    check(d["onFoot"] == 1 and d["resets"] == 0, "no resetting or driving out of a showdown", (d["onFoot"], d["resets"]))
 
 
 if __name__ == "__main__":
