@@ -77,6 +77,12 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.31
+
+- **West-coast funk soundtrack**: a new swung score with drums, a gliding bass, electric piano and a
+  high sliding lead, replacing the metal soundtrack.
+- **Shorter grab phase**: the showdown countdown to grab guns and take position is 15 seconds, down from 30.
+
 ## What's new in 1.3
 
 - **Showdown at the finish line**: the top three finishers fight on foot at the finish, not at a

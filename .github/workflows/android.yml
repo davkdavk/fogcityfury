@@ -109,7 +109,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Tag pushes publish their own version (v1.1); manual runs publish the newest "What's new" version.
-          if [[ "$GITHUB_REF_NAME" == v* ]]; then TAG="$GITHUB_REF_NAME"; else TAG=v1.3; fi
+          if [[ "$GITHUB_REF_NAME" == v* ]]; then TAG="$GITHUB_REF_NAME"; else TAG=v1.31; fi
           VER="${TAG#v}"
           # Notes are the README's "What's new in <VER>" section, so the release page matches the repo.
           awk -v v="$VER" '
