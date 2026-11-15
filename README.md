@@ -1,0 +1,281 @@
+# Fog City Fury
+
+An arcade hill-jumping street racer for Linux in the spirit of the late-90s
+San Francisco arcade racers: steep streets, big air, exploding wrecks,
+shortcuts and hidden keys. Original code, names, tracks and cars; no assets
+(everything is generated at start-up).
+
+C++17, SDL2, OpenGL 3.3 core, GLSL 3.30.
+
+## Build and run
+
+    # Debian / Ubuntu / Mint
+    sudo apt install g++ make pkg-config libsdl2-dev libgl1-mesa-dev
+    # Fedora
+    sudo dnf install gcc-c++ make pkgconf-pkg-config SDL2-devel mesa-libGL-devel
+    # Arch
+    sudo pacman -S gcc make pkgconf sdl2 mesa
+
+    make
+    ./fogcityfury              # add --fullscreen, or --size 1920 1080
+
+A prebuilt x86-64 binary (built on Ubuntu 24.04) is included; if it does not
+start on your distro, run `make`.
+
+### Windows
+
+`fogcityfury.exe` (and `fogcityfury-server.exe`) are single files with nothing
+to install: double-click to play. Needs 64-bit Windows and a graphics driver
+with OpenGL 3.3. Progress is saved in `%APPDATA%\fogcityfury.sav`. They are
+cross-compiled from Linux with `make windows` (see `AGENTS.md`). Windows and
+Linux players can race each other, on a server running on either.
+
+## Android
+
+The source builds for Android too (OpenGL ES 3.0, on-screen buttons): see `docs/ANDROID.md`. There
+is no prebuilt APK yet - it has to be built with GitHub Actions (nothing to install) or Android
+Studio, and it has not been run on a device.
+
+Touchscreens on Windows and Linux get the same on-screen buttons the moment the screen is touched
+(or start with `--touch` to try them with the mouse).
+
+## Controls
+
+| Action            | Keyboard            | Gamepad            |
+|-------------------|---------------------|--------------------|
+| Steer             | Left / Right, A / D | Left stick         |
+| Accelerate        | Up, W               | Right trigger or A |
+| Brake / reverse   | Down, S             | Left trigger or B  |
+| Nitro boost       | Shift               | Right shoulder     |
+| Fire a rocket     | F (or E)            | Left shoulder      |
+| Handbrake (drift) | Space               | X                  |
+| Back on track     | R (or Backspace)    | Back               |
+| Change camera     | C                   | Y                  |
+| Music on / off    | M                   |                    |
+| Online race       | O (title screen)    |                    |
+| Pause             | Esc                 | Start              |
+| Fullscreen        | F11                 |                    |
+| Options           | F1 (title or pause) | X (in the menus)   |
+
+The keyboard keys above are the defaults; every driving key can be changed
+in the options.
+
+## What's in it
+
+- **Nitro**: a 2.5 second boost on a meter that refills in 10 seconds.
+- **Rockets**: drive through a crate for two homing rockets; they lock on to
+  the closest car and blow it up.
+- **Wreckage**: every car that blows up leaves its burnt-out shell and loose
+  parts on the road for ten seconds, then they fade out.
+- **Weather** per track: clear, rain, fog or storm.
+- **4 tracks**, 3.2-3.8 km: Hilltop Heights (daytime figure 8 with a bridge
+  and steep crests), Bayside Breaker (sunset, causeway across the bay),
+  Summit Switchbacks (misty mountain pass, long climb) and Midnight Mile
+  (night city, a double figure 8 with two bridges).
+- **Backstreets**: every block in town is ringed by narrow streets - worn
+  tarmac, kerbs, lamp posts, dumpsters against the walls - so you can cut
+  through town. One of them on each track ends at an open warehouse door.
+- **3 cars**: Stallion GT (all-rounder), Katana RS (fastest, poor off-road),
+  Bruiser 4x4 (slower, goes anywhere). 7 paints.
+- **Race** (3 laps, 5 opponents lined up in painted grid boxes; the camera starts
+  above the grid and comes down behind your car before the countdown - Enter
+  skips it; checkpoint clock), **Free Roam** (no clock,
+  no traffic - for key hunting) or **Online** (up to 8 players, see below).
+- **5 hidden keys per track**, saved between sessions in `~/.fogcityfury.sav`.
+  Find all 20 to unlock the gold chrome paint.
+- The whole map is drivable: leave the road, cut corners, drive on roofs.
+  Deep water sinks you; hitting a wall above ~110 km/h blows the car up.
+
+## Multiplayer
+
+    make all
+    ./fogcityfury-server                 # on the host: UDP port 27015
+    ./fogcityfury                        # each player: press O on the title screen
+
+Pressing O shows the **server list**: each server's name, track, number of
+players and ping, refreshed every few seconds. Up/Down and Enter join one; A
+adds an address (name or IP, `:port` optional), Del removes one, N changes
+your player name. The list starts with `thadav.com:27015` and this computer,
+and is saved with your settings.
+
+Type the server's address (`host` or `host:port`) and a name, pick a car, and
+press Enter in the lobby when ready. The race starts when everyone is ready;
+after the results the server moves to the next track. Up to 8 players, no AI
+cars online. `./fogcityfury --connect HOST --name YOU` skips the address
+screen. Server options (`--laps`, `--port`, `--track`, `--weather`, `--lobby`, ...)
+are listed by `./fogcityfury-server --help` and in `docs/NETWORK.md`. The server
+needs no graphics. It trusts its clients, so use it with people you know.
+
+## Nitro
+
+Hold Shift (or the right shoulder button) for a hard shove in the back: about 25% more
+top speed, and it pulls even with the throttle shut. A full tank is 2.5 seconds
+of boost and empties in one long burn or several taps; the meter above the
+speedometer refills from empty in 10 seconds. Run it dry and it locks out -
+let go, let it build back up, and press again. It only fires with the wheels on
+the ground, so it is wasted in mid-air.
+
+## Options (F1)
+
+Press F1 on the title screen or in the pause menu. Tab switches between two
+pages; Esc saves and goes back. Settings are kept in `~/.fogcityfury.cfg`
+(`%APPDATA%\fogcityfury.cfg` on Windows).
+
+**Controls.** Each action has two key slots. Up/Down picks the action,
+Left/Right the slot, Enter then waits for the key to use (Esc cancels), Del
+empties a slot, F5 restores the defaults. A key can do one thing only, so
+giving it to an action takes it from the one that had it. Esc, M, F1 and F11
+are fixed. The gamepad layout is shown but cannot be changed.
+
+**Video.** Changes apply as you make them.
+
+| Setting | Choices |
+|---|---|
+| Display | Window or full screen (F11 does the same) |
+| Resolution | 1024x576 up to 3840x2160, limited to what your desktop can show |
+| Anti-aliasing | Off, 2x, 4x, 8x MSAA (as far as the graphics driver goes) |
+| Anisotropic filtering | Off, 2x, 4x, 8x, 16x: keeps road and ground detail sharp in the distance |
+| VSync | On or off |
+
+In a window, the resolution is the window's size. Full screen always uses
+the desktop's own mode: the game is drawn at the chosen resolution and scaled
+to fill the screen (the HUD stays sharp), so a lower resolution is a real
+speed-up without the monitor changing mode.
+
+## Rockets
+
+Six pairs of green crates sit round every lap. Driving through one gives you
+two rockets, and that is your set for the lap: the crates disappear until you
+cross the start line again. With
+rockets on board a red LOCK bracket marks the closest car - one ahead of you
+is preferred to one behind. Press F: the rocket homes in, the car explodes and
+leaves its wreck on the road. A wrecked opponent is out for three seconds; a
+wrecked player respawns as after any crash. With nobody in range the rocket
+flies straight on. Opponents do not shoot back. Online, your rockets hit the
+other players (their rockets are not drawn on your screen, only the
+explosion).
+
+## Wrecks and getting back on track
+
+Any car that explodes - you into a wall, anyone hit by a rocket - leaves a
+burning, then smouldering, shell and scattered panels and wheels. The shell is
+solid: drive round it. Loose parts get kicked along when you hit them.
+Opponents pull out to pass a wreck. After ten seconds the shell and its
+parts fade away.
+
+Press R (or Backspace, or Back on a gamepad) at any time to be put back on the
+road, stopped and pointing the right way. It also works from the pause menu,
+and the game reminds you when you look stuck, lost or the wrong way round.
+
+## Weather
+
+Pick the weather for each track on the track-select screen (up/down to choose
+the row, left/right to change it). Your choice is remembered per track.
+
+| | What changes |
+|---|---|
+| Clear | Dry road, full grip |
+| Rain | Wet road with puddles that mirror the surroundings, about 18% less grip, longer braking, spray |
+| Fog | You cannot see the corners coming; grip is normal |
+| Storm | Heavy rain, lightning bolts and thunder, about 26% less grip |
+
+Opponents slow down in the wet too. Online, the server decides the weather.
+
+## Handling
+
+Each car has a front and a rear axle with their own grip. Ask too much and the front pushes wide
+(slight understeer). The rear comes round if you pull the handbrake, lift or brake mid-corner, or
+floor a rear-drive car in a low gear; opposite lock catches it.
+
+Brakes build up over a third of a second rather than slamming on, and braking
+into a corner turns the car in harder (brake steer).
+
+- Stallion GT: rear-drive, mild; power-slides out of slow corners.
+- Katana RS: most grip, but loose when you lift or trail-brake.
+- Bruiser 4x4: four-wheel drive, understeers, hard to unsettle.
+
+## Feel
+
+- Chase camera on springs: pulls back under power, closes in on the brakes,
+  rolls into corners, lags behind jumps and dips on landing; FOV and a
+  radial speed blur widen with speed.
+- Suspension: squat, dive, body roll, a heave spring that compresses on
+  landings, wheels that droop in the air.
+- Gear shifts cut power for a moment with a blow-off hiss and exhaust flame;
+  lifting off at high revs backfires.
+- Skid marks, tyre smoke, landing sparks, "BIG AIR" hang-time call-outs,
+  rocket starts (hit the throttle just before GO), slow motion on wrecks,
+  pass-by whooshes, gamepad rumble.
+- A synthesised metal soundtrack (two distorted rhythm guitars, bass, drums,
+  lead) generated in real time - no audio files.
+
+## Rendering
+
+- Post-processing: HDR with 4x MSAA, bloom, speed blur, chromatic
+  aberration on impacts, vignette.
+
+- Car paint reflects a dynamic HDR cubemap rendered around the car every
+  frame (clear-coat Fresnel over a tinted metallic base).
+- Shadow-mapped sun with PCF, procedural sky and clouds, distance fog.
+- Wet roads: a bump-mapped surface (asphalt grain, raindrop rings on the
+  puddles) reflecting the same cubemap, so buildings and lit windows show
+  in the road; overcast cloud decks, drifting fog banks, thin wind-blown
+  rain, splashes, spray behind every car and drops on the lens.
+- Water: animated normals, Fresnel sky reflection, sun glitter, depth-based
+  colour and shoreline foam (reads the terrain height map).
+- Particles: tyre smoke, dust, exhaust, water spray, sparks, explosions; in the
+  wet, water off the wheels on the road and mud, torn grass and water off it.
+- Each wheel follows the ground under it and every car has a soft contact
+  shadow, so cars sit on rough ground instead of seeming to hover.
+- Engine, tyre, wind and effect sounds are synthesised.
+- `./fogcityfury --wav out.wav 60` writes a minute of the soundtrack to a file.
+
+## Key hints (spoilers)
+
+Every track also has a warehouse with its roller door open (yellow door
+frame): the fifth key is inside. It stands across the end of a backstreet two
+blocks in from the main road; that street is the one lined with orange lamps
+on both sides.
+
+Hilltop Heights: a walled courtyard north of the crossing, between the two
+loops; a striped ramp onto a roof on the far west side; a lighthouse island
+off the south-east shore; the top of the big hill inside the east loop.
+
+Bayside Breaker: the end of the pier; a warehouse yard; in mid-air off the
+shoreline ramp (land on the islet, drive back over the sandbar); the second
+roof of the rooftop run.
+
+Summit Switchbacks: the very top of the mountain, inside the boulders; a
+lighthouse island off the north-west shore; a shoreline ramp in the south; a
+courtyard on the north-west hillside.
+
+Midnight Mile: a two-roof rooftop run at the far west end; the end of the
+north-east pier; a warehouse yard inside the middle loop; a shoreline ramp
+in the north.
+
+## For developers and AI models
+
+`AGENTS.md` is the starting point: conventions, source map, pitfalls, known gaps. `docs/` has the
+architecture, the handling model and the testing guide.
+
+    make test          # 39 headless tests in ~90 s: races, all 20 keys, bridges,
+                       # rockets, wrecks, reset, options, hazards, handling,
+                       # nitro, weather, multiplayer, audio
+    make test-render   # plus rendering smoke tests (needs xvfb-run)
+
+`./fogcityfury --sim ...` runs the simulation with no window and prints a JSON report.
+
+## Source layout
+
+    src/base.h      maths, GL helpers, mesh builder, pixel font
+    src/shaders.h   all GLSL
+    src/world.h     track definitions, terrain, colliders, secrets
+    src/cars.h      car and wheel meshes
+    src/audio.h     engine/effects synthesis and the soundtrack
+    src/net.h       multiplayer wire format (shared with the server)
+    src/netclient.h multiplayer client
+    src/server.cpp  dedicated server
+    src/game.cpp    physics, AI, camera, rendering, menus
+    tests/          test suite
+    tools/shot.sh   headless screenshots
+    docs/           architecture, handling, testing

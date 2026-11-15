@@ -1,0 +1,28 @@
+# Builds the Android APK on GitHub's servers. Nothing to install on your own computer:
+# push this project to a GitHub repository, open the "Actions" tab, pick "Android APK" and "Run workflow"
+# (it also runs on every push). When it finishes, download "FogCityFury-apk" from the run's Artifacts.
+name: Android APK
+on:
+  workflow_dispatch:
+  push:
+    paths: ['src/**', 'android/**', '.github/workflows/android.yml']
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Fetch SDL2
+        run: sh android/setup.sh          # (run through sh: files uploaded in the browser lose their executable flag)
+      - name: Build the APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+      - name: Rename
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk FogCityFury.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FogCityFury-apk
+          path: FogCityFury.apk

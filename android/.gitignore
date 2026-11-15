@@ -1,0 +1,9 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+app/libs/
+app/obj/
+app/jni/SDL/
+app/src/main/java/org/libsdl/
+local.properties

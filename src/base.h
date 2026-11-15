@@ -1,0 +1,261 @@
+// base.h - math, GL helpers, mesh builder, pixel font / UI batch
+#pragma once
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <winsock2.h>   // must come before windows.h
+#include <ws2tcpip.h>
+#include <windows.h>
+#undef near
+#undef far
+#endif
+#include <cstdio>
+#ifdef __ANDROID__
+#include "SDL.h"            // SDL is built from source next to the game there
+#define FCF_MOBILE 1
+#else
+#include <SDL2/SDL.h>
+#endif
+#include "glload.h"
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cstdint>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <memory>
+#include <unordered_map>
+
+static inline float clampf(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
+static inline float lerpf(float a, float b, float t) { return a + (b - a) * t; }
+static inline float smooth(float a, float b, float x) { float t = clampf((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+static inline float wrapPi(float a) { while (a > M_PI) a -= 2 * M_PI; while (a < -M_PI) a += 2 * M_PI; return a; }
+
+struct Rng { uint32_t s = 12345; float f() { s = s * 1664525u + 1013904223u; return (s >> 8) / 16777216.f; } float r(float a, float b) { return a + (b - a) * f(); } };
+static Rng grng;
+
+struct V3 { float x = 0, y = 0, z = 0; V3() {} V3(float a, float b, float c) : x(a), y(b), z(c) {} };
+static inline V3 operator+(V3 a, V3 b) { return V3(a.x + b.x, a.y + b.y, a.z + b.z); }
+static inline V3 operator-(V3 a, V3 b) { return V3(a.x - b.x, a.y - b.y, a.z - b.z); }
+static inline V3 operator*(V3 a, float s) { return V3(a.x * s, a.y * s, a.z * s); }
+static inline float dot(V3 a, V3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+static inline V3 cross(V3 a, V3 b) { return V3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+static inline float len(V3 a) { return sqrtf(dot(a, a)); }
+static inline V3 norm(V3 a) { float l = len(a); return l > 1e-8f ? a * (1 / l) : V3(0, 1, 0); }
+
+struct M4 { float m[16]; };
+static M4 ident() { M4 r; memset(r.m, 0, sizeof r.m); r.m[0] = r.m[5] = r.m[10] = r.m[15] = 1; return r; }
+static M4 mul(const M4& a, const M4& b) {
+    M4 r;
+    for (int c = 0; c < 4; c++) for (int w = 0; w < 4; w++) {
+        float s = 0; for (int k = 0; k < 4; k++) s += a.m[k * 4 + w] * b.m[c * 4 + k];
+        r.m[c * 4 + w] = s;
+    }
+    return r;
+}
+static M4 translate(V3 t) { M4 r = ident(); r.m[12] = t.x; r.m[13] = t.y; r.m[14] = t.z; return r; }
+static M4 scale(float x, float y, float z) { M4 r = ident(); r.m[0] = x; r.m[5] = y; r.m[10] = z; return r; }
+static M4 rotY(float a) { M4 r = ident(); float c = cosf(a), s = sinf(a); r.m[0] = c; r.m[8] = s; r.m[2] = -s; r.m[10] = c; return r; }
+static M4 rotX(float a) { M4 r = ident(); float c = cosf(a), s = sinf(a); r.m[5] = c; r.m[9] = -s; r.m[6] = s; r.m[10] = c; return r; }
+static M4 rotZ(float a) { M4 r = ident(); float c = cosf(a), s = sinf(a); r.m[0] = c; r.m[4] = -s; r.m[1] = s; r.m[5] = c; return r; }
+static M4 perspective(float fovy, float asp, float n, float f) {
+    M4 r; memset(r.m, 0, sizeof r.m); float t = 1 / tanf(fovy / 2);
+    r.m[0] = t / asp; r.m[5] = t; r.m[10] = (f + n) / (n - f); r.m[11] = -1; r.m[14] = 2 * f * n / (n - f); return r;
+}
+static M4 ortho(float l, float r_, float b, float t, float n, float f) {
+    M4 r = ident(); r.m[0] = 2 / (r_ - l); r.m[5] = 2 / (t - b); r.m[10] = -2 / (f - n);
+    r.m[12] = -(r_ + l) / (r_ - l); r.m[13] = -(t + b) / (t - b); r.m[14] = -(f + n) / (f - n); return r;
+}
+static M4 lookAt(V3 e, V3 at, V3 up) {
+    V3 f = norm(at - e), s = norm(cross(f, up)), u = cross(s, f); M4 r = ident();
+    r.m[0] = s.x; r.m[4] = s.y; r.m[8] = s.z; r.m[1] = u.x; r.m[5] = u.y; r.m[9] = u.z;
+    r.m[2] = -f.x; r.m[6] = -f.y; r.m[10] = -f.z;
+    r.m[12] = -dot(s, e); r.m[13] = -dot(u, e); r.m[14] = dot(f, e); return r;
+}
+
+// ---- CPU noise ----
+static float hash2(int x, int y) { unsigned n = (unsigned)x * 374761393u + (unsigned)y * 668265263u; n = (n ^ (n >> 13)) * 1274126177u; n ^= n >> 16; return (n & 0xffffff) / 16777215.f; }
+static float vnoise(float x, float y) {
+    int xi = (int)floorf(x), yi = (int)floorf(y); float fx = x - xi, fy = y - yi;
+    fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    return lerpf(lerpf(hash2(xi, yi), hash2(xi + 1, yi), fx), lerpf(hash2(xi, yi + 1), hash2(xi + 1, yi + 1), fx), fy);
+}
+static float fbm(float x, float y, int oct) { float a = .5f, s = 0; for (int i = 0; i < oct; i++) { s += a * vnoise(x, y); x *= 2.03f; y *= 2.03f; a *= .5f; } return s; }
+
+// ---- shaders ----
+struct Prog {
+    GLuint id = 0; std::unordered_map<std::string, GLint> loc;
+    GLint L(const char* n) { auto it = loc.find(n); if (it != loc.end()) return it->second; GLint l = glGetUniformLocation(id, n); loc[n] = l; return l; }
+    void use() { glUseProgram(id); }
+    void f1(const char* n, float v) { glUniform1f(L(n), v); }
+    void i1(const char* n, int v) { glUniform1i(L(n), v); }
+    void v3(const char* n, V3 v) { glUniform3f(L(n), v.x, v.y, v.z); }
+    void m4(const char* n, const M4& m) { glUniformMatrix4fv(L(n), 1, GL_FALSE, m.m); }
+};
+// A problem the game cannot continue from. On a phone there is no console, so say it in a dialog (and in the system log).
+static void fatal(const char* what, const char* detail) {
+    char msg[900]; snprintf(msg, sizeof msg, "%s\n\n%.700s", what, detail); SDL_Log("FOG CITY FURY: %s", msg);
+#if defined(__ANDROID__) || defined(_WIN32)
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fog City Fury", msg, nullptr);
+#endif
+    exit(1);
+}
+// Shaders are written as GLSL 3.30. On OpenGL ES the version line is swapped for the ES 3.00 one plus default precisions;
+// the bodies are kept to the subset both accept (no implicit int-to-float conversions, for one).
+static GLuint compile(GLenum type, const char* a, const char* b) {
+    GLuint s = glCreateShader(type); const char* head = "";
+#ifdef FCF_GLES
+    static const char V330[] = "#version 330 core";
+    head = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp samplerCube;\nprecision highp sampler2DShadow;\n";
+    if (!strncmp(a, V330, sizeof V330 - 1)) a += sizeof V330 - 1; else if (!strncmp(b, V330, sizeof V330 - 1)) b += sizeof V330 - 1;
+#endif
+    const char* src[3] = { head, a, b };
+    glShaderSource(s, 3, src, nullptr); glCompileShader(s);
+    if (const char* dir = getenv("FCF_DUMP_SHADERS")) {   // write every shader exactly as it is handed to the driver (to check them with another compiler)
+        static int n = 0; char path[512]; snprintf(path, sizeof path, "%s/%02d.%s", dir, n++, type == GL_VERTEX_SHADER ? "vert" : "frag");
+        if (FILE* f = fopen(path, "w")) { fputs(head, f); fputs(a, f); fputs(b, f); fclose(f); }
+    }
+    GLint ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) { char log[4096]; glGetShaderInfoLog(s, 4096, nullptr, log); fprintf(stderr, "SHADER ERROR:\n%s\n", log); fatal("This graphics driver rejected one of the game's shaders:", log); }
+    return s;
+}
+static Prog makeProg(const char* vs, const char* fsCommon, const char* fs) {
+    Prog p; p.id = glCreateProgram();
+    GLuint v = compile(GL_VERTEX_SHADER, vs, ""), f = compile(GL_FRAGMENT_SHADER, fsCommon, fs);
+    glAttachShader(p.id, v); glAttachShader(p.id, f); glLinkProgram(p.id);
+    GLint ok; glGetProgramiv(p.id, GL_LINK_STATUS, &ok);
+    if (!ok) { char log[4096]; glGetProgramInfoLog(p.id, 4096, nullptr, log); fprintf(stderr, "LINK ERROR:\n%s\n", log); fatal("This graphics driver could not link one of the game's shaders:", log); }
+    return p;
+}
+
+// ---- mesh ----
+struct Vtx { float px, py, pz, nx, ny, nz, r, g, b, u, v, mat; };
+struct MB {
+    std::vector<Vtx> v; std::vector<unsigned> idx;
+    unsigned add(V3 p, V3 n, V3 c, float u, float vv, float mat) { v.push_back({ p.x, p.y, p.z, n.x, n.y, n.z, c.x, c.y, c.z, u, vv, mat }); return (unsigned)v.size() - 1; }
+    void tri(V3 a, V3 b, V3 c, V3 col, float mat) {
+        V3 n = norm(cross(b - a, c - a)); unsigned i = add(a, n, col, 0, 0, mat); add(b, n, col, 0, 0, mat); add(c, n, col, 0, 0, mat);
+        idx.push_back(i); idx.push_back(i + 1); idx.push_back(i + 2);
+    }
+    void quad(V3 a, V3 b, V3 c, V3 d, V3 col, float mat, float u0 = 0, float v0 = 0, float u1 = 1, float v1 = 1) {
+        V3 n = norm(cross(b - a, d - a));
+        unsigned i = add(a, n, col, u0, v0, mat); add(b, n, col, u1, v0, mat); add(c, n, col, u1, v1, mat); add(d, n, col, u0, v1, mat);
+        idx.insert(idx.end(), { i, i + 1, i + 2, i, i + 2, i + 3 });
+    }
+    // oriented box. local x axis = (ca,0,-sa), local z = (sa,0,ca)
+    void box(float cx, float cz, float hx, float hz, float ang, float y0, float y1, V3 wallCol, float wallMat, V3 roofCol, float roofMat, float vRef = 0, float uOff = 0) {
+        float ca = cosf(ang), sa = sinf(ang);
+        float lx[4] = { -hx, hx, hx, -hx }, lz[4] = { -hz, -hz, hz, hz }; V3 p[4];
+        for (int i = 0; i < 4; i++) p[i] = V3(cx + ca * lx[i] + sa * lz[i], 0, cz - sa * lx[i] + ca * lz[i]);
+        float u = uOff;
+        for (int i = 0; i < 4; i++) {
+            V3 a = p[i], b = p[(i + 1) % 4]; float L = len(b - a);
+            quad(V3(b.x, y0, b.z), V3(a.x, y0, a.z), V3(a.x, y1, a.z), V3(b.x, y1, b.z), wallCol, wallMat, u + L, y0 - vRef, u, y1 - vRef);
+            u += L;
+        }
+        quad(V3(p[0].x, y1, p[0].z), V3(p[3].x, y1, p[3].z), V3(p[2].x, y1, p[2].z), V3(p[1].x, y1, p[1].z), roofCol, roofMat, 0, 0, 2 * hx, 2 * hz);
+        quad(V3(p[0].x, y0, p[0].z), V3(p[1].x, y0, p[1].z), V3(p[2].x, y0, p[2].z), V3(p[3].x, y0, p[3].z), wallCol, roofMat);
+    }
+    void abox(V3 c, V3 h, V3 col, float mat) { box(c.x, c.z, h.x, h.z, 0, c.y - h.y, c.y + h.y, col, mat, col, mat); }
+    void smoothNormals(size_t v0, size_t i0) {
+        for (size_t i = v0; i < v.size(); i++) v[i].nx = v[i].ny = v[i].nz = 0;
+        for (size_t i = i0; i + 2 < idx.size(); i += 3) {
+            Vtx& a = v[idx[i]], & b = v[idx[i + 1]], & c = v[idx[i + 2]];
+            V3 n = cross(V3(b.px - a.px, b.py - a.py, b.pz - a.pz), V3(c.px - a.px, c.py - a.py, c.pz - a.pz));
+            for (Vtx* q : { &a, &b, &c }) { q->nx += n.x; q->ny += n.y; q->nz += n.z; }
+        }
+        for (size_t i = v0; i < v.size(); i++) { V3 n = norm(V3(v[i].nx, v[i].ny, v[i].nz)); v[i].nx = n.x; v[i].ny = n.y; v[i].nz = n.z; }
+    }
+};
+static bool g_noGL = false;   // headless simulation: skip every GL call
+struct Mesh {
+    GLuint vao = 0, vbo = 0, ebo = 0; int n = 0;
+    void upload(const MB& b) {
+        if (g_noGL) { n = (int)b.idx.size(); return; }
+        if (!vao) { glGenVertexArrays(1, &vao); glGenBuffers(1, &vbo); glGenBuffers(1, &ebo); }
+        glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, b.v.size() * sizeof(Vtx), b.v.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, b.idx.size() * 4, b.idx.data(), GL_STATIC_DRAW);
+        int sz[5] = { 3, 3, 3, 2, 1 }; size_t off = 0;
+        for (int i = 0; i < 5; i++) { glEnableVertexAttribArray(i); glVertexAttribPointer(i, sz[i], GL_FLOAT, GL_FALSE, sizeof(Vtx), (void*)off); off += sz[i] * 4; }
+        n = (int)b.idx.size(); glBindVertexArray(0);
+    }
+    void draw() { if (!n) return; glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, 0); }
+};
+
+// ---- 5x7 pixel font, ASCII 32..90 ----
+static const unsigned char FONT[59][7] = {
+    {0,0,0,0,0,0,0},{4,4,4,4,4,0,4},{10,10,0,0,0,0,0},{10,31,10,10,31,10,0},{4,15,20,14,5,30,4},{24,25,2,4,8,19,3},{0,0,0,0,0,0,0},{4,4,8,0,0,0,0},
+    {2,4,8,8,8,4,2},{8,4,2,2,2,4,8},{0,21,14,31,14,21,0},{0,4,4,31,4,4,0},{0,0,0,0,12,4,8},{0,0,0,31,0,0,0},{0,0,0,0,0,12,12},{1,1,2,4,8,16,16},
+    {14,17,19,21,25,17,14},{4,12,4,4,4,4,14},{14,17,1,2,4,8,31},{31,2,4,2,1,17,14},{2,6,10,18,31,2,2},{31,16,30,1,1,17,14},{6,8,16,30,17,17,14},{31,1,2,4,8,8,8},
+    {14,17,17,14,17,17,14},{14,17,17,15,1,2,12},{0,4,4,0,4,4,0},{0,4,4,0,4,4,8},{2,4,8,16,8,4,2},{0,0,31,0,31,0,0},{8,4,2,1,2,4,8},{14,17,1,2,4,0,4},
+    {14,17,23,21,23,16,14},{14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},{30,17,17,17,17,17,30},{31,16,16,30,16,16,31},{31,16,16,30,16,16,16},{14,17,16,23,17,17,15},
+    {17,17,17,31,17,17,17},{14,4,4,4,4,4,14},{7,2,2,2,2,18,12},{17,18,20,24,20,18,17},{16,16,16,16,16,16,31},{17,27,21,21,17,17,17},{17,25,21,19,17,17,17},{14,17,17,17,17,17,14},
+    {30,17,17,30,16,16,16},{14,17,17,17,21,18,13},{30,17,17,30,20,18,17},{15,16,16,14,1,1,30},{31,4,4,4,4,4,4},{17,17,17,17,17,17,14},{17,17,17,17,17,10,4},{17,17,17,21,21,27,17},
+    {17,17,10,4,10,17,17},{17,17,10,4,4,4,4},{31,1,2,4,8,16,31} };
+
+struct UI {
+    std::vector<float> v; GLuint vao = 0, vbo = 0, tex = 0; float W = 1280, H = 720;
+    void init() {
+        unsigned char px[128 * 32]; memset(px, 0, sizeof px);
+        for (int c = 0; c < 59; c++) for (int y = 0; y < 7; y++) for (int x = 0; x < 5; x++)
+            if (FONT[c][y] & (16 >> x)) px[((c / 16) * 8 + y) * 128 + (c % 16) * 8 + x] = 255;
+        glGenTextures(1, &tex); glBindTexture(GL_TEXTURE_2D, tex); glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 128, 32, 0, GL_RED, GL_UNSIGNED_BYTE, px);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenVertexArrays(1, &vao); glGenBuffers(1, &vbo); glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        int sz[3] = { 2, 2, 4 }; size_t off = 0;
+        for (int i = 0; i < 3; i++) { glEnableVertexAttribArray(i); glVertexAttribPointer(i, sz[i], GL_FLOAT, GL_FALSE, 32, (void*)off); off += sz[i] * 4; }
+    }
+    void vert(float x, float y, float u, float w, V3 c, float a) { float d[8] = { x, y, u, w, c.x, c.y, c.z, a }; v.insert(v.end(), d, d + 8); }
+    void quad(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, V3 c, float a) {
+        vert(x0, y0, -1, 0, c, a); vert(x1, y1, -1, 0, c, a); vert(x2, y2, -1, 0, c, a); vert(x0, y0, -1, 0, c, a); vert(x2, y2, -1, 0, c, a); vert(x3, y3, -1, 0, c, a);
+    }
+    void rect(float x, float y, float w, float h, V3 c, float a = 1) { quad(x, y, x + w, y, x + w, y + h, x, y + h, c, a); }
+    void line(float x0, float y0, float x1, float y1, float th, V3 c, float a = 1) {
+        float dx = x1 - x0, dy = y1 - y0, l = sqrtf(dx * dx + dy * dy); if (l < 1e-4f) return; float nx = -dy / l * th * .5f, ny = dx / l * th * .5f;
+        quad(x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, c, a);
+    }
+    float textW(const char* s, float sc) { return strlen(s) * 6 * sc - sc; }
+    // align: 0 left, 1 center, 2 right. skew slants the glyphs (arcade italic)
+    void text(float x, float y, float sc, V3 c, const char* s, int align = 0, float a = 1, float skew = 0, bool shadow = true) {
+        float w = textW(s, sc); if (align == 1) x -= w / 2; if (align == 2) x -= w;
+        for (int pass = shadow ? 0 : 1; pass < 2; pass++) {
+            float ox = pass == 0 ? sc * .8f : 0, oy = ox; V3 col = pass == 0 ? V3(0, 0, 0) : c; float al = pass == 0 ? a * .7f : a; float cx = x;
+            for (const char* p = s; *p; p++) {
+                int ch = toupper((unsigned char)*p); if (ch < 32 || ch > 90) ch = '?'; ch -= 32;
+                if (ch) {
+                    float u0 = (ch % 16) * 8 / 128.f, v0 = (ch / 16) * 8 / 32.f, u1 = u0 + 5 / 128.f, v1 = v0 + 7 / 32.f;
+                    float X0 = cx + ox, Y0 = y + oy, X1 = X0 + 5 * sc, Y1 = Y0 + 7 * sc, sk = skew * 7 * sc;
+                    vert(X0 + sk, Y0, u0, v0, col, al); vert(X1 + sk, Y0, u1, v0, col, al); vert(X1, Y1, u1, v1, col, al);
+                    vert(X0 + sk, Y0, u0, v0, col, al); vert(X1, Y1, u1, v1, col, al); vert(X0, Y1, u0, v1, col, al);
+                }
+                cx += 6 * sc;
+            }
+        }
+    }
+    void flush(Prog& p) {
+        if (v.empty()) return;
+        p.use(); glUniform2f(p.L("uScr"), W, H); p.i1("uFont", 3);
+        glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, tex);
+        glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, v.size() * 4, v.data(), GL_STREAM_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(v.size() / 8)); v.clear();
+    }
+};
+
+static void writeBMP(const char* path, int w, int h) {
+    std::vector<unsigned char> px(w * h * 3); glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    { std::vector<unsigned char> rgba((size_t)w * h * 4); glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());   // RGBA is the one format every GL and GLES can read back
+      for (size_t i = 0; i < (size_t)w * h; i++) { px[i * 3] = rgba[i * 4 + 2]; px[i * 3 + 1] = rgba[i * 4 + 1]; px[i * 3 + 2] = rgba[i * 4]; } }
+    FILE* f = fopen(path, "wb"); if (!f) return; int row = (w * 3 + 3) & ~3, size = 54 + row * h;
+    unsigned char hd[54] = { 'B', 'M' }; memcpy(hd + 2, &size, 4); int o = 54; memcpy(hd + 10, &o, 4); int s = 40; memcpy(hd + 14, &s, 4);
+    memcpy(hd + 18, &w, 4); memcpy(hd + 22, &h, 4); hd[26] = 1; hd[28] = 24; fwrite(hd, 1, 54, f);
+    unsigned char pad[3] = { 0, 0, 0 };
+    for (int y = 0; y < h; y++) { fwrite(&px[y * w * 3], 1, w * 3, f); fwrite(pad, 1, row - w * 3, f); }
+    fclose(f);
+}
