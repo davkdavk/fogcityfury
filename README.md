@@ -84,7 +84,7 @@ in the options.
 - **Podium drivers fight**: the other two drivers are on foot too, as fighters with their own guns.
 - **Shrinking ring**: the ring starts wide, tightens after about 50 seconds of fighting, and closes
   hard once two fighters are left. Outside it, your health drains in steps.
-- **Pick-ups**: guns, medkits and body armour lie around the ground during the 30 second grab phase.
+- **Pick-ups**: guns, medkits and body armour lie around the ground during the 15 second grab phase.
   Race places matter: the winner starts with 50 armour, second with 25.
 - **Better character and gun models**, with recoil, flinch and a fall animation.
 
@@ -254,8 +254,8 @@ into a corner turns the car in harder (brake steer).
 - Skid marks, tyre smoke, landing sparks, "BIG AIR" hang-time call-outs,
   rocket starts (hit the throttle just before GO), slow motion on wrecks,
   pass-by whooshes, gamepad rumble.
-- A synthesised metal soundtrack (two distorted rhythm guitars, bass, drums,
-  lead) generated in real time - no audio files.
+- A synthesised west-coast funk soundtrack (swung drums, gliding bass, electric
+  piano, a high sliding lead) generated in real time - no audio files.
 
 ## Rendering
 

@@ -858,9 +858,9 @@ def audio_soundtrack_renders_sane():
     diff = sum(abs(a - b) for a, b in zip(L[::50], R[::50])) / len(L[::50]) / 32768.0
     between(peak, 0.3, 0.98, "peak level (no clipping)")
     between(rms, 0.08, 0.35, "RMS level")
-    check(diff > 0.01, "left and right guitars differ (stereo)", round(diff, 4))
-    # rhythm: energy per sixteenth note in bar 3 of the gallop riff must show strong and weak steps
-    step = 44100 * 60.0 / 176 / 4
+    check(diff > 0.01, "left and right differ (the piano drifts across, the echo sits right)", round(diff, 4))
+    # rhythm: energy per sixteenth note in the third bar must show strong and weak steps
+    step = 44100 * 60.0 / 94 / 4
     e = [math.sqrt(sum(x * x for x in L[int((32 + i) * step):int((33 + i) * step):5])) for i in range(16)]
     check(max(e) > 1.25 * min(e), "sixteenth-note steps differ in energy (there is a rhythm)", round(max(e) / max(min(e), 1), 2))
     os.remove(path)
@@ -1013,7 +1013,7 @@ def main():
 # just finished the race in that place), --footai (a bot plays your fighter). Fighters report as on|alive|hp|gun|kills|place.
 FOOT = ("--track", 0, "--state", 3, "--mode", 1, "--press", "0.05:G")
 SHOW = ("--state", 3, "--mode", 2, "--sdnow")
-T_PREP, T_FIGHT = 4.6, 34.6          # when the countdown and the fight start, seconds after the finish (1.3 beat + 3.2 fly-down + 30)
+T_PREP, T_FIGHT = 4.6, 19.6          # when the countdown and the fight start, seconds after the finish (1.3 beat + 3.2 fly-down + 15)
 
 
 def fighters(d):

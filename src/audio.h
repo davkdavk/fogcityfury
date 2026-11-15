@@ -1,4 +1,4 @@
-// audio.h - synthesised sound: engine, tyres, wind, one-shot effects and the metal soundtrack
+// audio.h - synthesised sound: engine, tyres, wind, one-shot effects and the funk soundtrack
 #pragma once
 #include "base.h"
 
@@ -14,87 +14,90 @@ static void tone(float f, float dur, float vol, int type = 0, float slide = 0, f
 }
 
 // ------------------------------------------------------------------ soundtrack
-// Everything is generated per sample: Karplus-Strong strings into a two-stage distortion and a
-// cabinet filter (two guitars, hard left / right), saw bass, synth drums and a lead with delay.
+// West-coast funk, generated per sample: a slow swung beat (kick, snare with a clap on top, tight hats), a round
+// gliding synth bass, electric-piano ninth chords that drift across the stereo field, and the high sine lead that
+// slides from note to note with a slow vibrato and an echo.
 namespace mus {
 static uint32_t rs = 777;
 static inline float nz() { rs = rs * 1664525u + 1013904223u; return ((rs >> 9) / 4194304.f) - 1; }
-struct KS {
-    float buf[1200]; int len = 200, pos = 0; float damp = 0.9f;
-    void pluck(float f, float d, float bright) {
-        len = (int)clampf(SR / f + 0.5f, 2, 1199); damp = d; pos = 0; float l = 0, mean = 0;
-        for (int i = 0; i < len; i++) { l += (nz() - l) * bright; buf[i] = l; mean += l; }
-        mean /= len; for (int i = 0; i < len; i++) buf[i] -= mean;
-    }
-    float tick() { float o = buf[pos]; int nx = pos + 1 == len ? 0 : pos + 1; buf[pos] = (o + buf[nx]) * 0.5f * damp; pos = nx; return o; }
-};
-static KS gs[2][3];
-static float gHP[2], gL1[2], gL2[2];
-static float kT = 9, sT = 9, hT = 9, cT = 9, tT = 9, tomF = 120, hLP = 0, cLP = 0, sLP = 0; static double kPh = 0, tPh = 0;
-static double bPh = 0; static float bF = 41, bEnv = 0, bDec = 3, bLP = 0;
-static double lPh = 0, lPh2 = 0; static float lF = 330, lTgt = 330, lEnv = 0, lOn = 0, lT = 0, lLP = 0; static float dly[16384]; static int dpos = 0;
-static int gstep = -1, solo = 15; static double acc = 1e9; static float gEnv = 0, gDec = 1;
-static const double STEP = SR * 60.0 / 176.0 / 4.0;   // 176 BPM, sixteenth notes
+static const float BPM = 94, SWING = 0.15f;                 // sixteenths are swung: the off ones land late
+static const double STEP = SR * 60.0 / BPM / 4.0;
+static const float KEY = 87.31f;                            // F: bass register; the chords are two octaves up, the lead three
 
-struct Bar { const char* n; const char* s; };   // n: semitones above low E (hex). s: m palm-mute, o open chord, . ring, - choke
-static const Bar V[4] = { { "0.000.000.000.00", "m.mmm.mmm.mmm.mm" }, { "0.000.003...5...", "m.mmm.mmo...o..." }, { "0.000.000.000.00", "m.mmm.mmm.mmm.mm" }, { "0.000.006...5.3.", "m.mmm.mmo...o.o." } };
-static const Bar R[4] = { { "00700800a0080070", "mmommommommommom" }, { "00700800a00c00b0", "mmommommommommom" }, { "00700800a0080070", "mmommommommommom" }, { "0070080050006.5.", "mmommommommmo.o." } };
-static const Bar C[4] = { { "0...0.0.0...0.00", "o...o.o.o...o.oo" }, { "8...8.8.8...8.88", "o...o.o.o...o.oo" }, { "a...a.a.a...a.aa", "o...o.o.o...o.oo" }, { "7...7.7.7...7.77", "o...o.o.o...o.oo" } };
-static const Bar B[4] = { { "0..-0..-00.-3.1.", "o..-m..-mm.-o.o." }, { "0..-0..-00.-6.5.", "o..-m..-mm.-o.o." }, { "0..-0..-00.-3.1.", "o..-m..-mm.-o.o." }, { "0..-0..-0000----", "o..-m..-mmmm----" } };
-struct Sec { const Bar* b; int drum, lead; };   // drum: 0 gallop 1 skank 2 double-kick 3 half-time. lead: 0 none 1 melody 2 run
-static const Sec SONG[] = { { V, 0, 0 }, { V, 0, 0 }, { R, 1, 0 }, { R, 1, 0 }, { C, 2, 1 }, { C, 2, 2 }, { B, 3, 0 }, { R, 1, 0 }, { C, 2, 1 }, { C, 2, 2 } };
+struct Chord { int root; int v[4]; };                      // semitones from F: the bass note and a rootless four-note voicing
+static const Chord PROG[2][4] = {
+    { { 0, { 3, 7, 10, 14 } }, { 0, { 3, 7, 10, 14 } }, { -4, { 0, 3, 7, 10 } }, { -5, { -1, 5, 10, 14 } } },      // Fm9  Fm9  Dbmaj9  C7#9
+    { { 5, { 3, 7, 8, 12 } },  { 5, { 3, 7, 8, 12 } },  { 0, { 3, 7, 10, 14 } }, { -5, { -1, 5, 10, 14 } } } };    // Bbm9 Bbm9 Fm9     C7#9
+// bass: hex semitones above the chord's root; '.' holds the note, '-' lets go
+static const char* BASS[2][4] = { { "0..0..0-..a0..7.", "0..0..0-....a.c.", "0..0..0-..70..c.", "0..0..0-..4.7.a." },
+                                  { "0..0..0-..70..a.", "0..0..0-....7.5.", "0..0..0-..a0..7.", "0..0..0-..4.7.a." } };
+static const char* KEYS[4] = { "x.....x..x......", "x.....x.....x...", "x.....x..x......", "x..x..x...x.x..." };
+static const char* KICK[2] = { "x......x..x.....", "x......x.xx....." };
+static const char* SNARE = "....x.......x...";
+// lead lines, semitones above the F three octaves over the bass: -1 holds, -2 lets go
+static const int LEAD[3][64] = {
+    { 12,-1,-1,-1, -1,-1,10,-1, 12,-1,-1,-1, -1,-1,-1,-1,   15,-1,-1,14, -1,12,-1,-1, 10,-1,-1,-1,  7,-1,-1,-1,
+       8,-1,-1,-1, -1,-1, 7,-1,  8,-1,-1,12, -1,-1,-1,-1,   10,-1,-1,-1, -1,-1,11,-1,  7,-1,-1,-1, -2,-1,-1,-1 },
+    { 19,-1,-1,-1, 17,-1,15,-1, 12,-1,-1,-1, -1,-1,15,-1,   17,-1,-1,-1, -1,-1,-1,-1, 15,-1,14,-1, 12,-1,-1,-1,
+      15,-1,-1,-1, -1,-1,12,-1,  8,-1,-1,-1, -1,-1, 7,-1,   11,-1,-1,-1, 10,-1, 7,-1, -2,-1,-1,-1, -1,-1,-1,-1 },
+    {  8,-1,-1,-1, -1,-1, 7,-1,  8,-1,-1,-1,  5,-1,-1,-1,   12,-1,-1,-1, -1,-1,-1,-1,  8,-1, 7,-1,  5,-1,-1,-1,
+       7,-1,-1,-1, -1,-1, 3,-1,  7,-1,-1,-1, 10,-1,-1,-1,   11,-1,-1,-1, -1,-1,10,-1,  7,-1,-1,-1, -2,-1,-1,-1 } };
+struct Sec { int prog, drum, lead; };   // drum: 0 hats and claps only, 1 the full beat. lead: 0 none, 1..3 a line from LEAD
+static const Sec SONG[] = { { 0, 1, 0 }, { 0, 1, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 1, 1 }, { 0, 0, 2 }, { 1, 1, 3 }, { 0, 1, 2 } };
 static const int NSEC = sizeof(SONG) / sizeof(SONG[0]);
-static const char* KP[4] = { "x.xxx.xxx.xxx.xx", "x...x...x...x...", "xxxxxxxxxxxxxxxx", "x...x...xx..x.x." };
-static const char* SP[4] = { "....x.......x...", "..x...x...x...x.", "....x.......x...", "........x......." };
-static const char* HP[4] = { "x.x.x.x.x.x.x.x.", "x.x.x.x.x.x.x.x.", "x...x...x...x...", "x...x...x...x..." };
-static const int LEAD[64] = { 12,-1,-1,-1, 15,-1,14,-1, 12,-1,-1,-1, 10,-1,12,-1,   15,-1,-1,-1, 19,-1,17,-1, 15,-1,-1,-1, 12,-1,15,-1,
-                              17,-1,-1,-1, 14,-1,17,-1, 22,-1,-1,-1, 19,-1,17,-1,   19,-1,-1,-1, 15,-1,14,-1, 11,-1,-1,-1, 14,-1,11,-1 };
-static const int SCALE[7] = { 0, 2, 3, 5, 7, 8, 10 };
+
+static int gstep = -1, solo = 15; static double left = 0;
+static float kT = 9, sT = 9, hT = 9, oT = 9, hVol = 1, sVol = 1, hLP = 0, oLP = 0, sLP = 0, cBP1 = 0, cBP2 = 0; static double kPh = 0;
+static double bPh = 0; static float bF = KEY, bTgt = KEY, bGate = 0, bEnv = 0, bLP = 0;
+static double ePh[4] = {}; static float eF[4] = { 220, 220, 220, 220 }, eT = 9, eLP = 0;
+static double lPh = 0, panPh = 0; static float lF = 700, lTgt = 700, lGate = 0, lEnv = 0, lT = 0, lLP = 0; static float dly[32768]; static int dpos = 0;
 
 static void onStep(int g) {
-    const Sec& sec = SONG[(g / 64) % NSEC]; int bar = (g / 16) % 4, st = g % 16; const Bar& b = sec.b[bar]; char n = b.n[st], s = b.s[st];
-    if (s == '-') { for (auto& gg : gs) for (auto& k : gg) k.damp = 0.55f; bDec = 40; gDec = 70; }
-    else if (s == 'm' || s == 'o') {
-        int semi = n >= 'a' ? n - 'a' + 10 : n - '0'; float f = 82.41f * powf(2, semi / 12.f); bool pm = s == 'm';
-        for (int q = 0; q < 2; q++) { float det = q ? 1.004f : 0.997f;
-            gs[q][0].pluck(f * det, pm ? 0.925f : 0.9975f, pm ? 0.30f : 0.55f); gs[q][1].pluck(f * 1.4983f * det, pm ? 0.90f : 0.9975f, pm ? 0.30f : 0.55f);
-            if (pm) gs[q][2].damp = 0.5f; else gs[q][2].pluck(f * 2 * det, 0.9972f, 0.6f); }
-        bF = f * 0.5f; bEnv = 1; bDec = pm ? 22 : 2.2f; gEnv = 1; gDec = pm ? 13 : 0.8f;
-    }
-    int d = sec.drum; bool fill = bar == 3 && st >= 12;
-    if (fill) { if (st < 14) sT = 0; else { tT = 0; tPh = 0; tomF = st == 14 ? 175 : 115; } }
-    else { if (KP[d][st] == 'x') { kT = 0; kPh = 0; } if (SP[d][st] == 'x') sT = 0; if (HP[d][st] == 'x') hT = 0; }
-    if (st == 0 && (bar == 0 || (d == 2 && bar == 2))) cT = 0;
-    if (sec.lead == 1) { int v = LEAD[bar * 16 + st]; if (v >= 0) { lTgt = 164.81f * powf(2, v / 12.f); lOn = 1; lT = 0; } }
-    else if (sec.lead == 2) { int i = bar * 16 + st, k = i < 32 ? 7 + i / 4 + i % 4 : 17 - (i - 32) / 4 - i % 4; lTgt = 164.81f * powf(2, (12 * (k / 7) + SCALE[k % 7]) / 12.f); lOn = 1; lT = 0; }
-    else lOn = 0;
+    const Sec& sec = SONG[(g / 64) % NSEC]; int bar = (g / 16) % 4, st = g % 16; const Chord& ch = PROG[sec.prog][bar];
+    char n = BASS[sec.prog][bar][st];
+    if (n == '-') bGate = 0;
+    else if (n != '.') { int semi = n >= 'a' ? n - 'a' + 10 : n - '0'; bTgt = KEY * powf(2, (ch.root + semi) / 12.f); if (bGate == 0) bF = bTgt; bGate = 1; }
+    if (KEYS[bar][st] == 'x') { for (int i = 0; i < 4; i++) eF[i] = KEY * 2 * powf(2, ch.v[i] / 12.f); eT = 0; }
+    bool fill = bar == 3 && st >= 14;
+    if (sec.drum == 1 && KICK[bar & 1][st] == 'x') { kT = 0; kPh = 0; }
+    if (SNARE[st] == 'x') { sT = 0; sVol = 1; } else if (fill && sec.drum == 1) { sT = 0; sVol = 0.45f; }
+    if (st == 14 && (bar & 1)) oT = 0; else { hT = 0; hVol = st % 4 == 0 ? 1.0f : st % 2 == 0 ? 0.7f : 0.38f; }
+    if (sec.lead) { int v = LEAD[sec.lead - 1][bar * 16 + st]; if (v == -2) lGate = 0; else if (v >= 0) { lTgt = KEY * 8 * powf(2, v / 12.f); if (lGate == 0) { lF = lTgt; lT = 0; } lGate = 1; } }
+    else lGate = 0;
 }
 static void render(float& L, float& Rr) {
-    acc += 1; if (acc >= STEP) { acc = acc > 1e8 ? 0 : acc - STEP; onStep(++gstep); }
-    const float dt = 1.0f / SR; float g[2];
-    for (int q = 0; q < 2; q++) {
-        float x = gs[q][0].tick() + gs[q][1].tick() + gs[q][2].tick() * 0.8f;
-        gHP[q] += (x - gHP[q]) * 0.014f; float y = tanhf((x - gHP[q]) * 15); y = tanhf(y * 2.2f + 0.15f) - 0.149f;
-        gL1[q] += (y - gL1[q]) * 0.40f; gL2[q] += (gL1[q] - gL2[q]) * 0.40f; g[q] = (gL2[q] + (gL1[q] - gL2[q]) * 0.5f) * gEnv * ((solo & 1) ? 1 : 0);
-    }
-    gEnv -= gEnv * gDec * dt;
-    bPh += bF * dt; if (bPh > 1) bPh -= 1; bEnv -= bEnv * bDec * dt;
-    bLP += (tanhf((float)(bPh * 2 - 1) * bEnv * 2.6f) - bLP) * 0.07f;
-    float c = bLP * 0.25f * ((solo & 2) ? 1 : 0), c0 = c;
-    if (kT < 0.5f) { kPh += (46 + 125 * expf(-kT * 40)) * dt; c += (sinf((float)kPh * 6.2832f) * expf(-kT * 8.5f) + nz() * expf(-kT * 480) * 0.45f) * 0.60f; kT += dt; }
-    if (sT < 0.5f) { float w = nz(); sLP += (w - sLP) * 0.18f; c += ((w - sLP) * expf(-sT * 15) * 0.55f + sinf(sT * 6.2832f * 188) * expf(-sT * 24) * 0.5f) * 0.42f; sT += dt; }
-    if (hT < 0.2f) { float w = nz(); hLP += (w - hLP) * 0.45f; c += (w - hLP) * expf(-hT * 60) * 0.11f; hT += dt; }
-    if (cT < 2.5f) { float w = nz(); cLP += (w - cLP) * 0.35f; c += (w - cLP) * expf(-cT * 2.8f) * 0.13f; cT += dt; }
-    if (tT < 0.6f) { tPh += tomF * (1 + 0.5f * expf(-tT * 18)) * dt; c += sinf((float)tPh * 6.2832f) * expf(-tT * 8) * 0.45f; tT += dt; }
-    if (!(solo & 4)) c = c0;
-    // lead
-    lF += (lTgt - lF) * 0.006f; lT += dt; lEnv += (lOn - lEnv) * 0.004f;
-    float vib = 1 + 0.007f * sinf(lT * 35.2f) * smooth(0.12f, 0.35f, lT);
-    lPh += lF * vib * dt; if (lPh > 1) lPh -= 1; lPh2 += lF * vib * 2.006 * dt; if (lPh2 > 1) lPh2 -= 1;
-    float lx = tanhf(((float)(lPh * 2 - 1) * 0.8f + (lPh2 < 0.5 ? 0.3f : -0.3f)) * lEnv * 5);
-    lLP += (lx - lLP) * 0.22f; float dl = dly[(dpos + 16384 - 13000) & 16383]; dly[dpos] = lLP + dl * 0.32f; dpos = (dpos + 1) & 16383;
-    float lead = (lLP + dl * 0.35f) * 0.17f * ((solo & 8) ? 1 : 0);
-    L = g[0] * 0.46f + g[1] * 0.12f + c + lead; Rr = g[1] * 0.46f + g[0] * 0.12f + c + lead;
+    left -= 1; if (left <= 0) { onStep(++gstep); left += STEP * (gstep % 2 == 0 ? 1 + SWING : 1 - SWING); }
+    const float dt = 1.0f / SR, TAU = 6.2832f;
+    // drums
+    float d = 0, hat = 0;
+    if (kT < 0.6f) { kPh += (47 + 95 * expf(-kT * 34)) * dt; d += (sinf((float)kPh * TAU) * expf(-kT * 6.5f) + nz() * expf(-kT * 500) * 0.3f) * 0.95f; kT += dt; }
+    if (sT < 0.5f) {   // a snare with a hand clap laid over it: three quick bursts, then the tail
+        float w = nz(); sLP += (w - sLP) * 0.22f; float body = (w - sLP) * expf(-sT * 17) * 0.5f + sinf(sT * TAU * 196) * expf(-sT * 30) * 0.4f;
+        cBP1 += (w - cBP1) * 0.30f; cBP2 += (cBP1 - cBP2) * 0.09f;
+        float ce = sT < 0.03f ? (fmodf(sT, 0.01f) < 0.006f ? 1.0f : 0.25f) : expf(-(sT - 0.03f) * 20);
+        d += (body + (cBP1 - cBP2) * ce * 1.1f) * 0.5f * sVol; sT += dt; }
+    if (hT < 0.15f) { float w = nz(); hLP += (w - hLP) * 0.5f; hat += (w - hLP) * expf(-hT * 95) * 0.13f * hVol; hT += dt; }
+    if (oT < 0.5f) { float w = nz(); oLP += (w - oLP) * 0.5f; hat += (w - oLP) * expf(-oT * 9) * 0.10f; oT += dt; }
+    if (!(solo & 4)) d = hat = 0;
+    // bass: a sine with a little second harmonic and saw, slid from note to note
+    bF += (bTgt - bF) * 0.0011f; bEnv += (bGate - bEnv) * (bGate > bEnv ? 0.006f : 0.0018f);
+    bPh += bF * dt; if (bPh > 1) bPh -= 1; float bp = (float)bPh * TAU;
+    bLP += (tanhf((sinf(bp) + 0.30f * sinf(bp * 2) + 0.22f * (float)(bPh * 2 - 1)) * 1.5f) - bLP) * 0.12f;
+    float bass = bLP * bEnv * 0.42f * ((solo & 2) ? 1 : 0);
+    // electric piano: each note a sine bent by itself, with a short bright tine on the attack
+    float e = 0, eEnv = expf(-eT * 2.0f) * clampf(eT * 400, 0, 1), eBite = expf(-eT * 9);
+    if (eT < 3) { for (int i = 0; i < 4; i++) { ePh[i] += eF[i] * dt; if (ePh[i] > 1) ePh[i] -= 1; float p = (float)ePh[i] * TAU; e += sinf(p + (0.5f + 1.3f * eBite) * sinf(p)) + 0.10f * eBite * sinf(p * 7); } eT += dt; }
+    eLP += (e * eEnv - eLP) * 0.35f; panPh += 0.55 * dt; if (panPh > 1) panPh -= 1;
+    float pan = 0.5f + 0.38f * sinf((float)panPh * TAU), keys = eLP * 0.105f * ((solo & 1) ? 1 : 0);
+    // lead: the whine. A slow slide between notes, vibrato once the note has settled, a dotted-eighth echo
+    lF += (lTgt - lF) * 0.00035f; lT += dt; lEnv += (lGate - lEnv) * (lGate > lEnv ? 0.003f : 0.0006f);
+    float vib = 1 + 0.008f * sinf(lT * TAU * 5.6f) * smooth(0.18f, 0.5f, lT);
+    lPh += lF * vib * dt; if (lPh > 1) lPh -= 1; float lp = (float)lPh * TAU;
+    lLP += ((sinf(lp) * 0.75f + (float)(lPh * 2 - 1) * 0.30f) * lEnv - lLP) * 0.30f;
+    float dl = dly[(dpos + 32768 - (int)(STEP * 3)) & 32767]; dly[dpos] = lLP + dl * 0.38f; dpos = (dpos + 1) & 32767;
+    float lead = lLP * 0.21f * ((solo & 8) ? 1 : 0), echo = dl * 0.10f * ((solo & 8) ? 1 : 0);
+    L = d + hat * 0.7f + bass + keys * (1 - pan) * 2 + lead * 1.1f + echo * 0.5f;
+    Rr = d + hat * 1.3f + bass + keys * pan * 2 + lead * 0.9f + echo * 1.5f;
 }
 }
 

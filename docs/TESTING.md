@@ -118,7 +118,7 @@ Screenshots:
 | `--top H X Z` | camera H metres above (X, Z) looking straight down, fog off |
 | `--cam EX EY EZ TX TY TZ` | fixed camera position and target |
 
-Audio: `--wav FILE SECONDS` renders the soundtrack. Environment `FCF_SOLO` is a bitmask: 1 guitars,
+Audio: `--wav FILE SECONDS` renders the soundtrack. Environment `FCF_SOLO` is a bitmask: 1 piano,
 2 bass, 4 drums, 8 lead.
 
 Environment `FCF_TRACE=1` prints a line to stderr every 0.1 s of simulated time: position, speed,

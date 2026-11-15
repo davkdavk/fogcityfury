@@ -1,13 +1,13 @@
 // showdown.h - the showdown that ends a rampage race. The top three finishers settle it on foot at the finish line:
 //   INTRO  the race is won; the camera lifts, the three cars are parked round the line and it comes down behind you
-//   PREP   30 seconds to run for the guns, armour and medkits lying about; nobody can shoot yet
+//   PREP   15 seconds to run for the guns, armour and medkits lying about; nobody can shoot yet
 //   FIGHT  a ring closes round the line (and closes hard once two are left); outside it you burn
 //   OVER   the last one standing takes the win, then the results
 // Race places matter: the winner starts with 50 armour, second with 25. The bots are fighters like you (foot.h); only
 // their FootIn comes from botThink instead of the controls.
 #pragma once
 
-static const float SH_BEAT = 1.3f, SH_FLY = 3.2f, SH_PREP_LEN = 30.0f;                    // the finish beat before the cut; the fly-down; the countdown
+static const float SH_BEAT = 1.3f, SH_FLY = 3.2f, SH_PREP_LEN = 15.0f;                    // the finish beat before the cut; the fly-down; the countdown
 static const float SH_RING0 = 52, SH_RING_MID = 30, SH_RING_END = 15, SH_SHRINK = 50;      // ring radius: at first, after SH_SHRINK seconds of fighting, once two are left
 static const float SH_BURN = 6, SH_BURN_EVERY = 0.5f;                                      // health lost each half second outside the ring
 enum { D_MED = NGUNS, D_ARMOUR };                                                          // pick-ups: a gun (its Gun number), a medkit, body armour

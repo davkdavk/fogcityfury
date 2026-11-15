@@ -131,9 +131,9 @@ One SDL callback, stereo float at 44.1 kHz. It mixes:
 - tyres and wind: filtered noise scaled by `snd.skid` and `snd.wind`;
 - up to 12 one-shot `Tone`s (sine, square or filtered noise with a pitch slide), queued by `tone()`
   under the audio lock;
-- the soundtrack, `mus::render`: a sixteenth-note sequencer at 176 BPM triggering Karplus-Strong
-  strings (two guitars, three strings each) into two `tanh` stages and a cabinet low-pass, a saw
-  bass, synthesised kick/snare/hat/crash/tom, and a lead oscillator with vibrato and a delay line.
+- the soundtrack, `mus::render`: a swung sixteenth-note sequencer at 94 BPM driving a gliding synth
+  bass, a four-voice electric piano (ninth chords, panned slowly from side to side), synthesised
+  kick, snare with a clap, closed and open hats, and a high sliding sine lead with vibrato and an echo.
 
 The game thread only writes the handful of floats in `snd`; the sequencer lives entirely in the
 audio thread.

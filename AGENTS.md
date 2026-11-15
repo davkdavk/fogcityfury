@@ -38,7 +38,7 @@ numeric analysis of rendered audio. That means:
   and to a description of what should happen, not to someone driving. Treat player feedback as
   ground truth over anything in these docs.
 - **Sound is unverified by ear.** The soundtrack's levels, rhythm and tuning were measured; whether
-  the guitars sound good was not.
+  it sounds good was not.
 - **Multiplayer has only run on loopback.** No real latency, loss or more than two game clients.
   (The Windows build has been run on a real Windows PC by the user and works.)
 - **It has never run on real GPU hardware.** Only Mesa llvmpipe. Driver-specific GLSL strictness
@@ -181,9 +181,10 @@ nitro block in `stepPlayer`, the effects in `update()`. `docs/HANDLING.md` expla
 non-obvious part (why the traction circle divides out the weather's grip). The weather a player
 picks for each track is saved (`v3` save file) and, online, comes from the server.
 
-**Change the music.** `mus` namespace in `audio.h`. Riffs are strings, one character per sixteenth
-note (see the comment on `Bar`). `--wav out.wav 60` renders it; `FCF_SOLO=1|2|4|8` solos guitars,
-bass, drums, lead. `audio_soundtrack_renders_sane` checks level, stereo and that a rhythm exists.
+**Change the music.** `mus` namespace in `audio.h`. It is a slow swung funk track (94 BPM): the chords
+are in `PROG`, the bass, piano and drum patterns are strings with one character per sixteenth note, the
+lead lines are in `LEAD`, and `SONG` orders the sections. `--wav out.wav 60` renders it;
+`FCF_SOLO=1|2|4|8` solos piano, bass, drums, lead. `audio_soundtrack_renders_sane` checks level, stereo and that a rhythm exists.
 
 **Add a screen effect.** `FS_POST` in `shaders.h`, uniforms set at the end of `render()`.
 
@@ -348,7 +349,7 @@ The font only has ASCII 32..90 (upper case, digits, basic punctuation).
 Three files, built to the same rules as the racer (one simulation, procedural meshes, headless tests):
 - `src/fighter.h`: data only. `GUNS[]` (pistol, SMG, shotgun, launcher: rate, damage, range, spread, clip, keys needed), `Fighter` (state, animation timers, bot brain, score), `fighters[NFIGHT]` with `me = fighters[0]`, `ShdPhase`, the on-foot camera angles. Included early so menus and touch can see who is on foot.
 - `src/foot.h`: how a fighter moves, shoots and looks. `stepFighter()` is the one simulation for you and the bots: both hand it a `FootIn` (run direction in world axes, fire, sprint, roll). Running is relative to the camera (`footYaw`); sprint and the dodge roll cost stamina; aiming is lock-on (`pickFoe`, a cone in front of the camera) with a reticle. Shots are ray casts against walls, parked cars and people (`rayWorld`, `shootLine`); the launcher fires `shells`. The body is six lofted parts (torso, helmet, upper arm, forearm, thigh, shin) posed joint by joint in `poseOf()`: run, sprint, roll, aim, recoil, flinch, fall, cheer. The suit takes the car's paint; `gunMesh[]` is the gun in hand.
-- `src/showdown.h`: the match. Finish a RAMPAGE race (mode 2) in the top three and `showdownStart(place)` runs INTRO (camera lifts off the line, the field is cleared, three cars are parked and the drivers get out), PREP (30 s, no shooting, pick-ups on the ground: guns, armour, medkits), FIGHT (a ring that closes with time and closes hard at two left; outside it you burn), OVER, then RESULTS with places, kills and accuracy. First place starts with 50 armour, second with 25. Fourth or lower skips to the results. `botThink()` only produces a `FootIn`: fetch the best pick-up, keep inside the ring, strafe, fire in bursts with a reaction delay.
+- `src/showdown.h`: the match. Finish a RAMPAGE race (mode 2) in the top three and `showdownStart(place)` runs INTRO (camera lifts off the line, the field is cleared, three cars are parked and the drivers get out), PREP (15 s, no shooting, pick-ups on the ground: guns, armour, medkits), FIGHT (a ring that closes with time and closes hard at two left; outside it you burn), OVER, then RESULTS with places, kills and accuracy. First place starts with 50 armour, second with 25. Fourth or lower skips to the results. `botThink()` only produces a `FootIn`: fetch the best pick-up, keep inside the ring, strafe, fire in bursts with a reaction delay.
 - Out of the car in a race or in roam (G when nearly stopped): the same fighter, with the racers' cars as targets (`racersAreTargets`). Guns appear by total keys found: shotgun 5, launcher 10.
 - Controls on foot: accelerate/brake/steer keys run relative to the camera, mouse or right stick turns it, FIRE shoots (left mouse too), NITRO sprints, HANDBRAKE rolls, CHANGE WEAPON cycles, Enter skips the fly-down and, once you are out, goes to the results. No reset and no getting in a car during a showdown. Touch: a left-thumb stick plus buttons.
 - Test hooks: `--sdnow` (finish the race at once), `--sdplace N` (as if you came Nth), `--footai` (your fighter is driven by `botThink`), `--faceai`, `--gun N`. Report fields include `onFoot`, `shdPhase`, `shdRing`, `shdWinner`, `shdPlace`, `shdResult`, `drops`, `armour`, `footShots`, and `fighters` (one entry per fighter: on, alive, hp, gun, place, kills).
