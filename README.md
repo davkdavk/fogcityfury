@@ -77,6 +77,13 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.2
+
+- **Showdown camera**: on foot, the view follows the person from behind, so you can see who you are
+  fighting. The race clock now stops at the finish, and the rampage race shows its time.
+- **Showdown site**: a beacon marks the site on the road, with its distance and direction on the HUD.
+- **Gun and health panel**: your current gun and health sit at the bottom of the screen during the showdown.
+
 ## What's new in 1.1
 
 - **Rampage mode** (third option on the mode menu): a race, then a showdown. The winner drives to a site halfway
