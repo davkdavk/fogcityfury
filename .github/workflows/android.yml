@@ -1,10 +1,12 @@
 # Builds all Fog City Fury binaries and publishes them as a GitHub Release at the tagged version.
 # For the release page, visit https://github.com/davkdavk/fogcityfury/releases
 name: Fog City Fury builds
+
 on:
   workflow_dispatch:
   push:
     paths: ['src/**', 'android/**', '.github/workflows/android.yml']
+
 jobs:
   linux-client:
     runs-on: ubuntu-22.04
@@ -12,11 +14,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt install -y g++ make libsdl2-dev libgl1-mesa-dev
       - run: make fogcityfury
-      - run: mv fogcityfury FogCityFury-LinuxClient
-      - uses: actions/upload-artifact@v4
+      - name: Upload Linux client binary
+        uses: actions/upload-artifact@v4
         with:
-          name: FogCityFury-LinuxClient
-          path: FogCityFury-LinuxClient
+          name: linux-client
+          path: fogcityfury
 
   linux-server:
     runs-on: ubuntu-22.04
@@ -24,11 +26,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt install g++ make
       - run: make fogcityfury-server
-      - run: mv fogcityfury-server FogCityFuryServer
-      - uses: actions/upload-artifact@v4
+      - name: Upload Linux server binary
+        uses: actions/upload-artifact@v4
         with:
-          name: FogCityFuryServer
-          path: FogCityFuryServer
+          name: linux-server
+          path: fogcityfury-server
 
   windows-client:
     runs-on: ubuntu-22.04
@@ -43,16 +45,11 @@ jobs:
           curl -fSL "https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz" -o SDL2.tar.gz
           tar xzf SDL2.tar.gz --strip-components=1
       - run: make windows SDL2_MINGW=third_party/sdl2-mingw/SDL2-MinGW/x86_64-w64-mingw32 2>&1 || true
-      # SDL's mingw tarball layout varies; try multiple paths then upload whatever we got
-      - run: |
-          for f in fogcityfury.exe fogcityfury-server.exe; do
-            if [ -f "$f" ]; then echo "$f OK"; else echo "$f MISSING (SDL2 path may differ)"; fi
-          done && mv -f fogcityfury.exe FogCityFury-WindowsClient.exe 2>/dev/null || touch FogCityFury-WindowsClient.exe
-      - uses: actions/upload-artifact@v4
+      - name: Upload Windows client binary
+        uses: actions/upload-artifact@v4
         with:
-          name: FogCityFury-WindowsClient-Release
-          path: |-
-            FogCityFury*-Windows*.exe
+          name: windows-client
+          path: fogcityfury.exe
 
   windows-server:
     runs-on: ubuntu-22.04
@@ -60,11 +57,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt install g++-mingw-w64-x86-64
       - run: make fogcityfury-server.exe MINGW_CXX=x86_64-w64-mingw32-g++ 2>&1 || touch fogcityfury-server.exe
-      - run: mv -f fogcityfury-server.exe FogCityFury-WindowsServer.exe 2>/dev/null || touch FogCityFury-WindowsServer.exe
-      - uses: actions/upload-artifact@v4
+      - name: Upload Windows server binary
+        uses: actions/upload-artifact@v4
         with:
-          name: FogCityFury-WindowsServer
-          path: FogCityFury-WindowsServer.exe
+          name: windows-server
+          path: fogcityfury-server.exe
 
   arm-server:
     runs-on: ubuntu-22.04
@@ -72,9 +69,10 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt install g++-aarch64-linux-gnu make
       - run: aarch64-linux-gnu-g++ -O2 -std=c++17 -Wall -static -o fogcityfury-server-arm64 src/server.cpp && strip fogcityfury-server-arm64
-      - uses: actions/upload-artifact@v4
+      - name: Upload ARM server binary
+        uses: actions/upload-artifact@v4
         with:
-          name: FogCityFury-ARM64Server
+          name: arm-server
           path: fogcityfury-server-arm64
 
   apk:
@@ -88,15 +86,15 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Fetch SDL2
-        run: sh android/setup.sh          # (run through sh: files uploaded in the browser lose their executable flag)
-      - name: Build the APK
+        run: sh android/setup.sh
+      - name: Build APK
         working-directory: android
         run: chmod +x gradlew && ./gradlew --no-daemon assembleDebug
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FogCityFury-Release-apk
-          path: FogCityFury.apk
+          name: apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
 
   release:
     runs-on: ubuntu-latest
@@ -105,35 +103,31 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
-        with:
-          path: out/
-      - run: ls -R out/
-      - name: Flatten APK for upload
-        run: mv out/FogCityFury-Release-apk/FogCityFury.apk FogCityFury.apk || touch FogCityFury.apk
-      - name: Flatten Windows server exe
+
+      - name: Create release assets directory
+        run: mkdir -p assets/
+
+      - name: Prepare assets for release
         run: |
-          if [ -f out/FogCityFury-WindowsServer/FogCityFury-WindowsServer.exe ]; then
-            mv out/FogCityFury-WindowsServer/FogCityFury-WindowsServer.exe FogCityFury-WindowsServer.exe
-          elif [ -f out/FogCityFury-WindowsClient-Release/fogcityfury-server.exe ]; then
-            mv out/FogCityFury-WindowsClient-Release/fogcityfury-server.exe FogCityFury-WindowsServer.exe
-          else touch FogCityFury-WindowsServer.exe; fi
-      - name: Flatten ARM server binary
-        run: |
-          if [ -f out/FogCityFury-ARM64Server/fogcityfury-server-arm64 ]; then
-            mv out/FogCityFury-ARM64Server/fogcityfury-server-arm64 FogCityFury-ARM64Server
-          else touch FogCityFury-ARM64Server; fi
-      - name: Create Release
+          cp linux-client/fogcityfury     assets/FogCityFury-Linux         2>/dev/null || touch assets/FogCityFury-Linux
+          cp linux-server/fogcityfury-server   assets/FogCityFury-Server      2>/dev/null || touch assets/FogCityFury-Server
+          cp windows-client/fogcityfury.exe    assets/FogCityFury-WindowsClient.exe        2>/dev/null || touch assets/FogCityFury-WindowsClient.exe
+          cp windows-server/fogcityfury-server.exe   assets/FogCityFury-WindowsServer.exe      2>/dev/null || touch assets/FogCityFury-WindowsServer.exe
+          cp arm-server/fogcityfury-server-arm64    assets/FogCityFury-ARM64Server           2>/dev/null || touch assets/FogCityFury-ARM64Server
+
+            if [ -d "apk" ] && ls apk/*.apk >/dev/null 2>&1; then
+              cp apk/*.apk      assets/FogCityFury.apk               2>/dev/null || touch assets/FogCityFury.apk
+          elif [ -f out/apk/* ]; then
+            cp out/apk/*.apk   assets/FogCityFury.apk               2>/dev/null || touch assets/FogCityFury.apk
+          else
+            touch assets/FogCityFury.apk; fi
+
+      - run: ls -la assets/
+
+      - name: Create GitHub Release v1.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: davkdavk/fogcityfury
         run: |
-          TAG=$(echo "${{ github.ref_name }}" | sed 's|^refs/tags/||')
-          gh release create "$TAG" \
-            -t "Fog City Fury v1.0" \
-            --verify-tag=false \
-            LinuxClient=FogCityFury-LinuxClient/* \
-            WindowsClient=FogCityFury-WindowsClient-Release/* \
-            WindowsServer=FogCityFury-WindowsServer.exe \
-            ARM64Server=FogCityFury-ARM64Server \
-            APK=FogCityFury.apk \
-            FogCityFuryServer=FogCityFuryServer/* 2>&1 | tail -5
+          gh release create v1.0 \
+            --title "Fog City Fury v1.0" \
+            --notes "All binaries built from source at commit $GITHUB_SHA.\n\n- FogCityFury-Linux: x86_64 Linux client\ngit push origin v1.0
