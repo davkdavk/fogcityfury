@@ -16,11 +16,13 @@ static struct NetClient {
     float sinceRecv = 0, sinceSend = 0, sinceJoin = 9, connectT = 0; uint32_t seq = 0, lastTick = 0; bool gotSnap = false;
     char host[96] = "127.0.0.1:27015", name[net::NAMELEN + 1] = "PLAYER", error[64] = "";
     Remote r[net::MAXP]; net::Snapshot snap;
+    net::Showdown sd; bool sdGot = false; uint32_t sdTick = 0;   // the showdown as the server last described it (netshd.h acts on it)
+    int sdSlotOf(int id) const { if (sdGot) for (int k = 0; k < net::SD_FIGHT; k++) if (sd.fighter[k] == id) return k; return -1; }
 } nc;
 
 static void netClose(const char* why) {
     if (nc.sock >= 0) { if (nc.connected) { net::Header h = net::header(net::C_LEAVE, (uint8_t)nc.id); for (int k = 0; k < 2; k++) net::sendTo(nc.sock, nc.addr, &h, sizeof h); } net::closeSock(nc.sock); }
-    snprintf(nc.error, sizeof nc.error, "%s", why ? why : ""); nc.sock = -1; nc.on = nc.connected = nc.ready = nc.racing = nc.finished = false; nc.id = -1; nc.prevPhase = 255; nc.gotSnap = false;
+    snprintf(nc.error, sizeof nc.error, "%s", why ? why : ""); nc.sock = -1; nc.on = nc.connected = nc.ready = nc.racing = nc.finished = false; nc.id = -1; nc.prevPhase = 255; nc.gotSnap = false; nc.sdGot = false;
     for (auto& r : nc.r) r.present = false;
 }
 static bool netConnect() {
@@ -53,6 +55,11 @@ static void netPump(float dt, bool inLobby) {
                 r.present = true; r.s = p.s; r.age = 0; r.place = p.place; r.racing = p.s.flags & net::F_RACING; memcpy(r.name, p.name, net::NAMELEN); r.name[net::NAMELEN] = 0;
             }
             for (int i = 0; i < net::MAXP; i++) if (!seen[i]) nc.r[i].present = false;
+            if (nc.phase != net::SHOWDOWN && nc.phase != net::RESULTS) nc.sdGot = false;
+        }
+        else if (h.type == net::S_SHOWDOWN && n >= (int)sizeof(net::Showdown) && nc.connected) {
+            net::Showdown m; memcpy(&m, buf, sizeof m); if (nc.sdGot && m.tick < nc.sdTick && nc.sdTick - m.tick < 100000) continue;
+            if (m.ndrops > net::SD_DROPS) continue; nc.sd = m; nc.sdTick = m.tick; nc.sdGot = true;
         }
     }
     nc.sinceRecv += dt; nc.sinceSend += dt;
@@ -72,7 +79,10 @@ static void netPump(float dt, bool inLobby) {
     }
     // dead reckoning: aim at where the last report says the car is by now, and ease towards it
     for (auto& r : nc.r) {
-        if (!r.present) { r.seen = false; continue; } r.age += dt; const net::CarState& s = r.s; float a = std::min(r.age, 0.4f), k = 1 - expf(-14 * dt); Car& c = r.car;
+        if (!r.present) { r.seen = false; continue; } r.age += dt;
+        // a showdown: only the fighters' cars are left on the road
+        if (nc.phase == net::SHOWDOWN && nc.sdGot && nc.sdSlotOf((int)(&r - nc.r)) < 0) r.racing = false;
+        const net::CarState& s = r.s; float a = std::min(r.age, 0.4f), k = 1 - expf(-14 * dt); Car& c = r.car;
         V3 tgt(s.x + s.vx * a, s.y + s.vy * a, s.z + s.vz * a);
         if (r.fresh || len(tgt - c.pos) > 40) { c.pos = tgt; c.yaw = s.yaw; c.pitch = s.pitch; c.roll = s.roll; r.fresh = false; }
         else { V3 old = c.pos; c.pos = c.pos + (tgt - c.pos) * k; c.yaw = wrapPi(c.yaw + wrapPi(s.yaw - c.yaw) * k); c.pitch += (s.pitch - c.pitch) * k; c.roll += (s.roll - c.roll) * k; r.moved += len(c.pos - old); nc.maxMoved = std::max(nc.maxMoved, r.moved); }

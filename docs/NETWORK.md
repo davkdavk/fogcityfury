@@ -30,6 +30,8 @@ Server options:
 | `--lobby S` | 0 | 0: start when every player is ready. Otherwise start S seconds after the first player is ready |
 | `--finish-timeout S` | 45 | the race ends this long after the winner finishes; the rest are DNF |
 | `--results S` | 12 | how long the results stay up |
+| `--no-showdown` | | end at the race results. By default the top three finishers then fight on foot (see "The showdown") |
+| `--showdown-site U` | | always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race |
 | `--timeout S` | 5 | drop a player after this much silence |
 | `--quiet` | | no log output |
 
@@ -61,8 +63,11 @@ cheat-resistant means running `stepPlayer` on the server (it already builds with
 
 ## Session cycle
 
-    LOBBY --(all ready, or --lobby timer)--> COUNTDOWN --(timer)--> RACE --(all finished,
-      or finish-timeout after the winner, or 20 min)--> RESULTS --(timer)--> LOBBY on the next track
+    LOBBY --(all ready, or --lobby timer)--> COUNTDOWN --(timer)--> RACE --(three finished, or all,
+      or finish-timeout after the winner, or 20 min)--> SHOWDOWN --(one fighter left)--> RESULTS
+      --(timer)--> LOBBY on the next track
+
+The showdown is skipped (straight to RESULTS) with `--no-showdown`, or when fewer than two players finished.
 
 - Players who are connected when the countdown starts, or who join during it, are *racing*.
   Anyone joining mid-race waits in the lobby screen and joins the next race.
@@ -82,7 +87,7 @@ An online race cannot be paused: Esc opens a menu while the car coasts.
 ## Wire format
 
 UDP datagrams. Integers little-endian, floats IEEE-754 single, structs packed with no padding.
-Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 3) in `net.h` must be bumped
+Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 4) in `net.h` must be bumped
 whenever a struct changes or a flag bit gains a meaning; a client with a different version gets `S_REJECT` reason 2.
 
 Every packet starts with an 8-byte header:
@@ -106,6 +111,9 @@ Packet types:
 | 18 | `S_REJECT` | server to client | `u8 reason`: 1 full, 2 version mismatch |
 | 4 | `C_QUERY` | anyone to server | `u32 nonce`, 36 bytes of padding (48 bytes in all). Not a player: no join needed |
 | 19 | `S_INFO` | server to asker | `u32 nonce` (echoed), `u8 track, laps, phase, weather, count, maxp`, `char name[24]` (42 bytes) |
+| 5 | `C_FOOT` | fighter to server | `u32 seq`, `FootState`. 30 times a second for the whole showdown |
+| 6 | `C_SDSETUP` | slot 0's client to server | `u8 n`, 12 x `SdDrop`: where the pick-ups lie. Repeated until the server has them |
+| 20 | `S_SHOWDOWN` | server to everyone | the showdown's state (324 bytes), 20 times a second while the phase is SHOWDOWN |
 
 `CarState` (56 bytes):
 
@@ -137,6 +145,50 @@ Loss and ordering: nothing is retransmitted. States and snapshots are complete, 
 replaced by the next; out-of-order ones are dropped by `seq` / `tick`. Join is repeated until
 answered. Leave is sent twice and backed by the timeout.
 
+## The showdown
+
+After the race the first three finishers (two, if only two finished) fight on foot. The server has
+no map, so it cannot run bots or check positions: an online showdown is between players only, and
+everyone else watches.
+
+Phase 4, `SHOWDOWN`, has four stages, sent in `S_SHOWDOWN`:
+
+| Stage | Ends when |
+|---|---|
+| 0 drive | every fighter reports `FF_ARRIVED` (their car is inside the ring), or after 75 s |
+| 1 countdown | 20 s |
+| 2 fight | one fighter is left, or after 180 s (then the healthiest wins) |
+| 3 over | 6.5 s, then RESULTS |
+
+**Who decides what.** The server picks the fighters (slots 0-2, in finishing order), where the ring
+goes (`siteU`, a fraction of the lap; every client turns that into the same point on the track),
+the stage, the ring's radius, who owns each pick-up, and the order fighters went down in. Each
+fighter's own game simulates their car, then their body, and reports it in `FootState`.
+
+`FootState` (40 bytes): 6 x f32 `x y z vx vz yaw`; 8 x u8 `hp armour gun flags fireSeq target
+killedBy pad`; 3 x u16 `dealt` (by slot); u16 `claim`. Flags: 1 out of the car, 2 alive, 4 aiming,
+8 rolling, 16 sprinting, 32 car inside the ring, 64 blown apart by a grenade.
+
+- **Damage** follows the rocket rule: the shooter decides it hit. It reports the total damage it has
+  dealt to each slot (`dealt`, tenths of a health point). Each victim takes the increase off its own
+  health and armour, and reports `hp`. A lost datagram loses nothing, because the totals are
+  repeated. An increase of 500 points or more is a grenade at close range: the victim is gone.
+- **Going down.** A fighter that reports itself not alive during the fight is placed behind everyone
+  still standing; `killedBy` (a slot) gets the credit. Leaving the server counts as going down.
+- **Pick-ups.** Slot 0's game knows the ground, so it lays them out and sends `C_SDSETUP` until the
+  server echoes them. `claim` has a bit for each pick-up the fighter is standing on. The server
+  gives a pick-up to the first claim it sees (`SdDrop.owner`), and puts it back 15 s later (45 s
+  for the grenade launcher). A game only claims guns its player has found the keys for.
+- **Shots** are not sent. `fireSeq` goes up with each one, and the other games draw the flash and
+  tracer (or a harmless grenade) from the fighter's position and `target`.
+
+`S_SHOWDOWN` (324 bytes): header, `u32 tick`, `u8 stage`, `f32 stageT, ring, siteU`,
+`u8 fighter[3]` (player ids, 255 = empty), `u8 place[3]` (0 while standing), `u8 kills[3]`,
+`u8 winner`, `u8 ndrops`, 3 x `FootState`, 12 x `SdDrop` (`f32 x y z`, `u8 kind`, `u8 owner`).
+
+Client side this is `src/netshd.h`. The same trust caveat applies as for cars: a modified client
+could claim hits or refuse damage.
+
 ## Remote cars
 
 For each other player the client keeps the last reported state and its age. Every frame it aims at
@@ -146,7 +198,7 @@ with the last view-projection matrix.
 
 ## Testing
 
-`python3 tests/run_tests.py net` (about 25 s, real time because the server is):
+`python3 tests/run_tests.py net` (about three minutes, real time because the server is):
 
 - `net_server_runs_a_full_race_cycle` and `net_server_rejects_bad_clients_and_drops_silent_ones`
   talk to a real server with a 60-line Python client that packs the structs above directly. They
@@ -157,6 +209,10 @@ with the last view-projection matrix.
   (`--sim --connect ... --ready --auto`) and checks that each sees the other move and that they
   agree on places.
 - `net_client_gives_up_when_there_is_no_server`.
+- `net_showdown_server_runs_the_podium_fight`: three protocol-level clients take the server through
+  a whole showdown (the wait for the last car, pick-up claims and their return, the order of going down).
+- `net_showdown_game_client_fights_a_remote_fighter`: a real headless game, driven by the autopilot
+  and the bot brain, drives to the ring and beats a protocol-level fighter that stands still.
 
 To watch a session by hand without a display:
 

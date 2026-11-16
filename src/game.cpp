@@ -91,6 +91,7 @@ static const int CUBE = 256, SHADOW = 2048, CUBE_FACES = 2;
 static M4 lightVP;
 static float T = 0, raceT = 0, countdown = 0, timeLeft = 0, lapStart = 0, bestLapRace = 0, lastLap = 0, msgT = 0, wrongT = 0, shake = 0, resultsT = 0;
 static char msg[96] = ""; static V3 msgCol(1, 1, 1);
+static int selLaps = LAPS;   // laps for an offline race (1..9), chosen on the track screen
 static int selWeather = W_CLEAR, selRow = 0, weatherOf[NTRACKS] = {};
 static int selCar = 0, selPaint = 0, selTrack = 0, selMode = 0, camMode = 0, aiFinished = 0, finalPlace = 0, place = 1, gear = 1, cubeFace = 0, frameNo = 0;
 static bool noSave = false; static float maxAir = 0; static int gasOnly = 0;
@@ -270,13 +271,14 @@ static void loadCfg() {
         int i, k0, k1; while (fscanf(f, " bind %d %d %d", &i, &k0, &k1) == 3) if (i >= 0 && i < NBIND && k0 >= 0 && k0 < SDL_NUM_SCANCODES && k1 >= 0 && k1 < SDL_NUM_SCANCODES) { binds[i][0] = k0; binds[i][1] = k1; }
         int ns = 0; char h[100]; if (fscanf(f, " servers %d", &ns) == 1) { servers.clear(); while (ns-- > 0 && fscanf(f, " server %95s", h) == 1) srvAdd(h); }   // the saved list replaces the built-in one
         if (fscanf(f, " name %16[^\n]", h) == 1 && h[0]) snprintf(nc.name, sizeof nc.name, "%.16s", h);
+        int lp = 0; if (fscanf(f, " laps %d", &lp) == 1 && lp >= 1 && lp <= 9) selLaps = lp;
     }
     fclose(f);
 }
 static void saveCfg() {
     if (noSave) return; FILE* f = fopen(cfgPath().c_str(), "w"); if (!f) return;
     fprintf(f, "v1\nvideo %d %d %d %d %d %d\n", (int)vidFull, vidW, vidH, vidAA, vidAF, (int)vidVsync); for (int i = 0; i < NBIND; i++) fprintf(f, "bind %d %d %d\n", i, binds[i][0], binds[i][1]);
-    fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\n", nc.name); fclose(f);
+    fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\nlaps %d\n", nc.name, selLaps); fclose(f);
 }
 #ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
 #define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
@@ -334,21 +336,22 @@ static void setupCars(bool race) {
 }
 static void loadTrack(int t) { if (W.id != t) W.build(t); setupCars(false); }
 static void startRace() {
-    netRace = false; raceLaps = LAPS; weather = selWeather; exploreMode = selMode == 1; rampage = selMode == 2; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
+    netRace = false; raceLaps = selLaps; weather = selWeather; exploreMode = selMode == 1; rampage = selMode == 2; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
     if (exploreMode) say("FREE ROAM - FIND THE KEYS", V3(1, 0.85f, 0.3f), 3.5f);
     if (rampage) say("RAMPAGE  -  TOP 3 GO TO THE SHOWDOWN", V3(1, 0.4f, 0.2f), 3.5f);
 }
 
 // ---- multiplayer: react to what the server says ----
+static void footReset(); static void netShdEnter();
 static void netStartRace() {
-    exploreMode = false; raceLaps = nc.laps; if (W.id != nc.track) W.build(nc.track);
+    footReset(); exploreMode = false; raceLaps = nc.laps; if (W.id != nc.track) W.build(nc.track);
     setupCars(true); int slot = 0; for (int i = 0; i < nc.id && i < net::MAXP; i++) if (nc.r[i].present && nc.r[i].racing) slot++;
     placeOnGrid(player, gridS(slot), gridLat(slot));
     raceT = 0; countdown = nc.phase == net::COUNTDOWN ? std::max(0.05f, nc.phaseT) : 0.01f; timeLeft = 999; lapStart = 0; bestLapRace = 0; lastLap = 0; introT = clampf(countdown - 0.6f, 0, INTRO_LEN);   // online: fly in while the server counts down
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; netRace = true; nc.finished = false; nc.finishT = 0;
 }
-static void netLeave(const char* why) { netClose(why); netRace = false; raceLaps = LAPS; state = TITLE; if (W.id != 0) W.build(0); selTrack = 0; setupCars(true); }
+static void netLeave(const char* why) { footReset(); netClose(why); netRace = false; raceLaps = LAPS; state = TITLE; if (W.id != 0) W.build(0); selTrack = 0; setupCars(true); }
 static void netReact() {
     if (!nc.on) { if (state == NETLOBBY || (netRace && (state == RACE || state == PAUSED || state == RESULTS))) netLeave(nc.error); return; }
     if (!nc.connected) return;
@@ -357,8 +360,9 @@ static void netReact() {
     bool inRace = state == RACE || state == PAUSED || state == RESULTS;
     if ((nc.phase == net::COUNTDOWN || nc.phase == net::RACE) && nc.racing && !(netRace && inRace)) netStartRace();
     if (nc.phase == net::RACE && netRace && state == RACE && countdown > 0.3f) countdown = 0.02f;      // the server's clock wins
+    if (nc.phase == net::SHOWDOWN && nc.sdGot && netRace && !netShd && inRace) netShdEnter();                 // the podium gets out and fights; everyone else watches
     if (nc.phase == net::RESULTS && netRace && (state == RACE || state == PAUSED)) { state = RESULTS; resultsT = 0; }
-    if (nc.phase == net::LOBBY && (nc.prevPhase != net::LOBBY || (netRace && inRace))) { netRace = false; nc.ready = nc.autoReady; nc.finished = false; if (inRace || state == NETLOBBY) { state = NETLOBBY; loadTrack(nc.track); } }
+    if (nc.phase == net::LOBBY && (nc.prevPhase != net::LOBBY || (netRace && inRace))) { footReset(); netRace = false; nc.ready = nc.autoReady; nc.finished = false; if (inRace || state == NETLOBBY) { state = NETLOBBY; loadTrack(nc.track); } }
     if (state == NETLOBBY && W.id != nc.track) loadTrack(nc.track);
     nc.prevPhase = nc.phase;
 }
@@ -676,6 +680,7 @@ static void finishRace(bool tu) {
 
 #include "foot.h"
 #include "showdown.h"
+#include "netshd.h"
 static void update(float dt) {
     T += dt; frameNo++;
     netPump(dt, state == NETLOBBY); netReact();
@@ -697,9 +702,9 @@ static void update(float dt) {
         } else if (!waypoints.empty()) { in = Input(); in.brake = player.vf > 1 ? 1 : 0; }
         if (!script.empty()) { in = Input(); for (auto& k : script) if (raceT >= k.t) { in.steer = k.steer; in.gas = k.gas; in.brake = k.brake; in.hb = k.hb; in.nitro = k.nitro; } } if (gasOnly == 1) { in = Input(); in.gas = 1; } if (gasOnly == 2) { in = autoInput(player); in.hb = fabsf(in.steer) > 0.45f && player.vf > 24; in.gas = 1; in.brake = 0; } if (!go) { in.steer = 0; in.brake = 0; } }
     else if (state == TITLE) in = autoInput(player);
-    if ((state == TITLE || (state == RACE && autoDrive && go)) && !player.dead) { static float stuck = 0; stuck = fabsf(player.vf) < 3 ? stuck + dt : 0; if (stuck > 2) { respawn(player); stuck = 0; } }   // the autopilot cannot reverse
+    if ((state == TITLE || (state == RACE && autoDrive && go)) && !player.dead && !me.on) { static float stuck = 0; stuck = fabsf(player.vf) < 3 ? stuck + dt : 0; if (stuck > 2) { respawn(player); stuck = 0; } }   // the autopilot cannot reverse
     else if (state == RESULTS) { in.brake = player.vf > 1 ? 0.6f : 0; resultsT += dt; }
-    if (showdownOn && !shdCut && state == RACE) { in = Input(); in.brake = player.vf > 1 ? 1.0f : 0.0f; in.hb = player.vf <= 1; }   // over the line and into the showdown: pull up
+    if (showdownOn && shdPhase == SH_DRIVE && !me.on && state == RACE && flatDist(player.pos, shdSite) < 12) { in = Input(); in.brake = player.vf > 1 ? 1.0f : 0.0f; in.hb = player.vf <= 1; }   // the middle of the ring: pull up
     if (me.on) { in = Input(); in.hb = true; }                                                                                         // on foot: the car stands where you left it
     if (driving) {
         const int sub = std::max(1, (int)ceilf(dt / (1 / 120.f)));
@@ -933,7 +938,7 @@ static void drawCar(const Car& c, Prog& p, bool lit) {
     }
 }
 static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode : st == TITLE; }
-static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer) drawCar(player, p, lit); if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
+static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) drawCar(player, p, lit); if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
     if (netRace) for (auto& r : nc.r) if (r.present && r.racing) drawCar(r.car, p, lit); drawShowdown(p, lit); }
 
 // burnt shells, loose parts, rockets in flight and the pick-up crates
@@ -977,7 +982,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
             for (int k = 0; k < 6; k++) { V3 q = c.pos + f * (mid + cv[k] * hl) + sd * (cu[k] * hw); q.y = W.ground(q.x, q.z, c.pos.y + 0.6f) + 0.035f; if (fabsf(q.y - g0) > 1.2f) q.y = g0 + 0.035f;
                 float d[11] = { q.x, q.y, q.z, cu[k], cv[k], 0.0f, 0.0f, 0.0f, a, 0, 1 }; ao.insert(ao.end(), d, d + 11); }
         };
-        if (!(camMode == 2 && state == RACE)) patch(player); if (showAI()) for (auto& a : ai) patch(a); if (netRace) for (auto& r : nc.r) if (r.present && r.racing) patch(r.car);
+        if (!(camMode == 2 && state == RACE) && !carHidden) patch(player); if (showAI()) for (auto& a : ai) patch(a); if (netRace) for (auto& r : nc.r) if (r.present && r.racing) patch(r.car);
         footShadows(ao);
         if (!ao.empty()) {
             glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); glDepthMask(GL_FALSE); glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(-2, -2);
@@ -1015,6 +1020,7 @@ static void drawMap(float cx, float cy, float sc, bool cars) {
     for (int i = 0; i < W.n; i += 5) { const TS& a = W.ts[i], & b = W.ts[(i + 5) % W.n]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 5, V3(0, 0, 0), 0.55f); }
     for (int i = 0; i < W.n; i += 5) { const TS& a = W.ts[i], & b = W.ts[(i + 5) % W.n]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 2.4f, V3(1, 1, 1), 0.9f); }
     ui.rect(cx + W.ts[0].x * sc - 4, cy + W.ts[0].z * sc - 4, 8, 8, V3(1, 0.2f, 0.2f));
+    if (showdownOn && shdCut) { float px = 0, py = 0; for (int i = 0; i <= 16; i++) { float a = 2 * (float)M_PI * i / 16, qx = cx + (shdSite.x + cosf(a) * shdRing) * sc, qy = cy + (shdSite.z + sinf(a) * shdRing) * sc; if (i) ui.line(px, py, qx, qy, 2.5f, V3(1, 0.5f, 0.1f), 0.95f); px = qx; py = qy; } }   // the showdown's ring
     if (!cars) return;
     if (showAI()) for (auto& a : ai) ui.rect(cx + a.pos.x * sc - 3, cy + a.pos.z * sc - 3, 6, 6, PAINTS[a.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f));
     if (netRace) for (auto& r : nc.r) if (r.present && r.racing) ui.rect(cx + r.car.pos.x * sc - 3, cy + r.car.pos.z * sc - 3, 6, 6, PAINTS[r.car.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f));
@@ -1083,7 +1089,7 @@ static void drawHUD() {
         ui.text(Wd / 2, 30, 6, yel, "ONLINE RACE", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f), good(0.4f, 1, 0.6f), bad(1, 0.4f, 0.3f); bool blink = fmodf(T, 0.8f) < 0.5f;
         panel(Wd / 2 - 580, 110, 1160, 430, 0.72f); float x0 = Wd / 2 - 560;
         ui.text(x0, 124, 2, dim, "SERVER"); ui.text(x0 + 330, 124, 2, dim, "NAME"); ui.text(x0 + 640, 124, 2, dim, "TRACK"); ui.text(x0 + 900, 124, 2, dim, "PLAYERS"); ui.text(x0 + 1120, 124, 2, dim, "PING", 2);
-        static const char* PH[4] = { "LOBBY", "STARTING", "RACING", "RESULTS" };
+        static const char* PH[5] = { "LOBBY", "STARTING", "RACING", "RESULTS", "SHOWDOWN" };
         for (size_t i = 0; i < servers.size(); i++) {
             const ServerEntry& e = servers[i]; float y = 150 + i * 40.0f; bool sel = (int)i == srvSel && srvMode == 0;
             ui.rect(x0 - 10, y - 5, 1140, 36, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.95f : 0.5f);
@@ -1091,7 +1097,7 @@ static void drawHUD() {
             if (e.st == 2 && e.proto != net::PROTO) { ui.text(x0 + 330, y + 5, 2.4f, bad, e.proto < net::PROTO ? "OLDER VERSION OF THE GAME" : "NEWER VERSION OF THE GAME"); }
             else if (e.st == 2) {
                 ui.text(x0 + 330, y + 5, 2.2f, white, e.info.name); ui.text(x0 + 640, y + 5, 2.2f, white, TRACKS[e.info.track % NTRACKS].name);
-                snprintf(b, sizeof b, "%d/%d  %s", e.info.count, e.info.maxp, PH[e.info.phase & 3]); ui.text(x0 + 900, y + 5, 2.2f, e.info.count >= e.info.maxp ? bad : good, b);
+                snprintf(b, sizeof b, "%d/%d  %s", e.info.count, e.info.maxp, PH[e.info.phase < 5 ? e.info.phase : 0]); ui.text(x0 + 900, y + 5, 2.2f, e.info.count >= e.info.maxp ? bad : good, b);
                 snprintf(b, sizeof b, "%d MS", (int)e.ping); ui.text(x0 + 1120, y + 5, 2.2f, e.ping < 80 ? good : e.ping < 180 ? yel : bad, b, 2);
             } else ui.text(x0 + 330, y + 5, 2.4f, e.st == 3 || e.st == 4 ? bad : dim, e.st == 0 ? "LOOKING UP THE ADDRESS..." : e.st == 1 ? "ASKING..." : e.st == 3 ? "NO REPLY (OFFLINE, OR AN OLDER SERVER)" : "ADDRESS NOT FOUND (ARE YOU ONLINE?)");
         }
@@ -1117,25 +1123,26 @@ static void drawHUD() {
     } else if (state == TRACKSEL) {
         ui.text(Wd / 2, 36, 6, yel, "CHOOSE YOUR TRACK", 1, 1, 0.12f);
         panel(60, 396, 620, 280);
-        const float ry[3] = { 418, 580, 624 };
-        for (int r = 0; r < 3; r++) if (r == selRow) { ui.text(66, ry[r] + (r == 0 ? 10 : 0), r == 0 ? 4.0f : 2.8f, yel, ">"); }
+        const float ry[4] = { 418, 566, 602, 638 };
+        for (int r = 0; r < 4; r++) if (r == selRow) { ui.text(66, ry[r] + (r == 0 ? 10 : 0), r == 0 ? 4.0f : 2.8f, yel, ">"); }
         snprintf(b, sizeof b, "%s %s %s", selRow == 0 ? "<" : " ", W.def->name, selRow == 0 ? ">" : " "); ui.text(96, ry[0], 5, white, b);
         ui.text(96, ry[0] + 46, 2.5f, V3(0.75f, 0.8f, 0.9f), W.def->sub);
-        snprintf(b, sizeof b, "LENGTH %.2f KM   %d LAPS", W.n / 1000.f, LAPS); ui.text(96, ry[0] + 78, 2.5f, white, b);
+        snprintf(b, sizeof b, "LENGTH %.2f KM", W.n / 1000.f); ui.text(96, ry[0] + 78, 2.5f, white, b);
         char t[32]; if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST LAP %s", t); ui.text(96, ry[0] + 106, 2.5f, white, b);
         ui.text(96, ry[0] + 138, 2.5f, yel, "HIDDEN KEYS"); for (int k = 0; k < NKEYS; k++) keyIcon(262 + k * 46, ry[0] + 136, 4, (keysGot[W.id] >> k & 1) ? yel : V3(0.3f, 0.3f, 0.35f), 1);
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
         snprintf(b, sizeof b, "WEATHER  %s %-7s %s  %s", selRow == 1 ? "<" : " ", WX[selWeather].name, selRow == 1 ? ">" : " ", WX[selWeather].sub);
         ui.text(96, ry[1], 2.8f, wcol[selWeather], b);
-        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE" }; static const char* MODE_BLURB[NMODES] = { "3 LAPS AGAINST 5 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "3 LAPS WITH GUNS, THEN THE SHOWDOWN" };
+        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE" }; static const char* MODE_BLURB[NMODES] = { "A RACE AGAINST 5 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "RACE, THEN THE PODIUM FIGHTS ON FOOT" };
         snprintf(b, sizeof b, "MODE     %s %-7s %s  %s", selRow == 2 ? "<" : " ", MODE_NAME[selMode], selRow == 2 ? ">" : " ", MODE_BLURB[selMode]);
         ui.text(96, ry[2], 2.8f, selMode ? V3(0.4f, 1, 0.6f) : org, b);
+        snprintf(b, sizeof b, "LAPS     %s %d %s", selRow == 3 ? "<" : " ", selLaps, selRow == 3 ? ">" : " "); ui.text(96, ry[3], 2.8f, selMode == 1 ? V3(0.45f, 0.47f, 0.52f) : white, b);
         panel(Wd - 400, 396, 340, 280); drawMap(Wd - 230, 536, 0.14f, false);
         if (!touchOn) ui.text(Wd - 60, 692, 2.5f, white, "UP / DOWN: PICK ROW   LEFT / RIGHT: CHANGE   ENTER: START   ESC: BACK", 2);
     } else {
         // --- in-race HUD ---
         float Hb = Hd - (touchOn ? 190.0f : 0.0f);   // with on-screen buttons along the bottom, the speedometer and the map move up out of their way
-        float kmh = fabsf(player.vf) * 3.6f; char t[32]; bool arena = showdownOn && shdCut;   // in the showdown the car's dials give way to the fighter's
+        float kmh = fabsf(player.vf) * 3.6f; char t[32]; bool arena = showdownOn && (me.on || shdSpectate);   // in the showdown the car's dials give way to the fighter's
         if (!me.on) {   // (on foot the dials are no use: the fighter's own panels take their place)
         {   // rockets: two slots; the reticle marks the car a rocket would go for
             float nx = Wd - 300, ny = Hb - 238, nw = 280, nh = 38; V3 rc(1, 0.42f, 0.14f);
@@ -1175,6 +1182,7 @@ static void drawHUD() {
         panel(20, Hb - 230, 210, 210, 0.4f); drawMap(125, Hb - 125, 0.133f, true);
         if (!exploreMode) {
             panel(20, 20, 230, 112); static const char* suf[7] = { "", "ST", "ND", "RD", "TH", "TH", "TH" }; int pl = state == RESULTS ? finalPlace : place;
+            if (showdownOn && finalPlace) pl = finalPlace;
             snprintf(b, sizeof b, "%d", pl); ui.text(36, 36, 9, yel, b, 0, 1, 0.12f); ui.text(96, 40, 4, yel, suf[pl]); snprintf(b, sizeof b, "/%d", netRace ? netRacers() : NAI + 1); ui.text(96, 72, 3, white, b);
             snprintf(b, sizeof b, "LAP %d/%d", std::min(std::max(player.lap, 1), raceLaps), raceLaps); ui.text(36, 106, 2.5f, white, b);
             if (netRace) { char t2[32]; fmtTime(t2, raceT); ui.text(Wd / 2, 26, 5, white, t2, 1, 1, 0.12f); ui.text(Wd / 2, 70, 2, V3(0.5f, 0.9f, 1), "ONLINE", 1); } else if (rampage) { char t3[32]; fmtTime(t3, raceT); ui.text(Wd / 2, 26, 5, white, t3, 1, 1, 0.12f); ui.text(Wd / 2, 100, 2, white, "RACE TIME", 1); } else {
@@ -1184,7 +1192,7 @@ static void drawHUD() {
         if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST %s", t); ui.text(Wd - 284, 58, 3, yel, b);
         for (int k = 0; k < NKEYS; k++) keyIcon(Wd - 284 + k * 44, 84, 3.6f, (keysGot[W.id] >> k & 1) ? yel : V3(0.35f, 0.35f, 0.4f), (keysGot[W.id] >> k & 1) ? 1 : 0.7f);
         }
-        drawFootHUD(Hb);
+        drawFootHUD(Hb); drawShdDriveHUD();
         if (state == RACE && introT > 0) { float a = clampf(introT * 2, 0, 1) * clampf((INTRO_LEN - introT) * 3, 0, 1); ui.text(Wd / 2, 150, 8, yel, W.def->name, 1, a, 0.12f); ui.text(Wd / 2, 232, 3, white, WX[weather].name, 1, a); }
         if (state == RACE && introT <= 0 && countdown > 0 && countdown < 3.4f) { snprintf(b, sizeof b, "%d", (int)ceilf(countdown - 0.4f)); if (countdown > 0.4f) ui.text(Wd / 2, 200, 26, yel, b, 1, 1, 0.12f); }
         if (msgT > 0 && state != RESULTS) ui.text(Wd / 2, 210, 6, msgCol, msg, 1, clampf(msgT * 2, 0, 1), 0.2f);
@@ -1197,7 +1205,8 @@ static void drawHUD() {
         }
         if (state == PAUSED) { ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.55f); ui.text(Wd / 2, 240, 10, yel, netRace ? "MENU" : "PAUSED", 1, 1, 0.12f); ui.text(Wd / 2, 380, 3.5f, white, netRace ? "ESC: BACK TO THE RACE     Q: LEAVE THE SERVER" : "ESC: RESUME     F1: OPTIONS     Q: QUIT TO MENU", 1); }
         if (state == RESULTS && netRace) {   // online standings, live from the server
-            ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 360, 120, 720, 130 + 40 * nc.snap.count, 0.75f);
+            bool sd = nc.sdGot && nc.phase == net::RESULTS; float sy = 290 + 40.0f * nc.snap.count;   // the showdown's podium goes under the race standings
+            ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 360, 120, 720, 130 + 40 * nc.snap.count + (sd ? 190 : 0), 0.75f);
             ui.text(Wd / 2, 140, 7, yel, nc.phase == net::RESULTS ? "RESULTS" : "FINISHED", 1, 1, 0.12f);
             for (int pl = 1, row = 0; pl <= net::MAXP; pl++) for (int k = 0; k < nc.snap.count && k < net::MAXP; k++) {
                 const net::PlayerSnap& p = nc.snap.p[k]; if (p.place != pl || !(p.s.flags & net::F_RACING)) continue; char nm[net::NAMELEN + 1], t2[32]; memcpy(nm, p.name, net::NAMELEN); nm[net::NAMELEN] = 0;
@@ -1205,6 +1214,10 @@ static void drawHUD() {
                 snprintf(b, sizeof b, "%d  %-16s %s", pl, nm, t2); ui.text(Wd / 2 - 320, 220 + row * 40, 4, p.id == nc.id ? yel : white, b); row++;
             }
             ui.text(Wd / 2, 240 + 40 * nc.snap.count, 2.5f, V3(0.75f, 0.8f, 0.9f), nc.phase == net::RESULTS ? "NEXT TRACK COMING UP" : "WAITING FOR THE OTHER PLAYERS", 1);
+            if (sd) { ui.text(Wd / 2, sy, 3.2f, yel, "THE SHOWDOWN", 1);
+                for (int pl = 1, row = 0; pl <= net::SD_FIGHT; pl++) for (int k = 0; k < net::SD_FIGHT; k++) {
+                    if (nc.sd.fighter[k] == net::NOBODY || nc.sd.place[k] != pl) continue; int id = nc.sd.fighter[k]; const char* nm = id == nc.id ? nc.name : id < net::MAXP ? nc.r[id].name : "";
+                    snprintf(b, sizeof b, "%s  %-16s %d DOWN", ORD[pl], nm, nc.sd.kills[k]); ui.text(Wd / 2 - 320, sy + 40 + row * 36, 3.4f, id == nc.id ? yel : white, b); row++; } }
         } else if (state == RESULTS && shdResult) { drawShowdownResults();
         } else if (state == RESULTS) {
             ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 330, 150, 660, 400, 0.75f);
@@ -1338,12 +1351,13 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         player.type = selCar; player.paint = selPaint;
         if (k == SDLK_RETURN) { ok(); if (nc.on) { state = NETLOBBY; loadTrack(nc.track); } else { state = TRACKSEL; selWeather = weatherOf[selTrack]; } } if (k == SDLK_ESCAPE) { if (nc.on) netLeave(""); else { state = TITLE; setupCars(true); } } break;
     case TRACKSEL:
-        if (k == SDLK_UP) { selRow = (selRow + 2) % 3; blip(); } if (k == SDLK_DOWN) { selRow = (selRow + 1) % 3; blip(); }
+        if (k == SDLK_UP) { selRow = (selRow + 3) % 4; blip(); } if (k == SDLK_DOWN) { selRow = (selRow + 1) % 4; blip(); }
         if (k == SDLK_LEFT || k == SDLK_RIGHT) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
             if (selRow == 0) { selTrack = (selTrack + d + NTRACKS) % NTRACKS; loadTrack(selTrack); selWeather = weatherOf[selTrack]; }
             else if (selRow == 1) { selWeather = (selWeather + d + NWX) % NWX; weatherOf[selTrack] = selWeather; writeSave(); }
-            else selMode = (selMode + d + NMODES) % NMODES;
+            else if (selRow == 2) selMode = (selMode + d + NMODES) % NMODES;
+            else { selLaps = (selLaps - 1 + d + 9) % 9 + 1; saveCfg(); }
         }
         if (k == SDLK_RETURN) { ok(); startRace(); } if (k == SDLK_ESCAPE) state = CARSEL; break;
     case RACE:
@@ -1387,11 +1401,11 @@ static void printJSON(FILE* o) {
     float aiMinHp = -1; for (auto& a : ai) if (!a.dead && (aiMinHp < 0 || a.hp < aiMinHp)) aiMinHp = a.hp;
     float remoteMoved = nc.maxMoved; std::string bindStr; for (int i = 0; i < NBIND; i++) { char t[32]; snprintf(t, sizeof t, "%s%d,%d", i ? ";" : "", binds[i][0], binds[i][1]); bindStr += t; }
     fprintf(o, "{\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
-        "\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
+        "\"gibs\":%d,\"splats\":%d,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
         "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
         "\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\"}\n",
         W.id, player.type, weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id], (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft,
-        (int)shdPhase, shdAlive(), shdRing, me.place, shdWinner, (int)shdResult, (int)drops.size(), fStr.c_str(), me.gun, me.ammo[me.gun], me.hp, me.armour, me.stamina, (int)(me.rollT > 0), me.target, me.shots, me.hits, footPickups, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp, (int)me.on, me.pos.x, me.pos.y, me.pos.z, me.yaw, footYaw, me.run, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir, tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis,
+        gibCount, (int)splats.size(), shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount, netSlot, (int)shdPhase, shdAlive(), shdRing, me.place, shdWinner, (int)shdResult, dropsThere(), fStr.c_str(), me.gun, me.ammo[me.gun], me.hp, me.armour, me.stamina, (int)(me.rollT > 0), me.target, me.shots, me.hits, footPickups, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp, (int)me.on, me.pos.x, me.pos.y, me.pos.z, me.yaw, footYaw, me.run, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir, tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis,
         tm.maxBeta, tm.maxSlipF, tm.maxSlipR, tm.maxSpeed, tm.maxYawRate, player.nitro, tm.minNitro, tm.boostT, tm.boosts, ammo, tm.rocketsFired, tm.rocketHits, tm.pickups, tm.resets, (int)wrecks.size(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y, wrecks.empty() ? 0.0f : wrecks.back().pos.z, (int)debris.size(), W.RD(player.pos.x, player.pos.z), tm.maxDeck, tm.maxGap, introT, tm.gridDrift, std::max(countdown, 0.0f), tm.offroadT, (int)W.cross.size(), tm.dist, tm.heading, tm.simT,
         vidAA, vidAF, (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(), (int)hdrOK, deskW > 100000 ? 0 : deskW, deskH > 100000 ? 0 : deskH, (int)nc.connected, nc.id, (int)nc.phase, (int)nc.count, nc.maxCount, (int)nc.myPlace, (int)nc.placeFull, (int)netRace, remoteMoved, nc.error);
 }
@@ -1479,7 +1493,7 @@ int main(int argc, char** argv) {
         else if (a == "--touch") { touchOn = touchMouse = true; } else if (a == "--touchhold") { touchOn = true; touchHoldLabels.push_back(argv[++i]); }
         else if (a == "--tap") { touchOn = true; const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) taps.push_back({ (float)atof(q), std::string(c + 1) }); }
         else if (a == "--ldr") forceLDR = true;
-        else if (a == "--rockets") startAmmo = atoi(argv[++i]); else if (a == "--faceai") faceAi = true; else if (a == "--sdnow") sdNow = true; else if (a == "--sdplace") sdPlace = atoi(argv[++i]); else if (a == "--stick") { testStick = touchOn = true; sscanf(argv[++i], "%f,%f", &stickX, &stickY); } else if (a == "--footai") footAuto = true; else if (a == "--gun") forceGun = ((atoi(argv[++i]) % NGUNS) + NGUNS) % NGUNS; else if (a == "--fire") fireAt.push_back((float)atof(argv[++i])); else if (a == "--reset") resetAt.push_back((float)atof(argv[++i]));
+        else if (a == "--rockets") startAmmo = atoi(argv[++i]); else if (a == "--faceai") faceAi = true; else if (a == "--sdnow") sdNow = true; else if (a == "--laps") selLaps = std::max(1, std::min(9, atoi(argv[++i]))); else if (a == "--keys") fakeKeys = atoi(argv[++i]); else if (a == "--sdsite") sdSite = (float)atof(argv[++i]); else if (a == "--sdplace") sdPlace = atoi(argv[++i]); else if (a == "--stick") { testStick = touchOn = true; sscanf(argv[++i], "%f,%f", &stickX, &stickY); } else if (a == "--footai") footAuto = true; else if (a == "--gun") forceGun = ((atoi(argv[++i]) % NGUNS) + NGUNS) % NGUNS; else if (a == "--fire") fireAt.push_back((float)atof(argv[++i])); else if (a == "--reset") resetAt.push_back((float)atof(argv[++i]));
         else if (a == "--script") { const char* p = argv[++i]; while (*p) { ScriptKey k = {}; int hb = 0, nos = 0, used = 0, u2 = 0; if (sscanf(p, "%f:%f,%f,%f,%d%n", &k.t, &k.steer, &k.gas, &k.brake, &hb, &used) < 5) break; k.hb = hb;
             if (p[used] == ',' && sscanf(p + used + 1, "%d%n", &nos, &u2) == 1) { k.nitro = nos; used += 1 + u2; }
             script.push_back(k); p += used; if (*p == ';') p++; } }

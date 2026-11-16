@@ -24,11 +24,16 @@
 
 namespace net {
 const uint32_t MAGIC = 0x59464346;   // bytes "FCFY"
-const uint16_t PROTO = 3;            // bump when any struct below changes, or a flag bit gains a meaning
+const uint16_t PROTO = 4;            // bump when any struct below changes, or a flag bit gains a meaning
 const int MAXP = 8, DEFPORT = 27015, NAMELEN = 16, TRACKS = 4;
+const int SD_FIGHT = 3, SD_DROPS = 12, SD_SLOW_KIND = 5;   // the showdown: fighters (the podium), pick-ups at most, the kind of pick-up (the grenade launcher) that takes three times as long to come back
 
-enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19 };
-enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3 };
+enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20 };
+enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4 };   // SHOWDOWN comes between RACE and RESULTS
+enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
+enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
+const uint8_t NOBODY = 255;
+const float SD_DRIVE_MAX = 75, SD_PREP_LEN = 20, SD_OVER_LEN = 6.5f, SD_RESPAWN = 15, SD_RING0 = 52, SD_RING_MID = 30, SD_RING_END = 15, SD_SHRINK = 50, SD_MAX_FIGHT = 180;   // the longest the drive may take, the countdown, the winner's moment, how long a taken pick-up stays away (seconds); ring radii in metres
 enum Flags : uint8_t { F_READY = 1, F_BRAKING = 2, F_DEAD = 4, F_FINISHED = 8, F_NITRO = 16, F_RACING = 32 };   // F_RACING is set by the server only
 enum RejectReason : uint8_t { R_FULL = 1, R_VERSION = 2 };
 
@@ -46,6 +51,24 @@ struct Welcome { Header h; uint8_t yourId, track, laps, phase, weather; };
 struct PlayerSnap { uint8_t id, place; char name[NAMELEN]; CarState s; };                // place: 1-based, by the server
 struct Snapshot { Header h; uint32_t tick; uint8_t phase, track, laps, count, weather; float phaseT; PlayerSnap p[MAXP]; };
 struct Reject { Header h; uint8_t reason; };
+// The showdown. Each fighter's own game simulates them and reports this 30 times a second; the server relays it.
+// Health is the victim's to keep: a shooter only reports how much damage it has dealt to each fighter in total
+// (dealt[], tenths of a point, by slot), and each victim takes the increase off itself. claim is a bit for every
+// pick-up this fighter is standing on right now; the server gives each pick-up to the first claim it sees, and puts
+// it back SD_RESPAWN seconds later. The fighters report from the moment the showdown starts, while still driving.
+struct FootState {                                                                       // 40 bytes
+    float x, y, z, vx, vz, yaw;
+    uint8_t hp, armour, gun, flags, fireSeq, target, killedBy, pad;                      // fireSeq goes up with every shot; target, killedBy: a slot or NOBODY
+    uint16_t dealt[SD_FIGHT]; uint16_t claim;
+};
+struct Foot { Header h; uint32_t seq; FootState s; };                                    // C_FOOT
+struct SdDrop { float x, y, z; uint8_t kind, owner; };                                   // kind: a gun number, then medkit, armour. owner: the slot that took it, or NOBODY
+struct SdSetup { Header h; uint8_t n; SdDrop d[SD_DROPS]; };                             // C_SDSETUP: the race winner's game lays out the pick-ups (it knows the ground)
+struct Showdown {                                                                        // S_SHOWDOWN, 20 times a second while the phase is SHOWDOWN
+    Header h; uint32_t tick; uint8_t stage; float stageT, ring, siteU;                   // stageT: seconds into this stage; ring: its radius now; siteU: where it is, as a fraction of the lap
+    uint8_t fighter[SD_FIGHT], place[SD_FIGHT], kills[SD_FIGHT], winner, ndrops;         // fighter: player ids by slot (podium order) or NOBODY; place: 0 while still standing
+    FootState f[SD_FIGHT]; SdDrop d[SD_DROPS];
+};
 // Server browser: anyone may ask a server what it is running, without joining. The question is padded to be longer
 // than the answer, so a server cannot be used to flood a forged address. Answered whatever the asker's protocol.
 struct Query { Header h; uint32_t nonce; uint8_t pad[36]; };                             // 48 bytes

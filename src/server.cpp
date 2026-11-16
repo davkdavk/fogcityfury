@@ -3,6 +3,9 @@
 // The server owns the session: who is connected, which track is up, the lobby / countdown / race / results cycle,
 // finishing order and places. Each client simulates its own car and reports it; the server relays those states to
 // everyone 20 times a second. It does not simulate physics (see docs/NETWORK.md for what that implies).
+// After the race the top three finishers fight it out on foot (the showdown): the server picks them and where the ring
+// goes, starts the countdown once their cars are all in it, closes the ring, hands out the pick-ups (and puts them
+// back after a while) and records who went down in what order.
 #include "net.h"
 #include <cmath>
 #include <ctime>
@@ -19,23 +22,76 @@ struct Player { bool used = false; sockaddr_in addr; char name[NAMELEN + 1]; dou
 static Player P[MAXP];
 // wxMode 1: a new random weather for every race
 static int sock = -1, track = 0, laps = 3, weather = 0, wxMode = 0, finishCount = 0; static Phase phase = LOBBY; static double phaseT = -1, raceT = 0, firstFinish = -1, readySince = -1;
-static double cfgCountdown = 5, cfgResults = 12, cfgLobby = 0, cfgFinish = 45, cfgTimeout = 5; static bool quiet = false, fixedTrack = false; static volatile bool running = true;
+static double cfgCountdown = 5, cfgResults = 12, cfgLobby = 0, cfgFinish = 45, cfgTimeout = 5; static double cfgSite = -1; static bool quiet = false, fixedTrack = false, cfgShowdown = true; static volatile bool running = true;
+// the showdown: slots are in podium order
+struct Slot { int player = -1; bool heard = false, alive = false; int place = 0, kills = 0; uint32_t seq = 0; FootState s; };
+static Slot S[SD_FIGHT]; static SdStage sdStage = SD_DRIVE; static double sdT = 0, sdRing = SD_RING0, sdSiteU = 0.5, Dback[SD_DROPS]; static int sdFighters = 0, sdWinner = -1, sdDrops = 0; static SdDrop D[SD_DROPS];
+static int sdAlive() { int n = 0; for (auto& q : S) if (q.player >= 0 && q.alive) n++; return n; }
+static int slotOf(int player) { for (int k = 0; k < SD_FIGHT; k++) if (S[k].player == player) return k; return -1; }
 
 static double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 static void say(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 static void say(const char* fmt, ...) { if (quiet) return; va_list ap; va_start(ap, fmt); vprintf(fmt, ap); va_end(ap); printf("\n"); fflush(stdout); }
 static int count() { int c = 0; for (auto& p : P) if (p.used) c++; return c; }
-static const char* phaseName(Phase p) { static const char* n[4] = { "LOBBY", "COUNTDOWN", "RACE", "RESULTS" }; return n[p]; }
+static const char* phaseName(Phase p) { static const char* n[5] = { "LOBBY", "COUNTDOWN", "RACE", "RESULTS", "SHOWDOWN" }; return n[p]; }
 
 static void setPhase(Phase p, double t) {
     phase = p; phaseT = t; say("phase %s  track %d  weather %d  players %d", phaseName(p), track, weather, count());
     if (p == LOBBY) { readySince = -1; for (auto& q : P) { q.ready = false; q.racing = false; q.finished = false; } }
-    if (p == COUNTDOWN) { finishCount = 0; firstFinish = -1; raceT = 0; for (auto& q : P) { q.racing = q.used; q.finished = false; q.finishT = 0; q.finishOrder = 0; } }
+    if (p == COUNTDOWN) { sdFighters = 0; finishCount = 0; firstFinish = -1; raceT = 0; for (auto& q : P) { q.racing = q.used; q.finished = false; q.finishT = 0; q.finishOrder = 0; } }
     if (p == RESULTS) {
         say("results:"); int order[MAXP], n = 0; for (int i = 0; i < MAXP; i++) if (P[i].used && P[i].racing) order[n++] = i;
         sortIdx(order, n, [](int a, int b) { if (P[a].finished != P[b].finished) return P[a].finished; return P[a].finished ? P[a].finishOrder < P[b].finishOrder : P[a].s.progress > P[b].s.progress; });
         for (int k = 0; k < n; k++) { const Player& q = P[order[k]]; if (q.finished) say("  %d. %-16s %.2f s", k + 1, q.name, q.finishT); else say("  %d. %-16s DNF", k + 1, q.name); }
+        if (sdFighters) { say("showdown:"); for (int pl = 1; pl <= SD_FIGHT; pl++) for (auto& q : S) if (q.player >= 0 && q.place == pl) say("  %d. %-16s %d down", pl, P[q.player].name, q.kills); }
     }
+}
+// the race is over: the first three across the line go into the showdown. False if there are not two of them
+static bool startShowdown() {
+    int order[MAXP], n = 0; for (int i = 0; i < MAXP; i++) if (P[i].used && P[i].racing && P[i].finished) order[n++] = i;
+    sortIdx(order, n, [](int a, int b) { return P[a].finishOrder < P[b].finishOrder; });
+    sdFighters = 0; if (!cfgShowdown || n < 2) return false;
+    for (int k = 0; k < SD_FIGHT; k++) { S[k] = Slot(); memset(&S[k].s, 0, sizeof S[k].s); if (k < n) { S[k].player = order[k]; S[k].alive = true; sdFighters++; } }
+    sdStage = SD_DRIVE; sdT = 0; sdRing = SD_RING0; sdWinner = -1; sdDrops = 0; memset(D, 0, sizeof D); memset(Dback, 0, sizeof Dback);
+    sdSiteU = cfgSite >= 0 ? cfgSite : 0.25 + 0.45 * (rand() / (RAND_MAX + 1.0));   // a different stretch of road every time
+    setPhase(SHOWDOWN, 0); for (int k = 0; k < sdFighters; k++) say("  fighter %d: %s", k + 1, P[S[k].player].name);
+    return true;
+}
+static void sdDown(int k, int by) {   // slot k is out: placed behind everyone still standing
+    Slot& q = S[k]; if (!q.alive) return; q.place = sdAlive(); q.alive = false;
+    if (by >= 0 && by < SD_FIGHT && by != k && S[by].player >= 0) S[by].kills++;
+    say("showdown: %s is down (%d left)", P[q.player].name, sdAlive());
+}
+static void stepShowdown(double dt) {
+    sdT += dt;
+    for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive && !P[S[k].player].used) sdDown(k, -1);   // left the server
+    if (sdStage == SD_DRIVE) {   // the countdown starts when every fighter's car is in the ring (or they have had long enough)
+        bool all = true; for (auto& q : S) if (q.player >= 0 && q.alive && !(q.heard && (q.s.flags & FF_ARRIVED))) all = false;
+        if (all || sdT >= SD_DRIVE_MAX) { sdStage = SD_PREP; sdT = 0; say("showdown: all in the ring"); }
+    }
+    else if (sdStage == SD_PREP) { if (sdT >= SD_PREP_LEN) { sdStage = SD_LIVE; sdT = 0; say("showdown: fight (%d pick-ups)", sdDrops); } }
+    else if (sdStage == SD_LIVE) {
+        for (int k = 0; k < SD_FIGHT; k++) { Slot& q = S[k]; if (q.player < 0 || !q.alive || !q.heard) continue;
+            if (!(q.s.flags & FF_ALIVE)) sdDown(k, q.s.killedBy == NOBODY ? -1 : q.s.killedBy); }
+        // the ring: with three it closes slowly, then hard once two are left; a two-way fight closes all the way in its own time
+        double u = std::min(1.0, sdT / (sdFighters >= 3 ? SD_SHRINK : SD_SHRINK * 1.3)), tgt = sdFighters >= 3 ? (sdAlive() <= 2 ? SD_RING_END : SD_RING0 + (SD_RING_MID - SD_RING0) * u) : SD_RING0 + (SD_RING_END - SD_RING0) * u;
+        sdRing += (tgt - sdRing) * (1 - exp(-0.9 * dt));
+        if (sdT > SD_MAX_FIGHT) while (sdAlive() > 1) { int w = -1; for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive && (w < 0 || S[k].s.hp < S[w].s.hp)) w = k; sdDown(w, -1); }   // out of time: the healthiest takes it
+        if (sdAlive() <= 1) {
+            sdWinner = -1; for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive) { sdWinner = k; S[k].place = 1; }
+            if (sdWinner < 0) for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].place == 1) sdWinner = k;
+            sdStage = SD_OVER; sdT = 0; say("showdown: %s takes it", sdWinner >= 0 ? P[S[sdWinner].player].name : "nobody");
+        }
+    } else if (sdT >= SD_OVER_LEN) setPhase(RESULTS, cfgResults);
+    // pick-ups: the first live fighter to claim one has it; it is back on the ground SD_RESPAWN seconds later
+    for (int i = 0; i < sdDrops; i++) if (D[i].owner != NOBODY) { Dback[i] -= dt; if (Dback[i] <= 0) D[i].owner = NOBODY; }
+    for (int i = 0; i < sdDrops; i++) if (D[i].owner == NOBODY) for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive && S[k].heard && (S[k].s.claim >> i & 1)) { D[i].owner = (uint8_t)k; Dback[i] = SD_RESPAWN * (D[i].kind == SD_SLOW_KIND ? 3 : 1); break; }
+}
+static void sendShowdown(uint32_t tick) {
+    Showdown m; memset(&m, 0, sizeof m); m.h = header(S_SHOWDOWN, 0xFF); m.tick = tick; m.stage = sdStage; m.stageT = (float)sdT; m.ring = (float)sdRing; m.siteU = (float)sdSiteU; m.winner = sdWinner < 0 ? NOBODY : (uint8_t)sdWinner; m.ndrops = (uint8_t)sdDrops;
+    for (int k = 0; k < SD_FIGHT; k++) { const Slot& q = S[k]; m.fighter[k] = q.player < 0 ? NOBODY : (uint8_t)q.player; m.place[k] = (uint8_t)q.place; m.kills[k] = (uint8_t)q.kills; m.f[k] = q.s; if (!q.alive) m.f[k].flags &= ~FF_ALIVE; }
+    memcpy(m.d, D, sizeof D);
+    for (int i = 0; i < MAXP; i++) if (P[i].used) sendTo(sock, P[i].addr, &m, sizeof m);
 }
 static char serverName[24] = "FOG CITY FURY SERVER";   // --name: shown in the game's server list
 static void drop(int i, const char* why) { say("player %d (%s) left: %s", i, P[i].name, why); P[i].used = false; }
@@ -77,12 +133,22 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
             say("player %d (%s) finished %d in %.2f s", who, p.name, p.finishOrder, p.finishT);
         }
         p.s.flags = flags;
+    } else if (h.type == C_FOOT && len >= (int)sizeof(Foot) && who >= 0 && h.id == who && phase == SHOWDOWN) {
+        Foot ft; memcpy(&ft, buf, sizeof ft); int k = slotOf(who); P[who].lastHeard = t; if (k < 0) return;
+        if (S[k].heard && ft.seq < S[k].seq && S[k].seq - ft.seq < 100000) return;
+        const float* f = &ft.s.x; for (int i = 0; i < 6; i++) if (!std::isfinite(f[i])) return;
+        S[k].seq = ft.seq; S[k].s = ft.s; S[k].heard = true;
+    } else if (h.type == C_SDSETUP && len >= (int)sizeof(SdSetup) && who >= 0 && h.id == who && phase == SHOWDOWN) {   // the winner's game says where the pick-ups lie (once)
+        SdSetup su; memcpy(&su, buf, sizeof su); P[who].lastHeard = t;
+        if (slotOf(who) != 0 || sdDrops > 0 || sdStage == SD_LIVE || sdStage == SD_OVER || su.n > SD_DROPS) return;
+        for (int i = 0; i < su.n; i++) { if (!std::isfinite(su.d[i].x) || !std::isfinite(su.d[i].y) || !std::isfinite(su.d[i].z)) return; }
+        for (int i = 0; i < su.n; i++) { D[i] = su.d[i]; D[i].owner = NOBODY; } sdDrops = su.n;
     } else if (h.type == C_LEAVE && who >= 0) drop(who, "quit");
 }
 
 static void sendSnapshots(uint32_t tick) {
     Snapshot sn; memset(&sn, 0, sizeof sn); sn.h = header(S_SNAPSHOT, 0xFF); sn.tick = tick; sn.phase = phase; sn.track = (uint8_t)track; sn.laps = (uint8_t)laps; sn.weather = (uint8_t)weather;
-    sn.phaseT = (float)(phase == RACE ? raceT : phaseT);
+    sn.phaseT = (float)(phase == RACE ? raceT : phase == SHOWDOWN ? sdT : phaseT);
     int idx[MAXP], n = 0; for (int i = 0; i < MAXP; i++) if (P[i].used) idx[n++] = i;
     // places: finishers in order, then everyone still racing by distance covered, then spectators
     int order[MAXP]; for (int k = 0; k < n; k++) order[k] = idx[k];
@@ -107,7 +173,7 @@ int main(int argc, char** argv) {
         else if (a == "--weather") { const char* v = next(); if (!strcmp(v, "random")) { wxMode = 1; weather = 1; } else weather = ((atoi(v) % 4) + 4) % 4; }
         else if (a == "--name") { snprintf(serverName, sizeof serverName, "%s", next()); for (char* c = serverName; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--fixed-track") fixedTrack = true; else if (a == "--countdown") cfgCountdown = atof(next()); else if (a == "--results") cfgResults = atof(next());
-        else if (a == "--lobby") cfgLobby = atof(next()); else if (a == "--finish-timeout") cfgFinish = atof(next()); else if (a == "--timeout") cfgTimeout = atof(next()); else if (a == "--quiet") quiet = true;
+        else if (a == "--lobby") cfgLobby = atof(next()); else if (a == "--finish-timeout") cfgFinish = atof(next()); else if (a == "--timeout") cfgTimeout = atof(next()); else if (a == "--quiet") quiet = true; else if (a == "--no-showdown") cfgShowdown = false; else if (a == "--showdown-site") cfgSite = std::max(0.0, std::min(0.99, atof(next())));
         else {
             printf("fogcityfury-server [--port %d] [--laps 3] [--track 0-%d] [--fixed-track] [--countdown 5] [--results 12]\n"
                    "                   [--weather 0-3|random] [--lobby SECONDS] [--finish-timeout 45] [--timeout 5] [--quiet]\n"
@@ -115,14 +181,16 @@ int main(int argc, char** argv) {
                    "  --name NAME        what this server is called in the game's server list\n"
                    "  --lobby S          start S seconds after the first player is ready (default 0: wait until everyone is ready)\n"
                    "  --finish-timeout S end the race S seconds after the winner finishes\n"
-                   "  --fixed-track      stay on the same track instead of rotating\n", DEFPORT, TRACKS - 1);
+                   "  --fixed-track      stay on the same track instead of rotating\n"
+                   "  --no-showdown      end at the race results (by default the top three finishers then fight it out on foot)\n"
+                   "  --showdown-site U  always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race\n", DEFPORT, TRACKS - 1);
             return a == "--help" ? 0 : 2;
         }
     }
     sock = openUdp(port); if (sock < 0) { fprintf(stderr, "cannot bind UDP port %d\n", port); return 1; }
     signal(SIGINT, [](int) { running = false; }); signal(SIGTERM, [](int) { running = false; });
     say("Fog City Fury server: UDP port %d, protocol %d, %d laps, up to %d players", port, PROTO, laps, MAXP);
-    setPhase(LOBBY, -1);
+    srand((unsigned)time(nullptr)); setPhase(LOBBY, -1);
     double last = now(), lastSnap = 0; uint32_t tick = 0;
     while (running) {
         double t = now(), dt = t - last; last = t;
@@ -141,11 +209,12 @@ int main(int argc, char** argv) {
         case RACE:
             raceT += dt;
             if (racing == 0) setPhase(LOBBY, -1);
-            else if (done == racing || (firstFinish >= 0 && raceT - firstFinish > cfgFinish) || raceT > 1200) setPhase(RESULTS, cfgResults);
+            else if (done == racing || (cfgShowdown && done >= SD_FIGHT) || (firstFinish >= 0 && raceT - firstFinish > cfgFinish) || raceT > 1200) { if (!startShowdown()) setPhase(RESULTS, cfgResults); }   // (with a showdown, the podium ends the race)
             break;
+        case SHOWDOWN: if (racing == 0) setPhase(LOBBY, -1); else stepShowdown(dt); break;
         case RESULTS: phaseT -= dt; if (phaseT <= 0) { if (!fixedTrack) track = (track + 1) % TRACKS; if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
         }
-        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); }
+        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); }
         sleepMs(4);
     }
     say("shutting down"); closeSock(sock); return 0;

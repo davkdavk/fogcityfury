@@ -326,11 +326,14 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 3
+NET_MAGIC, NET_PROTO = 0x59464346, 4
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
-C_JOIN, C_STATE, C_LEAVE, S_WELCOME, S_SNAPSHOT, S_REJECT = 1, 2, 3, 16, 17, 18
-LOBBY, COUNTDOWN, RACE, RESULTS = 0, 1, 2, 3
+C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
+LOBBY, COUNTDOWN, RACE, RESULTS, SHOWDOWN = 0, 1, 2, 3, 4
+FOOTSTATE, SDDROP = "<6f8B3HH", "<3fBB"   # FootState (40 bytes), SdDrop (14 bytes)
+SD_DRIVE, SD_PREP, SD_LIVE, SD_OVER = 0, 1, 2, 3
+FF_ON, FF_ALIVE, FF_ARRIVED, NOBODY = 1, 2, 32, 255
 F_READY, F_FINISHED, F_NITRO, F_RACING = 1, 8, 16, 32
 
 
@@ -388,6 +391,40 @@ class FakeClient:
     def send_raw(self, data):
         self.sock.sendto(data, self.addr)
 
+    def foot(self, pos=(0.0, 0.0, 0.0), hp=100, alive=True, killed_by=NOBODY, dealt=(0, 0, 0), claim=0, fire=0, arrived=True):
+        """Report our fighter in the showdown (dealt: tenths of a health point, by slot)."""
+        self.fseq = getattr(self, "fseq", 0) + 1
+        fs = struct.pack(FOOTSTATE, pos[0], pos[1], pos[2], 0, 0, 0, max(0, min(255, int(hp))), 0, 0, FF_ON | (FF_ALIVE if alive else 0) | (FF_ARRIVED if arrived else 0), fire, NOBODY, killed_by, 0, dealt[0], dealt[1], dealt[2], claim)
+        self.sock.sendto(self.hdr(C_FOOT) + struct.pack("<I", self.fseq) + fs, self.addr)
+
+    def setup(self, drops):
+        """The race winner lays out the pick-ups: a list of (x, y, z, kind)."""
+        body = b"".join(struct.pack(SDDROP, x, y, z, kind, NOBODY) for x, y, z, kind in drops) + b"\0" * (14 * (12 - len(drops)))
+        self.sock.sendto(self.hdr(C_SDSETUP) + struct.pack("<B", len(drops)) + body, self.addr)
+
+    def showdown(self):
+        """Newest showdown message (drains the socket), or None. Also remembers the newest snapshot's phase in self.phase_seen."""
+        last = None
+        self.sock.settimeout(0.3)
+        try:
+            while True:
+                data, _ = self.sock.recvfrom(4096)
+                kind = struct.unpack(HDR, data[:8])[2]
+                if kind == S_SHOWDOWN:
+                    last = data
+                elif kind == S_SNAPSHOT:
+                    self.phase_seen = data[12]
+                self.sock.settimeout(0.0)
+        except (socket.timeout, BlockingIOError):
+            pass
+        if last is None:
+            return None
+        tick, stage, stage_t, ring, site = struct.unpack("<IBfff", last[8:25])
+        b = last[25:36]
+        feet = [dict(zip(("x", "y", "z", "vx", "vz", "yaw", "hp", "armour", "gun", "flags", "fire", "target", "killedBy", "pad", "d0", "d1", "d2", "claim"), struct.unpack(FOOTSTATE, last[36 + k * 40:76 + k * 40]))) for k in range(3)]
+        drops = [dict(zip(("x", "y", "z", "kind", "owner"), struct.unpack(SDDROP, last[156 + i * 14:170 + i * 14]))) for i in range(b[10])]
+        return dict(stage=stage, stageT=stage_t, ring=ring, site=site, fighter=list(b[0:3]), place=list(b[3:6]), kills=list(b[6:9]), winner=b[9], feet=feet, drops=drops, size=len(last))
+
     def snapshot(self):
         """Newest snapshot the server has sent us (drains the socket), or None."""
         last = None
@@ -422,7 +459,7 @@ def _keepalive(clients, seconds, **kw):
 
 @test
 def net_server_runs_a_full_race_cycle():
-    with Server("--laps", 1, "--countdown", 0.4, "--results", 0.5, "--track", 2, "--weather", 3) as srv:
+    with Server("--laps", 1, "--countdown", 0.4, "--results", 0.5, "--track", 2, "--weather", 3, "--no-showdown") as srv:
         a, b = FakeClient(srv.port, "ALICE"), FakeClient(srv.port, "BOB")
         check(a.join()[0] == S_WELCOME and b.join()[0] == S_WELCOME, "both clients are welcomed")
         check(a.id != b.id and a.id < 8 and b.id < 8, "distinct player ids", (a.id, b.id))
@@ -671,6 +708,112 @@ def net_rocket_hits_are_relayed():
         check(sn["players"]["B"]["hitSeq"] == 0, "B itself has hit nobody", sn["players"]["B"]["hitSeq"])
 
 
+def _race_to_the_line(clients):
+    """Ready up, wait for the race, and return once it is on."""
+    for _ in range(100):
+        for c in clients:
+            c.state(flags=F_READY)
+        sn = clients[0].snapshot()
+        if sn and sn["phase"] == RACE:
+            return
+    raise RuntimeError("the race never started")
+
+
+@test
+def net_showdown_server_runs_the_podium_fight():
+    """Three protocol-level clients: the server picks the podium, takes the pick-ups from the winner, gives each to one claimer, and places the fallen."""
+    with Server("--laps", 1, "--countdown", 0.3, "--results", 0.6) as srv:
+        a, b, c = cl = [FakeClient(srv.port, n) for n in ("ALICE", "BOB", "CAROL")]
+        for x in cl:
+            x.join()
+        _race_to_the_line(cl)
+        for x in cl:   # they cross the line in this order
+            x.state(flags=F_FINISHED, lap=2, progress=3400)
+            time.sleep(0.12)
+        dealt = [0, 0, 0]
+
+        def tick(alive=(True, True, True), killed_by=NOBODY, claims=(0, 0, 0), arrived=(True, True, True)):
+            for k, x in enumerate(cl):
+                x.state(flags=F_FINISHED, lap=2, progress=3400)
+                x.foot(pos=(10.0 * k, 1.0, 5.0), hp=100 if alive[k] else 0, alive=alive[k], killed_by=killed_by, dealt=dealt if k == 0 else (0, 0, 0), claim=claims[k], arrived=arrived[k])
+            time.sleep(0.05)
+            return a.showdown()
+
+        def until(pred, limit, **kw):
+            t0, m = time.time(), None
+            while time.time() - t0 < limit:
+                m = tick(**kw) or m
+                if m and pred(m):
+                    return m
+            raise RuntimeError("timed out waiting on the showdown: %s" % (m and {k: m[k] for k in ("stage", "stageT", "place", "winner")}))
+
+        m = until(lambda m: True, 2, arrived=(True, True, False))
+        check(a.phase_seen == SHOWDOWN and m["fighter"] == [a.id, b.id, c.id] and m["stage"] == SD_DRIVE, "three finishers: the showdown, in podium order", (a.phase_seen, m["fighter"], m["stage"]))
+        check(m["size"] == 324 and 0.25 <= m["site"] <= 0.7, "the showdown message is 324 bytes and says where the ring is", (m["size"], m["site"]))
+        b.setup([(9.0, 9.0, 9.0, 0)])
+        a.setup([(1.0, 2.0, 3.0, 1), (4.0, 5.0, 6.0, 4)])
+        m = until(lambda m: len(m["drops"]) > 0, 2, arrived=(True, True, False))
+        check(len(m["drops"]) == 2 and abs(m["drops"][1]["x"] - 4.0) < 1e-4 and m["drops"][1]["kind"] == 4, "only the race winner lays out the pick-ups", m["drops"])
+        m = until(lambda m: m["drops"][0]["owner"] != NOBODY, 3, claims=(0, 1, 1), arrived=(True, True, False))
+        check(m["drops"][0]["owner"] in (1, 2) and m["drops"][1]["owner"] == NOBODY, "two claim the same pick-up: one of them gets it", m["drops"])
+        check(m["stage"] == SD_DRIVE, "the countdown waits while one car is still on its way", m["stage"])
+        m = until(lambda m: m["stage"] == SD_PREP, 2)
+        m = until(lambda m: m["drops"][0]["owner"] == NOBODY, 17)
+        check(m["stage"] == SD_PREP, "all in: the countdown runs, and the pick-up that was taken is back before it ends", (m["stage"], m["stageT"]))
+        m = until(lambda m: m["stage"] == SD_LIVE, 22)
+        check(all(f["flags"] & FF_ALIVE for f in m["feet"]) and abs(m["feet"][2]["x"] - 20.0) < 1e-3 and m["ring"] > 45, "the fight starts with everyone standing, their reports relayed", (m["feet"][2]["x"], m["ring"]))
+        dealt[2] = 1000
+        m = until(lambda m: m["place"][2] != 0, 3, alive=(True, True, False), killed_by=0)
+        check(m["place"] == [0, 0, 3] and m["kills"][0] == 1 and m["feet"][0]["d2"] == 1000 and m["stage"] == SD_LIVE, "first down is third, the kill is credited, and the damage report is relayed", (m["place"], m["kills"], m["feet"][0]["d2"]))
+        m = until(lambda m: m["stage"] == SD_OVER, 3, alive=(True, False, False), killed_by=0)
+        check(m["place"] == [1, 2, 3] and m["winner"] == 0 and m["kills"][0] == 2, "last one standing wins", (m["place"], m["winner"], m["kills"]))
+        until(lambda m: a.phase_seen == RESULTS, 9, alive=(True, False, False))
+    check("showdown:" in srv.log and "1. ALICE" in srv.log and "2 down" in srv.log, "the server log has the showdown table", srv.log[-300:])
+
+
+@test
+def net_showdown_game_client_fights_a_remote_fighter():
+    """A real (headless) game client, driven by the bot brain, against a protocol-level fighter that just stands there."""
+    with Server("--laps", 1, "--countdown", 0.5, "--results", 60, "--showdown-site", 0.3) as srv:
+        game = subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", "hero", "--ready", "--sdnow", "--auto", "--footai", "--keys", "5", "--seconds", "95"], stdout=subprocess.PIPE, text=True)
+        f = FakeClient(srv.port, "DUMMY")
+        f.join()
+        hero_done = False
+        for _ in range(200):   # let the game cross the line first, then follow it over
+            f.state(flags=F_READY)
+            sn = f.snapshot()
+            if sn and sn["phase"] == RACE and "HERO" in sn["players"] and sn["players"]["HERO"]["flags"] & F_FINISHED:
+                hero_done = True
+                break
+        check(hero_done, "the game finished its race")
+        pos, hp, seen, m, took, max_hp_lost_in_prep = None, 100.0, 0, None, False, 0
+        t0 = time.time()
+        while time.time() - t0 < 88 and getattr(f, "phase_seen", RACE) != RESULTS:
+            f.state(flags=F_FINISHED, lap=2, progress=3400)
+            m = f.showdown() or m
+            if not m:
+                continue
+            hero = m["feet"][0]
+            if pos is None and hero["flags"] & FF_ON:   # the game is out of its car, in the ring: stand a few metres off
+                pos = (hero["x"] + 7.0, hero["y"], hero["z"])
+            if m["stage"] == SD_LIVE:
+                hp -= ((hero["d1"] - seen) & 0xFFFF) / 10.0
+            seen = hero["d1"]
+            took = took or any(d["owner"] == 0 for d in m["drops"])
+            if pos:
+                f.foot(pos=pos, hp=hp, alive=hp > 0, killed_by=0 if hp <= 0 else NOBODY)
+            else:   # still "driving": reported as in the ring, but not out of the car yet
+                f.sock.sendto(f.hdr(C_FOOT) + struct.pack("<I", 1) + struct.pack(FOOTSTATE, 0, 0, 0, 0, 0, 0, 100, 0, 0, FF_ALIVE | FF_ARRIVED, 0, NOBODY, NOBODY, 0, 0, 0, 0, 0), f.addr)
+        check(m is not None and m["fighter"][0] != f.id and m["fighter"][1] == f.id and m["fighter"][2] == NOBODY, "two finishers: a two-way showdown, the game in slot 0", m and m["fighter"])
+        check(len(m["drops"]) == 11 and took, "the game laid out eleven pick-ups and took at least one through the server", (len(m["drops"]), took))
+        check(hp <= 0 and m["winner"] == 0 and m["place"][:2] == [1, 2] and m["kills"][0] == 1, "its shots brought the other fighter down and the server gave it the win", (hp, m["winner"], m["place"], m["kills"]))
+        d = json.loads(game.communicate(timeout=60)[0].strip().splitlines()[-1])
+    fs = fighters(d)
+    check(d["netShdCount"] == 1 and d["netSlot"] == 0 and d["netError"] == "", "the game went through one showdown, connected throughout", (d["netShdCount"], d["netSlot"], d["netError"]))
+    check(fs[0]["alive"] == 1 and fs[1]["on"] == 1 and fs[1]["alive"] == 0 and fs[0]["kills"] == 1 and d["footHits"] > 0, "on its side: the other fighter is down, and the kill is its own", (d["fighters"], d["footHits"]))
+    check(d["state"] == 5 and d["netPhase"] == RESULTS, "and it ends on the online results", (d["state"], d["netPhase"]))
+
+
 # ----------------------------------------------------------------------------- options: controls and video
 def _home():
     home = tempfile.mkdtemp(prefix="fcf_cfg_")
@@ -761,8 +904,8 @@ def touch_buttons_drive_the_car_and_the_menus():
     check(math.hypot(d["walkX"] - out["walkX"], d["walkZ"] - out["walkZ"]) > 10, "the thumb-stick pushed forward runs", (d["walkX"], d["walkZ"]))
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--tap", "0.8:CAR", seconds=1.2)
     check(d["onFoot"] == 0 and d["touchBtns"].startswith("<,>,GAS"), "CAR gets back in", (d["onFoot"], d["touchBtns"]))
-    d = sim("--touch", "--state", 3, "--mode", 2, "--track", 0, "--sdnow", seconds=6)
-    check(d["touchBtns"] == "FIRE,ROLL,RUN,GUN,II,SKIP", "in the showdown there is no car to go back to", d["touchBtns"])
+    d = sim("--touch", *SHOW, seconds=prep_at() + 2)
+    check(d["onFoot"] == 1 and d["touchBtns"] == "FIRE,ROLL,RUN,GUN,II,SKIP", "in the showdown there is no car to go back to", d["touchBtns"])
 
 
 # ----------------------------------------------------------------------------- nitro
@@ -1009,15 +1152,28 @@ def main():
 
 
 # ----------------------------------------------------------------------------- on foot, guns, the showdown
-# Test hooks: --faceai (step out facing the nearest racer), --gun N (holding that gun), --sdnow / --sdplace N (as if you had
-# just finished the race in that place), --footai (a bot plays your fighter). Fighters report as on|alive|hp|gun|kills|place.
+# Test hooks: --faceai (step out facing the nearest racer), --gun N (holding that gun), --keys N (as if N keys were found),
+# --sdnow / --sdplace N (as if you had just finished the race in that place), --sdsite U (the ring goes that far round the
+# lap), --footai (a bot plays your fighter), --auto (the autopilot drives). Fighters report as on|alive|hp|gun|kills|place.
 FOOT = ("--track", 0, "--state", 3, "--mode", 1, "--press", "0.05:G")
-SHOW = ("--state", 3, "--mode", 2, "--sdnow")
-T_PREP, T_FIGHT = 4.6, 19.6          # when the countdown and the fight start, seconds after the finish (1.3 beat + 3.2 fly-down + 15)
+# the showdown: you have just won the race, the autopilot drives you to the ring (30% of the way round the lap), all guns unlocked
+SHOW = ("--track", 0, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--sdsite", 0.3)
 
 
 def fighters(d):
     return [dict(zip(("on", "alive", "hp", "gun", "kills", "place"), (int(v) for v in f.split("|")))) for f in d["fighters"].split(";")]
+
+
+def prep_at():
+    """When the showdown's countdown starts in the SHOW scenario (seconds into the run): all three cars are in the ring by then."""
+    if "t" not in _prep:
+        d = sim(*SHOW, seconds=45)
+        check(d["shdPhase"] >= 2 and 5 < d["prepAt"] < 45, "everyone reaches the ring and the countdown starts", (d["shdPhase"], d["prepAt"]))
+        _prep["t"] = d["prepAt"]
+    return _prep["t"]
+
+
+_prep = {}
 
 
 @test
@@ -1073,76 +1229,84 @@ def foot_sprint_and_roll_cost_stamina():
 def guns_lock_on_and_hurt_the_racers():
     base = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--faceai", seconds=1.5)
     check(base["aiMinHp"] == 100.0 and base["footShots"] == 0 and base["lock"] == -1, "nothing is locked or hit before the trigger is pulled", (base["aiMinHp"], base["lock"]))
-    for gun, name, shots in ((0, "pistol", 3), (1, "SMG", 8), (2, "shotgun", 1), (3, "launcher", 1)):
+    for gun, name, shots in ((1, "pistol", 3), (2, "rifle", 2), (3, "SMG", 8), (4, "shotgun", 1), (5, "launcher", 1)):
         d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", gun, seconds=1.5)
         check(d["footShots"] >= shots, "%s: holding fire keeps shooting" % name, d["footShots"])
         check(d["aiMinHp"] < 100 or d["aiDead"] > 0, "%s: the racer it locked on to is hurt" % name, (d["aiMinHp"], d["aiDead"]))
-    d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 2, seconds=4)
+    d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 4, seconds=4)
     check(d["aiDead"] >= 1 and d["wrecks"] >= 1, "enough of it wrecks the car", (d["aiDead"], d["wrecks"]))
 
 
 @test
-def guns_run_dry_and_fall_back_to_the_pistol():
-    d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", seconds=12)
-    check(d["gun"] == 0 and d["footShots"] > 90, "the SMG you carry empties (90 rounds); the pistol never does", (d["gun"], d["footShots"]))
+def guns_need_keys():
+    for keys, gun, name in ((0, 0, "fists"), (1, 1, "the pistol"), (2, 2, "the rifle"), (4, 4, "the shotgun"), (5, 5, "the launcher")):
+        d = sim(*FOOT, "--keys", keys, seconds=1)
+        check(d["gun"] == gun, "%d keys found: the best you carry is %s" % (keys, name), d["gun"])
+    d = sim(*SHOW[:-4], "--keys", 1, "--sdsite", 0.3, "--footai", seconds=prep_at() + 19)
+    check(d["shdPhase"] == 2 and all(f["gun"] <= 1 for f in fighters(d)), "one key: nobody can pick a gun up off the ground", d["fighters"])
+    d = sim(*SHOW, "--footai", seconds=prep_at() + 19)
+    check(max(f["gun"] for f in fighters(d)) >= 3, "five keys: the guns on the ground can be taken", d["fighters"])
 
 
 @test
 def showdown_is_for_the_top_three():
-    d = sim("--track", 0, *SHOW, "--sdplace", 4, seconds=3)
+    d = sim(*SHOW, "--sdplace", 4, seconds=3)
     check(d["state"] == 5 and d["shdPhase"] == 0 and d["onFoot"] == 0, "fourth place: straight to the results", (d["state"], d["shdPhase"]))
     for place, armour in ((1, 50), (2, 25), (3, 0)):
-        d = sim("--track", 0, *SHOW, "--sdplace", place, seconds=3)
-        check(d["shdPhase"] == 1 and d["onFoot"] == 1 and d["armour"] == armour, "place %d: into the showdown with %d armour" % (place, armour), (d["shdPhase"], d["armour"]))
+        d = sim(*SHOW, "--sdplace", place, seconds=3)
+        check(d["shdPhase"] == 1 and d["onFoot"] == 0 and d["armour"] == armour, "place %d: off to the ring, with %d armour waiting" % (place, armour), (d["shdPhase"], d["armour"]))
 
 
 @test
-def showdown_runs_intro_countdown_fight():
-    d = sim("--track", 0, *SHOW, seconds=1)
-    check(d["shdPhase"] == 1 and d["onFoot"] == 0, "the finish: still in the car, pulling up", (d["shdPhase"], d["onFoot"]))
-    d = sim("--track", 0, *SHOW, seconds=3)
+def showdown_drive_to_the_ring_then_countdown_then_fight():
+    t = prep_at()
+    d = sim(*SHOW, seconds=3)
+    check(d["shdPhase"] == 1 and d["onFoot"] == 0 and d["drops"] == 11 and d["aiDead"] == 3, "over the line: still driving, the pick-ups are down, the rest of the field is gone", (d["shdPhase"], d["onFoot"], d["drops"], d["aiDead"]))
+    start = (d["x"], d["z"])
+    d = sim(*SHOW, "--hold", "F", "--faceai", seconds=t + 19)
     fs = fighters(d)
-    check(d["shdPhase"] == 1 and all(f["on"] and f["alive"] for f in fs) and d["drops"] == 9, "the cut: three drivers out of their cars, nine pick-ups down", (d["shdPhase"], d["fighters"], d["drops"]))
-    check(d["aiDead"] == 3, "the rest of the field is gone", d["aiDead"])
-    d = sim("--track", 0, *SHOW, "--hold", "F", "--faceai", seconds=T_FIGHT - 1)
-    check(d["shdPhase"] == 2 and d["footShots"] == 0, "the countdown: nobody can shoot yet", (d["shdPhase"], d["footShots"]))
-    check(all(f["hp"] == 100 for f in fighters(d)), "so nobody is hurt", d["fighters"])
-    check(sum(f["gun"] > 0 for f in fighters(d)[1:]) >= 1 and d["drops"] < 9, "the others have used it to fetch guns", (d["fighters"], d["drops"]))
+    check(d["shdPhase"] == 2 and all(f["on"] for f in fs) and math.hypot(d["x"] - start[0], d["z"] - start[1]) > 200, "all three have driven to the ring and are out of their cars", (d["shdPhase"], d["fighters"]))
+    check(d["footShots"] == 0 and all(f["hp"] == 100 for f in fs), "the countdown: nobody can shoot yet, so nobody is hurt", (d["footShots"], d["fighters"]))
+    check(sum(f["gun"] > 1 for f in fs[1:]) >= 1 and d["dropsBack"] >= 1, "the others have fetched guns, and what was taken has started to come back", (d["fighters"], d["dropsBack"]))
     between(d["shdRing"], 51.9, 52.1, "the ring waits at full size")
-    d = sim("--track", 0, *SHOW, "--hold", "F", seconds=T_FIGHT + 6)
-    check(d["shdPhase"] >= 3 and d["footShots"] > 0, "then the guns are live", (d["shdPhase"], d["footShots"]))
+    d = sim(*SHOW, "--hold", "F", seconds=t + 20 + 6)
+    check(d["shdPhase"] >= 3 and d["footShots"] > 0, "twenty seconds after the last car is in, the guns are live", (d["shdPhase"], d["footShots"]))
+    other = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--sdsite", 0.6, seconds=60)
+    check(other["shdPhase"] >= 2 and math.hypot(other["x"] - d["x"], other["z"] - d["z"]) > 150, "another race, another place: the ring is somewhere else", (other["x"], other["z"], d["x"], d["z"]))
 
 
 @test
 def showdown_ring_burns_and_closes():
-    d = sim("--track", 0, *SHOW, "--hold", "S", seconds=T_FIGHT - 1)
+    t = prep_at()
+    d = sim(*SHOW, "--hold", "S", seconds=t + 19)
     check(d["walkHp"] == 100, "running off during the countdown costs nothing", d["walkHp"])
-    d = sim("--track", 0, *SHOW, "--hold", "S", seconds=T_FIGHT + 30)
+    d = sim(*SHOW, "--hold", "S", "--press", "%.1f:R" % (t + 5), "--press", "%.1f:G" % (t + 6), seconds=t + 20 + 40)
     fs = fighters(d)
-    check(fs[0]["alive"] == 0 and fs[0]["place"] == 3 and d["footShots"] == 0, "outside the ring you burn: first out is third", d["fighters"])
+    check(fs[0]["alive"] == 0 and d["footShots"] == 0, "outside the ring you burn", d["fighters"])
     check(d["shdRing"] < 24, "with two left the ring closes right in", d["shdRing"])
+    check(d["onFoot"] == 1 and d["resets"] == 0, "and there is no resetting or driving out of it", (d["onFoot"], d["resets"]))
+
+
+@test
+def blood_and_the_grenade_launcher():
+    t = prep_at()
+    d = sim(*SHOW, "--hold", "F", "--faceai", "--gun", 3, seconds=t + 20 + 5)
+    check(d["footHits"] > 0 and d["splats"] > 0, "bullets draw blood: it is left on the ground", (d["footHits"], d["splats"]))
+    d = sim(*SHOW, "--footai", "--gun", 5, seconds=t + 20 + 12)
+    fs = fighters(d)
+    check(d["gibs"] >= 1 and sum(1 for f in fs if not f["alive"]) >= d["gibs"], "a grenade landing beside someone kills them outright and leaves pieces", (d["gibs"], d["fighters"]))
 
 
 @test
 def showdown_always_ends_with_one_winner():
     for track in range(NTRACKS):
-        d = sim("--track", track, *SHOW, "--footai", seconds=170)
+        d = sim("--track", track, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--footai", seconds=240)
         fs = fighters(d)
-        check(d["state"] == 5 and d["shdResult"] == 1, "track %d: the showdown reaches its results" % track, (d["state"], d["shdPhase"], d["fighters"]))
+        check(d["state"] == 5 and d["shdResult"] == 1, "track %d: the showdown reaches its results" % track, (d["state"], d["shdPhase"], d["prepAt"], d["fighters"]))
         check(sorted(f["place"] for f in fs) == [1, 2, 3], "track %d: first, second and third are all decided" % track, d["fighters"])
-        check(fs[d["shdWinner"]]["place"] == 1 and sum(f["alive"] for f in fs) <= 1, "track %d: the winner is the last one standing" % track, d["fighters"])
+        alive = sum(f["alive"] for f in fs)   # (if you go down early and the other two take their time, they are placed by health)
+        check(alive == 1 or (alive == 2 and not fs[0]["alive"]), "track %d: the winner is the last one standing" % track, d["fighters"])
         check(sum(f["kills"] for f in fs) >= 1, "track %d: it was settled with guns, not just the ring" % track, d["fighters"])
-
-
-@test
-def showdown_can_be_skipped_once_you_are_out():
-    d = sim("--track", 0, *SHOW, "--hold", "S", "--press", "%.1f:RETURN" % (T_FIGHT + 13), seconds=T_FIGHT + 13.5)
-    check(d["state"] == 5 and d["shdResult"] == 1 and d["shdPlace"] == 3, "Enter goes to the results; the two still standing are placed by health", (d["state"], d["fighters"]))
-    check(sorted(f["place"] for f in fighters(d)) == [1, 2, 3], "all three places are filled", d["fighters"])
-    d = sim("--track", 0, *SHOW, "--press", "2:RETURN", seconds=2.5)
-    check(d["shdPhase"] == 2, "and Enter skips the fly-down", d["shdPhase"])
-    d = sim("--track", 0, *SHOW, "--press", "10:R", "--press", "11:G", seconds=12)
-    check(d["onFoot"] == 1 and d["resets"] == 0, "no resetting or driving out of a showdown", (d["onFoot"], d["resets"]))
 
 
 if __name__ == "__main__":
