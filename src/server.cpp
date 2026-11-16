@@ -25,7 +25,7 @@ static int sock = -1, track = 0, laps = 3, weather = 0, wxMode = 0, finishCount 
 static double cfgCountdown = 5, cfgResults = 12, cfgLobby = 0, cfgFinish = 45, cfgTimeout = 5; static double cfgSite = -1; static bool quiet = false, fixedTrack = false, cfgShowdown = true; static volatile bool running = true;
 // the showdown: slots are in podium order
 struct Slot { int player = -1; bool heard = false, alive = false; int place = 0, kills = 0; uint32_t seq = 0; FootState s; };
-static Slot S[SD_FIGHT]; static SdStage sdStage = SD_DRIVE; static double sdT = 0, sdRing = SD_RING0, sdSiteU = 0.5, Dback[SD_DROPS]; static int sdFighters = 0, sdWinner = -1, sdDrops = 0; static SdDrop D[SD_DROPS];
+static Slot S[SD_FIGHT]; static SdStage sdStage = SD_DRIVE; static double sdT = 0, sdRing = SD_RING0, Dback[SD_DROPS]; static float sdSite[3] = {}; static SiteKind sdSiteKind = SITE_UNKNOWN; static int sdFighters = 0, sdWinner = -1, sdDrops = 0; static SdDrop D[SD_DROPS];
 static int sdAlive() { int n = 0; for (auto& q : S) if (q.player >= 0 && q.alive) n++; return n; }
 static int slotOf(int player) { for (int k = 0; k < SD_FIGHT; k++) if (S[k].player == player) return k; return -1; }
 
@@ -53,7 +53,8 @@ static bool startShowdown() {
     sdFighters = 0; if (!cfgShowdown || n < 2) return false;
     for (int k = 0; k < SD_FIGHT; k++) { S[k] = Slot(); memset(&S[k].s, 0, sizeof S[k].s); if (k < n) { S[k].player = order[k]; S[k].alive = true; sdFighters++; } }
     sdStage = SD_DRIVE; sdT = 0; sdRing = SD_RING0; sdWinner = -1; sdDrops = 0; memset(D, 0, sizeof D); memset(Dback, 0, sizeof Dback);
-    sdSiteU = cfgSite >= 0 ? cfgSite : 0.25 + 0.45 * (rand() / (RAND_MAX + 1.0));   // a different stretch of road every time
+    sdSite[0] = sdSite[1] = sdSite[2] = 0; sdSiteKind = SITE_UNKNOWN;   // the winner's game chooses the place (the server has no map), unless --showdown-site fixes it
+    if (cfgSite >= 0) { sdSite[0] = (float)cfgSite; sdSiteKind = SITE_ROAD; }
     setPhase(SHOWDOWN, 0); for (int k = 0; k < sdFighters; k++) say("  fighter %d: %s", k + 1, P[S[k].player].name);
     return true;
 }
@@ -65,6 +66,7 @@ static void sdDown(int k, int by) {   // slot k is out: placed behind everyone s
 static void stepShowdown(double dt) {
     sdT += dt;
     for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive && !P[S[k].player].used) sdDown(k, -1);   // left the server
+    if (sdSiteKind == SITE_UNKNOWN && sdT >= SD_SITE_WAIT) { sdSite[0] = (float)(0.25 + 0.45 * (rand() / (RAND_MAX + 1.0))); sdSiteKind = SITE_ROAD; say("showdown: no place from the winner, using the road"); }
     if (sdStage == SD_DRIVE) {   // the countdown starts when every fighter's car is in the ring (or they have had long enough)
         bool all = true; for (auto& q : S) if (q.player >= 0 && q.alive && !(q.heard && (q.s.flags & FF_ARRIVED))) all = false;
         if (all || sdT >= SD_DRIVE_MAX) { sdStage = SD_PREP; sdT = 0; say("showdown: all in the ring"); }
@@ -88,7 +90,7 @@ static void stepShowdown(double dt) {
     for (int i = 0; i < sdDrops; i++) if (D[i].owner == NOBODY) for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive && S[k].heard && (S[k].s.claim >> i & 1)) { D[i].owner = (uint8_t)k; Dback[i] = SD_RESPAWN * (D[i].kind == SD_SLOW_KIND ? 3 : 1); break; }
 }
 static void sendShowdown(uint32_t tick) {
-    Showdown m; memset(&m, 0, sizeof m); m.h = header(S_SHOWDOWN, 0xFF); m.tick = tick; m.stage = sdStage; m.stageT = (float)sdT; m.ring = (float)sdRing; m.siteU = (float)sdSiteU; m.winner = sdWinner < 0 ? NOBODY : (uint8_t)sdWinner; m.ndrops = (uint8_t)sdDrops;
+    Showdown m; memset(&m, 0, sizeof m); m.h = header(S_SHOWDOWN, 0xFF); m.tick = tick; m.stage = sdStage; m.stageT = (float)sdT; m.ring = (float)sdRing; memcpy(m.site, sdSite, sizeof sdSite); m.siteKind = sdSiteKind; m.winner = sdWinner < 0 ? NOBODY : (uint8_t)sdWinner; m.ndrops = (uint8_t)sdDrops;
     for (int k = 0; k < SD_FIGHT; k++) { const Slot& q = S[k]; m.fighter[k] = q.player < 0 ? NOBODY : (uint8_t)q.player; m.place[k] = (uint8_t)q.place; m.kills[k] = (uint8_t)q.kills; m.f[k] = q.s; if (!q.alive) m.f[k].flags &= ~FF_ALIVE; }
     memcpy(m.d, D, sizeof D);
     for (int i = 0; i < MAXP; i++) if (P[i].used) sendTo(sock, P[i].addr, &m, sizeof m);
@@ -114,7 +116,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
             Player& p = P[who]; p = Player(); p.used = true; p.addr = from; memcpy(p.name, j.name, NAMELEN); p.name[NAMELEN] = 0;
             for (char* c = p.name; *c; c++) if (*c < 32 || *c > 126) *c = '?';
             if (!p.name[0]) snprintf(p.name, sizeof p.name, "PLAYER %d", who + 1);
-            memset(&p.s, 0, sizeof p.s); p.s.car = j.car % 3; p.s.paint = j.paint % 8;
+            memset(&p.s, 0, sizeof p.s); p.s.car = j.car % CARS; p.s.paint = j.paint % PAINTS;
             p.racing = phase == COUNTDOWN;   // joining during the countdown still makes the grid
             say("player %d (%s) joined from %s:%d", who, p.name, inet_ntoa(from.sin_addr), ntohs(from.sin_port));
         }
@@ -126,7 +128,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         p.seq = st.seq;
         const float* f = &st.s.x; for (int k = 0; k < 10; k++) if (!std::isfinite(f[k])) return;   // refuse NaN / inf positions
         if (!std::isfinite(st.s.progress) || !std::isfinite(st.s.finishT)) return;
-        uint8_t flags = st.s.flags & (F_READY | F_BRAKING | F_DEAD | F_FINISHED | F_NITRO); p.s = st.s; p.s.car %= 3; p.s.paint %= 8;
+        uint8_t flags = st.s.flags & (F_READY | F_BRAKING | F_DEAD | F_FINISHED | F_NITRO); p.s = st.s; p.s.car %= CARS; p.s.paint %= PAINTS;
         if (phase == LOBBY) p.ready = flags & F_READY;
         if (phase == RACE && p.racing && !p.finished && (flags & F_FINISHED) && p.s.lap > laps) {   // first report of a finish: the server stamps the time and order
             p.finished = true; p.finishT = raceT; p.finishOrder = ++finishCount; if (firstFinish < 0) firstFinish = raceT;
@@ -142,6 +144,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         SdSetup su; memcpy(&su, buf, sizeof su); P[who].lastHeard = t;
         if (slotOf(who) != 0 || sdDrops > 0 || sdStage == SD_LIVE || sdStage == SD_OVER || su.n > SD_DROPS) return;
         for (int i = 0; i < su.n; i++) { if (!std::isfinite(su.d[i].x) || !std::isfinite(su.d[i].y) || !std::isfinite(su.d[i].z)) return; }
+        if (sdSiteKind == SITE_UNKNOWN) { for (int k = 0; k < 3; k++) if (!std::isfinite(su.site[k])) return; memcpy(sdSite, su.site, sizeof sdSite); sdSiteKind = SITE_POINT; }
         for (int i = 0; i < su.n; i++) { D[i] = su.d[i]; D[i].owner = NOBODY; } sdDrops = su.n;
     } else if (h.type == C_LEAVE && who >= 0) drop(who, "quit");
 }

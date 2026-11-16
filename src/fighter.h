@@ -15,7 +15,7 @@ static const GunSpec GUNS[NGUNS] = {
     { "SHOTGUN",  0.85f,   9, 24, 0.075f, 8,  8,  4, 1.0f,  12 },
     { "GRENADE",  1.30f,  40, 45, 0.006f, 1,  2,  5, 1.2f, 110 } };   // a grenade launcher: anyone within GIB_R of the burst is killed outright; dmg is for those further out
 
-static const int NFIGHT = 3;                 // you and the two other podium drivers
+static const int NFIGHT = 5;                 // the top five of the race: you and four others
 static const float ROLL_LEN = 0.55f;         // a dodge roll, seconds
 static const float GIB_R = 3.5f, BLAST_R = 7.5f;   // a grenade: kills outright within GIB_R metres, hurts out to BLAST_R
 // what a fighter wants to do this step. mx, mz: where to run, in world axes (length up to 1)
@@ -37,7 +37,7 @@ struct Fighter {
     bool remote = false; float dealt = 0;
     // the showdown, before the fight: the car has reached the ring; where along the track a bot's car is to stop
     bool gibbed = false;   // blown apart by a grenade: there is no body left to draw
-    bool arrived = false; float stopS = 0, lockT = 0;   // lockT: seconds until "you cannot use that yet" may be said again
+    bool arrived = false, leftRoad = false; V3 park; float stopS = 0, lockT = 0;   // (a bot: leftRoad once it has turned off the road for the ring; park: where its car is to stop)   // lockT: seconds until "you cannot use that yet" may be said again
 };
 static Fighter fighters[NFIGHT]; static Fighter& me = fighters[0];   // fighters[0] is always the player
 

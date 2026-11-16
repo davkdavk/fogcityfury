@@ -1,7 +1,7 @@
-// showdown.h - the showdown that ends a rampage race. The top three finishers settle it on foot, somewhere new each race:
-//   DRIVE  over the line, a ring goes up on a stretch of road further round the lap. Drive to it (a marker shows the way),
-//          get out, and start collecting: pick-ups are already lying inside it
-//   PREP   once all three cars are in the ring, 20 seconds to arm yourself and find a place to stand; nobody can shoot yet
+// showdown.h - the showdown that ends a rampage race. The top five finishers settle it on foot, somewhere new each race:
+//   DRIVE  over the line, a ring goes up somewhere on the map, usually off the road. Drive to it any way you like (a
+//          marker shows where), get out, and start collecting: pick-ups are already lying inside it
+//   PREP   once all five cars are in the ring, 20 seconds to arm yourself and find a place to stand; nobody can shoot yet
 //   FIGHT  the ring closes (and closes hard once two are left); outside it you burn
 //   OVER   the last one standing takes the win, then the results
 // Pick-ups come back a while after they are taken. A gun can only be picked up by someone who has found the keys for it
@@ -21,7 +21,7 @@ static float sdSite = -1, shdPrepAt = -1; static int shdBack = 0;   // --sdsite 
 static int shdWinner = -1, shdRacePlace = 0, sdPlace = 1; static bool shdResult = false, sdNow = false;   // shdResult: the results screen shows the showdown; sdNow, sdPlace: --sdnow, --sdplace N (tests)
 static Mesh padMesh, medMesh, vestMesh; static Prog pRing;
 static bool testStick = false; static float stickX = 0, stickY = 0;
-static const char* ORD[4] = { "", "1ST", "2ND", "3RD" };
+static const char* ORD[NFIGHT + 1] = { "", "1ST", "2ND", "3RD", "4TH", "5TH" };
 static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr);
 static void panel(float x, float y, float w, float h, float a);
 static void fmtTime(char* b, float t);
@@ -49,24 +49,44 @@ static void shdDrops() {
 }
 // may this fighter take this pick-up? A gun needs its keys; a medkit or armour is only for someone who needs it
 static bool canTake(const Fighter& f, const Drop& d) { return d.back <= 0 && (d.kind == D_MED ? f.hp < 100 : d.kind == D_ARMOUR ? f.armour < 50 : gunUnlocked(d.kind)); }
-// the site: a stretch of road some way round from the finish line (u: how far round the lap, 0..1), never on a bridge
-static void shdPickSite(float u) {
+// the site. Usually somewhere off the road: open, dry, fairly level ground between 45 and 150 m from the track, with a
+// straight clear run in from the road (which is how the bots get there). If nowhere like that turns up, or a place on the
+// road is asked for (u: how far round the lap, 0..1), it is a stretch of road, never on a bridge.
+static V3 shdExitP; static bool shdOffRoad = false;
+static bool shdClear(V3 p) { float h = W.H(p.x, p.z); return h > 0.3f && fabsf(p.x) < HALF - 60 && fabsf(p.z) < HALF - 60 && !solidAt(V3(p.x, h + 1.0f, p.z), false); }
+static bool shdTryOffRoad(float s, float off) {
+    int n = W.n, i = (((int)s) % n + n) % n; if (W.ts[i].br) return false;
+    V3 ex, c; float yaw; W.at((float)i, 0, ex, yaw); W.at((float)i, off, c, yaw); c.y = W.H(c.x, c.z); if (!shdClear(c)) return false;
+    for (int k = 0; k < n; k += 4) { float dx = W.ts[k].x - c.x, dz = W.ts[k].z - c.z; if (dx * dx + dz * dz < 32 * 32) return false; }   // clear of every stretch of road
+    float lo = c.y, hi = c.y; int bad = 0;
+    for (int k = 0; k < 16; k++) { float a = k * 0.3927f, r = (k % 2) ? 24.0f : 11.0f; V3 q(c.x + cosf(a) * r, 0, c.z + sinf(a) * r); if (!shdClear(q)) bad++; float h = W.H(q.x, q.z); lo = std::min(lo, h); hi = std::max(hi, h); }
+    if (bad > 2 || hi - lo > 7) return false;
+    V3 d = c - ex; d.y = 0; float L = len(d); for (float t = 7; t < L; t += 2) if (!shdClear(ex + d * (t / L))) return false;
+    shdSiteS = (float)i; shdSite = c; shdExitP = ex; shdOffRoad = true; return true;
+}
+static void shdPickSite(float u) {   // u < 0: anywhere
+    shdOffRoad = false;
+    if (u < 0) { for (int k = 0; k < 400; k++) if (shdTryOffRoad(grng.r(0.2f, 0.8f) * W.n, grng.r(45, 150) * (grng.f() < 0.5f ? -1.0f : 1.0f))) return; u = grng.r(0.25f, 0.70f); }
     int n = W.n, i = (int)(clampf(u, 0, 0.999f) * n); for (int k = 0; k < 60 && (W.ts[i].br || W.ts[(i + 30) % n].br || W.ts[(i + n - 30) % n].br); k++) i = (i + 15) % n;
     shdSiteS = (float)i; V3 p; float yaw; W.at(shdSiteS, 0, p, yaw); shdSite = V3(p.x, W.ground(p.x, p.z, p.y + 1), p.z);
 }
-static bool showdownStart(int racePlace) {   // called as you cross the line: only the top three go through
-    if (racePlace > 3) return false;
+static bool showdownStart(int racePlace) {   // called as you cross the line: only the top five go through
+    if (racePlace > NFIGHT) return false;
     showdownOn = true; shdCut = true; shdPhase = SH_DRIVE; shdT = 0; shdRing = shdRingTgt = SH_RING0; shdWinner = -1; shdOverT = 0; shdRacePlace = racePlace; shdResult = false; wrongT = 0;
-    shdPickSite(sdSite >= 0 ? sdSite : grng.r(0.25f, 0.70f));
-    int order[NAI]; for (int k = 0; k < NAI; k++) order[k] = k;   // the two best of the others come too; the rest of the field has gone home
+    shdPickSite(sdSite >= 0 ? sdSite : -1.0f);
+    int order[NAI]; for (int k = 0; k < NAI; k++) order[k] = k;   // the four best of the others come too; the rest of the field has gone home
     std::sort(order, order + NAI, [](int a, int b) { bool fa = ai[a].finishT >= 0, fb = ai[b].finishT >= 0; return fa != fb ? fa : fa ? ai[a].finishT < ai[b].finishT : ai[a].progress > ai[b].progress; });
-    for (int k = 2; k < NAI; k++) { ai[order[k]].dead = true; ai[order[k]].deadT = 1e9f; }
+    for (int k = NFIGHT - 1; k < NAI; k++) { ai[order[k]].dead = true; ai[order[k]].deadT = 1e9f; }
     int place = 1; rockets.clear(); shells.clear();
     for (int i = 0; i < NFIGHT; i++) {
         Fighter& f = fighters[i]; f = Fighter(); f.id = i; f.car = i ? order[i - 1] : -1; f.name = i ? DRIVER[order[i - 1]] : "YOU"; f.paint = i ? ai[order[i - 1]].paint : player.paint; f.bot = i > 0 || footAuto;
         int rp; if (i == 0) rp = shdRacePlace; else { if (place == shdRacePlace) place++; rp = place++; }
-        f.armour = (3 - rp) * 25.0f; f.strafe = i == 1 ? 1.0f : -1.0f;
-        if (i) { const Car& c = ai[f.car]; float stop = floorf(c.stot / W.n) * W.n + shdSiteS + (i == 1 ? -13.0f : 11.0f); while (stop < c.stot + 25) stop += W.n; f.stopS = stop; }   // where its car pulls up: one each side of the middle
+        f.armour = std::max(0, 3 - rp) * 25.0f; f.strafe = (i % 2) ? 1.0f : -1.0f;
+        if (i) {   // where its car leaves the road (or, for a ring on the road, pulls up), and where it parks
+            static const float ALONG[NFIGHT] = { 0, -13, 11, -25, 23 }; const Car& c = ai[f.car];
+            float stop = floorf(c.stot / W.n) * W.n + shdSiteS + (shdOffRoad ? -5.0f * (i - 1) : ALONG[i]); while (stop < c.stot + 25) stop += W.n; f.stopS = stop;
+            f.park = shdSite + yawDir(i * 1.5708f + 0.6f) * 10.0f;
+        }
     }
     shdDrops();
     char b[64]; snprintf(b, sizeof b, "%s  -  DRIVE TO THE RING", ORD[racePlace]); say(b, V3(1, 0.85f, 0.2f), 3.5f);
@@ -155,10 +175,20 @@ static void stepShowdown(float dt) {
     shdT += dt;
     for (auto& d : drops) if (d.back > 0) { d.back -= dt; if (d.back <= 0) { d.back = 0; shdBack++; sfx(d.p, 880, 0.12f, 0.25f, 2); for (int k = 0; k < 10; k++) spawn(d.p + V3(0, 0.6f, 0), V3(grng.r(-2, 2), grng.r(1, 4), grng.r(-2, 2)), 0.4f, 0.10f, 0, V3(3, 3, 3), 1, 1, -4); } }   // a pick-up is back
     if (shdPhase == SH_DRIVE) {
-        for (int i = 1; i < NFIGHT; i++) {   // the other two drive round and pull up, one each side of the middle
-            Fighter& f = fighters[i]; if (f.on) continue; Car& a = ai[f.car]; float left = f.stopS - a.stot;
-            if (left <= 0.4f) { shdOut(i); continue; }
-            a.latT = i == 1 ? -4.2f : 4.2f; stepAI(a, dt, true, a.stot); float cap = sqrtf(2 * 7.0f * std::max(left, 0.0f)) + 1.0f; if (a.speed > cap) a.speed = cap;
+        for (int i = 1; i < NFIGHT; i++) {   // the other four drive to the ring
+            Fighter& f = fighters[i]; if (f.on) continue; Car& a = ai[f.car];
+            if (!f.leftRoad) {   // round the road to where the ring is nearest
+                float left = f.stopS - a.stot;
+                if (left > 0.4f) { a.latT = (i % 2) ? -4.2f : 4.2f; stepAI(a, dt, true, a.stot); float cap = sqrtf(2 * 7.0f * left) + (shdOffRoad ? 12.0f : 1.0f); if (a.speed > cap) a.speed = cap; }
+                else if (shdOffRoad) f.leftRoad = true; else { shdOut(i); continue; }
+            }
+            if (f.leftRoad) {    // then straight across the open ground to its place in the ring
+                V3 d = f.park - a.pos; d.y = 0; float L = len(d); if (L < 1.5f) { shdOut(i); continue; }
+                float want = std::min(17.0f, sqrtf(2 * 6.0f * L) + 1.0f); a.speed += clampf(want - a.speed, -20 * dt, 9 * dt); V3 dir = d * (1 / L), np = a.pos + dir * (a.speed * dt);
+                np.y = W.ground(np.x, np.z, a.pos.y + 1.5f); a.vel = (np - a.pos) * (1 / dt); float hy = np.y - a.pos.y; a.pos = np;
+                a.yaw = wrapPi(a.yaw + clampf(wrapPi(atan2f(dir.x, dir.z) - a.yaw), -2.6f * dt, 2.6f * dt)); a.pitch += (atan2f(-hy, a.speed * dt + 1e-4f) - a.pitch) * std::min(1.0f, 8 * dt); a.roll *= expf(-4 * dt);
+                a.vf = a.speed; a.steer = 0; a.wheelRot += a.speed / SPECS[a.type].wr * dt;
+            }
             f.arrived = flatDist(a.pos, shdSite) < shdRing - 2;
         }
         shdDriveMe();
@@ -367,7 +397,7 @@ static void drawFootHUD(float Hb) {
         bool out = me.alive && !shdSpectate && flatDist(me.pos, shdSite) > shdRing;
         if (out && fmodf(T, 0.5f) < 0.33f) ui.text(Wd / 2, 300, 5, red, "GET BACK INSIDE THE RING", 1, 1, 0.12f);
         else if (shdRingTgt < shdRing - 0.4f) ui.text(Wd / 2, 74, 2.4f, fmodf(T, 0.8f) < 0.5f ? red : org, "THE RING IS CLOSING", 1);
-        if (!me.alive && me.deadT > 1.5f && !shdSpectate) { snprintf(b, sizeof b, "YOU FINISH %s", ORD[(int)clampf((float)me.place, 1, 3)]); ui.text(Wd / 2, 300, 6, red, b, 1, 1, 0.12f); if (!touchOn && !netShd && fmodf(T, 1.0f) < 0.65f) ui.text(Wd / 2, 380, 3, white, "ENTER: RESULTS", 1); }
+        if (!me.alive && me.deadT > 1.5f && !shdSpectate) { snprintf(b, sizeof b, "YOU FINISH %s", ORD[(int)clampf((float)me.place, 1, NFIGHT)]); ui.text(Wd / 2, 300, 6, red, b, 1, 1, 0.12f); if (!touchOn && !netShd && fmodf(T, 1.0f) < 0.65f) ui.text(Wd / 2, 380, 3, white, "ENTER: RESULTS", 1); }
     }
 }
 // driving to the ring: a marker over it, how far it is, and which way to turn if it is not in view
@@ -393,16 +423,16 @@ static void drawShdDriveHUD() {
 }
 static void drawShowdownResults() {
     float Wd = ui.W, Hd = ui.H; char b[96], t[32]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), dim(0.6f, 0.62f, 0.68f);
-    ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 360, 110, 720, 470, 0.78f); int pl = (int)clampf((float)me.place, 1, 3);
-    ui.text(Wd / 2, 136, 8, pl == 1 ? yel : white, pl == 1 ? "CHAMPION" : pl == 2 ? "RUNNER-UP" : "THIRD", 1, 1, 0.12f); ui.text(Wd / 2, 212, 2.6f, dim, "THE SHOWDOWN", 1);
+    ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 360, 96, 720, 530, 0.78f); int pl = (int)clampf((float)me.place, 1, NFIGHT);
+    ui.text(Wd / 2, 118, 8, pl == 1 ? yel : white, pl == 1 ? "CHAMPION" : pl == 2 ? "RUNNER-UP" : ORD[pl], 1, 1, 0.12f); ui.text(Wd / 2, 194, 2.6f, dim, "THE SHOWDOWN", 1);
     for (int p = 1, row = 0; p <= NFIGHT; p++) for (int i = 0; i < NFIGHT; i++) {
-        const Fighter& f = fighters[i]; if (f.place != p) continue; float y = 256 + row * 46.0f; row++;
-        ui.rect(Wd / 2 - 300, y + 2, 12, 26, PAINTS[f.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f)); snprintf(b, sizeof b, "%s  %-8s", ORD[p], f.name); ui.text(Wd / 2 - 276, y + 4, 3.6f, i ? white : yel, b);
-        snprintf(b, sizeof b, "%d DOWN", f.kills); ui.text(Wd / 2 + 300, y + 4, 3.6f, i ? white : yel, b, 2);
+        const Fighter& f = fighters[i]; if (f.place != p) continue; float y = 232 + row * 40.0f; row++;
+        ui.rect(Wd / 2 - 300, y + 2, 12, 24, PAINTS[f.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f)); snprintf(b, sizeof b, "%s  %-8s", ORD[p], f.name); ui.text(Wd / 2 - 276, y + 4, 3.4f, i ? white : yel, b);
+        snprintf(b, sizeof b, "%d DOWN", f.kills); ui.text(Wd / 2 + 300, y + 4, 3.4f, i ? white : yel, b, 2);
     }
-    fmtTime(t, raceT); snprintf(b, sizeof b, "RACE  %s  %s", ORD[(int)clampf((float)shdRacePlace, 1, 3)], t); ui.text(Wd / 2, 412, 3.2f, white, b, 1);
-    snprintf(b, sizeof b, "SHOTS %d   HITS %d   ACCURACY %d%%", me.shots, me.hits, me.shots ? std::min(100, me.hits * 100 / me.shots) : 0); ui.text(Wd / 2, 452, 2.6f, dim, b, 1);
-    snprintf(b, sizeof b, "KEYS FOUND  %d/%d", totalKeys(), NKEYS * NTRACKS); ui.text(Wd / 2, 484, 2.6f, yel, b, 1);
-    for (int g = G_PISTOL; g < NGUNS; g++) if (!gunUnlocked(g)) { int need = GUNS[g].keys - totalKeys(); snprintf(b, sizeof b, "%d MORE KEY%s AND THE %s IS YOURS TO USE", need, need == 1 ? "" : "S", GUNS[g].name); ui.text(Wd / 2, 512, 2.2f, dim, b, 1); break; }
-    if (!touchOn && fmodf(T, 1.0f) < 0.65f) ui.text(Wd / 2, 546, 3.2f, white, "PRESS ENTER", 1);
+    fmtTime(t, raceT); snprintf(b, sizeof b, "RACE  %s  %s", ORD[(int)clampf((float)shdRacePlace, 1, NFIGHT)], t); ui.text(Wd / 2, 448, 3.2f, white, b, 1);
+    snprintf(b, sizeof b, "SHOTS %d   HITS %d   ACCURACY %d%%", me.shots, me.hits, me.shots ? std::min(100, me.hits * 100 / me.shots) : 0); ui.text(Wd / 2, 486, 2.6f, dim, b, 1);
+    snprintf(b, sizeof b, "KEYS FOUND  %d/%d", totalKeys(), NKEYS * NTRACKS); ui.text(Wd / 2, 516, 2.6f, yel, b, 1);
+    for (int g = G_PISTOL; g < NGUNS; g++) if (!gunUnlocked(g)) { int need = GUNS[g].keys - totalKeys(); snprintf(b, sizeof b, "%d MORE KEY%s AND THE %s IS YOURS TO USE", need, need == 1 ? "" : "S", GUNS[g].name); ui.text(Wd / 2, 544, 2.2f, dim, b, 1); break; }
+    if (!touchOn && fmodf(T, 1.0f) < 0.65f) ui.text(Wd / 2, 584, 3.2f, white, "PRESS ENTER", 1);
 }

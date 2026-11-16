@@ -131,12 +131,12 @@ in the options.
 - **Backstreets**: every block in town is ringed by narrow streets - worn
   tarmac, kerbs, lamp posts, dumpsters against the walls - so you can cut
   through town. One of them on each track ends at an open warehouse door.
-- **3 cars**: Stallion GT (all-rounder), Katana RS (fastest, poor off-road),
+- **4 cars**: RipDog (wide, quick off the line, at home in the dirt, its name on the bonnet), Stallion GT (all-rounder), Katana RS (fastest, poor off-road),
   Bruiser 4x4 (slower, goes anywhere). 7 paints.
-- **Race** (3 laps, 5 opponents lined up in painted grid boxes; the camera starts
+- **Race** (1-9 laps, 9 opponents lined up in painted grid boxes; the camera starts
   above the grid and comes down behind your car before the countdown - Enter
   skips it; checkpoint clock), **Free Roam** (no clock,
-  no traffic - for key hunting) or **Online** (up to 8 players, see below).
+  no traffic - for key hunting) or **Online** (up to 10 players, see below).
 - **5 hidden keys per track**, saved between sessions in `~/.fogcityfury.sav`.
   Find all 20 to unlock the gold chrome paint.
 - The whole map is drivable: leave the road, cut corners, drive on roofs.
@@ -156,7 +156,7 @@ and is saved with your settings.
 
 Type the server's address (`host` or `host:port`) and a name, pick a car, and
 press Enter in the lobby when ready. The race starts when everyone is ready;
-after the results the server moves to the next track. Up to 8 players, no AI
+after the results the server moves to the next track. Up to 10 players, no AI
 cars online. `./fogcityfury --connect HOST --name YOU` skips the address
 screen. Server options (`--laps`, `--port`, `--track`, `--weather`, `--lobby`, ...)
 are listed by `./fogcityfury-server --help` and in `docs/NETWORK.md`. The server

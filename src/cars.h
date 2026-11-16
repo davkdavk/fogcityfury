@@ -32,6 +32,9 @@ static void buildCar(int type, MB& m) {
     } else if (type == 1) {
         st = { {-2.22f,0.74f,0.42f,0.80f},{-2.10f,0.94f,0.28f,0.88f},{-1.2f,0.99f,0.21f,0.87f},{0.2f,0.97f,0.21f,0.76f},{1.3f,0.95f,0.21f,0.66f},{2.02f,0.90f,0.23f,0.50f},{2.22f,0.70f,0.30f,0.38f} };
         cab = { {-1.30f,0.80f,0.72f,-1},{-0.60f,0.80f,0.58f,1.10f},{0.0f,0.80f,0.58f,1.11f},{1.12f,0.80f,0.72f,-1} };
+    } else if (type == 3) {   // RipDog: long flat bonnet, cab set back, a short high tail
+        st = { {-2.36f,0.80f,0.50f,0.96f},{-2.24f,0.98f,0.36f,1.04f},{-1.5f,1.02f,0.30f,1.04f},{-0.5f,1.02f,0.30f,0.98f},{0.5f,1.01f,0.30f,0.93f},{1.5f,1.0f,0.30f,0.90f},{2.20f,0.96f,0.34f,0.84f},{2.38f,0.80f,0.48f,0.72f} };
+        cab = { {-1.50f,0.84f,0.76f,-1},{-1.02f,0.84f,0.68f,1.40f},{-0.25f,0.84f,0.68f,1.42f},{0.42f,0.84f,0.76f,-1} };
     } else {
         st = { {-2.52f,0.86f,0.70f,1.04f},{-2.40f,1.0f,0.54f,1.10f},{-1.6f,1.0f,0.52f,1.10f},{-0.70f,1.0f,0.52f,1.10f},{-0.45f,1.0f,0.52f,1.19f},{1.3f,1.0f,0.52f,1.19f},{2.30f,1.0f,0.54f,1.13f},{2.52f,0.86f,0.70f,0.98f} };
         cab = { {-0.74f,0.92f,0.86f,-1},{-0.58f,0.92f,0.80f,1.90f},{0.50f,0.92f,0.80f,1.90f},{1.08f,0.92f,0.86f,-1} };
@@ -96,6 +99,30 @@ static void buildCar(int type, MB& m) {
         for (int s = -1; s <= 1; s += 2) m.abox(V3(s * 0.6f, bodyTop(-2.12f) + 0.03f, -2.12f), V3(0.03f, 0.04f, 0.06f), white, 1); }
     if (type == 1) { m.abox(V3(0, 1.10f, -2.06f), V3(0.96f, 0.02f, 0.17f), white, 1); for (int s = -1; s <= 1; s += 2) { m.abox(V3(s * 0.62f, 0.99f, -2.02f), V3(0.03f, 0.11f, 0.09f), dark, 0); m.abox(V3(s * 0.99f, 1.07f, -2.06f), V3(0.02f, 0.07f, 0.19f), white, 1); }
         m.abox(V3(0, 0.235f, 2.18f), V3(0.80f, 0.02f, 0.12f), dark, 0); m.abox(V3(0, bodyTop(-1.75f) + 0.02f, -1.75f), V3(0.5f, 0.02f, 0.32f), dark, 0); }
+    if (type == 3) {
+        // the name across the bonnet, to be read from in front of the car: a dark panel with the letters standing just proud of it.
+        // Each pixel of the 5x7 font is a small tile that follows the bonnet's curve.
+        auto surf = [&](float x, float z) {   // height of the body's top surface at (x, z)
+            int k = 0; while (k + 2 < K && z > st[k + 1].z) k++; float t = clampf((z - st[k].z) / (st[k + 1].z - st[k].z), 0, 1); const St& p0 = st[std::max(k - 1, 0)], & p1 = st[k], & p2 = st[k + 1], & p3 = st[std::min(k + 2, K - 1)];
+            float w = std::max(0.2f, crom(p0.w, p1.w, p2.w, p3.w, t)), b = crom(p0.b, p1.b, p2.b, p3.b, t), tp = crom(p0.t, p1.t, p2.t, p3.t, t), cy = (b + tp) / 2, hh = (tp - b) / 2, best = tp, bd = 1e9f;
+            for (int j = 0; j <= 48; j++) { float a = (float)M_PI * j / 48, c = cosf(a), sn = sinf(a), px = w * sgnpow(c, 0.48f) * (1 - 0.07f * sn), d = fabsf(px - x); if (d < bd) { bd = d; best = cy + hh * sgnpow(sn, 0.5f); } }
+            return best;
+        };
+        const char* word = "RIPDOG"; const int NL = 6; const float pix = 0.046f, x0 = -pix * (NL * 6 - 1) / 2, z0 = 0.92f;   // letters run from the car's right to its left; their tops are towards the windscreen
+        auto tile = [&](float xa, float xb, float za, float zb, float lift, V3 col, float mat) {
+            V3 a(xa, surf(xa, za) + lift, za), b2(xb, surf(xb, za) + lift, za), c(xb, surf(xb, zb) + lift, zb), d(xa, surf(xa, zb) + lift, zb); m.quad(a, d, c, b2, col, mat); };
+        for (int i = 0; i < 8; i++) for (int j = 0; j < 4; j++) {   // the panel, in pieces so that it bends with the bonnet
+            float xa = x0 - 0.07f + (pix * (NL * 6 - 1) + 0.14f) * i / 8, xb = x0 - 0.07f + (pix * (NL * 6 - 1) + 0.14f) * (i + 1) / 8, za = z0 - 0.06f + (pix * 7 + 0.12f) * j / 4, zb = z0 - 0.06f + (pix * 7 + 0.12f) * (j + 1) / 4;
+            tile(xa, xb, za, zb, 0.012f, dark, 0);
+        }
+        for (int l = 0; l < NL; l++) for (int r = 0; r < 7; r++) for (int cx = 0; cx < 5; cx++) if (FONT[word[l] - 32][r] & (16 >> cx)) {
+            float xa = x0 + (l * 6 + cx) * pix, za = z0 + r * pix; tile(xa, xa + pix, za, za + pix, 0.022f, V3(0.95f, 0.95f, 0.95f), 3);
+        }
+        m.abox(V3(0, 0.50f, 2.42f), V3(0.90f, 0.07f, 0.05f), chrome, 0);                                                                  // front bumper bar
+        for (int s = -1; s <= 1; s += 2) { m.abox(V3(s * 1.06f, 0.40f, -0.2f), V3(0.045f, 0.045f, 0.95f), chrome, 0);                   // side pipes
+            m.abox(V3(s * 0.70f, bodyTop(-2.1f) + 0.13f, -2.12f), V3(0.035f, 0.13f, 0.09f), dark, 0); }                                  // wing posts
+        m.abox(V3(0, bodyTop(-2.1f) + 0.27f, -2.16f), V3(0.98f, 0.022f, 0.16f), white, 1);                                               // wing
+    }
     if (type == 2) {
         m.abox(V3(0, 0.70f, 2.56f), V3(0.94f, 0.075f, 0.05f), chrome, 0); m.abox(V3(0, 0.74f, -2.58f), V3(0.92f, 0.09f, 0.05f), chrome, 0);
         m.abox(V3(0, 1.96f, 0.28f), V3(0.56f, 0.045f, 0.07f), V3(1.0f, 0.9f, 0.5f), 3);

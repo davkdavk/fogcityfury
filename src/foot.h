@@ -6,7 +6,7 @@
 
 static const float FOOT_RUN = 5.2f, FOOT_SPRINT = 7.8f, FOOT_AIM = 3.4f, FOOT_ROLL = 9.5f, FOOT_R = 0.38f;   // speeds in m/s; body radius
 static const float BOT_SPREAD = 2.3f, BOT_REACT = 0.45f;                    // how much worse than the gun a bot shoots; seconds before it fires at a new target
-static const char* DRIVER[NAI] = { "VEGA", "MOSS", "KATO", "REYES", "DUKE" };
+static const char* DRIVER[NAI] = { "VEGA", "MOSS", "KATO", "REYES", "DUKE", "NOVAK", "IBARRA", "QUINN", "OKORO" };
 static bool footAuto = false, faceAi = false;                                // tests: --footai (a bot plays for you), --faceai (get out facing the nearest racer)
 static float hitFlash = 0, hurtFlash = 0, hurtAng = 0, footKick = 0;        // HUD: hit marker, the red edge and where the shot came from; camera recoil
 static int footPickups = 0, forceGun = -1;                                    // forceGun: --gun N (tests): you step out holding it

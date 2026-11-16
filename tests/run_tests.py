@@ -131,7 +131,7 @@ def _race(track, car):
     check(d["wrecks"] <= 1, "%s: at most one wreck" % name, d["wrecks"])
     check(d["camOffAxis"] == 0, "%s: chase camera stays behind the car" % name, d["camOffAxis"])
     between(d["bestLap"], 52, 100, "%s: best lap (s)" % name)
-    check(1 <= d["place"] <= 6, "%s: place is valid" % name, d["place"])
+    check(1 <= d["place"] <= 10, "%s: place is valid" % name, d["place"])
     return d
 
 
@@ -326,12 +326,12 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 4
+NET_MAGIC, NET_PROTO = 0x59464346, 5
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
 C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
 LOBBY, COUNTDOWN, RACE, RESULTS, SHOWDOWN = 0, 1, 2, 3, 4
-FOOTSTATE, SDDROP = "<6f8B3HH", "<3fBB"   # FootState (40 bytes), SdDrop (14 bytes)
+FOOTSTATE, SDDROP = "<6f8B5HH", "<3fBB"   # FootState (44 bytes), SdDrop (14 bytes)
 SD_DRIVE, SD_PREP, SD_LIVE, SD_OVER = 0, 1, 2, 3
 FF_ON, FF_ALIVE, FF_ARRIVED, NOBODY = 1, 2, 32, 255
 F_READY, F_FINISHED, F_NITRO, F_RACING = 1, 8, 16, 32
@@ -391,16 +391,16 @@ class FakeClient:
     def send_raw(self, data):
         self.sock.sendto(data, self.addr)
 
-    def foot(self, pos=(0.0, 0.0, 0.0), hp=100, alive=True, killed_by=NOBODY, dealt=(0, 0, 0), claim=0, fire=0, arrived=True):
+    def foot(self, pos=(0.0, 0.0, 0.0), hp=100, alive=True, killed_by=NOBODY, dealt=(0, 0, 0, 0, 0), claim=0, fire=0, arrived=True):
         """Report our fighter in the showdown (dealt: tenths of a health point, by slot)."""
         self.fseq = getattr(self, "fseq", 0) + 1
-        fs = struct.pack(FOOTSTATE, pos[0], pos[1], pos[2], 0, 0, 0, max(0, min(255, int(hp))), 0, 0, FF_ON | (FF_ALIVE if alive else 0) | (FF_ARRIVED if arrived else 0), fire, NOBODY, killed_by, 0, dealt[0], dealt[1], dealt[2], claim)
+        fs = struct.pack(FOOTSTATE, pos[0], pos[1], pos[2], 0, 0, 0, max(0, min(255, int(hp))), 0, 0, FF_ON | (FF_ALIVE if alive else 0) | (FF_ARRIVED if arrived else 0), fire, NOBODY, killed_by, 0, dealt[0], dealt[1], dealt[2], dealt[3], dealt[4], claim)
         self.sock.sendto(self.hdr(C_FOOT) + struct.pack("<I", self.fseq) + fs, self.addr)
 
-    def setup(self, drops):
-        """The race winner lays out the pick-ups: a list of (x, y, z, kind)."""
+    def setup(self, drops, site=(0.0, 0.0, 0.0)):
+        """The race winner chooses the place and lays out the pick-ups: a list of (x, y, z, kind)."""
         body = b"".join(struct.pack(SDDROP, x, y, z, kind, NOBODY) for x, y, z, kind in drops) + b"\0" * (14 * (12 - len(drops)))
-        self.sock.sendto(self.hdr(C_SDSETUP) + struct.pack("<B", len(drops)) + body, self.addr)
+        self.sock.sendto(self.hdr(C_SDSETUP) + struct.pack("<B3f", len(drops), *site) + body, self.addr)
 
     def showdown(self):
         """Newest showdown message (drains the socket), or None. Also remembers the newest snapshot's phase in self.phase_seen."""
@@ -419,11 +419,11 @@ class FakeClient:
             pass
         if last is None:
             return None
-        tick, stage, stage_t, ring, site = struct.unpack("<IBfff", last[8:25])
-        b = last[25:36]
-        feet = [dict(zip(("x", "y", "z", "vx", "vz", "yaw", "hp", "armour", "gun", "flags", "fire", "target", "killedBy", "pad", "d0", "d1", "d2", "claim"), struct.unpack(FOOTSTATE, last[36 + k * 40:76 + k * 40]))) for k in range(3)]
-        drops = [dict(zip(("x", "y", "z", "kind", "owner"), struct.unpack(SDDROP, last[156 + i * 14:170 + i * 14]))) for i in range(b[10])]
-        return dict(stage=stage, stageT=stage_t, ring=ring, site=site, fighter=list(b[0:3]), place=list(b[3:6]), kills=list(b[6:9]), winner=b[9], feet=feet, drops=drops, size=len(last))
+        tick, stage, stage_t, ring, sx, sy, sz, site_kind = struct.unpack("<IBfffffB", last[8:34])
+        b = last[34:51]   # five fighters, five places, five kill counts, the winner, the number of pick-ups
+        feet = [dict(zip(("x", "y", "z", "vx", "vz", "yaw", "hp", "armour", "gun", "flags", "fire", "target", "killedBy", "pad", "d0", "d1", "d2", "d3", "d4", "claim"), struct.unpack(FOOTSTATE, last[51 + k * 44:95 + k * 44]))) for k in range(5)]
+        drops = [dict(zip(("x", "y", "z", "kind", "owner"), struct.unpack(SDDROP, last[271 + i * 14:285 + i * 14]))) for i in range(b[16])]
+        return dict(stage=stage, stageT=stage_t, ring=ring, site=(sx, sy, sz), siteKind=site_kind, fighter=list(b[0:5]), place=list(b[5:10]), kills=list(b[10:15]), winner=b[15], feet=feet, drops=drops, size=len(last))
 
     def snapshot(self):
         """Newest snapshot the server has sent us (drains the socket), or None."""
@@ -513,11 +513,11 @@ def net_server_rejects_bad_clients_and_drops_silent_ones():
         old = FakeClient(srv.port, "OLD", proto=99)
         kind, payload = old.join()
         check(kind == S_REJECT and payload[0] == 2, "wrong protocol version is rejected with reason 2", (kind, payload[:1]))
-        clients = [FakeClient(srv.port, "P%d" % i) for i in range(8)]
-        check(all(c.join()[0] == S_WELCOME for c in clients), "eight players fit")
-        ninth = FakeClient(srv.port, "NINTH")
-        kind, payload = ninth.join()
-        check(kind == S_REJECT and payload[0] == 1, "the ninth is rejected: server full", (kind, payload[:1]))
+        clients = [FakeClient(srv.port, "P%d" % i) for i in range(10)]
+        check(all(c.join()[0] == S_WELCOME for c in clients), "ten players fit")
+        extra = FakeClient(srv.port, "ELEVENTH")
+        kind, payload = extra.join()
+        check(kind == S_REJECT and payload[0] == 1, "the eleventh is rejected: server full", (kind, payload[:1]))
         again = clients[0].join()
         check(again[0] == S_WELCOME and clients[0].id == 0, "re-joining from the same address keeps the same slot", clients[0].id)
         clients[0].send_raw(b"garbage")
@@ -526,12 +526,12 @@ def net_server_rejects_bad_clients_and_drops_silent_ones():
         clients[0].state(x=42.0)
         time.sleep(0.1)
         sn = clients[0].snapshot()
-        check(sn is not None and sn["count"] == 8, "garbage, bad magic and NaN packets do not disturb the server", sn and sn["count"])
+        check(sn is not None and sn["count"] == 10, "garbage, bad magic and NaN packets do not disturb the server", sn and sn["count"])
         check(abs(sn["players"]["P0"]["x"] - 42.0) < 1e-3, "the NaN position was refused; the valid one stands", sn["players"]["P0"]["x"])
         clients[1].send_raw(clients[1].hdr(C_LEAVE))
         _keepalive(clients[:1], 1.6)
         sn = clients[0].snapshot()
-        check(sn["count"] == 1, "one player left, six went silent: only the active one remains", sn["count"])
+        check(sn["count"] == 1, "one player left, eight went silent: only the active one remains", sn["count"])
     check(srv.proc.returncode in (0, -15), "server shuts down cleanly on SIGTERM", srv.proc.returncode)
 
 
@@ -578,7 +578,7 @@ def net_server_list_shows_what_each_server_is_running():
         magic, proto, kind, _id = struct.unpack(HDR, data[:8])
         nonce, track, laps, phase, wx, count, maxp, name = struct.unpack("<IBBBBBB24s", data[8:42])
         check(len(data) == 42 and kind == 19 and nonce == 0xC0FFEE, "the server answers a query and echoes the nonce", (len(data), kind, hex(nonce)))
-        check((track, count, maxp, phase) == (2, 0, 8, LOBBY) and name.split(b"\0")[0] == b"TEST BOX", "with its track, players and name", (track, count, maxp, name))
+        check((track, count, maxp, phase) == (2, 0, 10, LOBBY) and name.split(b"\0")[0] == b"TEST BOX", "with its track, players and name", (track, count, maxp, name))
         other = struct.pack(HDR, NET_MAGIC, 1, 4, 0xFF) + struct.pack("<I", 7) + b"\0" * 36
         for attempt in range(10):
             s.sendto(other, ("127.0.0.1", srv.port))
@@ -730,12 +730,12 @@ def net_showdown_server_runs_the_podium_fight():
         for x in cl:   # they cross the line in this order
             x.state(flags=F_FINISHED, lap=2, progress=3400)
             time.sleep(0.12)
-        dealt = [0, 0, 0]
+        dealt = [0, 0, 0, 0, 0]
 
         def tick(alive=(True, True, True), killed_by=NOBODY, claims=(0, 0, 0), arrived=(True, True, True)):
             for k, x in enumerate(cl):
                 x.state(flags=F_FINISHED, lap=2, progress=3400)
-                x.foot(pos=(10.0 * k, 1.0, 5.0), hp=100 if alive[k] else 0, alive=alive[k], killed_by=killed_by, dealt=dealt if k == 0 else (0, 0, 0), claim=claims[k], arrived=arrived[k])
+                x.foot(pos=(10.0 * k, 1.0, 5.0), hp=100 if alive[k] else 0, alive=alive[k], killed_by=killed_by, dealt=dealt if k == 0 else (0, 0, 0, 0, 0), claim=claims[k], arrived=arrived[k])
             time.sleep(0.05)
             return a.showdown()
 
@@ -748,12 +748,13 @@ def net_showdown_server_runs_the_podium_fight():
             raise RuntimeError("timed out waiting on the showdown: %s" % (m and {k: m[k] for k in ("stage", "stageT", "place", "winner")}))
 
         m = until(lambda m: True, 2, arrived=(True, True, False))
-        check(a.phase_seen == SHOWDOWN and m["fighter"] == [a.id, b.id, c.id] and m["stage"] == SD_DRIVE, "three finishers: the showdown, in podium order", (a.phase_seen, m["fighter"], m["stage"]))
-        check(m["size"] == 324 and 0.25 <= m["site"] <= 0.7, "the showdown message is 324 bytes and says where the ring is", (m["size"], m["site"]))
-        b.setup([(9.0, 9.0, 9.0, 0)])
-        a.setup([(1.0, 2.0, 3.0, 1), (4.0, 5.0, 6.0, 4)])
+        check(a.phase_seen == SHOWDOWN and m["fighter"] == [a.id, b.id, c.id, NOBODY, NOBODY] and m["stage"] == SD_DRIVE, "three finishers: the showdown, in finishing order (there is room for five)", (a.phase_seen, m["fighter"], m["stage"]))
+        check(m["size"] == 439 and m["siteKind"] == 0, "the showdown message is 439 bytes; the place is not chosen yet", (m["size"], m["siteKind"]))
+        b.setup([(9.0, 9.0, 9.0, 0)], site=(1.0, 1.0, 1.0))
+        a.setup([(1.0, 2.0, 3.0, 1), (4.0, 5.0, 6.0, 4)], site=(70.0, 8.0, -90.0))
         m = until(lambda m: len(m["drops"]) > 0, 2, arrived=(True, True, False))
         check(len(m["drops"]) == 2 and abs(m["drops"][1]["x"] - 4.0) < 1e-4 and m["drops"][1]["kind"] == 4, "only the race winner lays out the pick-ups", m["drops"])
+        check(m["siteKind"] == 2 and m["site"] == (70.0, 8.0, -90.0), "and chooses where the ring goes, anywhere on the map", (m["siteKind"], m["site"]))
         m = until(lambda m: m["drops"][0]["owner"] != NOBODY, 3, claims=(0, 1, 1), arrived=(True, True, False))
         check(m["drops"][0]["owner"] in (1, 2) and m["drops"][1]["owner"] == NOBODY, "two claim the same pick-up: one of them gets it", m["drops"])
         check(m["stage"] == SD_DRIVE, "the countdown waits while one car is still on its way", m["stage"])
@@ -761,12 +762,12 @@ def net_showdown_server_runs_the_podium_fight():
         m = until(lambda m: m["drops"][0]["owner"] == NOBODY, 17)
         check(m["stage"] == SD_PREP, "all in: the countdown runs, and the pick-up that was taken is back before it ends", (m["stage"], m["stageT"]))
         m = until(lambda m: m["stage"] == SD_LIVE, 22)
-        check(all(f["flags"] & FF_ALIVE for f in m["feet"]) and abs(m["feet"][2]["x"] - 20.0) < 1e-3 and m["ring"] > 45, "the fight starts with everyone standing, their reports relayed", (m["feet"][2]["x"], m["ring"]))
+        check(all(f["flags"] & FF_ALIVE for f in m["feet"][:3]) and abs(m["feet"][2]["x"] - 20.0) < 1e-3 and m["ring"] > 45, "the fight starts with everyone standing, their reports relayed", (m["feet"][2]["x"], m["ring"]))
         dealt[2] = 1000
         m = until(lambda m: m["place"][2] != 0, 3, alive=(True, True, False), killed_by=0)
-        check(m["place"] == [0, 0, 3] and m["kills"][0] == 1 and m["feet"][0]["d2"] == 1000 and m["stage"] == SD_LIVE, "first down is third, the kill is credited, and the damage report is relayed", (m["place"], m["kills"], m["feet"][0]["d2"]))
+        check(m["place"][:3] == [0, 0, 3] and m["kills"][0] == 1 and m["feet"][0]["d2"] == 1000 and m["stage"] == SD_LIVE, "first down is third, the kill is credited, and the damage report is relayed", (m["place"], m["kills"], m["feet"][0]["d2"]))
         m = until(lambda m: m["stage"] == SD_OVER, 3, alive=(True, False, False), killed_by=0)
-        check(m["place"] == [1, 2, 3] and m["winner"] == 0 and m["kills"][0] == 2, "last one standing wins", (m["place"], m["winner"], m["kills"]))
+        check(m["place"][:3] == [1, 2, 3] and m["winner"] == 0 and m["kills"][0] == 2, "last one standing wins", (m["place"], m["winner"], m["kills"]))
         until(lambda m: a.phase_seen == RESULTS, 9, alive=(True, False, False))
     check("showdown:" in srv.log and "1. ALICE" in srv.log and "2 down" in srv.log, "the server log has the showdown table", srv.log[-300:])
 
@@ -803,7 +804,7 @@ def net_showdown_game_client_fights_a_remote_fighter():
             if pos:
                 f.foot(pos=pos, hp=hp, alive=hp > 0, killed_by=0 if hp <= 0 else NOBODY)
             else:   # still "driving": reported as in the ring, but not out of the car yet
-                f.sock.sendto(f.hdr(C_FOOT) + struct.pack("<I", 1) + struct.pack(FOOTSTATE, 0, 0, 0, 0, 0, 0, 100, 0, 0, FF_ALIVE | FF_ARRIVED, 0, NOBODY, NOBODY, 0, 0, 0, 0, 0), f.addr)
+                f.sock.sendto(f.hdr(C_FOOT) + struct.pack("<I", 1) + struct.pack(FOOTSTATE, 0, 0, 0, 0, 0, 0, 100, 0, 0, FF_ALIVE | FF_ARRIVED, 0, NOBODY, NOBODY, 0, 0, 0, 0, 0, 0, 0), f.addr)
         check(m is not None and m["fighter"][0] != f.id and m["fighter"][1] == f.id and m["fighter"][2] == NOBODY, "two finishers: a two-way showdown, the game in slot 0", m and m["fighter"])
         check(len(m["drops"]) == 11 and took, "the game laid out eleven pick-ups and took at least one through the server", (len(m["drops"]), took))
         check(hp <= 0 and m["winner"] == 0 and m["place"][:2] == [1, 2] and m["kills"][0] == 1, "its shots brought the other fighter down and the server gave it the win", (hp, m["winner"], m["place"], m["kills"]))
@@ -1250,9 +1251,9 @@ def guns_need_keys():
 
 @test
 def showdown_is_for_the_top_three():
-    d = sim(*SHOW, "--sdplace", 4, seconds=3)
-    check(d["state"] == 5 and d["shdPhase"] == 0 and d["onFoot"] == 0, "fourth place: straight to the results", (d["state"], d["shdPhase"]))
-    for place, armour in ((1, 50), (2, 25), (3, 0)):
+    d = sim(*SHOW, "--sdplace", 6, seconds=3)
+    check(d["state"] == 5 and d["shdPhase"] == 0 and d["onFoot"] == 0, "sixth place: straight to the results", (d["state"], d["shdPhase"]))
+    for place, armour in ((1, 50), (2, 25), (3, 0), (5, 0)):
         d = sim(*SHOW, "--sdplace", place, seconds=3)
         check(d["shdPhase"] == 1 and d["onFoot"] == 0 and d["armour"] == armour, "place %d: off to the ring, with %d armour waiting" % (place, armour), (d["shdPhase"], d["armour"]))
 
@@ -1261,11 +1262,11 @@ def showdown_is_for_the_top_three():
 def showdown_drive_to_the_ring_then_countdown_then_fight():
     t = prep_at()
     d = sim(*SHOW, seconds=3)
-    check(d["shdPhase"] == 1 and d["onFoot"] == 0 and d["drops"] == 11 and d["aiDead"] == 3, "over the line: still driving, the pick-ups are down, the rest of the field is gone", (d["shdPhase"], d["onFoot"], d["drops"], d["aiDead"]))
+    check(d["shdPhase"] == 1 and d["onFoot"] == 0 and d["drops"] == 11 and d["aiDead"] == 5, "over the line: still driving, the pick-ups are down, the five who missed the cut are gone", (d["shdPhase"], d["onFoot"], d["drops"], d["aiDead"]))
     start = (d["x"], d["z"])
     d = sim(*SHOW, "--hold", "F", "--faceai", seconds=t + 19)
     fs = fighters(d)
-    check(d["shdPhase"] == 2 and all(f["on"] for f in fs) and math.hypot(d["x"] - start[0], d["z"] - start[1]) > 200, "all three have driven to the ring and are out of their cars", (d["shdPhase"], d["fighters"]))
+    check(d["shdPhase"] == 2 and all(f["on"] for f in fs) and math.hypot(d["x"] - start[0], d["z"] - start[1]) > 200, "all five have driven to the ring and are out of their cars", (d["shdPhase"], d["fighters"]))
     check(d["footShots"] == 0 and all(f["hp"] == 100 for f in fs), "the countdown: nobody can shoot yet, so nobody is hurt", (d["footShots"], d["fighters"]))
     check(sum(f["gun"] > 1 for f in fs[1:]) >= 1 and d["dropsBack"] >= 1, "the others have fetched guns, and what was taken has started to come back", (d["fighters"], d["dropsBack"]))
     between(d["shdRing"], 51.9, 52.1, "the ring waits at full size")
@@ -1283,7 +1284,8 @@ def showdown_ring_burns_and_closes():
     d = sim(*SHOW, "--hold", "S", "--press", "%.1f:R" % (t + 5), "--press", "%.1f:G" % (t + 6), seconds=t + 20 + 40)
     fs = fighters(d)
     check(fs[0]["alive"] == 0 and d["footShots"] == 0, "outside the ring you burn", d["fighters"])
-    check(d["shdRing"] < 24, "with two left the ring closes right in", d["shdRing"])
+    left = sum(f["alive"] for f in fs)
+    check(d["shdRing"] < (24 if left <= 2 else 46), "the ring closes with time, and right in once two are left", (d["shdRing"], left))
     check(d["onFoot"] == 1 and d["resets"] == 0, "and there is no resetting or driving out of it", (d["onFoot"], d["resets"]))
 
 
@@ -1299,14 +1301,17 @@ def blood_and_the_grenade_launcher():
 
 @test
 def showdown_always_ends_with_one_winner():
+    off = []
     for track in range(NTRACKS):
         d = sim("--track", track, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--footai", seconds=240)
         fs = fighters(d)
         check(d["state"] == 5 and d["shdResult"] == 1, "track %d: the showdown reaches its results" % track, (d["state"], d["shdPhase"], d["prepAt"], d["fighters"]))
-        check(sorted(f["place"] for f in fs) == [1, 2, 3], "track %d: first, second and third are all decided" % track, d["fighters"])
-        alive = sum(f["alive"] for f in fs)   # (if you go down early and the other two take their time, they are placed by health)
-        check(alive == 1 or (alive == 2 and not fs[0]["alive"]), "track %d: the winner is the last one standing" % track, d["fighters"])
+        check(sorted(f["place"] for f in fs) == [1, 2, 3, 4, 5], "track %d: all five places are decided" % track, d["fighters"])
+        alive = sum(f["alive"] for f in fs)   # (if you go down early and the others take their time, they are placed by health)
+        check(alive == 1 or not fs[0]["alive"], "track %d: the winner is the last one standing" % track, d["fighters"])
+        off.append(d["shdOffRoad"])
         check(sum(f["kills"] for f in fs) >= 1, "track %d: it was settled with guns, not just the ring" % track, d["fighters"])
+    check(sum(off) >= 2, "left to itself the ring goes up off the road, and everyone still gets there", off)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-// netshd.h - the showdown online. The server (server.cpp) picks the top three finishers and where the ring goes, starts
+// netshd.h - the showdown online. The server (server.cpp) picks the top five finishers and where the ring goes, starts
 // the countdown once their cars are all in it, closes the ring, hands out the pick-ups and records who went down in
 // what order. Here: our own car and fighter are simulated as they are offline (showdown.h, foot.h) and reported 30
 // times a second; the other fighters are drawn from what their games report. Health belongs to the victim: we report
@@ -22,20 +22,21 @@ static void netShdEnter() {
     footReset(); netShd = true; netShdCount++; netSlot = nc.sdSlotOf(nc.id); shdSpectate = netSlot < 0; carHidden = shdSpectate;
     showdownOn = true; shdCut = true; shdPhase = SH_DRIVE; shdT = m.stageT; shdRing = shdRingTgt = netRingWas = m.ring; netClosing = 0;
     shdWinner = -1; shdOverT = 0; shdRacePlace = netSlot + 1; wrongT = 0; state = RACE; countdown = 0; introT = 0; rockets.clear();
-    shdPickSite(m.siteU);
+    if (m.siteKind == net::SITE_POINT) { shdOffRoad = false; shdSite = V3(m.site[0], m.site[1], m.site[2]); }   // the place: given, or (we are the winner) ours to choose
+    else shdPickSite(m.siteKind == net::SITE_ROAD ? m.site[0] : -1.0f);
     int li = 0; for (int k = 0; k < net::SD_FIGHT; k++) netLocal[k] = -1;
     if (netSlot >= 0) netLocal[netSlot] = li++;
     for (int k = 0; k < net::SD_FIGHT; k++) if (k != netSlot && m.fighter[k] != net::NOBODY && m.fighter[k] < net::MAXP) netLocal[k] = li++;
     for (int i = 0; i < NFIGHT; i++) nfoot[i] = NetFoot();
     for (int k = 0; k < net::SD_FIGHT; k++) {   // nobody is out of their car yet
-        int i = netLocal[k]; if (i < 0) continue; Fighter& f = fighters[i]; f = Fighter(); f.id = i; f.armour = (2 - k) * 25.0f; nfoot[i].slot = k;
+        int i = netLocal[k]; if (i < 0) continue; Fighter& f = fighters[i]; f = Fighter(); f.id = i; f.armour = std::max(0, 2 - k) * 25.0f; nfoot[i].slot = k;
         if (k == netSlot) { f.name = "YOU"; f.paint = player.paint; f.bot = footAuto; }
         else { const Remote& r = nc.r[m.fighter[k]]; snprintf(netNames[i], sizeof netNames[i], "%s", r.name[0] ? r.name : "PLAYER"); f.name = netNames[i]; f.paint = r.car.paint; f.remote = true; }
     }
     if (shdSpectate) { player.pos = shdSite + V3(0, 0.3f, 0); player.vel = V3(); player.vf = 0; }   // watching: our (hidden) car sits in the ring, so the view is of it
     netGone = 0; netClaim = 0; netFootT = netSetupT = 0; netTickSeen = 0; netLaid.clear(); drops.clear();
     if (netSlot == 0) { shdDrops(); netLaid = drops; drops.clear(); }   // the race winner's game knows the ground: it says where the pick-ups lie
-    char b[64]; if (shdSpectate) snprintf(b, sizeof b, "THE PODIUM SETTLES IT ON FOOT"); else snprintf(b, sizeof b, "%s  -  DRIVE TO THE RING", ORD[netSlot + 1]);
+    char b[64]; if (shdSpectate) snprintf(b, sizeof b, "THE TOP FIVE SETTLE IT ON FOOT"); else snprintf(b, sizeof b, "%s  -  DRIVE TO THE RING", ORD[netSlot + 1]);
     say(b, V3(1, 0.85f, 0.2f), 3.5f); tone(523, 0.3f, 0.5f, 2); tone(659, 0.3f, 0.5f, 2, 0, 0.15f); tone(784, 0.6f, 0.5f, 2, 0, 0.3f);
 }
 
@@ -87,6 +88,7 @@ static void netShdFrame(float dt) {
     if (shdPhase == SH_DRIVE && netSlot >= 0) shdDriveMe();
     if (shdPhase == SH_PREP) { float left = SH_PREP_LEN - shdT, leftWas = SH_PREP_LEN - was; if (left <= 3 && left > 0 && (int)ceilf(left) != (int)ceilf(leftWas)) tone(440, 0.25f, 0.5f, 2); }
     if (shdPhase == SH_OVER) { shdOverT = m.stageT; if (shdWinner >= 0 && fighters[shdWinner].alive) fighters[shdWinner].cheer = std::min(1.0f, shdOverT * 3); }
+    if (m.siteKind == net::SITE_POINT && len(V3(m.site[0], m.site[1], m.site[2]) - shdSite) > 0.5f) shdSite = V3(m.site[0], m.site[1], m.site[2]);   // (the server's word on where it is)
     // the ring is the server's
     if (m.ring < netRingWas - 0.01f) netClosing = 0.6f; else netClosing = std::max(0.0f, netClosing - dt); netRingWas = m.ring;
     shdRing += (m.ring - shdRing) * (1 - expf(-8 * dt)); shdRingTgt = netClosing > 0 ? shdRing - 1.0f : shdRing;
@@ -146,7 +148,7 @@ static void netShdFrame(float dt) {
         s.claim = netClaim; net::sendTo(nc.sock, nc.addr, &ft, sizeof ft);
     }
     if (netSlot == 0 && m.ndrops == 0 && !netLaid.empty() && (m.stage == net::SD_DRIVE || m.stage == net::SD_PREP) && netSetupT >= 0.2f) {
-        netSetupT = 0; net::SdSetup su; memset(&su, 0, sizeof su); su.h = net::header(net::C_SDSETUP, (uint8_t)nc.id); su.n = (uint8_t)std::min((int)netLaid.size(), net::SD_DROPS);
+        netSetupT = 0; net::SdSetup su; memset(&su, 0, sizeof su); su.h = net::header(net::C_SDSETUP, (uint8_t)nc.id); su.n = (uint8_t)std::min((int)netLaid.size(), net::SD_DROPS); su.site[0] = shdSite.x; su.site[1] = shdSite.y; su.site[2] = shdSite.z;
         for (int i = 0; i < su.n; i++) { su.d[i].x = netLaid[i].p.x; su.d[i].y = netLaid[i].p.y; su.d[i].z = netLaid[i].p.z; su.d[i].kind = (uint8_t)netLaid[i].kind; su.d[i].owner = net::NOBODY; }
         net::sendTo(nc.sock, nc.addr, &su, sizeof su);
     }

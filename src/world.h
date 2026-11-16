@@ -9,7 +9,7 @@ struct Gauss { float x, z, a, s; };
 struct TS { float x, z, y, tx, tz, curv; bool br = false; };   // br: this sample is on a bridge deck, not on the ground
 struct Box { float cx, cz, hx, hz, ca, sa, y0, top; };
 struct Ramp { float x, z, ca, sa, len, hw, base, rise; float thick = 1e9f; };   // thick: bridge decks are this deep and open underneath; ordinary ramps are solid
-static const int GRID_SLOTS = 8; static float gridS(int k) { return -8.0f * (k + 1); } static float gridLat(int k) { return (k % 2) ? 3.2f : -3.2f; }   // starting grid: slot 0 is pole
+static const int GRID_SLOTS = 10; static float gridS(int k) { return -8.0f * (k + 1); } static float gridLat(int k) { return (k % 2) ? 3.2f : -3.2f; }   // starting grid: slot 0 is pole
 static const float BR_LIFT = 7.5f; static const int BR_LW = 85, BR_SPAN = 38;   // bridge: height over the lower road, length of the climb, half-length of the deck (samples)
 struct Excl { float x, z, r; };
 // How a scripted driver collects a key: start pose, waypoints, speed. Used by --keyrun and the tests,

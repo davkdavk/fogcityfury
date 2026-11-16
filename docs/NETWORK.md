@@ -1,6 +1,6 @@
 # Multiplayer
 
-Up to 8 players race over UDP through a dedicated server. The code is in three files:
+Up to 10 players race over UDP through a dedicated server. The code is in three files:
 
 | File | Role |
 |---|---|
@@ -63,7 +63,7 @@ cheat-resistant means running `stepPlayer` on the server (it already builds with
 
 ## Session cycle
 
-    LOBBY --(all ready, or --lobby timer)--> COUNTDOWN --(timer)--> RACE --(three finished, or all,
+    LOBBY --(all ready, or --lobby timer)--> COUNTDOWN --(timer)--> RACE --(five finished, or all,
       or finish-timeout after the winner, or 20 min)--> SHOWDOWN --(one fighter left)--> RESULTS
       --(timer)--> LOBBY on the next track
 
@@ -87,7 +87,7 @@ An online race cannot be paused: Esc opens a menu while the car coasts.
 ## Wire format
 
 UDP datagrams. Integers little-endian, floats IEEE-754 single, structs packed with no padding.
-Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 4) in `net.h` must be bumped
+Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 5) in `net.h` must be bumped
 whenever a struct changes or a flag bit gains a meaning; a client with a different version gets `S_REJECT` reason 2.
 
 Every packet starts with an 8-byte header:
@@ -112,8 +112,8 @@ Packet types:
 | 4 | `C_QUERY` | anyone to server | `u32 nonce`, 36 bytes of padding (48 bytes in all). Not a player: no join needed |
 | 19 | `S_INFO` | server to asker | `u32 nonce` (echoed), `u8 track, laps, phase, weather, count, maxp`, `char name[24]` (42 bytes) |
 | 5 | `C_FOOT` | fighter to server | `u32 seq`, `FootState`. 30 times a second for the whole showdown |
-| 6 | `C_SDSETUP` | slot 0's client to server | `u8 n`, 12 x `SdDrop`: where the pick-ups lie. Repeated until the server has them |
-| 20 | `S_SHOWDOWN` | server to everyone | the showdown's state (324 bytes), 20 times a second while the phase is SHOWDOWN |
+| 6 | `C_SDSETUP` | slot 0's client to server | `u8 n`, `f32 site[3]`, 12 x `SdDrop`: where the ring goes and where the pick-ups lie. Repeated until the server has them |
+| 20 | `S_SHOWDOWN` | server to everyone | the showdown's state (439 bytes), 20 times a second while the phase is SHOWDOWN |
 
 `CarState` (56 bytes):
 
@@ -126,7 +126,7 @@ Packet types:
 | 2 x u8 | `hitId`, `hitSeq`: rockets. `hitSeq` goes up by one each time this player's rocket hits player `hitId` |
 
 `PlayerSnap` (74 bytes): `u8 id`, `u8 place` (1-based), `char name[16]`, `CarState`.
-A snapshot is 21 + 74 x count bytes (613 at most).
+A snapshot is 21 + 74 x count bytes (761 at most).
 
 **Rockets.** Cars are client-authoritative, so a hit is too: the shooter's game decides that its
 rocket reached player N, sets `hitId = N` and increments `hitSeq`. The server relays both bytes
@@ -147,7 +147,8 @@ answered. Leave is sent twice and backed by the timeout.
 
 ## The showdown
 
-After the race the first three finishers (two, if only two finished) fight on foot. The server has
+After the race the first five finishers (fewer, if fewer finished; at least two) fight on foot.
+Up to ten players fit on a server. The server has
 no map, so it cannot run bots or check positions: an online showdown is between players only, and
 everyone else watches.
 
@@ -155,18 +156,21 @@ Phase 4, `SHOWDOWN`, has four stages, sent in `S_SHOWDOWN`:
 
 | Stage | Ends when |
 |---|---|
-| 0 drive | every fighter reports `FF_ARRIVED` (their car is inside the ring), or after 75 s |
+| 0 drive | every fighter reports `FF_ARRIVED` (their car is inside the ring), or after 90 s |
 | 1 countdown | 20 s |
 | 2 fight | one fighter is left, or after 180 s (then the healthiest wins) |
 | 3 over | 6.5 s, then RESULTS |
 
-**Who decides what.** The server picks the fighters (slots 0-2, in finishing order), where the ring
-goes (`siteU`, a fraction of the lap; every client turns that into the same point on the track),
-the stage, the ring's radius, who owns each pick-up, and the order fighters went down in. Each
+**Who decides what.** The server picks the fighters (slots 0-4, in finishing order), the stage, the
+ring's radius, who owns each pick-up, and the order fighters went down in. It has no map, so the
+place is chosen by slot 0's game (the race winner's), which sends it with the pick-ups in
+`C_SDSETUP`: usually open ground off the road. `siteKind` in `S_SHOWDOWN` says what `site` holds:
+0 not chosen yet, 1 a stretch of road (`site[0]` of the way round the lap; used with
+`--showdown-site`, or if the winner's game has not answered within 4 s), 2 a point `x y z`. Each
 fighter's own game simulates their car, then their body, and reports it in `FootState`.
 
-`FootState` (40 bytes): 6 x f32 `x y z vx vz yaw`; 8 x u8 `hp armour gun flags fireSeq target
-killedBy pad`; 3 x u16 `dealt` (by slot); u16 `claim`. Flags: 1 out of the car, 2 alive, 4 aiming,
+`FootState` (44 bytes): 6 x f32 `x y z vx vz yaw`; 8 x u8 `hp armour gun flags fireSeq target
+killedBy pad`; 5 x u16 `dealt` (by slot); u16 `claim`. Flags: 1 out of the car, 2 alive, 4 aiming,
 8 rolling, 16 sprinting, 32 car inside the ring, 64 blown apart by a grenade.
 
 - **Damage** follows the rocket rule: the shooter decides it hit. It reports the total damage it has
@@ -182,9 +186,9 @@ killedBy pad`; 3 x u16 `dealt` (by slot); u16 `claim`. Flags: 1 out of the car, 
 - **Shots** are not sent. `fireSeq` goes up with each one, and the other games draw the flash and
   tracer (or a harmless grenade) from the fighter's position and `target`.
 
-`S_SHOWDOWN` (324 bytes): header, `u32 tick`, `u8 stage`, `f32 stageT, ring, siteU`,
-`u8 fighter[3]` (player ids, 255 = empty), `u8 place[3]` (0 while standing), `u8 kills[3]`,
-`u8 winner`, `u8 ndrops`, 3 x `FootState`, 12 x `SdDrop` (`f32 x y z`, `u8 kind`, `u8 owner`).
+`S_SHOWDOWN` (439 bytes): header, `u32 tick`, `u8 stage`, `f32 stageT, ring, site[3]`, `u8 siteKind`,
+`u8 fighter[5]` (player ids, 255 = empty), `u8 place[5]` (0 while standing), `u8 kills[5]`,
+`u8 winner`, `u8 ndrops`, 5 x `FootState`, 12 x `SdDrop` (`f32 x y z`, `u8 kind`, `u8 owner`).
 
 Client side this is `src/netshd.h`. The same trust caveat applies as for cars: a modified client
 could claim hits or refuse damage.
