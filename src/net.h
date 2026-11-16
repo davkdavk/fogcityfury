@@ -24,17 +24,18 @@
 
 namespace net {
 const uint32_t MAGIC = 0x59464346;   // bytes "FCFY"
-const uint16_t PROTO = 5;            // bump when any struct below changes, or a flag bit gains a meaning
+const uint16_t PROTO = 6;            // bump when any struct below changes, or a flag bit gains a meaning
 const int MAXP = 10, DEFPORT = 27015, NAMELEN = 16, TRACKS = 4, CARS = 4, PAINTS = 8;
+const int BOTS = 4;   // computer-driven cars the server adds to a race, at most. The server has no map: one player's game (the host) drives them
 const int SD_FIGHT = 5, SD_DROPS = 12, SD_SLOW_KIND = 5;   // the showdown: fighters (the podium), pick-ups at most, the kind of pick-up (the grenade launcher) that takes three times as long to come back
 
-enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20 };
+enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20 };
 enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4 };   // SHOWDOWN comes between RACE and RESULTS
 enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
 enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
 const uint8_t NOBODY = 255;
 const float SD_SITE_WAIT = 4, SD_DRIVE_MAX = 90, SD_PREP_LEN = 20, SD_OVER_LEN = 6.5f, SD_RESPAWN = 15, SD_RING0 = 52, SD_RING_MID = 30, SD_RING_END = 15, SD_SHRINK = 50, SD_MAX_FIGHT = 180;   // how long the server waits for the winner's game to choose the place; the longest the drive may take, the countdown, the winner's moment, how long a taken pick-up stays away (seconds); ring radii in metres
-enum Flags : uint8_t { F_READY = 1, F_BRAKING = 2, F_DEAD = 4, F_FINISHED = 8, F_NITRO = 16, F_RACING = 32 };   // F_RACING is set by the server only
+enum Flags : uint8_t { F_READY = 1, F_BRAKING = 2, F_DEAD = 4, F_FINISHED = 8, F_NITRO = 16, F_RACING = 32, F_BOT = 64, F_HOST = 128 };   // the last three are set by the server only. F_BOT: computer-driven. F_HOST: this player's game drives the bots
 enum RejectReason : uint8_t { R_FULL = 1, R_VERSION = 2 };
 
 // All integers little-endian, floats IEEE-754, structs packed. Every packet starts with Header.
@@ -62,6 +63,11 @@ struct FootState {                                                              
     uint16_t dealt[SD_FIGHT]; uint16_t claim;
 };
 struct Foot { Header h; uint32_t seq; FootState s; };                                    // C_FOOT
+// The bots, from the host's game: their cars during the race (and the drive to the ring), their bodies in the showdown
+struct BotCar { uint8_t id; CarState s; };
+struct Bots { Header h; uint32_t seq; uint8_t n; BotCar b[BOTS]; };                      // C_BOTS
+struct BotFootOne { uint8_t slot; FootState s; };
+struct BotFoot { Header h; uint32_t seq; uint8_t n; BotFootOne f[SD_FIGHT]; };           // C_BOTFOOT
 struct SdDrop { float x, y, z; uint8_t kind, owner; };                                   // kind: a gun number, then medkit, armour. owner: the slot that took it, or NOBODY
 struct SdSetup { Header h; uint8_t n; float site[3]; SdDrop d[SD_DROPS]; };              // C_SDSETUP: the race winner's game chooses the place and lays out the pick-ups (it knows the ground)
 enum SiteKind : uint8_t { SITE_UNKNOWN = 0, SITE_ROAD = 1, SITE_POINT = 2 };             // not chosen yet; on the road, site[0] of the way round the lap; the point site[0..2]

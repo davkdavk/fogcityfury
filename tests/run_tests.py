@@ -326,7 +326,7 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 5
+NET_MAGIC, NET_PROTO = 0x59464346, 6
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
 C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
@@ -334,7 +334,8 @@ LOBBY, COUNTDOWN, RACE, RESULTS, SHOWDOWN = 0, 1, 2, 3, 4
 FOOTSTATE, SDDROP = "<6f8B5HH", "<3fBB"   # FootState (44 bytes), SdDrop (14 bytes)
 SD_DRIVE, SD_PREP, SD_LIVE, SD_OVER = 0, 1, 2, 3
 FF_ON, FF_ALIVE, FF_ARRIVED, NOBODY = 1, 2, 32, 255
-F_READY, F_FINISHED, F_NITRO, F_RACING = 1, 8, 16, 32
+F_READY, F_FINISHED, F_NITRO, F_RACING, F_BOT, F_HOST = 1, 8, 16, 32, 64, 128
+C_BOTS = 7
 
 
 def free_port():
@@ -351,6 +352,8 @@ class Server:
     def __init__(self, *args):
         self.port = free_port()
         self.args = [SERVER, "--port", str(self.port)] + [str(a) for a in args]
+        if "--bots" not in self.args:   # the tests count players: no computer-driven cars unless one asks for them
+            self.args += ["--bots", "0"]
 
     def __enter__(self):
         self.proc = subprocess.Popen(self.args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -770,6 +773,53 @@ def net_showdown_server_runs_the_podium_fight():
         check(m["place"][:3] == [1, 2, 3] and m["winner"] == 0 and m["kills"][0] == 2, "last one standing wins", (m["place"], m["winner"], m["kills"]))
         until(lambda m: a.phase_seen == RESULTS, 9, alive=(True, False, False))
     check("showdown:" in srv.log and "1. ALICE" in srv.log and "2 down" in srv.log, "the server log has the showdown table", srv.log[-300:])
+
+
+@test
+def net_bots_fill_the_grid_and_the_host_reports_them():
+    """Protocol level: the server adds four bots, names one player their host, and takes their cars only from that player."""
+    with Server("--laps", 1, "--countdown", 0.5, "--bots", 4) as srv:
+        a, b = FakeClient(srv.port, "ANNA"), FakeClient(srv.port, "BEN")
+        a.join()
+        b.join()
+        sn = None
+        for _ in range(60):
+            a.state(flags=F_READY)
+            b.state(flags=F_READY)
+            sn = a.snapshot()
+            if sn and sn["phase"] == RACE:
+                break
+        check(sn and sn["phase"] == RACE and sn["count"] == 6, "two people and four bots on the grid", sn and (sn["phase"], sn["count"]))
+        bots = {n: p for n, p in sn["players"].items() if p["flags"] & F_BOT}
+        check(sorted(bots) == ["KATO", "MOSS", "REYES", "VEGA"], "the four bots are flagged as such", sorted(bots))
+        check(sn["players"]["ANNA"]["flags"] & F_HOST and not sn["players"]["BEN"]["flags"] & F_HOST, "the first player in is their host")
+        bid = bots["VEGA"]["id"]
+
+        def report(c, seq, x):
+            cs = struct.pack(CARSTATE, x, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 123.0, 0, NOBODY, 0)
+            c.sock.sendto(c.hdr(C_BOTS) + struct.pack("<IB", seq, 1) + bytes([bid]) + cs + bytes(3 * (1 + len(cs))), c.addr)
+
+        report(b, 1, 666.0)
+        report(a, 2, 42.0)
+        for _ in range(10):
+            a.state()
+            b.state()
+            sn = b.snapshot() or sn
+        check(abs(sn["players"]["VEGA"]["x"] - 42.0) < 0.01 and abs(sn["players"]["VEGA"]["progress"] - 123.0) < 0.01, "the host's word on a bot is relayed; anybody else's is ignored", sn["players"]["VEGA"])
+
+
+@test
+def net_bots_race_and_fight_under_a_real_host():
+    """A real (headless) game hosts the four bots: they finish behind it, drive to the ring, and one fighter is left standing."""
+    with Server("--laps", 1, "--countdown", 0.5, "--results", 60, "--bots", 4, "--showdown-site", 0.3) as srv:
+        p = subprocess.run([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", "hero", "--ready", "--sdnow", "--auto", "--footai", "--keys", "5", "--seconds", "170"], capture_output=True, text=True, timeout=260)
+        d = json.loads(p.stdout.strip().splitlines()[-1])
+    check(d["netBots"] == 4 and d["netShdCount"] == 1 and d["netSlot"] == 0, "the game hosted four bots and went into the showdown with them", (d["netBots"], d["netShdCount"], d["netSlot"]))
+    for name in ("VEGA", "MOSS", "KATO", "REYES"):
+        check("(%s) finished" % name in srv.log and name in srv.log.split("phase SHOWDOWN")[1], "%s finished the race and is in the showdown" % name)
+    check("showdown: all in the ring" in srv.log and " takes it" in srv.log and "phase RESULTS" in srv.log, "five fighters reached the ring and the server saw it through to a winner", srv.log[-600:])
+    downs = [x for x in srv.log.splitlines() if x.startswith("showdown:") and " is down" in x]
+    check(len(downs) == 4, "four of the five went down", downs)
 
 
 @test
@@ -1252,10 +1302,18 @@ def guns_need_keys():
 @test
 def showdown_is_for_the_top_three():
     d = sim(*SHOW, "--sdplace", 6, seconds=3)
-    check(d["state"] == 5 and d["shdPhase"] == 0 and d["onFoot"] == 0, "sixth place: straight to the results", (d["state"], d["shdPhase"]))
+    check(d["state"] == 3 and d["shdPhase"] == 1 and d["shdSpectate"] == 1 and d["onFoot"] == 0, "sixth place: no place in it, but you watch", (d["state"], d["shdPhase"], d["shdSpectate"]))
     for place, armour in ((1, 50), (2, 25), (3, 0), (5, 0)):
         d = sim(*SHOW, "--sdplace", place, seconds=3)
         check(d["shdPhase"] == 1 and d["onFoot"] == 0 and d["armour"] == armour, "place %d: off to the ring, with %d armour waiting" % (place, armour), (d["shdPhase"], d["armour"]))
+
+
+@test
+def showdown_without_you_is_fought_by_the_five_who_beat_you():
+    d = sim(*SHOW, "--sdplace", 7, seconds=150)
+    feet = [f.split("|") for f in d["fighters"].split(";")]
+    check(d["shdSpectate"] == 1 and len(feet) == 5 and all(f[0] == "1" for f in feet), "seventh: five computer-driven fighters, and you watching", d["fighters"])
+    check(d["shdPhase"] >= 3 and sum(f[1] == "1" for f in feet) < 5, "they fight it out among themselves", (d["shdPhase"], d["fighters"]))
 
 
 @test

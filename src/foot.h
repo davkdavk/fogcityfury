@@ -144,14 +144,15 @@ static void killFighter(Fighter& t, int by) {
     t.hp = 0; t.alive = false; t.deadT = 0; t.target = -1; t.rollT = 0; if (by >= 0 && by != t.id) fighters[by].kills++;
     if (showdownOn) t.place = shdAlive() + 1;
     sfx(t.pos, 110, 0.5f, 0.6f, 0, -40);
-    char b[64]; if (&t == &me) snprintf(b, sizeof b, showdownOn ? "YOU ARE DOWN" : "WASTED"); else snprintf(b, sizeof b, "%s IS DOWN", t.name);
-    say(b, &t == &me ? V3(1, 0.3f, 0.2f) : V3(1, 0.85f, 0.3f), 2.5f);
+    char b[64]; if (mine(t)) snprintf(b, sizeof b, showdownOn ? "YOU ARE DOWN" : "WASTED"); else snprintf(b, sizeof b, "%s IS DOWN", t.name);
+    say(b, mine(t) ? V3(1, 0.3f, 0.2f) : V3(1, 0.85f, 0.3f), 2.5f);
 }
 // by: the fighter who did it (-1: the ring, a racer's bumper). dir: the way the shot was travelling
 static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = false) {   // pierce: armour is no help (the ring)
     if (!t.on || !t.alive) return;
     if (t.remote) {   // online: their health is theirs to keep. Ours only adds up what it has dealt, and shows the hit
-        if (by != 0 || me.remote) return; t.dealt += dmg; t.hurtT = 0.25f; me.hits++; hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); sfx(t.pos, 420, 0.06f, 0.25f, 1);
+        if (by < 0 || fighters[by].remote) return; fighters[by].dealtTo[t.id] += dmg; t.hurtT = 0.25f; sfx(t.pos, 420, 0.06f, 0.25f, 1);
+        if (by == 0) { me.hits++; hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); }
             bleed(t.pos + V3(0, 1.15f, 0), dir, dmg);
         return;
     }
@@ -159,7 +160,7 @@ static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = f
     if (by >= 0 && by != t.id) { t.hitBy = by; t.hitByT = 0; t.vel = t.vel + V3(dir.x, 0, dir.z) * 1.0f; }
     if (!pierce) bleed(t.pos + V3(0, 1.15f, 0), len(dir) > 0.1f ? dir : V3(0, 0.3f, 0), dmg);
     if (by == 0 && &t != &me) { me.hits++; hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); }
-    if (&t == &me) { hurtFlash = 0.45f; if (by >= 0) hurtAng = wrapPi(atan2f(-dir.x, -dir.z) - footYaw); shake = std::max(shake, 0.22f); rumble(0.6f, 120); tone(150, 0.12f, 0.45f, 1); }
+    if (mine(t)) { hurtFlash = 0.45f; if (by >= 0) hurtAng = wrapPi(atan2f(-dir.x, -dir.z) - footYaw); shake = std::max(shake, 0.22f); rumble(0.6f, 120); tone(150, 0.12f, 0.45f, 1); }
     else sfx(t.pos, 420, 0.06f, 0.25f, 1);
     if (t.hp <= 0) killFighter(t, by);
 }

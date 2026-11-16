@@ -30,7 +30,8 @@ Server options:
 | `--lobby S` | 0 | 0: start when every player is ready. Otherwise start S seconds after the first player is ready |
 | `--finish-timeout S` | 45 | the race ends this long after the winner finishes; the rest are DNF |
 | `--results S` | 12 | how long the results stay up |
-| `--no-showdown` | | end at the race results. By default the top three finishers then fight on foot (see "The showdown") |
+| `--no-showdown` | | end at the race results. By default the top five finishers then fight on foot (see "The showdown") |
+| `--bots N` | 4 | computer-driven cars added to each race (0-4, fewer if the server is nearly full). See "Bots" |
 | `--showdown-site U` | | always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race |
 | `--timeout S` | 5 | drop a player after this much silence |
 | `--quiet` | | no log output |
@@ -87,7 +88,7 @@ An online race cannot be paused: Esc opens a menu while the car coasts.
 ## Wire format
 
 UDP datagrams. Integers little-endian, floats IEEE-754 single, structs packed with no padding.
-Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 5) in `net.h` must be bumped
+Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 6) in `net.h` must be bumped
 whenever a struct changes or a flag bit gains a meaning; a client with a different version gets `S_REJECT` reason 2.
 
 Every packet starts with an 8-byte header:
@@ -109,6 +110,8 @@ Packet types:
 | 16 | `S_WELCOME` | server to client | `u8 yourId`, `u8 track`, `u8 laps`, `u8 phase`, `u8 weather` |
 | 17 | `S_SNAPSHOT` | server to client | `u32 tick`, `u8 phase`, `u8 track`, `u8 laps`, `u8 count`, `u8 weather`, `f32 phaseT`, then `count` x `PlayerSnap` |
 | 18 | `S_REJECT` | server to client | `u8 reason`: 1 full, 2 version mismatch |
+| 7 | `C_BOTS` | host to server | `u32 seq`, `u8 n`, then 4 x (`u8 id`, `CarState`): the bots' cars. Taken only from the host |
+| 8 | `C_BOTFOOT` | host to server | `u32 seq`, `u8 n`, then 5 x (`u8 slot`, `FootState`): the bots' fighters in a showdown |
 | 4 | `C_QUERY` | anyone to server | `u32 nonce`, 36 bytes of padding (48 bytes in all). Not a player: no join needed |
 | 19 | `S_INFO` | server to asker | `u32 nonce` (echoed), `u8 track, laps, phase, weather, count, maxp`, `char name[24]` (42 bytes) |
 | 5 | `C_FOOT` | fighter to server | `u32 seq`, `FootState`. 30 times a second for the whole showdown |
@@ -148,9 +151,9 @@ answered. Leave is sent twice and backed by the timeout.
 ## The showdown
 
 After the race the first five finishers (fewer, if fewer finished; at least two) fight on foot.
-Up to ten players fit on a server. The server has
-no map, so it cannot run bots or check positions: an online showdown is between players only, and
-everyone else watches.
+Up to ten cars fit on a server, bots included. A bot that finishes in the top five fights like
+anyone else (its host's game runs it, see "Bots"); everyone who is not in it watches, and the
+camera key steps the view from one fighter to the next.
 
 Phase 4, `SHOWDOWN`, has four stages, sent in `S_SHOWDOWN`:
 
@@ -192,6 +195,28 @@ killedBy pad`; 5 x u16 `dealt` (by slot); u16 `claim`. Flags: 1 out of the car, 
 
 Client side this is `src/netshd.h`. The same trust caveat applies as for cars: a modified client
 could claim hits or refuse damage.
+
+## Bots
+
+The server has no map, so it cannot drive anything. Instead, when the countdown starts it adds up
+to `--bots` players of its own (VEGA, MOSS, KATO, REYES; flag `F_BOT`, 64, in their `CarState`),
+and names one person their host: the lowest-numbered player who is racing (flag `F_HOST`, 128, on
+that player's own entry). The bots are removed again when the session returns to the lobby.
+
+The host's game drives them with the offline opponent code and reports them: `C_BOTS` 20 times a
+second for the cars (same `CarState` as a player's, `progress` in metres, `F_FINISHED` with
+`lap > laps` when one crosses the line), and in a showdown `C_BOTFOOT` 30 times a second for any
+bot that is fighting. The server treats those reports exactly like a player's own; it ignores
+them from anyone but the host. To every other game a bot is one more remote player: it is drawn,
+collided with, shot at and hit in the same way, and damage to a bot fighter is reported in
+`dealt[]` and applied by the host's game.
+
+If the host leaves, the next person becomes host and their game takes the bots over from where
+they were last reported. In a showdown that is not possible (a fighter's state is more than its
+position), so the bots still standing are marked down. If a bot wins the race, the host's game
+chooses the showdown's place and lays out the pick-ups. A race with no people left in it ends.
+
+Rockets: a hit on a bot is reported like a hit on a player (`hitId`), and the host's game wrecks it.
 
 ## Remote cars
 

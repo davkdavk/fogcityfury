@@ -5,8 +5,10 @@
 #include "net.h"
 
 struct Remote { uint8_t hitSeq = 0; bool seen = false;   // seen: we have looked at this player's state at least once
+    bool bot = false;   // computer-driven (the host's game drives it; to everyone else it is one more car)
     bool present = false, racing = false, fresh = true; char name[net::NAMELEN + 1] = ""; net::CarState s; float age = 0, moved = 0; uint8_t place = 0; Car car; };
 static struct NetClient {
+    bool hosts = false;   // the server has made our game the bots' driver (netshd.h)
     bool on = false, connected = false, ready = false, racing = false, finished = false, autoReady = false, skipMenus = false;
     int sock = -1, id = -1, field = 0; sockaddr_in addr;
     uint8_t phase = 0, prevPhase = 255, track = 0, laps = 3, weather = 0, myPlace = 1, count = 0; float phaseT = 0, finishT = 0;
@@ -22,7 +24,7 @@ static struct NetClient {
 
 static void netClose(const char* why) {
     if (nc.sock >= 0) { if (nc.connected) { net::Header h = net::header(net::C_LEAVE, (uint8_t)nc.id); for (int k = 0; k < 2; k++) net::sendTo(nc.sock, nc.addr, &h, sizeof h); } net::closeSock(nc.sock); }
-    snprintf(nc.error, sizeof nc.error, "%s", why ? why : ""); nc.sock = -1; nc.on = nc.connected = nc.ready = nc.racing = nc.finished = false; nc.id = -1; nc.prevPhase = 255; nc.gotSnap = false; nc.sdGot = false;
+    snprintf(nc.error, sizeof nc.error, "%s", why ? why : ""); nc.sock = -1; nc.on = nc.connected = nc.ready = nc.racing = nc.finished = nc.hosts = false; nc.id = -1; nc.prevPhase = 255; nc.gotSnap = false; nc.sdGot = false;
     for (auto& r : nc.r) r.present = false;
 }
 static bool netConnect() {
@@ -50,9 +52,9 @@ static void netPump(float dt, bool inLobby) {
             bool seen[net::MAXP] = {};
             for (int k = 0; k < sn.count; k++) {
                 const net::PlayerSnap& p = sn.p[k]; if (p.id >= net::MAXP) continue;
-                if (p.id == nc.id) { nc.myPlace = p.place; if (sn.count >= 2) nc.placeFull = p.place; nc.racing = p.s.flags & net::F_RACING; continue; }
+                if (p.id == nc.id) { nc.myPlace = p.place; if (sn.count >= 2) nc.placeFull = p.place; nc.racing = p.s.flags & net::F_RACING; nc.hosts = p.s.flags & net::F_HOST; continue; }
                 Remote& r = nc.r[p.id]; seen[p.id] = true; if (!r.present) { r.fresh = true; r.moved = 0; }
-                r.present = true; r.s = p.s; r.age = 0; r.place = p.place; r.racing = p.s.flags & net::F_RACING; memcpy(r.name, p.name, net::NAMELEN); r.name[net::NAMELEN] = 0;
+                r.present = true; r.s = p.s; r.age = 0; r.place = p.place; r.racing = p.s.flags & net::F_RACING; r.bot = p.s.flags & net::F_BOT; memcpy(r.name, p.name, net::NAMELEN); r.name[net::NAMELEN] = 0;
             }
             for (int i = 0; i < net::MAXP; i++) if (!seen[i]) nc.r[i].present = false;
             if (nc.phase != net::SHOWDOWN && nc.phase != net::RESULTS) nc.sdGot = false;
@@ -89,6 +91,7 @@ static void netPump(float dt, bool inLobby) {
         c.vel = V3(s.vx, s.vy, s.vz); c.steer = s.steer; c.type = s.car % net::CARS; c.paint = s.paint % NPAINT; c.braking = s.flags & net::F_BRAKING; bool wasDead = c.dead; c.dead = s.flags & net::F_DEAD; c.lean = 0;
         if (r.seen && r.racing && c.dead && !wasDead) remoteWreck(c);                                 // they blew up: leave their wreck on our road too
         if (r.seen && s.hitSeq != r.hitSeq && s.hitId == nc.id) netHitMe();                           // their rocket found us
+        else if (r.seen && s.hitSeq != r.hitSeq) netHitBot(s.hitId);                                  // ...or one of the bots we drive
         r.hitSeq = s.hitSeq; r.seen = true;
         c.boost += clampf(((s.flags & net::F_NITRO) ? 1.0f : 0.0f) - c.boost, -7 * dt, 9 * dt);
         c.vf = sqrtf(s.vx * s.vx + s.vz * s.vz); c.wheelRot += c.vf / SPECS[c.type].wr * dt;

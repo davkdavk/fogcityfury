@@ -33,8 +33,8 @@ struct Fighter {
     bool flinched = false, wantMove = false; float ringT = 0;   // ringT: time spent outside the ring since it last burned them
     // score
     int kills = 0, shots = 0, hits = 0, place = 0;
-    // online: a fighter simulated by somebody else's game. dealt: the damage ours has done to them so far (their game takes it off)
-    bool remote = false; float dealt = 0;
+    // online: remote if somebody else's game simulates this fighter. Health belongs to the victim's game: ours only reports what it dealt
+    bool remote = false; float dealtTo[5] = {}; uint16_t claim = 0;   // dealtTo[i]: the damage this (locally run) fighter has done to remote fighter i so far; claim: the pick-ups it stands on
     // the showdown, before the fight: the car has reached the ring; where along the track a bot's car is to stop
     bool gibbed = false;   // blown apart by a grenade: there is no body left to draw
     bool arrived = false, leftRoad = false; V3 park; float stopS = 0, lockT = 0;   // (a bot: leftRoad once it has turned off the road for the ring; park: where its car is to stop)   // lockT: seconds until "you cannot use that yet" may be said again
@@ -44,9 +44,13 @@ static Fighter fighters[NFIGHT]; static Fighter& me = fighters[0];   // fighters
 // the showdown: the drive from the finish line to the ring, the countdown once all three are in it, the fight, the winner
 enum ShdPhase { SH_OFF, SH_DRIVE, SH_PREP, SH_FIGHT, SH_OVER };
 static ShdPhase shdPhase = SH_OFF; static bool shdCut = false;       // shdCut: the site is chosen and the ring is up (true for the whole showdown)
-// online (netshd.h): netShd while the server is running the showdown; shdSpectate if we did not make the podium and are watching;
+// netShd: the server is running the showdown (netshd.h). shdSpectate: we did not make the top five and are watching (then
+// fighters[0] is not us but the best-placed fighter);
 // carHidden: our own car is off the road (a spectator's)
 static bool netShd = false, shdSpectate = false, carHidden = false;
+static int shdWatch = 0;                                              // watching: the fighter the camera is on
+static bool mine(const Fighter& f) { return &f == &fighters[0] && !shdSpectate; }   // is this the fighter the person at the controls is playing?
+static bool footView() { return shdSpectate ? fighters[shdWatch].on : fighters[0].on; }   // is the view on somebody on foot (and not from a car)?
 
 // the camera on foot (kept in the simulation, not the renderer: running is relative to it)
 static float footYaw = 0, footPitch = 0.20f, footMouseX = 0, footMouseY = 0; static bool footMouseFire = false;
