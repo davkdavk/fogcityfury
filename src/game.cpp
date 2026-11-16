@@ -104,7 +104,7 @@ static bool rampage = false, showdownOn = false;
 static bool exploreMode = false, timeUp = false, chromeUnlocked = false, quit = false, debugTop = false, autoDrive = false, hideUI = false;
 static float rpm = 0, camYaw = 0, topH = 900; static V3 camPos, camTgt; static bool camInit = false, fixedCam = false;
 static unsigned keysGot[NTRACKS] = {}; static float bestLap[NTRACKS] = {};
-static SDL_GameController* pad = nullptr;
+static plat::Pad* pad = nullptr;
 static bool netRace = false; static int raceLaps = LAPS; static M4 lastVP;   // online race in progress; laps this race; last view-projection (name tags)
 static void champRaceEnd(); static void champShowdownEnd(); static void champBegin(); static void champAdvance(bool quit); static void champBar(); static void champDraw();
 static void netHitMe(); static void netHitBot(int id); static void remoteWreck(const Car& c);   // called by the net client: a rocket hit us / another player blew up
@@ -121,7 +121,7 @@ static struct Metrics { float maxBeta = 0, maxSlipF = 0, maxSlipR = 0, maxSpeed 
 struct ScriptKey { float t; float steer, gas, brake; bool hb, nitro; };
 static std::vector<ScriptKey> script; static bool simMode = false;
 static std::vector<V3> waypoints; static size_t wpNext = 0; static float wpSpeed = 14;   // --waypoints: drive through a list of points
-static void rumble(float s, int ms) { if (pad) SDL_GameControllerRumble(pad, (Uint16)(clampf(s, 0, 1) * 65535), (Uint16)(clampf(s, 0, 1) * 45000), ms); }
+static void rumble(float s, int ms) { if (pad) plat::padRumble(pad, (uint16_t)(clampf(s, 0, 1) * 65535), (uint16_t)(clampf(s, 0, 1) * 45000), ms); }
 static void addMark(int w, V3 p, float alpha) {
     if (markOn[w]) {
         V3 d = p - markLast[w]; float l = len(d); if (l < 0.35f) return;
@@ -137,7 +137,7 @@ static void addMark(int w, V3 p, float alpha) {
 
 #ifdef __ANDROID__
 // the app's own private folder: no permission needed, removed when the app is uninstalled
-static std::string savePath() { const char* h = SDL_AndroidGetInternalStoragePath(); return std::string(h ? h : ".") + "/fogcityfury.sav"; }
+static std::string savePath() { const char* h = plat::internalStorage(); return std::string(h ? h : ".") + "/fogcityfury.sav"; }
 #elif defined(_WIN32)
 static std::string savePath() { const char* h = getenv("APPDATA"); if (!h) h = getenv("USERPROFILE"); return std::string(h ? h : ".") + "\\fogcityfury.sav"; }
 // ask laptops with two GPUs for the fast one
@@ -146,7 +146,7 @@ extern "C" { __declspec(dllexport) unsigned long NvOptimusEnablement = 1; __decl
 static std::string savePath() { const char* h = getenv("HOME"); return std::string(h ? h : ".") + "/.fogcityfury.sav"; }
 #endif
 // ---- server list: the online screen shows these, asks each what it is running, and joins the one picked ----
-struct DnsJob { std::string host; sockaddr_in addr; SDL_atomic_t done; };     // done: 0 looking up, 1 found, 2 not found
+struct DnsJob { std::string host; sockaddr_in addr; plat::Atomic done; };     // done: 0 looking up, 1 found, 2 not found
 struct ServerEntry {
     std::string host; std::shared_ptr<DnsJob> job; sockaddr_in addr; int st = 0;   // st: 0 looking up the address, 1 asked, 2 answered, 3 no reply, 4 unknown address
     bool waiting = false; uint32_t nonce = 0; double sent = 0; float ping = 0; net::Info info; uint16_t proto = 0;
@@ -154,16 +154,15 @@ struct ServerEntry {
 static const char* DEFAULT_SERVERS[] = { "thadav.com:27015", "127.0.0.1:27015" }; static const size_t MAX_SERVERS = 9;
 static std::vector<ServerEntry> servers; static int srvSel = 0, srvMode = 0, qsock = -1;   // srvMode: 0 picking, 1 typing a new address, 2 typing our name
 static char srvNew[96] = ""; static float srvRefresh = 0; static bool srvSkipText = false;
-static double nowSec() { return (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency(); }
-static int dnsThread(void* p) { std::shared_ptr<DnsJob>* sp = (std::shared_ptr<DnsJob>*)p; bool ok = net::resolve((*sp)->host.c_str(), (*sp)->addr); SDL_AtomicSet(&(*sp)->done, ok ? 1 : 2); delete sp; return 0; }
+static int dnsThread(void* p) { std::shared_ptr<DnsJob>* sp = (std::shared_ptr<DnsJob>*)p; bool ok = net::resolve((*sp)->host.c_str(), (*sp)->addr); plat::atomicSet((*sp)->done, ok ? 1 : 2); delete sp; return 0; }
 // look the address up on another thread: a slow or dead DNS server must not freeze the menu
 static void srvLookup(ServerEntry& e) {
-    net::init(); e.st = 0; e.waiting = false; e.job = std::make_shared<DnsJob>(); e.job->host = e.host; SDL_AtomicSet(&e.job->done, 0);
-    auto* sp = new std::shared_ptr<DnsJob>(e.job); SDL_Thread* t = SDL_CreateThread(dnsThread, "dns", sp); if (t) SDL_DetachThread(t); else dnsThread(sp);
+    net::init(); e.st = 0; e.waiting = false; e.job = std::make_shared<DnsJob>(); e.job->host = e.host; plat::atomicSet(e.job->done, 0);
+    auto* sp = new std::shared_ptr<DnsJob>(e.job); plat::runDetached(dnsThread, sp, "dns");
 }
 static void srvAsk(ServerEntry& e) {
-    if (qsock < 0) return; static uint32_t n = 1; e.nonce = (uint32_t)SDL_GetPerformanceCounter() * 2654435761u + n++;
-    net::Query q; memset(&q, 0, sizeof q); q.h = net::header(net::C_QUERY, 0xFF); q.nonce = e.nonce; net::sendTo(qsock, e.addr, &q, sizeof q); e.sent = nowSec(); e.waiting = true; if (e.st != 2) e.st = 1;
+    if (qsock < 0) return; static uint32_t n = 1; e.nonce = (uint32_t)plat::ticks() * 2654435761u + n++;
+    net::Query q; memset(&q, 0, sizeof q); q.h = net::header(net::C_QUERY, 0xFF); q.nonce = e.nonce; net::sendTo(qsock, e.addr, &q, sizeof q); e.sent = plat::nowSec(); e.waiting = true; if (e.st != 2) e.st = 1;
 }
 static void srvAdd(const char* host) { for (auto& e : servers) if (e.host == host) return; if (servers.size() >= MAX_SERVERS || !host[0]) return; ServerEntry e; e.host = host; e.st = 4; servers.push_back(e); }
 static void srvOpen() { if (qsock < 0) qsock = net::openUdp(0); for (auto& e : servers) srvLookup(e); srvRefresh = 0; srvMode = 0; if (srvSel >= (int)servers.size()) srvSel = 0; }
@@ -171,14 +170,14 @@ static void srvClose() { if (qsock >= 0) net::closeSock(qsock); qsock = -1; }
 static void srvPump(float dt) {
     if (qsock < 0) return; srvSkipText = false;
     for (auto& e : servers) {
-        if (e.st == 0 && e.job) { int d = SDL_AtomicGet(&e.job->done); if (d == 1) { e.addr = e.job->addr; srvAsk(e); } else if (d == 2) e.st = 4; }
-        if (e.waiting && nowSec() - e.sent > 1.5) { e.waiting = false; e.st = 3; }
+        if (e.st == 0 && e.job) { int d = plat::atomicGet(e.job->done); if (d == 1) { e.addr = e.job->addr; srvAsk(e); } else if (d == 2) e.st = 4; }
+        if (e.waiting && plat::nowSec() - e.sent > 1.5) { e.waiting = false; e.st = 3; }
     }
     uint8_t buf[256]; sockaddr_in from;
     for (int guard = 0; guard < 64; guard++) {
         int n = net::recvFrom(qsock, buf, sizeof buf, from); if (n <= 0) break; if (!net::valid(buf, n, sizeof(net::Info))) continue;
         net::Info in; memcpy(&in, buf, sizeof in); if (in.h.type != net::S_INFO) continue;
-        for (auto& e : servers) if (e.waiting && e.nonce == in.nonce && net::sameAddr(e.addr, from)) { e.waiting = false; e.st = 2; e.ping = (float)((nowSec() - e.sent) * 1000); e.info = in; e.info.name[sizeof e.info.name - 1] = 0; e.proto = in.h.proto; }
+        for (auto& e : servers) if (e.waiting && e.nonce == in.nonce && net::sameAddr(e.addr, from)) { e.waiting = false; e.st = 2; e.ping = (float)((plat::nowSec() - e.sent) * 1000); e.info = in; e.info.name[sizeof e.info.name - 1] = 0; e.proto = in.h.proto; }
     }
     srvRefresh += dt; if (srvRefresh > 4) { srvRefresh = 0; for (auto& e : servers) if (e.st == 1 || e.st == 2 || e.st == 3) srvAsk(e); }   // keep the list fresh
 }
@@ -658,16 +657,16 @@ static Input autoInput(const Car& c) {
 }
 
 static Input readInput() {
-    Input in; const Uint8* k = SDL_GetKeyboardState(nullptr);
+    Input in; const Uint8* k = SDL_GetKeyboardState(nullptr);   // keyboard: still SDL (step 2)
     auto key = [&](int sc) { if (!sc) return false; for (int h : heldKeys) if (h == sc) return true; return k[sc] != 0; };   // heldKeys: --hold (tests)
     auto dn = [&](int b) { return key(binds[b][0]) || key(binds[b][1]) || touchHolds(b); };   // bindings: see the controls screen
     if (dn(B_LEFT)) in.steer += 1; if (dn(B_RIGHT)) in.steer -= 1; if (dn(B_GAS)) in.gas = 1; if (dn(B_BRAKE)) in.brake = 1; in.hb = dn(B_HB); in.nitro = dn(B_NITRO); in.fire = dn(B_FIRE);
     if (pad) {
-        float ax = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX) / 32767.f; if (fabsf(ax) > 0.12f) in.steer = clampf(in.steer - ax, -1, 1);
-        in.gas = std::max(in.gas, SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) / 32767.f); in.brake = std::max(in.brake, SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) / 32767.f);
-        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_A)) in.gas = 1; if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_X)) in.hb = true; if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_B)) in.brake = 1;
-        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) in.nitro = true;   // the left shoulder fires rockets
-        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER)) in.fire = true;     // ...or, on foot, the gun (held for the SMG)
+        float ax = plat::padAxisRaw(pad, plat::AX_LX) / 32767.f; if (fabsf(ax) > 0.12f) in.steer = clampf(in.steer - ax, -1, 1);
+        in.gas = std::max(in.gas, plat::padAxisRaw(pad, plat::AX_TRIG_R) / 32767.f); in.brake = std::max(in.brake, plat::padAxisRaw(pad, plat::AX_TRIG_L) / 32767.f);
+        if (plat::padButton(pad, plat::BT_A)) in.gas = 1; if (plat::padButton(pad, plat::BT_X)) in.hb = true; if (plat::padButton(pad, plat::BT_B)) in.brake = 1;
+        if (plat::padButton(pad, plat::BT_RB)) in.nitro = true;   // the left shoulder fires rockets
+        if (plat::padButton(pad, plat::BT_LB)) in.fire = true;     // ...or, on foot, the gun (held for the SMG)
     }
     return in;
 }
@@ -1576,8 +1575,8 @@ int main(int argc, char** argv) {
         maxAF = fa >= 16 ? 16 : fa >= 8 ? 8 : fa >= 4 ? 4 : fa >= 2 ? 2 : 1; vidAA = std::min(vidAA, maxAA); vidAF = std::min(vidAF, maxAF);
         SDL_DisplayMode dm; if (SDL_GetDesktopDisplayMode(std::max(0, SDL_GetWindowDisplayIndex(win)), &dm) == 0) { deskW = dm.w; deskH = dm.h; }
     }
-    if (!shot) { SDL_AudioSpec want = {}, have; want.freq = 44100; want.format = AUDIO_F32SYS; want.channels = 2; want.samples = 1024; want.callback = audioCB; adev = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0); if (adev) SDL_PauseAudioDevice(adev, 0); }
-    for (int i = 0; i < SDL_NumJoysticks() && !pad; i++) if (SDL_IsGameController(i)) pad = SDL_GameControllerOpen(i);
+    if (!shot) { bool ok = false; adev = plat::audioOpen(audioCB, ok); if (ok) plat::audioPause(adev, false); else adev = 0; }
+    for (int i = 0; i < plat::padCount() && !pad; i++) if (plat::padIsController(i)) pad = plat::padOpen(i);
 
     pWorld = makeProg(VS_MESH, FS_COMMON, FS_WORLD); pCar = makeProg(VS_MESH, FS_COMMON, FS_CAR); pWater = makeProg(VS_MESH, FS_COMMON, FS_WATER);
     pSky = makeProg(VS_SKY, FS_COMMON, FS_SKY); pPart = makeProg(VS_PART, FS_COMMON, FS_PART); pDepth = makeProg(VS_MESH, FS_COMMON, FS_DEPTH); pUI = makeProg(VS_UI, "", FS_UI_FULL); pMark = makeProg(VS_PART, FS_COMMON, FS_MARK); pRing = makeProg(VS_PART, FS_COMMON, FS_RING); pPost = makeProg(VS_SKY, "", FS_POST);
@@ -1634,8 +1633,8 @@ int main(int argc, char** argv) {
         render(fw, fh); glFinish(); writeBMP(shot, fw, fh); printJSON(stdout);
         return 0;
     }
-    if (!simMode && !grngSeeded) grng.s = (uint32_t)SDL_GetPerformanceCounter() * 2654435761u + 1u;   // a real game: a new ring each time (sims and tests stay the same)
-    Uint64 last = SDL_GetPerformanceCounter();
+    if (!simMode && !grngSeeded) grng.s = (uint32_t)plat::ticks() * 2654435761u + 1u;   // a real game: a new ring each time (sims and tests stay the same)
+    uint64_t last = plat::ticks();
     while (!quit) {
         SDL_Event e;
         { static bool rel = false; bool want = me.on && me.alive && state == RACE && !touchOn && !touchMouse; if (want != rel) { rel = want; SDL_SetRelativeMouseMode(rel ? SDL_TRUE : SDL_FALSE); } }   // on foot the mouse is captured: it aims
@@ -1655,7 +1654,7 @@ int main(int argc, char** argv) {
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break; case SDL_CONTROLLER_BUTTON_DPAD_UP: if (state == RACE && me.on) cycleGun(); else onKey(SDLK_UP); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: if (state == RACE) footToggle(); else onKey(SDLK_DOWN); break; }
             }
-            if (e.type == SDL_CONTROLLERDEVICEADDED && !pad) pad = SDL_GameControllerOpen(e.cdevice.which);
+            if (e.type == SDL_CONTROLLERDEVICEADDED && !pad) pad = plat::padOpen(e.cdevice.which);
             if (e.type == SDL_FINGERDOWN) touchDown(e.tfinger.fingerId, e.tfinger.x * uiW, e.tfinger.y * 720);
             if (e.type == SDL_FINGERMOTION) touchMove(e.tfinger.fingerId, e.tfinger.x * uiW, e.tfinger.y * 720);
             if (e.type == SDL_FINGERUP) touchUp(e.tfinger.fingerId);
@@ -1667,12 +1666,12 @@ int main(int argc, char** argv) {
                 if (e.type == SDL_MOUSEMOTION && e.motion.which != SDL_TOUCH_MOUSEID) { footMouseX += e.motion.xrel; footMouseY += e.motion.yrel; }
                 if ((e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) && e.button.which != SDL_TOUCH_MOUSEID && e.button.button == SDL_BUTTON_LEFT) footMouseFire = e.type == SDL_MOUSEBUTTONDOWN;
             }
-            if (e.type == SDL_APP_WILLENTERBACKGROUND) { if (state == RACE && !netRace) state = PAUSED; if (adev) SDL_PauseAudioDevice(adev, 1); }   // phone call, home button
-            if (e.type == SDL_APP_DIDENTERFOREGROUND && adev) SDL_PauseAudioDevice(adev, 0);
+            if (e.type == SDL_APP_WILLENTERBACKGROUND) { if (state == RACE && !netRace) state = PAUSED; if (adev) plat::audioPause(adev, true); }   // phone call, home button
+            if (e.type == SDL_APP_DIDENTERFOREGROUND && adev) plat::audioPause(adev, false);
         }
-        Uint64 now = SDL_GetPerformanceCounter(); float dt = clampf((now - last) / (float)SDL_GetPerformanceFrequency(), 0.0005f, 0.05f); last = now;
+        uint64_t now = plat::ticks(); float dt = clampf((now - last) / (float)plat::tickFreq(), 0.0005f, 0.05f); last = now;
         frameDt = dt; if (slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
         update(dt); int fw, fh; SDL_GL_GetDrawableSize(win, &fw, &fh); if (fw > 0 && fh > 0) render(fw, fh); SDL_GL_SwapWindow(win);
     }
-    netClose(""); writeSave(); if (adev) SDL_CloseAudioDevice(adev); SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit(); return 0;
+    netClose(""); writeSave(); if (adev) plat::audioClose(adev); SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit(); return 0;
 }

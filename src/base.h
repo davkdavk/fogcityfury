@@ -16,6 +16,7 @@
 #else
 #include <SDL2/SDL.h>
 #endif
+#include "platform.h"
 #include "glload.h"
 #include <cctype>
 #include <cmath>
@@ -97,9 +98,9 @@ struct Prog {
 };
 // A problem the game cannot continue from. On a phone there is no console, so say it in a dialog (and in the system log).
 static void fatal(const char* what, const char* detail) {
-    char msg[900]; snprintf(msg, sizeof msg, "%s\n\n%.700s", what, detail); SDL_Log("FOG CITY FURY: %s", msg);
+    char msg[900]; snprintf(msg, sizeof msg, "%s\n\n%.700s", what, detail); plat::logLine(msg);
 #if defined(__ANDROID__) || defined(_WIN32)
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fog City Fury", msg, nullptr);
+    plat::errorBox("Fog City Fury", msg);
 #endif
     exit(1);
 }

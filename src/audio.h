@@ -5,12 +5,12 @@
 static const int SR = 44100;
 struct Tone { float f, slide, dur, t, vol; int type; };
 static struct Snd { float engF = 60, engV = 0, skid = 0, wind = 0, nitro = 0, rain = 0, master = 0.5f, music = 0.6f, musicDuck = 1; bool musicOn = true; Tone tones[12] = {}; } snd;
-static SDL_AudioDeviceID adev = 0;
+static uint32_t adev = 0;   // the platform's audio device (0: none)
 // type 0 sine, 1 filtered noise (f = cutoff), 2 square
 static void tone(float f, float dur, float vol, int type = 0, float slide = 0, float delay = 0) {
-    if (!adev) return; SDL_LockAudioDevice(adev);
+    if (!adev) return; plat::audioLock(adev);
     for (auto& t : snd.tones) if (t.t >= t.dur) { t = { f, slide, dur, -delay, vol, type }; break; }
-    SDL_UnlockAudioDevice(adev);
+    plat::audioUnlock(adev);
 }
 
 // ------------------------------------------------------------------ soundtrack
@@ -101,7 +101,7 @@ static void render(float& L, float& Rr) {
 }
 }
 
-static void audioCB(void*, Uint8* stream, int bytes) {
+static void audioCB(void*, uint8_t* stream, int bytes) {
     float* o = (float*)stream; int n = bytes / 8; static double ph1 = 0, ph2 = 0, ph3 = 0, tp[12] = {}; static float lp = 0, s1 = 0, s2 = 0, wl = 0, f = 60, v = 0, sk = 0, wn = 0, nl = 0, mv = 0, nt = 0, j1 = 0, j2 = 0, rn = 0, r1 = 0, r2 = 0; static uint32_t rs = 1;
     for (int i = 0; i < n; i++) {
         f += (snd.engF - f) * 0.002f; v += (snd.engV - v) * 0.002f; sk += (snd.skid - sk) * 0.002f; wn += (snd.wind - wn) * 0.001f;

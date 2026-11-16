@@ -292,12 +292,12 @@ static FootIn readFootInput(float& turn, float dt) {
     in.sprint = dn(B_NITRO); in.roll = dn(B_HB); in.fire = dn(B_FIRE) || footMouseFire;
     if (tstick.on) { fwd = clampf((tstick.oy - tstick.y) / 70, -1, 1); str = clampf((tstick.x - tstick.ox) / 70, -1, 1); }
     if (pad) {
-        auto ax = [&](SDL_GameControllerAxis a) { float v = SDL_GameControllerGetAxis(pad, a) / 32767.f; return fabsf(v) > 0.16f ? v : 0.0f; };
-        float lx = ax(SDL_CONTROLLER_AXIS_LEFTX), ly = ax(SDL_CONTROLLER_AXIS_LEFTY); if (lx != 0 || ly != 0) { str = lx; fwd = -ly; }
-        footYaw -= ax(SDL_CONTROLLER_AXIS_RIGHTX) * 2.8f * dt; footPitch = clampf(footPitch + ax(SDL_CONTROLLER_AXIS_RIGHTY) * 1.6f * dt, -0.15f, 0.9f);
-        if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 9000 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER)) in.fire = true;
-        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSTICK)) in.sprint = true;
-        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_A) || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_X)) in.roll = true;
+        auto ax = [&](plat::PadAxis a) { float v = plat::padAxisRaw(pad, a) / 32767.f; return fabsf(v) > 0.16f ? v : 0.0f; };
+        float lx = ax(plat::AX_LX), ly = ax(plat::AX_LY); if (lx != 0 || ly != 0) { str = lx; fwd = -ly; }
+        footYaw -= ax(plat::AX_RX) * 2.8f * dt; footPitch = clampf(footPitch + ax(plat::AX_RY) * 1.6f * dt, -0.15f, 0.9f);
+        if (plat::padAxisRaw(pad, plat::AX_TRIG_R) > 9000 || plat::padButton(pad, plat::BT_LB)) in.fire = true;
+        if (plat::padButton(pad, plat::BT_RB) || plat::padButton(pad, plat::BT_LSTICK)) in.sprint = true;
+        if (plat::padButton(pad, plat::BT_A) || plat::padButton(pad, plat::BT_X)) in.roll = true;
     }
     turn = str; V3 m = yawDir(footYaw) * fwd + yawRight(footYaw) * str; float L = len(m); if (L > 1) m = m * (1 / L);
     in.mx = m.x; in.mz = m.z; return in;
