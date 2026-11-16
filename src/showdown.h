@@ -25,7 +25,7 @@ static const char* ORD[NFIGHT + 1] = { "", "1ST", "2ND", "3RD", "4TH", "5TH" };
 static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr);
 static void panel(float x, float y, float w, float h, float a);
 static void fmtTime(char* b, float t);
-static void netShdFrame(float dt); static void netStepRemote(Fighter& f, float dt); static bool netRush = false;   // netshd.h
+static void netShdFrame(float dt); static void netStepRemote(Fighter& f, float dt); static bool netRush = false; static void champShowdownEnd(); static void champRaceEnd();   // netshd.h, champ.h
 static int dropsThere() { int n = 0; for (auto& d : drops) if (d.back <= 0) n++; return n; }
 
 // ---- setting the scene ----
@@ -53,7 +53,31 @@ static bool canTake(const Fighter& f, const Drop& d) { return d.back <= 0 && (d.
 // straight clear run in from the road (which is how the bots get there). If nowhere like that turns up, or a place on the
 // road is asked for (u: how far round the lap, 0..1), it is a stretch of road, never on a bridge.
 static V3 shdExitP; static bool shdOffRoad = false;
+static std::vector<V3> shdPath; static V3 shdLastSite; static bool shdHaveLast = false, grngSeeded = false;   // shdPath: the backstreets a bot off the road takes to the ring; shdLastSite: last race's ring (the next goes elsewhere)
 static bool shdClear(V3 p) { float h = W.H(p.x, p.z); return h > 0.3f && fabsf(p.x) < HALF - 60 && fabsf(p.z) < HALF - 60 && !solidAt(V3(p.x, h + 1.0f, p.z), false); }
+static float alleyNear(float v) { return World::alleyLine((int)lroundf((v - World::GRID0) / World::GRID - 0.5f)); }   // the backstreet nearest v (the same grid both ways)
+static bool shdSegOK(V3 a, V3 b) {   // a straight drive from a to b: clear ground all the way (sampled every 2 m)
+    float L = flatDist(a, b); int n = std::max(1, (int)(L / 2));
+    for (int i = 0; i <= n; i++) { float t = (float)i / n, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t, h = W.H(x, z); if (h <= 0.3f || solidAt(V3(x, h + 1.0f, z), false)) return false; }
+    return true;
+}
+// a way from the road at a to the ring at b that a car can drive: straight, or along the backstreets (up to two turns, each on a street's centre line)
+static bool shdFindRoute(V3 a, V3 b) {
+    auto ax = [](float v) { return alleyNear(v); };
+    std::vector<std::vector<V3>> ways = {
+        {}, { V3(a.x, 0, b.z) }, { V3(b.x, 0, a.z) },
+        { V3(ax(a.x), 0, a.z), V3(ax(a.x), 0, b.z) },
+        { V3(a.x, 0, ax(a.z)), V3(b.x, 0, ax(a.z)) },
+        { V3(ax(a.x), 0, a.z), V3(ax(a.x), 0, ax(b.z)), V3(b.x, 0, ax(b.z)) },
+        { V3(a.x, 0, ax(a.z)), V3(ax(b.x), 0, ax(a.z)), V3(ax(b.x), 0, b.z) },
+    };
+    for (auto& w : ways) {
+        V3 prev = a; bool ok = true; std::vector<V3> path;
+        for (V3 p : w) { p.y = W.ground(p.x, p.z, a.y); if (!shdSegOK(prev, p)) { ok = false; break; } path.push_back(p); prev = p; }
+        if (ok && shdSegOK(prev, b)) { shdPath = path; return true; }
+    }
+    return false;
+}
 static bool shdTryOffRoad(float s, float off) {
     int n = W.n, i = (((int)s) % n + n) % n; if (W.ts[i].br) return false;
     V3 ex, c; float yaw; W.at((float)i, 0, ex, yaw); W.at((float)i, off, c, yaw); c.y = W.H(c.x, c.z); if (!shdClear(c)) return false;
@@ -61,17 +85,21 @@ static bool shdTryOffRoad(float s, float off) {
     float lo = c.y, hi = c.y; int bad = 0;
     for (int k = 0; k < 16; k++) { float a = k * 0.3927f, r = (k % 2) ? 24.0f : 11.0f; V3 q(c.x + cosf(a) * r, 0, c.z + sinf(a) * r); if (!shdClear(q)) bad++; float h = W.H(q.x, q.z); lo = std::min(lo, h); hi = std::max(hi, h); }
     if (bad > 2 || hi - lo > 7) return false;
-    V3 d = c - ex; d.y = 0; float L = len(d); for (float t = 7; t < L; t += 2) if (!shdClear(ex + d * (t / L))) return false;
+    if (shdHaveLast && flatDist(c, shdLastSite) < 150) return false;   // not where the last race's ring was
+    if (!shdFindRoute(ex, c)) return false;                            // and a way in for the bots
     shdSiteS = (float)i; shdSite = c; shdExitP = ex; shdOffRoad = true; return true;
 }
-static void shdPickSite(float u) {   // u < 0: anywhere
-    shdOffRoad = false;
-    if (u < 0) { for (int k = 0; k < 400; k++) if (shdTryOffRoad(grng.r(0.2f, 0.8f) * W.n, grng.r(45, 150) * (grng.f() < 0.5f ? -1.0f : 1.0f))) return; u = grng.r(0.25f, 0.70f); }
+static void shdPickSiteAny(float u) {   // u < 0: anywhere
+    shdOffRoad = false; shdPath.clear();
+    if (u < 0) { for (int k = 0; k < 1500; k++) if (shdTryOffRoad(grng.f() * W.n, grng.r(40, 220) * (grng.f() < 0.5f ? -1.0f : 1.0f))) return; u = grng.r(0.05f, 0.95f); }
     int n = W.n, i = (int)(clampf(u, 0, 0.999f) * n); for (int k = 0; k < 60 && (W.ts[i].br || W.ts[(i + 30) % n].br || W.ts[(i + n - 30) % n].br); k++) i = (i + 15) % n;
     shdSiteS = (float)i; V3 p; float yaw; W.at(shdSiteS, 0, p, yaw); shdSite = V3(p.x, W.ground(p.x, p.z, p.y + 1), p.z);
 }
+// a new ring: wherever it lands, not where the last one was
+static void shdPickSite(float u) { shdPickSiteAny(u); shdLastSite = shdSite; shdHaveLast = true; }
 // where a bot's car leaves the road (or, for a ring on the road, pulls up), and where it parks
 static void shdPlanBot(Fighter& f) {
+    f.pathI = 0;
     static const float ALONG[NFIGHT] = { 2, -13, 11, -25, 23 }; const Car& c = ai[f.car]; int i = f.id;
     float stop = floorf(c.stot / W.n) * W.n + shdSiteS + (shdOffRoad ? -5.0f * i : ALONG[i]); while (stop < c.stot + 25) stop += W.n; f.stopS = stop;
     f.park = shdSite + yawDir(i * 1.5708f + 0.6f) * 10.0f;
@@ -164,6 +192,7 @@ static FootIn botThink(Fighter& f, float dt) {
 // ---- the match ----
 static void shdFinish() {   // to the results. Anyone still standing is placed by the health they have left
     for (int pl = 1; pl <= NFIGHT; pl++) { int b = -1; for (int i = 0; i < NFIGHT; i++) if (fighters[i].alive && fighters[i].place == 0 && (b < 0 || fighters[i].hp > fighters[b].hp)) b = i; if (b < 0) break; fighters[b].place = pl; }
+    if (champOn) champShowdownEnd();
     shdResult = true; state = RESULTS; resultsT = 0; timeUp = false; footMouseFire = false; writeSave();
 }
 // the computer-driven fighters (the ones this game runs) drive to the ring
@@ -175,9 +204,12 @@ static void shdDriveBots(float dt) {
                 if (left > 0.4f) { a.latT = (i % 2) ? -4.2f : 4.2f; stepAI(a, dt, true, a.stot); float cap = sqrtf(2 * 7.0f * left) + (shdOffRoad ? 12.0f : 1.0f); if (a.speed > cap) a.speed = cap; }
                 else if (shdOffRoad) f.leftRoad = true; else { shdOut(i); continue; }
             }
-            if (f.leftRoad) {    // then straight across the open ground to its place in the ring
-                V3 d = f.park - a.pos; d.y = 0; float L = len(d); if (L < 1.5f) { shdOut(i); continue; }
-                float want = std::min(17.0f, sqrtf(2 * 6.0f * L) + 1.0f); a.speed += clampf(want - a.speed, -20 * dt, 9 * dt); V3 dir = d * (1 / L), np = a.pos + dir * (a.speed * dt);
+            if (f.leftRoad) {    // then along the backstreets it was given (shdFindRoute), or straight across the open ground, to its place in the ring
+                bool more = f.pathI < shdPath.size(); V3 goal = more ? shdPath[f.pathI] : f.park;
+                V3 d = goal - a.pos; d.y = 0; float L = len(d);
+                if (more && L < 3.0f) { f.pathI++; continue; }
+                if (!more && L < 1.5f) { shdOut(i); continue; }
+                float want = more ? 11.0f : std::min(17.0f, sqrtf(2 * 6.0f * L) + 1.0f); a.speed += clampf(want - a.speed, -20 * dt, 9 * dt); V3 dir = d * (1 / L), np = a.pos + dir * (a.speed * dt);
                 np.y = W.ground(np.x, np.z, a.pos.y + 1.5f); a.vel = (np - a.pos) * (1 / dt); float hy = np.y - a.pos.y; a.pos = np;
                 a.yaw = wrapPi(a.yaw + clampf(wrapPi(atan2f(dir.x, dir.z) - a.yaw), -2.6f * dt, 2.6f * dt)); a.pitch += (atan2f(-hy, a.speed * dt + 1e-4f) - a.pitch) * std::min(1.0f, 8 * dt); a.roll *= expf(-4 * dt);
                 a.vf = a.speed; a.steer = 0; a.wheelRot += a.speed / SPECS[a.type].wr * dt;
@@ -247,7 +279,7 @@ static void takeDrop(Fighter& f, const Drop& d) {
 static void footFrame(float dt) {
     hitFlash = std::max(0.0f, hitFlash - dt); hurtFlash = std::max(0.0f, hurtFlash - dt); footKick *= expf(-9 * dt);
     if (sdNow && netRace && state == RACE && countdown <= 0 && !showdownOn) { sdNow = false; netRush = true; player.lap = raceLaps + 1; finishRace(false); }   // tests, online: as if we had just crossed the line
-    if (sdNow && !netRace && state == RACE && countdown <= 0 && !showdownOn && !shdResult) { sdNow = false; finalPlace = sdPlace; if (!showdownStart(sdPlace)) { state = RESULTS; resultsT = 0; } }   // tests: as if you had just finished the race in that place
+    if (sdNow && !netRace && state == RACE && countdown <= 0 && !showdownOn && !shdResult) { sdNow = false; finalPlace = sdPlace; champRaceEnd(); if (!showdownStart(sdPlace)) { state = RESULTS; resultsT = 0; } }   // tests: as if you had just finished the race in that place
     stepShowdown(dt); stepShells(dt); stepBlood(dt);
     if (testStick) { tstick.on = me.on; tstick.ox = 170; tstick.oy = 560; tstick.x = 170 + stickX * 70; tstick.y = 560 - stickY * 70; }   // --stick X,Y (tests): a thumb held on the stick
     bool act = state == RACE, canFire = !showdownOn || shdPhase == SH_FIGHT, canMove = act && (!showdownOn || shdPhase != SH_OVER);

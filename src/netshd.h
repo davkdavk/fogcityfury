@@ -63,7 +63,7 @@ static void netBotsFrame(float dt) {
 
 // where the ring is, when another game (or the server) chose the place: the nearest road is where the bots turn off for it
 static void netSiteAt(V3 p) {
-    shdSite = p; int i = W.nearest(p.x, p.z); V3 ex; float yaw; W.at((float)i, 0, ex, yaw); shdSiteS = (float)i; shdExitP = ex; shdOffRoad = flatDist(ex, p) > 20;
+    shdSite = p; int i = W.nearest(p.x, p.z); V3 ex; float yaw; W.at((float)i, 0, ex, yaw); shdSiteS = (float)i; shdExitP = ex; shdOffRoad = flatDist(ex, p) > 20; if (shdOffRoad) shdFindRoute(ex, p); else shdPath.clear();
     for (auto& f : fighters) if (f.car >= 0 && !f.remote && !f.on) { f.leftRoad = false; shdPlanBot(f); }
 }
 static bool netChooser() { const net::Showdown& m = nc.sd; return netSlot == 0 || (m.fighter[0] < net::MAXP && netBotOf(m.fighter[0]) >= 0); }   // the race winner's game picks the place - ours, if a bot we drive won

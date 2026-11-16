@@ -34,7 +34,7 @@ struct Fighter {
     // score
     int kills = 0, shots = 0, hits = 0, place = 0;
     // online: remote if somebody else's game simulates this fighter. Health belongs to the victim's game: ours only reports what it dealt
-    bool remote = false; float dealtTo[5] = {}; uint16_t claim = 0;   // dealtTo[i]: the damage this (locally run) fighter has done to remote fighter i so far; claim: the pick-ups it stands on
+    bool remote = false; float dealtTo[5] = {}; uint16_t claim = 0; size_t pathI = 0;   // dealtTo[i]: the damage this (locally run) fighter has done to remote fighter i so far; claim: the pick-ups it stands on
     // the showdown, before the fight: the car has reached the ring; where along the track a bot's car is to stop
     bool gibbed = false;   // blown apart by a grenade: there is no body left to draw
     bool arrived = false, leftRoad = false; V3 park; float stopS = 0, lockT = 0;   // (a bot: leftRoad once it has turned off the road for the ring; park: where its car is to stop)   // lockT: seconds until "you cannot use that yet" may be said again

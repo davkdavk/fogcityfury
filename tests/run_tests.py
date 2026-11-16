@@ -776,6 +776,33 @@ def net_showdown_server_runs_the_podium_fight():
 
 
 @test
+def championship_runs_four_rounds_with_points():
+    """Offline: four rampage races on tracks 1-4 with 1, 2, 2 and 3 laps; every round scores all ten cars and a showdown winner gets 5 more."""
+    d = sim("--champ", "--seed", 5, "--state", 3, "--sdnow", "--auto", "--footai", "--keys", 5, seconds=2000)
+    check(d["champDone"] == 1 and d["champRound"] == 3, "all four rounds were run", (d["champDone"], d["champRound"]))
+    check(d["track"] == 3 and d["raceLaps"] == 3, "the last round is track 4 over 3 laps", (d["track"], d["raceLaps"]))
+    check(d["champTotal"] == 4 * 101 + 4 * 5, "101 race points a round (25 to 1 for the top ten) and 5 for each showdown won", d["champTotal"])
+
+
+@test
+def ring_goes_somewhere_new_each_race():
+    spots = []
+    for seed in (1, 2, 3):
+        d = sim("--seed", seed, "--state", 3, "--mode", 2, "--sdnow", seconds=3)
+        spots.append((d["shdSiteX"], d["shdSiteZ"]))
+    gaps = [((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5 for i, a in enumerate(spots) for b in spots[i + 1:]]
+    check(min(gaps) > 100, "three games, three different places for the ring", spots)
+
+
+@test
+def bots_drive_the_backstreets_to_an_off_road_ring():
+    d = sim("--seed", 5, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--footai", "--keys", 5, seconds=120)
+    feet = d["fighters"].split(";")
+    check(d["shdOffRoad"] == 1 and d["shdPath"] >= 1, "the ring is off the road, with a backstreet route to it", (d["shdOffRoad"], d["shdPath"]))
+    check(all(f.split("|")[0] == "1" for f in feet) and d["prepAt"] > 0, "all five get out of their cars at the ring", (feet, d["prepAt"]))
+
+
+@test
 def net_bots_fill_the_grid_and_the_host_reports_them():
     """Protocol level: the server adds four bots, names one player their host, and takes their cars only from that player."""
     with Server("--laps", 1, "--countdown", 0.5, "--bots", 4) as srv:
