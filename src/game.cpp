@@ -1389,9 +1389,9 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (srvMode != 0) {                                                             // typing an address or our name
             char* f = srvMode == 1 ? srvNew : nc.name; size_t n = strlen(f);
             if (k == SDLK_BACKSPACE && n) f[n - 1] = 0;
-            if (k == SDLK_ESCAPE) { SDL_StopTextInput(); srvMode = 0; }
+            if (k == SDLK_ESCAPE) { plat::textInput(false); srvMode = 0; }
             if (k == SDLK_RETURN) {
-                SDL_StopTextInput(); ok();
+                plat::textInput(false); ok();
                 if (srvMode == 1 && srvNew[0]) { srvAdd(srvNew); for (size_t i = 0; i < servers.size(); i++) if (servers[i].host == srvNew) { srvSel = (int)i; srvLookup(servers[i]); } }
                 if (!nc.name[0]) snprintf(nc.name, sizeof nc.name, "PLAYER"); srvMode = 0; saveCfg();
             }
@@ -1399,8 +1399,8 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         }
         if (k == SDLK_ESCAPE) { srvClose(); saveCfg(); state = TITLE; break; }
         if (k == SDLK_UP && !servers.empty()) { srvSel = (srvSel + (int)servers.size() - 1) % (int)servers.size(); blip(); } if (k == SDLK_DOWN && !servers.empty()) { srvSel = (srvSel + 1) % (int)servers.size(); blip(); }
-        if (k == SDLK_a && servers.size() < MAX_SERVERS) { srvMode = 1; srvNew[0] = 0; srvSkipText = true; SDL_StartTextInput(); blip(); }
-        if (k == SDLK_n) { srvMode = 2; srvSkipText = true; SDL_StartTextInput(); blip(); }
+        if (k == SDLK_a && servers.size() < MAX_SERVERS) { srvMode = 1; srvNew[0] = 0; srvSkipText = true; plat::textInput(true); blip(); }
+        if (k == SDLK_n) { srvMode = 2; srvSkipText = true; plat::textInput(true); blip(); }
         if (k == SDLK_r) { for (auto& e : servers) srvLookup(e); blip(); }
         if (k == SDLK_DELETE && !servers.empty()) { servers.erase(servers.begin() + srvSel); if (srvSel >= (int)servers.size()) srvSel = std::max(0, (int)servers.size() - 1); saveCfg(); blip(); }
         if (k == SDLK_RETURN && !servers.empty()) { ok(); snprintf(nc.host, sizeof nc.host, "%s", servers[srvSel].host.c_str()); if (!nc.name[0]) snprintf(nc.name, sizeof nc.name, "PLAYER"); saveCfg(); netConnect(); }
@@ -1636,38 +1636,39 @@ int main(int argc, char** argv) {
     if (!simMode && !grngSeeded) grng.s = (uint32_t)plat::ticks() * 2654435761u + 1u;   // a real game: a new ring each time (sims and tests stay the same)
     uint64_t last = plat::ticks();
     while (!quit) {
-        SDL_Event e;
-        { static bool rel = false; bool want = me.on && me.alive && state == RACE && !touchOn && !touchMouse; if (want != rel) { rel = want; SDL_SetRelativeMouseMode(rel ? SDL_TRUE : SDL_FALSE); } }   // on foot the mouse is captured: it aims
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) quit = true;
-            if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-                handleKey(e.key.keysym.sym, e.key.keysym.scancode);
+        static std::vector<plat::Event> evs;
+        { static bool rel = false; bool want = me.on && me.alive && state == RACE && !touchOn && !touchMouse; if (want != rel) { rel = want; plat::relativeMouse(rel); } }   // on foot the mouse is captured: it aims
+        plat::pollEvents(evs);
+        for (const plat::Event& e : evs) {
+            if (e.type == plat::EV_QUIT) quit = true;
+            if (e.type == plat::EV_KEY_DOWN && !e.repeat) {
+                handleKey(e.key, e.scancode);
             }
-            if (e.type == SDL_TEXTINPUT && state == NETJOIN && !nc.on && srvMode != 0 && !srvSkipText) {   // typing a server address / our name
+            if (e.type == plat::EV_TEXT && state == NETJOIN && !nc.on && srvMode != 0 && !srvSkipText) {   // typing a server address / our name
                 char* f = srvMode == 2 ? nc.name : srvNew; size_t cap = srvMode == 2 ? net::NAMELEN : sizeof srvNew - 1;
-                for (const char* c = e.text.text; *c; c++) { size_t n = strlen(f); char ch = srvMode == 2 ? (char)toupper((unsigned char)*c) : *c; if (n < cap && ch > 32 && ch < 127) { f[n] = ch; f[n + 1] = 0; } }
+                for (const char* c = e.text; *c; c++) { size_t n = strlen(f); char ch = srvMode == 2 ? (char)toupper((unsigned char)*c) : *c; if (n < cap && ch > 32 && ch < 127) { f[n] = ch; f[n + 1] = 0; } }
             }
-            if (e.type == SDL_CONTROLLERBUTTONDOWN) {
-                switch (e.cbutton.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;
+            if (e.type == plat::EV_PAD_DOWN) {
+                switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;
                 case SDL_CONTROLLER_BUTTON_B: if (state != RACE) onKey(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_Y: if (state == RACE) camMode = (camMode + 1) % 3; else onKey(SDLK_q); break; case SDL_CONTROLLER_BUTTON_BACK: if (state == PAUSED) state = RACE; doReset(); break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (!me.on) fireRocket(); break; case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); break;
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break; case SDL_CONTROLLER_BUTTON_DPAD_UP: if (state == RACE && me.on) cycleGun(); else onKey(SDLK_UP); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: if (state == RACE) footToggle(); else onKey(SDLK_DOWN); break; }
             }
-            if (e.type == SDL_CONTROLLERDEVICEADDED && !pad) pad = plat::padOpen(e.cdevice.which);
-            if (e.type == SDL_FINGERDOWN) touchDown(e.tfinger.fingerId, e.tfinger.x * uiW, e.tfinger.y * 720);
-            if (e.type == SDL_FINGERMOTION) touchMove(e.tfinger.fingerId, e.tfinger.x * uiW, e.tfinger.y * 720);
-            if (e.type == SDL_FINGERUP) touchUp(e.tfinger.fingerId);
-            if (touchMouse && (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEMOTION) && e.button.which != SDL_TOUCH_MOUSEID) {   // --touch on a desktop: the mouse is a finger
-                int ww = 1, wh = 1; SDL_GetWindowSize(gWin, &ww, &wh); float mx = (e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x) * uiW / ww, my = (e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y) * 720.0f / wh;
-                if (e.type == SDL_MOUSEBUTTONDOWN) touchDown(-2, mx, my); else if (e.type == SDL_MOUSEBUTTONUP) touchUp(-2); else touchMove(-2, mx, my);
+            if (e.type == plat::EV_PAD_ADDED && !pad) pad = plat::padOpen(e.padIndex);
+            if (e.type == plat::EV_FINGER_DOWN) touchDown((SDL_FingerID)e.fingerId, e.x * uiW, e.y * 720);
+            if (e.type == plat::EV_FINGER_MOVE) touchMove((SDL_FingerID)e.fingerId, e.x * uiW, e.y * 720);
+            if (e.type == plat::EV_FINGER_UP) touchUp((SDL_FingerID)e.fingerId);
+            if (touchMouse && (e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP || e.type == plat::EV_MOUSE_MOVE) && e.which != plat::touchMouseId()) {   // --touch on a desktop: the mouse is a finger
+                int ww = 1, wh = 1; plat::windowSize(gWin, ww, wh); float mx = e.x * uiW / ww, my = e.y * 720.0f / wh;
+                if (e.type == plat::EV_MOUSE_DOWN) touchDown(-2, mx, my); else if (e.type == plat::EV_MOUSE_UP) touchUp(-2); else touchMove(-2, mx, my);
             }
             if (me.on && state == RACE && !touchMouse) {   // on foot the mouse turns the camera and its left button is the trigger
-                if (e.type == SDL_MOUSEMOTION && e.motion.which != SDL_TOUCH_MOUSEID) { footMouseX += e.motion.xrel; footMouseY += e.motion.yrel; }
-                if ((e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) && e.button.which != SDL_TOUCH_MOUSEID && e.button.button == SDL_BUTTON_LEFT) footMouseFire = e.type == SDL_MOUSEBUTTONDOWN;
+                if (e.type == plat::EV_MOUSE_MOVE && e.which != plat::touchMouseId()) { footMouseX += e.xrel; footMouseY += e.yrel; }
+                if ((e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP) && e.which != plat::touchMouseId() && e.button == SDL_BUTTON_LEFT) footMouseFire = e.type == plat::EV_MOUSE_DOWN;
             }
-            if (e.type == SDL_APP_WILLENTERBACKGROUND) { if (state == RACE && !netRace) state = PAUSED; if (adev) plat::audioPause(adev, true); }   // phone call, home button
-            if (e.type == SDL_APP_DIDENTERFOREGROUND && adev) plat::audioPause(adev, false);
+            if (e.type == plat::EV_BG_ENTER) { if (state == RACE && !netRace) state = PAUSED; if (adev) plat::audioPause(adev, true); }   // phone call, home button
+            if (e.type == plat::EV_FG_ENTER && adev) plat::audioPause(adev, false);
         }
         uint64_t now = plat::ticks(); float dt = clampf((now - last) / (float)plat::tickFreq(), 0.0005f, 0.05f); last = now;
         frameDt = dt; if (slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
