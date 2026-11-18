@@ -23,6 +23,8 @@ struct BufObj {
     volatile uint32_t* streamVertices = nullptr;
     volatile uint32_t* indices = nullptr;
     uint32_t vertexBytes = 0, streamBytes = 0, indexCount = 0;
+    struct MeshChunk { volatile uint32_t* vertices; volatile uint32_t* indices; uint32_t vertexBytes, indexCount; };
+    std::vector<MeshChunk> chunks;
 };
 struct StreamArena { volatile uint32_t* memory=nullptr; uint32_t cursor=0; uint32_t fence=0; };
 struct TargetObj { Tex color = 0; int face = -1; Tex depth = 0; };
@@ -317,15 +319,48 @@ static void draw(Buf b,int first,int n) {
 }
 static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
     if(!b){ b=(Buf)xs::buffers.size(); xs::buffers.push_back({}); }
-    auto& o=xs::buffers[b]; o.layout=L_MESH; size_t vb=(size_t)nv*48, ib=(size_t)ni*4;
-    o.vertices=xsdk_gpu_alloc((uint32_t)vb); o.indices=xsdk_gpu_alloc((uint32_t)ib); o.vertexBytes=(uint32_t)vb; o.indexCount=(uint32_t)ni;
-    if(o.vertices) copyToGpu(o.vertices,v,vb); if(o.indices) copyToGpu(o.indices,idx,ib);
-    if(o.vertices) xsdk_gpu_invalidate(xsdk_gpu_address(o.vertices),o.vertexBytes); if(o.indices) xsdk_gpu_invalidate(xsdk_gpu_address(o.indices),(uint32_t)ib);
+    auto& o=xs::buffers[b]; o.layout=L_MESH;
+    for(const auto& c:o.chunks){ if(c.vertices)xsdk_gpu_free(c.vertices); if(c.indices)xsdk_gpu_free(c.indices); }
+    o.chunks.clear();
+    const uint8_t* source=(const uint8_t*)v;
+    std::unordered_map<uint32_t,uint32_t> remap; remap.reserve(65535);
+    std::vector<uint8_t> vertices; vertices.reserve(65535u*48u);
+    std::vector<uint32_t> indices; indices.reserve(65532);
+    auto flush=[&] {
+        if(indices.empty()) return;
+        uint32_t vb=(uint32_t)vertices.size(), ib=(uint32_t)(indices.size()*4);
+        volatile uint32_t* vg=xsdk_gpu_alloc(vb); volatile uint32_t* ig=xsdk_gpu_alloc(ib);
+        if(!vg||!ig) { if(vg)xsdk_gpu_free(vg); if(ig)xsdk_gpu_free(ig); return; }
+        copyToGpu(vg,vertices.data(),vb); copyToGpu(ig,indices.data(),ib);
+        xsdk_gpu_invalidate(xsdk_gpu_address(vg),vb); xsdk_gpu_invalidate(xsdk_gpu_address(ig),ib);
+        o.chunks.push_back({vg,ig,vb,(uint32_t)indices.size()});
+        remap.clear(); vertices.clear(); indices.clear();
+    };
+    for(int tri=0;tri+2<ni;tri+=3) {
+        uint32_t add=0;
+        for(int k=0;k<3;k++) if(remap.find(idx[tri+k])==remap.end()) {
+            bool duplicate=false; for(int j=0;j<k;j++) if(idx[tri+j]==idx[tri+k]) duplicate=true;
+            if(!duplicate) add++;
+        }
+        // Xenos' max-index register is 16-bit; count limits alone don't constrain referenced vertex ids.
+        if(!indices.empty() && (remap.size()+add>65535u || indices.size()+3>65532u)) flush();
+        for(int k=0;k<3;k++) {
+            uint32_t old=idx[tri+k]; auto it=remap.find(old);
+            if(it==remap.end()) {
+                uint32_t local=(uint32_t)remap.size(); remap.emplace(old,local);
+                size_t off=(size_t)old*48; vertices.insert(vertices.end(),source+off,source+off+48);
+                indices.push_back(local);
+            } else indices.push_back(it->second);
+        }
+    }
+    flush(); o.indexCount=(uint32_t)ni;
 }
 static void drawMesh(Buf b,int ni) {
-    auto& o=xs::buffers[b]; if(!ni||!o.vertices||!o.indices)return;
-    xsdk_gpu_set_vertices(0,xsdk_gpu_address(o.vertices),o.vertexBytes); gfx::flushProgram(); xs::dirty=true;
-    for(int first=0;first<ni;){ int n=std::min(65532,ni-first); n-=n%3; xsdk_gpu_draw_indexed(XSDK_PRIMITIVE_TRIANGLE_LIST,xsdk_gpu_address(o.indices)+(uint32_t)first*4,(uint32_t)n,true); first+=n; }
+    auto& o=xs::buffers[b]; if(!ni)return;
+    for(const auto& c:o.chunks) {
+        xsdk_gpu_set_vertices(0,xsdk_gpu_address(c.vertices),c.vertexBytes); gfx::flushProgram(); xs::dirty=true;
+        xsdk_gpu_draw_indexed(XSDK_PRIMITIVE_TRIANGLE_LIST,xsdk_gpu_address(c.indices),c.indexCount,true);
+    }
 }
 static void drawFull(){ gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,3); }
 
