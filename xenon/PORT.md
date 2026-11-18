@@ -20,31 +20,34 @@ files applied with `git am -3 <file>`.
   spec of every function at the top); src/gfx_gl.h is the OpenGL backend.
   Desktop renders byte-identical to before. 61 tests pass, plus the 4
   rendering tests (`python3 tests/run_tests.py --render`).
+- `src/gfx_xsdk.h` and the `plat::Display` backend build the real game XEX.
+  `xenon/build_game.sh` copies `xenon/dbgprint.txt` beside it so startup
+  breadcrumbs appear in Xenia's log.
+- The C++ runtime probe passes global constructors, `new[]`, a 64 MiB vector,
+  `std::string`, throw/catch, and `fopen` (null without a test file).
+- Xenia-specific fixes: bypass XSDK's unsupported timezone import; package
+  shader containers in big-endian word order; store each program's own literal
+  counts; restore EDRAM targets after resolves; use LDR at 720p to fit EDRAM.
+- XSDK sampler rebinding is done immediately before draws. Dynamic UI/particle
+  vertices use two 8 MiB frame arenas, fenced before reuse.
+- `--xsdk-passes 0..3` selects direct, post, shadow, and reflection passes;
+  the XSDK build defaults to 0, so Xenia needs no launch arguments.
 
 
-## Next: the real game's title screen drawing in Xenia
-1. Window and frame swap: main() still creates the window and GL context
-   with SDL and calls SDL_GL_SwapWindow. Move that behind plat:: (open the
-   display, begin a frame, end a frame). Desktop keeps SDL; the 360 uses
-   xsdk_present_open / xsdk_present_begin / xsdk_present_end, as in
-   xenon/fcfcar/main.c. Desktop tests must still pass.
-2. Write src/gfx_xsdk.h, the 360 backend for gfx.h (built with
-   -DFCF_GFX_XSDK). Copy the shape of src/gfx_gl.h.
-   - makeProg(name, ...) gets the program name ("world", "car", "water",
-     "sky", "part", "depth", "ui", "mark", "ring", "post"): load the pair
-     build_shaders.sh compiled.
-   - Uniforms are set by name: make transform.py also output each program's
-     uniform names and byte offsets in its Globals block; Prog writes there
-     and uploads the block at draw time.
-   - Sampler units are fixed (0 shadow, 1 env cube, 2 height, 3 font,
-     4 post input, 5 bloom, 6 detail): make transform.py give each sampler
-     its unit's binding, not binding i+1.
-   - Render targets: Xenos draws into EDRAM and resolves to a texture. Build
-     use() / clear() / resolve() around that. The shadow map, the
-     reflection-cube faces and the bloom passes each need a resolve.
-   - Depth range is 0..1 (the same fix as in fcfcar).
-3. Goal: the title screen draws in Xenia. No sound, saves or network yet.
-   Push xenon-port when it works, or when stuck.
+## Current Xenia Verification
+- Xenia runs the XEX for 30 seconds without returning to dash. `xenia-run.log`
+  has `boot: frame 1 complete`, `boot: frame 2 complete`, and
+  `boot: frame 3 complete`; no shader or GPU assertion follows.
+- Pass 0 draws the title's sky/world/props/cars and HUD directly, skipping post,
+  shadows, and reflections. X11 creates the `Fog City Fury` window.
+- Pixel capture is still unverified: XWD gets `BadMatch` on Xenia's Vulkan
+  surface, while root captures show the obscuring desktop.
+- This Xenia run needed a local-only change in `/tmp/xsdk/src/display.c` to
+  continue when Xenia times out on the unimplemented LUT autofill register
+  (`0x1928`). The rebuilt SDK library is in `/tmp/xsdk/build/libxsdk.a`; this
+  workaround is not part of the game repository.
+- XEX path: `xenon/build/game/fogcityfury.xex`.
+- Sound, saves, and network remain disabled/not implemented on the 360.
 
 
 ## Later (don't start unless asked)
