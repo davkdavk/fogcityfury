@@ -72,6 +72,7 @@ inline const char* SDL_GetScancodeName(SDL_Scancode) { return "-"; }
 #include "xsdk/log.h"
 namespace gfx { void presentFrame(uint32_t address, int width, int height); }
 namespace gfx { void beginFrame(int width, int height); }
+namespace gfx { static uint32_t lastFenceValue(); }
 #endif
 
 namespace plat {
@@ -138,12 +139,22 @@ inline void setWindowSize(Display&, int, int) {}
 inline void beginFrame(Display& d, int& w, int& h) {
     uint32_t address = 0;
     NTSTATUS status=xsdk_present_begin(&address,5000); d.beginStatus=(uint32_t)status;
+    if(d.frameCount<10) xsdk_log_write("hardware-frame begin #%u present_begin=0x%08X",(unsigned)(d.frameCount+1),(unsigned)status);
     if (NT_SUCCESS(status)) d.frameAddress = activeFrameAddress = address;
     w = d.width; h = d.height;
     ::gfx::beginFrame(w, h);
 }
 inline uint32_t currentFrameAddress() { return activeFrameAddress; }
-inline void endFrame(Display& d) { ::gfx::presentFrame(d.frameAddress, d.width, d.height); xsdk_present_end(); ++d.frameCount; }
+inline void endFrame(Display& d) {
+    ::gfx::presentFrame(d.frameAddress, d.width, d.height);
+    xsdk_present_end(); ++d.frameCount;
+    if(d.frameCount<=10){
+        uint32_t fence=::gfx::lastFenceValue();
+        NTSTATUS status=xsdk_gpu_wait(fence,2000);
+        xsdk_log_write("hardware-frame end #%u fence=%u wait=0x%08X complete=%u",
+            (unsigned)d.frameCount,(unsigned)fence,(unsigned)status,(unsigned)NT_SUCCESS(status));
+    }
+}
 inline void closeDisplay(Display& d) { xsdk_present_close(); xsdk_gpu_close(); d.open = false; }
 #endif
 

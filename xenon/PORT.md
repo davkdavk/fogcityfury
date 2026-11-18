@@ -64,9 +64,16 @@ files applied with `git am -3 <file>`.
   `UI::text` (`rldic r10,r10,3,57`), `World::decorate` (`rldic r4,r4,47,1`),
   and `update` (three `rldic` instructions); Xenia silently skips these, so
   the UI result in Xenia is not conclusive.
-- Runtime diagnostics in `xenia-runtime-final.log` report `present_begin=0`,
-  monotonically increasing fence values, `wait_status=0` / `fence_complete=1`
-  once per second. No `0xC00000B5` appeared during the 30-second run.
+- The RGH log from c85f2bd stopped after repeated `persistent-stream-buffer`
+  free/alloc pairs as skid marks grew. `data(..., false)` now starts at 256 KiB,
+  doubles capacity, and retires old blocks only after their last-use fence.
+- `xenia-hwdiag.log` shows one persistent marks allocation of 262,144 bytes and
+  no repeated reallocation during its 30-second run. It also shows ten
+  `hardware-frame begin/end` pairs: each begin status is 0, and each 2-second
+  fence wait returns status 0 / complete=1. The log calls are `xsdk_log_write`
+  to xsdk's synchronous file handle.
+- Current XEX: `xenon/build/game/fogcityfury.xex`, built 2026-11-19 08:48:29.
+  It reaches frame 3 and has the same successful per-frame status in Xenia.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell

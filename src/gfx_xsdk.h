@@ -23,11 +23,14 @@ struct BufObj {
     volatile uint32_t* streamVertices = nullptr;
     volatile uint32_t* indices = nullptr;
     uint32_t vertexBytes = 0, streamBytes = 0, indexCount = 0;
+    uint32_t lastFence = 0;
+    bool usedThisFrame = false;
     struct MeshChunk { volatile uint32_t* vertices; volatile uint32_t* indices; uint32_t vertexBytes, indexCount; };
     std::vector<MeshChunk> chunks;
 };
 struct StreamArena { volatile uint32_t* memory=nullptr; uint32_t cursor=0; uint32_t fence=0; };
 struct Allocation { volatile uint32_t* memory; uint32_t address, bytes; const char* tag; };
+struct RetiredBuffer { volatile uint32_t* memory; uint32_t fence; bool fencePending; };
 struct TargetObj { Tex color = 0; int face = -1; Tex depth = 0; };
 static std::vector<TexObj> textures(1);
 static std::vector<BufObj> buffers(1);
@@ -45,6 +48,7 @@ static constexpr uint32_t STREAM_BYTES=8u*1024u*1024u;
 static constexpr uint32_t MAX_FETCH_BYTES=65535u*4u;
 static constexpr uint32_t MAX_MESH_VERTICES=MAX_FETCH_BYTES/48u;
 static std::vector<Allocation> allocations;
+static std::vector<RetiredBuffer> retiredBuffers;
 static uint64_t allocatedBytes=0, allocationCount=0;
 static constexpr uint64_t XBOX_RAM_BYTES=512ull*1024ull*1024ull;
 static uint32_t screenAddress = 0;
@@ -93,6 +97,14 @@ static void gpuFree(volatile uint32_t* p) {
         allocations.erase(allocations.begin()+i); break;
     }
     xsdk_gpu_free(p);
+}
+static void reapRetiredBuffers() {
+    for(size_t i=0;i<retiredBuffers.size();) {
+        const auto& r=retiredBuffers[i];
+        if(!r.fencePending && (!r.fence || xsdk_gpu_fence_done(r.fence))) {
+            gpuFree(r.memory); retiredBuffers.erase(retiredBuffers.begin()+i);
+        } else i++;
+    }
 }
 static uint16_t half(float f) {
     uint32_t x; memcpy(&x, &f, 4);
@@ -294,6 +306,7 @@ void beginFrame(int width,int height) {
     xs::streamFrame=(xs::streamFrame+1)&1;
     auto& arena=xs::stream[xs::streamFrame];
     if(arena.fence) xsdk_gpu_wait(arena.fence,1000);
+    xs::reapRetiredBuffers();
     if(!arena.memory) arena.memory=xs::gpuAlloc(xs::STREAM_BYTES,xs::streamFrame?"stream-arena-1":"stream-arena-0");
     arena.cursor=0;
     for(auto& b:xs::buffers) { b.streamVertices=nullptr; b.streamBytes=0; }
@@ -341,7 +354,26 @@ static void data(Buf b,const void* p,size_t bytes,bool streamData) {
         o.streamVertices=arena.memory+arena.cursor/4; o.streamBytes=need; copyToGpu(o.streamVertices,p,bytes);
         xsdk_gpu_invalidate(xsdk_gpu_address(o.streamVertices),need); arena.cursor+=need;
     } else {
-        if(need>o.vertexBytes){ if(o.vertices) xs::gpuFree(o.vertices); o.vertices=xs::gpuAlloc(need,"persistent-stream-buffer"); o.vertexBytes=need; }
+        bool detach=o.usedThisFrame;
+        if(o.vertices && o.lastFence && !xsdk_gpu_fence_done(o.lastFence)) {
+            if(need<=o.vertexBytes) {
+                NTSTATUS wait=xsdk_gpu_wait(o.lastFence,2000);
+                if(!NT_SUCCESS(wait)){ xsdk_log_write("gfx: persistent buffer fence %u wait failed 0x%08X",(unsigned)o.lastFence,(unsigned)wait); return; }
+            } else detach=true;
+        }
+        if(need>o.vertexBytes || detach){
+            uint32_t capacity=need>o.vertexBytes?std::max(256u*1024u,o.vertexBytes?o.vertexBytes*2:0u):o.vertexBytes;
+            while(capacity<need && capacity<=UINT32_MAX/2) capacity*=2;
+            if(capacity<need) capacity=need;
+            volatile uint32_t* replacement=xs::gpuAlloc(capacity,"persistent-stream-buffer");
+            if(!replacement) return;
+            if(o.vertices){
+                if(o.usedThisFrame) xs::retiredBuffers.push_back({o.vertices,0,true});
+                else if(o.lastFence && !xsdk_gpu_fence_done(o.lastFence)) xs::retiredBuffers.push_back({o.vertices,o.lastFence,false});
+                else xs::gpuFree(o.vertices);
+            }
+            o.vertices=replacement; o.vertexBytes=capacity; o.lastFence=0; o.usedThisFrame=false;
+        }
         if(!o.vertices) return; copyToGpu(o.vertices,p,bytes); xsdk_gpu_invalidate(xsdk_gpu_address(o.vertices),o.vertexBytes);
     }
 }
@@ -352,6 +384,7 @@ static void draw(Buf b,int first,int n) {
         uint32_t count=(uint32_t)std::min((int)maxVertices,n-done); count-=count%3; if(!count) return;
         uint32_t skip=(uint32_t)(first+done)*stride, fetchBytes=count*stride; if(skip>bytes||fetchBytes>bytes-skip)return;
         xsdk_gpu_set_vertices(0,xsdk_gpu_address(vertices)+skip,fetchBytes); gfx::flushProgram(); xs::dirty=true;
+        if(!o.streamVertices) o.usedThisFrame=true;
         xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,count); done+=(int)count;
     }
 }
@@ -430,6 +463,8 @@ void presentFrame(uint32_t address,int width,int height){
     xsdk_gpu_resolve(address,(uint32_t)width,(uint32_t)height,0xFF000000);
     xs::lastFrameFence=xsdk_gpu_fence();
     xs::stream[xs::streamFrame].fence=xs::lastFrameFence;
+    for(auto& b:xs::buffers) if(b.usedThisFrame){ b.lastFence=xs::lastFrameFence; b.usedThisFrame=false; }
+    for(auto& r:xs::retiredBuffers) if(r.fencePending){ r.fence=xs::lastFrameFence; r.fencePending=false; }
     xs::frameActive=false;
 }
 
