@@ -21,6 +21,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #endif
+#ifdef FCF_GFX_XSDK
+#include "xsdk/thread.h"
+#endif
 
 namespace net {
 const uint32_t MAGIC = 0x59464346;   // bytes "FCFY"
@@ -96,6 +99,11 @@ inline void prepare(int s) {
     u_long nb = 1; ioctlsocket((SOCKET)s, FIONBIO, &nb);
     DWORD off = 0, ret = 0; WSAIoctl((SOCKET)s, _WSAIOW(IOC_VENDOR, 12), &off, sizeof off, nullptr, 0, &ret, nullptr, nullptr);   // SIO_UDP_CONNRESET off: an ICMP "port unreachable" must not break recvfrom
 }
+#elif defined(FCF_GFX_XSDK)
+inline void init() {}
+inline void closeSock(int s) { (void)s; }
+inline void sleepMs(int ms) { xsdk_thread_sleep((uint32_t)ms); }
+inline void prepare(int s) { (void)s; }
 #else
 inline void init() {}
 inline void closeSock(int s) { close(s); }

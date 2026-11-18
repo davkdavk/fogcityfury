@@ -24,4 +24,6 @@ for p in world car water sky part depth ui mark ring post; do
   done
 done
 [ $fail -eq 0 ] && echo "ALL 20 STAGES COMPILED" || echo "SOME STAGES FAILED"
+[ $fail -eq 0 ] || exit $fail
+python3 "$HERE/pack_shaders.py" "$GEN" || exit 1
 exit $fail

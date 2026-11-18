@@ -76,7 +76,9 @@ static Mesh carMesh[NCARS], wheelMesh, keyMesh;
 static Prog pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
 static UI ui;
 static gfx::Target shadowFBO = 0, cubeFBO = 0; static gfx::Tex shadowTex = 0, cubeTex = 0, cubeDepth = 0; static gfx::Buf partBuf = 0;   // shadow map, reflection cube, particles (and anything else drawn as L_PART triangles)
-#ifdef FCF_MOBILE   // phones (and `make gles`, which tests the same settings): smaller shadow and reflection maps, one reflection face a frame
+#ifdef FCF_GFX_XSDK  // keep each eDRAM pass within Xenos's 2048-tile memory
+static const int CUBE = 64, SHADOW = 512, CUBE_FACES = 1;
+#elif defined(FCF_MOBILE)   // phones (and `make gles`, which tests the same settings): smaller shadow and reflection maps, one reflection face a frame
 static const int CUBE = 128, SHADOW = 1024, CUBE_FACES = 1;
 #else
 static const int CUBE = 256, SHADOW = 2048, CUBE_FACES = 2;
@@ -194,7 +196,7 @@ static bool vidFull = false, vidVsync = true; static int vidW = 1280, vidH = 720
 #endif
 static int maxAA = 8, maxAF = 16, deskW = 1 << 20, deskH = 1 << 20;           // what the driver / display can do (filled in once the window exists)
 static int renderH = 0, lastRW = 0, lastRH = 0;                               // --renderh (tests); size the scene was last drawn at
-static SDL_Window* gWin = nullptr; static gfx::Tex detailTex = 0; static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
+static plat::Display display; static gfx::Tex detailTex = 0; static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
 static int optPage = 0, optRow = 0, optCol = 0; static bool optCapture = false; static State optReturn = TITLE;
 static State viewState() { return state == OPTS ? optReturn : state; }        // what is on screen behind the options
 // which buttons the current screen needs, in HUD units (the screen is uiW x 720)
@@ -278,10 +280,10 @@ static void saveCfg() {
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the
 // render size are picked up by render(), which rebuilds its targets when they change.
 static void applyVideo() {
-    vidAA = std::min(vidAA, maxAA); vidAF = std::min(vidAF, maxAF); if (!gWin) return;
-    SDL_SetWindowFullscreen(gWin, vidFull ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-    if (!vidFull) { SDL_SetWindowSize(gWin, vidW, vidH); SDL_SetWindowPosition(gWin, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED); }
-    SDL_GL_SetSwapInterval(vidVsync ? 1 : 0);
+    vidAA = std::min(vidAA, maxAA); vidAF = std::min(vidAF, maxAF); if (!display.open) return;
+    plat::setFullscreen(display, vidFull);
+    if (!vidFull) plat::setWindowSize(display, vidW, vidH);
+    plat::setVsync(vidVsync);
     if (detailTex && maxAF > 1) gfx::aniso(detailTex, std::max(1, vidAF));
 }
 static void loadSave() {
@@ -1522,40 +1524,30 @@ int main(int argc, char** argv) {
         for (int i = 0; i < skip; i++) { stepFixed(); if (netWanted || nc.on || state == NETJOIN || state == NETLOBBY) net::sleepMs(16); }   // online: the server runs in real time, so must we
         printJSON(stdout); netClose(""); return 0;
     }
-    // Windows display scaling (125%, 150%, 300% on a 4K TV...): without this Windows tells the game the screen is smaller than
-    // it is and stretches the picture, so 1920x1080 never appears in the video options. Ask for real pixels.
-    SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) { if (SDL_Init(SDL_INIT_VIDEO) != 0) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; } }
 #ifdef FCF_GLES
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3); SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0); SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    const bool useGles = true;
 #else
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3); SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3); SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    const bool useGles = false;
 #endif
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_Window* win = nullptr; SDL_GLContext ctx = nullptr;
 #ifdef FCF_GLES
     const int winMsaa = 0;   // the scene is anti-aliased in its own render target; the screen itself does not need it
 #else
     const int winMsaa = shot ? 0 : 4;
 #endif
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
-    for (int msaa = winMsaa; msaa >= 0 && !ctx; msaa -= 4) {
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, msaa ? 1 : 0); SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, msaa);
-        win = SDL_CreateWindow("Fog City Fury", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | (windowed ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP));
-        if (win) { ctx = SDL_GL_CreateContext(win); if (!ctx) { SDL_DestroyWindow(win); win = nullptr; } }
-    }
-    if (!ctx) { fprintf(stderr, "Could not create an OpenGL 3.3 context: %s\n", SDL_GetError()); SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fog City Fury", "Could not create an OpenGL 3.3 context. Update your graphics driver.", nullptr); return 1; }
-    if (!loadGL()) { SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fog City Fury", "This graphics driver does not provide OpenGL 3.3.", win); return 1; }
-    gWin = win; SDL_GL_SetSwapInterval(vidVsync ? 1 : 0);
+    if (!plat::openDisplay(display, "Fog City Fury", w, h, windowed, useGles, winMsaa)) { fprintf(stderr, "Could not open the display: %s\n", plat::displayError()); return 1; }
+#ifndef FCF_GFX_XSDK
+    if (!loadGL()) { plat::errorBox("Fog City Fury", "This graphics driver does not provide OpenGL 3.3."); return 1; }
+#endif
+    plat::setVsync(vidVsync);
 #ifdef FCF_GLES
-    hdrOK = SDL_GL_ExtensionSupported("GL_EXT_color_buffer_half_float") || SDL_GL_ExtensionSupported("GL_EXT_color_buffer_float");   // nearly every GLES 3 phone; without it the scene is drawn into 8-bit targets
+    hdrOK = plat::displayExtension("GL_EXT_color_buffer_half_float") || plat::displayExtension("GL_EXT_color_buffer_float");   // nearly every GLES 3 phone; without it the scene is drawn into 8-bit targets
 #endif
     if (forceLDR) hdrOK = false;
     {   // what this driver and display can do, for the video settings
         int ms = gfx::maxSamples(); maxAA = ms >= 8 ? 8 : ms >= 4 ? 4 : ms >= 2 ? 2 : 0;
         int fa = gfx::maxAniso();
         maxAF = fa >= 16 ? 16 : fa >= 8 ? 8 : fa >= 4 ? 4 : fa >= 2 ? 2 : 1; vidAA = std::min(vidAA, maxAA); vidAF = std::min(vidAF, maxAF);
-        SDL_DisplayMode dm; if (SDL_GetDesktopDisplayMode(std::max(0, SDL_GetWindowDisplayIndex(win)), &dm) == 0) { deskW = dm.w; deskH = dm.h; }
+        plat::displaySize(display, deskW, deskH);
     }
     if (!shot) { bool ok = false; adev = plat::audioOpen(audioCB, ok); if (ok) plat::audioPause(adev, false); else adev = 0; }
     for (int i = 0; i < plat::padCount() && !pad; i++) if (plat::padIsController(i)) pad = plat::padOpen(i);
@@ -1590,9 +1582,11 @@ int main(int argc, char** argv) {
 
     if (shot) {
         for (int i = 0; i < skip; i++) { stepFixed(); if (netWanted || nc.on || state == NETJOIN || state == NETLOBBY) net::sleepMs(16); }
-        int fw, fh; SDL_GL_GetDrawableSize(win, &fw, &fh);
-        for (int i = 0; i < frames; i++) { stepFixed(); render(fw, fh); SDL_GL_SwapWindow(win); }
+        int fw, fh;
+        for (int i = 0; i < frames; i++) { stepFixed(); plat::beginFrame(display, fw, fh); render(fw, fh); plat::endFrame(display); }
+        plat::beginFrame(display, fw, fh);
         render(fw, fh); gfx::finish(); writeBMP(shot, fw, fh); printJSON(stdout);
+        plat::endFrame(display);
         return 0;
     }
     if (!simMode && !grngSeeded) grng.s = (uint32_t)plat::ticks() * 2654435761u + 1u;   // a real game: a new ring each time (sims and tests stay the same)
@@ -1622,7 +1616,7 @@ int main(int argc, char** argv) {
             if (e.type == plat::EV_FINGER_MOVE) touchMove((SDL_FingerID)e.fingerId, e.x * uiW, e.y * 720);
             if (e.type == plat::EV_FINGER_UP) touchUp((SDL_FingerID)e.fingerId);
             if (touchMouse && (e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP || e.type == plat::EV_MOUSE_MOVE) && e.which != plat::touchMouseId()) {   // --touch on a desktop: the mouse is a finger
-                int ww = 1, wh = 1; plat::windowSize(gWin, ww, wh); float mx = e.x * uiW / ww, my = e.y * 720.0f / wh;
+                int ww = 1, wh = 1; plat::windowSize(plat::window(display), ww, wh); float mx = e.x * uiW / ww, my = e.y * 720.0f / wh;
                 if (e.type == plat::EV_MOUSE_DOWN) touchDown(-2, mx, my); else if (e.type == plat::EV_MOUSE_UP) touchUp(-2); else touchMove(-2, mx, my);
             }
             if (me.on && state == RACE && !touchMouse) {   // on foot the mouse turns the camera and its left button is the trigger
@@ -1634,7 +1628,7 @@ int main(int argc, char** argv) {
         }
         uint64_t now = plat::ticks(); float dt = clampf((now - last) / (float)plat::tickFreq(), 0.0005f, 0.05f); last = now;
         frameDt = dt; if (slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
-        update(dt); int fw, fh; SDL_GL_GetDrawableSize(win, &fw, &fh); if (fw > 0 && fh > 0) render(fw, fh); SDL_GL_SwapWindow(win);
+        update(dt); int fw, fh; plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display);
     }
-    netClose(""); writeSave(); if (adev) plat::audioClose(adev); SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit(); return 0;
+    netClose(""); writeSave(); if (adev) plat::audioClose(adev); plat::closeDisplay(display); return 0;
 }

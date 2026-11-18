@@ -8,7 +8,7 @@ Adaptations: #version 450 + layout locations + uniform blocks + sampler bindings
 shadow(); world's texture fetches hoisted out of divergent material branches; post's integer
 equality comparisons turned into float ones. The result is compiled by xenon/build_shaders.sh.
 """
-import re, os, sys
+import re, os, sys, json
 
 HERE = os.path.dirname(os.path.abspath(__file__))          # <repo>/xenon
 REPO = os.path.dirname(HERE)
@@ -33,23 +33,38 @@ def add_locations(t, locmap):
         return ' '.join(out)
     return re.sub(r'(?<!layout\(location=\d\) )\b(in|out)\s+(vec[234]|float|int)\s+([A-Za-z_][\w, ]*);', repl, t)
 
+SAMPLER_UNITS = {'uShadow':0, 'uEnv':1, 'uHeight':2, 'uFont':3, 'uTex':4, 'uBloom':5, 'uDetail':6}
+
 def uniforms_to_block(t):
     t = strip_comments(t)
     samplers, members = [], []
     def coll(m):
         typ, names = m.group(1), m.group(2)
         for n in [x.strip() for x in names.split(',')]:
-            (samplers if typ.startswith('sampler') else members).append((typ, n) if typ.startswith('sampler') else f'{typ} {n};')
+            if typ.startswith('sampler'):
+                if n not in SAMPLER_UNITS: raise ValueError(f'no fixed sampler unit for {n}')
+                samplers.append((typ, n, SAMPLER_UNITS[n]))
+            else:
+                members.append((typ, n))
         return ''
     t = re.sub(r'uniform\s+(sampler\w+|vec[234]|float|int|mat[234])\s+([A-Za-z_][\w, ]*);', coll, t)
     hdr = ''
-    if members: hdr += 'layout(binding=0) uniform Globals {\n' + '\n'.join(members) + '\n};\n'
-    for i, (typ, n) in enumerate(samplers): hdr += f'layout(binding={i+1}) uniform {typ} {n};\n'
+    uniforms = []
+    offset = 0
+    align_size = {'float':(4,4), 'int':(4,4), 'vec2':(8,8), 'vec3':(16,12), 'vec4':(16,16),
+                  'mat2':(16,32), 'mat3':(16,48), 'mat4':(16,64)}
+    for typ, n in members:
+        align, size = align_size[typ]
+        offset = (offset + align - 1) // align * align
+        uniforms.append({'name':n, 'type':typ, 'offset':offset, 'size':size})
+        offset += size
+    if members: hdr += 'layout(binding=0) uniform Globals {\n' + '\n'.join(f'{typ} {n};' for typ,n in members) + '\n};\n'
+    for typ, n, unit in samplers: hdr += f'layout(binding={unit}) uniform {typ} {n};\n'
     if hdr:
         lines = t.split('\n'); vi = next((i for i, l in enumerate(lines) if l.strip().startswith('#version')), None)
         if vi is not None: lines.insert(vi+1, hdr); t = '\n'.join(lines)
         else: t = '#version 450\n' + hdr + t
-    return t
+    return t, uniforms, [{'name':n, 'type':typ, 'unit':unit} for typ,n,unit in samplers]
 
 def version(t): return t.replace('#version 330 core', '#version 450').replace('gl_VertexID', 'gl_VertexIndex')
 def ocol_loc(t): return t.replace('out vec4 oCol;', 'layout(location=0) out vec4 oCol;')
@@ -134,13 +149,16 @@ progs = {
 }
 os.makedirs(OUT, exist_ok=True)
 for name, (vs, fc, fs, loc) in progs.items():
-    v = version(sh[vs]); v = add_locations(v, loc); v = uniforms_to_block(v)
+    v = version(sh[vs]); v = add_locations(v, loc); v, vu, vsam = uniforms_to_block(v)
     f = (sh[fc] if fc else '') + sh[fs]
     f = f.replace(SHADOW_OLD, SHADOW_NEW)
-    f = version(f); f = ocol_loc(f); f = add_locations(f, loc); f = uniforms_to_block(f)
+    f = version(f); f = ocol_loc(f); f = add_locations(f, loc)
     if name == 'world': f = fix_world(f)
     if name == 'post': f = fix_post(f)
+    f, fu, fsam = uniforms_to_block(f)
     if not f.lstrip().startswith('#version'): f = '#version 450\n' + f
     open(os.path.join(OUT, name + '.vert'), 'w').write(v)
     open(os.path.join(OUT, name + '.frag'), 'w').write(f)
+    with open(os.path.join(OUT, name + '.uniforms.json'), 'w') as mf:
+        json.dump({'program':name, 'vertex':vu, 'fragment':fu, 'samplers':vsam+fsam}, mf, indent=2)
 print("generated", len(progs), "programs into", OUT)

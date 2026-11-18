@@ -11,13 +11,12 @@
 #endif
 #include <cstdio>
 #ifdef __ANDROID__
-#include "SDL.h"            // SDL is built from source next to the game there
 #define FCF_MOBILE 1
-#else
-#include <SDL2/SDL.h>
 #endif
 #include "platform.h"
+#ifndef FCF_GFX_XSDK
 #include "glload.h"
+#endif
 #include <cctype>
 #include <cmath>
 #include <cstdio>
