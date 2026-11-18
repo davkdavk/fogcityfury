@@ -75,7 +75,7 @@ static Car player, ai[NAI];
 static Mesh carMesh[NCARS], wheelMesh, keyMesh;
 static Prog pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
 static UI ui;
-static GLuint shadowFBO, shadowTex, cubeFBO, cubeTex, cubeDepth, emptyVAO, partVAO, partVBO;
+static gfx::Target shadowFBO = 0, cubeFBO = 0; static gfx::Tex shadowTex = 0, cubeTex = 0, cubeDepth = 0; static gfx::Buf partBuf = 0;   // shadow map, reflection cube, particles (and anything else drawn as L_PART triangles)
 #ifdef FCF_MOBILE   // phones (and `make gles`, which tests the same settings): smaller shadow and reflection maps, one reflection face a frame
 static const int CUBE = 128, SHADOW = 1024, CUBE_FACES = 1;
 #else
@@ -105,8 +105,8 @@ static_assert(net::TRACKS == NTRACKS, "server and client disagree on the number 
 // feel: camera springs, screen effects, gear-shift cut, skid marks
 static float frameDt = 1 / 60.f, slowT = 0, flashT = 0, caT = 0, fovKick = 0, shiftCut = 0, camRoll = 0, camLag = 0, camDip = 0, camDipV = 0, gasHold = 0, whooshCD[NAI] = {};
 static V3 flashCol(1, 1, 1);
-static std::vector<float> marks; static bool marksDirty = false, markOn[2] = { false, false }; static V3 markLast[2]; static GLuint markVAO, markVBO;
-static GLuint sceneFBO = 0, sceneCol = 0, sceneDep = 0, resFBO = 0, resTex = 0, blFBO[2], blTex[2]; static int postW = 0, postH = 0;
+static std::vector<float> marks; static bool marksDirty = false, markOn[2] = { false, false }; static V3 markLast[2]; static gfx::Buf markBuf = 0;
+static gfx::Target sceneFBO = 0, resFBO = 0, blFBO[2] = {}; static gfx::Tex sceneCol = 0, sceneDep = 0, resTex = 0, blTex[2] = {}; static int postW = 0, postH = 0;
 static Prog pMark, pPost;
 // test instrumentation (see docs/TESTING.md)
 static struct Metrics { float maxBeta = 0, maxSlipF = 0, maxSlipR = 0, maxSpeed = 0, dist = 0, heading = 0, maxYawRate = 0, simT = 0, boostT = 0, minNitro = 1; int wrecks = 0, sinks = 0, camOffAxis = 0, bigAirs = 0, boosts = 0, rocketsFired = 0, rocketHits = 0, pickups = 0, resets = 0; float maxDeck = 0, maxGap = 0, offroadT = 0, gridDrift = 0; } tm;
@@ -194,7 +194,7 @@ static bool vidFull = false, vidVsync = true; static int vidW = 1280, vidH = 720
 #endif
 static int maxAA = 8, maxAF = 16, deskW = 1 << 20, deskH = 1 << 20;           // what the driver / display can do (filled in once the window exists)
 static int renderH = 0, lastRW = 0, lastRH = 0;                               // --renderh (tests); size the scene was last drawn at
-static SDL_Window* gWin = nullptr; static GLuint detailTex = 0; static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
+static SDL_Window* gWin = nullptr; static gfx::Tex detailTex = 0; static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
 static int optPage = 0, optRow = 0, optCol = 0; static bool optCapture = false; static State optReturn = TITLE;
 static State viewState() { return state == OPTS ? optReturn : state; }        // what is on screen behind the options
 // which buttons the current screen needs, in HUD units (the screen is uiW x 720)
@@ -275,10 +275,6 @@ static void saveCfg() {
     fprintf(f, "v1\nvideo %d %d %d %d %d %d\n", (int)vidFull, vidW, vidH, vidAA, vidAF, (int)vidVsync); for (int i = 0; i < NBIND; i++) fprintf(f, "bind %d %d %d\n", i, binds[i][0], binds[i][1]);
     fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\nlaps %d\n", nc.name, selLaps); fclose(f);
 }
-#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
-#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
-#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
-#endif
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the
 // render size are picked up by render(), which rebuilds its targets when they change.
 static void applyVideo() {
@@ -286,7 +282,7 @@ static void applyVideo() {
     SDL_SetWindowFullscreen(gWin, vidFull ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
     if (!vidFull) { SDL_SetWindowSize(gWin, vidW, vidH); SDL_SetWindowPosition(gWin, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED); }
     SDL_GL_SetSwapInterval(vidVsync ? 1 : 0);
-    if (detailTex) { glActiveTexture(GL_TEXTURE6); glBindTexture(GL_TEXTURE_2D, detailTex); if (maxAF > 1) glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, (float)std::max(1, vidAF)); }
+    if (detailTex && maxAF > 1) gfx::aniso(detailTex, std::max(1, vidAF));
 }
 static void loadSave() {
     if (noSave) return; FILE* f = fopen(savePath().c_str(), "r"); if (!f) return;
@@ -925,7 +921,7 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
     V3 skyT = d.skyTop * (1 - w.grey) + grey * (w.grey * 0.85f), skyH = d.skyHor * (1 - w.grey) + grey * w.grey;
     p.v3("uSunDir", d.sun); p.v3("uSunCol", sunC * (1 - 0.35f * w.grey)); p.v3("uSkyTop", skyT + V3(0.25f, 0.25f, 0.32f) * bolt); p.v3("uSkyHor", skyH + V3(0.25f, 0.25f, 0.32f) * bolt);
     p.f1("uWet", w.wet); p.f1("uRain", w.rain); p.f1("uOvercast", w.grey); p.f1("uFogNoise", weather == W_FOG ? 1.0f : w.rain > 0 ? 0.4f : 0.0f); p.f1("uBoltI", bolt); p.v3("uBoltDir", boltDir);
-    p.i1("uDetail", 6); { GLint l = p.L("uKeySt"); if (l >= 0) { if (W.keyStreet.size() == 4) glUniform4f(l, W.keyStreet[0], W.keyStreet[1], W.keyStreet[2], W.keyStreet[3]); else glUniform4f(l, 0, 0, 0, 0); l = p.L("uKeyLot"); if (l >= 0) { if (W.keyLot.size() == 4) glUniform4f(l, W.keyLot[0], W.keyLot[1], W.keyLot[2], W.keyLot[3]); else glUniform4f(l, 1, 1, 0, 0); } } } p.i1("uEnv", 1); p.f1("uUseEnv", envPass ? 0.0f : 1.0f); p.v3("uEnvPos", player.pos + V3(0, 1.0f, 0));   // the cubemap cannot be read while it is being drawn
+    p.i1("uDetail", 6); if (p.has("uKeySt")) { if (W.keyStreet.size() == 4) p.v4("uKeySt", W.keyStreet[0], W.keyStreet[1], W.keyStreet[2], W.keyStreet[3]); else p.v4("uKeySt", 0, 0, 0, 0); if (p.has("uKeyLot")) { if (W.keyLot.size() == 4) p.v4("uKeyLot", W.keyLot[0], W.keyLot[1], W.keyLot[2], W.keyLot[3]); else p.v4("uKeyLot", 1, 1, 0, 0); } } p.i1("uEnv", 1); p.f1("uUseEnv", envPass ? 0.0f : 1.0f); p.v3("uEnvPos", player.pos + V3(0, 1.0f, 0));   // the cubemap cannot be read while it is being drawn
     p.v3("uCamPos", cam); p.f1("uTime", T); p.f1("uFogDen", debugTop ? 0.0f : d.fogDen * w.fog); p.f1("uHDR", hdr); p.m4("uLightVP", lightVP); p.i1("uShadow", 0);
     p.f1("uNight", d.night); V3 hf(sinf(player.yaw), 0, cosf(player.yaw)); p.v3("uHeadPos", player.pos + V3(0, 0.75f, 0) + hf * 1.6f); p.v3("uHeadDir", norm(hf + V3(0, -0.07f + sinf(player.pitch), 0))); p.f1("uHeadOn", player.dead ? 0.0f : 1.0f);
 }
@@ -967,15 +963,15 @@ static void drawWreckage(Prog& p, bool lit) {
 }
 static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     M4 VP = mul(P, V); float hdr = 1;
-    glDisable(GL_DEPTH_TEST); setCommon(pSky, VP, cam, hdr);
-    pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); glUniform2f(pSky.L("uTan"), 1 / P.m[0], 1 / P.m[5]);
-    glBindVertexArray(emptyVAO); glDrawArrays(GL_TRIANGLES, 0, 3); glEnable(GL_DEPTH_TEST);
+    gfx::depthTest(false); setCommon(pSky, VP, cam, hdr);
+    pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); pSky.f2("uTan", 1 / P.m[0], 1 / P.m[5]);
+    gfx::drawFull(); gfx::depthTest(true);
     setCommon(pWorld, VP, cam, hdr); W.terrain.draw(); W.props.draw();
     if (mainPass && !marks.empty()) {   // skid marks
-        glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); glDepthMask(GL_FALSE); glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(-2, -2);
-        setCommon(pMark, VP, cam, hdr); glBindVertexArray(markVAO); glBindBuffer(GL_ARRAY_BUFFER, markVBO);
-        if (marksDirty) { glBufferData(GL_ARRAY_BUFFER, marks.size() * 4, marks.data(), GL_DYNAMIC_DRAW); marksDirty = false; }
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(marks.size() / 11)); glDisable(GL_POLYGON_OFFSET_FILL); glDepthMask(GL_TRUE); glDisable(GL_BLEND);
+        gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); gfx::offset(-2, -2);
+        setCommon(pMark, VP, cam, hdr);
+        if (marksDirty) { gfx::data(markBuf, marks.data(), marks.size() * 4, false); marksDirty = false; }
+        gfx::draw(markBuf, 0, (int)(marks.size() / 11)); gfx::offset(0, 0); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
     }
     if (mainPass) {   // a soft dark patch under every car, laid on the ground it stands on: without it the sun's shadow can sit a little apart and the car seems to hover
         static std::vector<float> ao; ao.clear();
@@ -989,9 +985,9 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         if (!(camMode == 2 && state == RACE) && !carHidden) patch(player); if (showAI()) for (auto& a : ai) patch(a); if (netRace) for (auto& r : nc.r) if (r.present && r.racing) patch(r.car);
         footShadows(ao);
         if (!ao.empty()) {
-            glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); glDepthMask(GL_FALSE); glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(-2, -2);
-            setCommon(pMark, VP, cam, hdr); glBindVertexArray(partVAO); glBindBuffer(GL_ARRAY_BUFFER, partVBO); glBufferData(GL_ARRAY_BUFFER, ao.size() * 4, ao.data(), GL_STREAM_DRAW);
-            glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(ao.size() / 11)); glDisable(GL_POLYGON_OFFSET_FILL); glDepthMask(GL_TRUE); glDisable(GL_BLEND);
+            gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); gfx::offset(-2, -2);
+            setCommon(pMark, VP, cam, hdr); gfx::data(partBuf, ao.data(), ao.size() * 4, true);
+            gfx::draw(partBuf, 0, (int)(ao.size() / 11)); gfx::offset(0, 0); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
         }
     }
     if (mainPass) {
@@ -1000,7 +996,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         pCar.v3("uPaint", PAINTS[7]); pCar.f1("uChrome", 1); pCar.f1("uBrake", 0);
         for (size_t k = 0; k < W.keys.size(); k++) if (!(keysGot[W.id] >> k & 1)) { pCar.m4("uModel", mul(translate(W.keys[k] + V3(0, 0.25f * sinf(T * 2 + k), 0)), mul(rotY(T * 2.2f + k), scale(1.9f, 1.9f, 1.9f)))); keyMesh.draw(); }
     }
-    glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    gfx::blend(gfx::B_ALPHA);
     setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2); W.water.draw();
     if (mainPass && !parts.empty()) {
         V3 R(V.m[0], V.m[4], V.m[8]), U(V.m[1], V.m[5], V.m[9]), F(-V.m[2], -V.m[6], -V.m[10]); static std::vector<float> pv; pv.clear();
@@ -1010,12 +1006,12 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
             if (p.stretch > 0) { V3 d = norm(p.v - rainRel); pr = norm(cross(d, F)) * (p.size * 0.12f); pu = d * (p.size * p.stretch); off = 0; }
             for (int k = 0; k < 6; k++) { V3 q = p.p + pr * cu[k] + pu * (cv[k] + off); float d[11] = { q.x, q.y, q.z, cu[k], cv[k], p.col.x, p.col.y, p.col.z, a, p.seed, p.add }; pv.insert(pv.end(), d, d + 11); }
         }
-        setCommon(pPart, VP, cam, hdr); glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); glDepthMask(GL_FALSE);
-        glBindVertexArray(partVAO); glBindBuffer(GL_ARRAY_BUFFER, partVBO); glBufferData(GL_ARRAY_BUFFER, pv.size() * 4, pv.data(), GL_STREAM_DRAW);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(pv.size() / 11)); glDepthMask(GL_TRUE);
+        setCommon(pPart, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
+        gfx::data(partBuf, pv.data(), pv.size() * 4, true);
+        gfx::draw(partBuf, 0, (int)(pv.size() / 11)); gfx::depthWrite(true);
     }
     if (mainPass) drawRing(VP, cam, hdr);
-    glDisable(GL_BLEND);
+    gfx::blend(gfx::B_OFF);
 }
 
 static void fmtTime(char* b, float t) { int m = (int)(t / 60); float s = t - m * 60; snprintf(b, 32, "%d:%05.2f", m, s); }
@@ -1272,21 +1268,21 @@ static void render(int fbw, int fbh) {
     }
     if (!chase) eye = camPos;
     M4 V = lookAt(eye, camTgt, debugTop ? V3(0, 0, -1) : upv), P = perspective(fov * M_PI / 180, asp, 0.3f, 6000); lastVP = mul(P, V);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, shadowTex); glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_CUBE_MAP, cubeTex); glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, W.htex);
+    gfx::bind(0, shadowTex); gfx::bind(1, cubeTex); gfx::bind(2, W.htex);
     // ---- shadow map ----
     V3 focus = debugTop ? camTgt : footView() ? fighters[shdSpectate ? shdWatch : 0].pos + yawDir(footYaw) * 14 : player.pos + f * 25; float R = debugTop ? 520 : footView() ? 46 : 105;   // on foot the shadow map is drawn tighter: a person needs finer shadows than a car
     lightVP = mul(ortho(-R, R, -R, R, 1, 900), lookAt(focus + W.def->sun * 400, focus, V3(0, 1, 0)));
-    glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO); glViewport(0, 0, SHADOW, SHADOW); glClear(GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.0f, 4.0f);
+    gfx::use(shadowFBO, SHADOW, SHADOW); gfx::clear(false, true);
+    gfx::offset(2.0f, 4.0f);
     pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident()); W.terrain.draw(); W.props.draw(); drawCars(pDepth, false, true); drawWreckage(pDepth, false);
-    glDisable(GL_POLYGON_OFFSET_FILL);
+    gfx::offset(0, 0);
     // ---- dynamic environment cubemap around the player's car (2 faces per frame) ----
     static const V3 dirs[6] = { {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1} }, ups[6] = { {0,-1,0},{0,-1,0},{0,0,1},{0,0,-1},{0,-1,0},{0,-1,0} };
     V3 cc = player.pos + V3(0, 1.0f, 0); M4 CP = perspective(M_PI / 2, 1, 0.3f, 3000);
-    glBindFramebuffer(GL_FRAMEBUFFER, cubeFBO); glViewport(0, 0, CUBE, CUBE);
+    gfx::use(cubeFBO, CUBE, CUBE);
     int nf = frameNo < 4 || fixedCam || debugTop ? 6 : CUBE_FACES;
-    for (int k = 0; k < nf; k++) { int face = cubeFace++ % 6; glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, cubeTex, 0); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); envPass = true; drawScene(lookAt(cc, cc + dirs[face], ups[face]), CP, cc, false); envPass = false; }
-    glActiveTexture(GL_TEXTURE1); glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    for (int k = 0; k < nf; k++) { int face = cubeFace++ % 6; gfx::target(cubeFBO, cubeTex, face, cubeDepth); gfx::clear(true, true); envPass = true; drawScene(lookAt(cc, cc + dirs[face], ups[face]), CP, cc, false); envPass = false; }
+    gfx::mips(cubeTex);
     // ---- main view ----
     // scene -> multisampled HDR target
     // the scene is drawn at rw x rh (the chosen resolution when full screen, else the window's own size) and scaled to the screen by the last pass
@@ -1294,34 +1290,28 @@ static void render(int fbw, int fbh) {
     lastRW = rw; lastRH = rh;
     if (rw != postW || rh != postH || aa != postAA) {
         postW = rw; postH = rh; postAA = aa;
-        if (!sceneFBO) { glGenFramebuffers(1, &sceneFBO); glGenRenderbuffers(1, &sceneCol); glGenRenderbuffers(1, &sceneDep); glGenFramebuffers(1, &resFBO); glGenTextures(1, &resTex); glGenFramebuffers(2, blFBO); glGenTextures(2, blTex); }
-        glBindRenderbuffer(GL_RENDERBUFFER, sceneCol); glRenderbufferStorageMultisample(GL_RENDERBUFFER, aa, hdrOK ? GL_RGBA16F : GL_RGBA8, rw, rh);
-        glBindRenderbuffer(GL_RENDERBUFFER, sceneDep); glRenderbufferStorageMultisample(GL_RENDERBUFFER, aa, GL_DEPTH_COMPONENT24, rw, rh);
-        glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO); glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, sceneCol); glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, sceneDep);
-        GLuint tx[3] = { resTex, blTex[0], blTex[1] }, fb[3] = { resFBO, blFBO[0], blFBO[1] };
-        for (int i = 0; i < 3; i++) {
-            glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, tx[i]); glTexImage2D(GL_TEXTURE_2D, 0, hdrOK ? GL_RGBA16F : GL_RGBA8, i ? std::max(1, rw / 4) : rw, i ? std::max(1, rh / 4) : rh, 0, GL_RGBA, hdrOK ? GL_FLOAT : GL_UNSIGNED_BYTE, nullptr);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glBindFramebuffer(GL_FRAMEBUFFER, fb[i]); glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tx[i], 0);
-        }
+        gfx::Fmt cf = hdrOK ? gfx::RGBA16F : gfx::RGBA8;
+        gfx::renderbuffer(sceneCol, cf, rw, rh, aa); gfx::renderbuffer(sceneDep, gfx::DEPTH24, rw, rh, aa); gfx::target(sceneFBO, sceneCol, -1, sceneDep);
+        gfx::Tex* tx[3] = { &resTex, &blTex[0], &blTex[1] }; gfx::Target* fb[3] = { &resFBO, &blFBO[0], &blFBO[1] };
+        for (int i = 0; i < 3; i++) { gfx::tex2D(*tx[i], cf, i ? std::max(1, rw / 4) : rw, i ? std::max(1, rh / 4) : rh, nullptr, gfx::Sampler()); gfx::target(*fb[i], *tx[i], -1, 0); }
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, sceneFBO); glViewport(0, 0, rw, rh); glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    gfx::use(sceneFBO, rw, rh); gfx::clear(true, true);
     drawScene(V, P, eye, true);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFBO); glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resFBO); glBlitFramebuffer(0, 0, rw, rh, 0, 0, rw, rh, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    gfx::resolve(sceneFBO, resFBO, rw, rh);
     // ---- post: bloom, radial speed blur, chromatic aberration, vignette, tonemap ----
-    glDisable(GL_DEPTH_TEST); pPost.use(); glBindVertexArray(emptyVAO); pPost.i1("uTex", 4); pPost.i1("uBloom", 5); glActiveTexture(GL_TEXTURE4);
-    int bw = std::max(1, rw / 4), bh = std::max(1, rh / 4); glViewport(0, 0, bw, bh);
-    glBindFramebuffer(GL_FRAMEBUFFER, blFBO[0]); glBindTexture(GL_TEXTURE_2D, resTex); pPost.i1("uMode", 0); glUniform2f(pPost.L("uDir"), 1.0f / rw, 1.0f / rh); glDrawArrays(GL_TRIANGLES, 0, 3);
+    gfx::depthTest(false); pPost.use(); pPost.i1("uTex", 4); pPost.i1("uBloom", 5);
+    int bw = std::max(1, rw / 4), bh = std::max(1, rh / 4);
+    gfx::use(blFBO[0], bw, bh); gfx::bind(4, resTex); pPost.i1("uMode", 0); pPost.f2("uDir", 1.0f / rw, 1.0f / rh); gfx::drawFull();
     for (int it = 0; it < 2; it++) {
-        glBindFramebuffer(GL_FRAMEBUFFER, blFBO[1]); glBindTexture(GL_TEXTURE_2D, blTex[0]); pPost.i1("uMode", 1); glUniform2f(pPost.L("uDir"), (1.0f + it) / bw, 0); glDrawArrays(GL_TRIANGLES, 0, 3);
-        glBindFramebuffer(GL_FRAMEBUFFER, blFBO[0]); glBindTexture(GL_TEXTURE_2D, blTex[1]); glUniform2f(pPost.L("uDir"), 0, (1.0f + it) / bh); glDrawArrays(GL_TRIANGLES, 0, 3);
+        gfx::use(blFBO[1], bw, bh); gfx::bind(4, blTex[0]); pPost.i1("uMode", 1); pPost.f2("uDir", (1.0f + it) / bw, 0); gfx::drawFull();
+        gfx::use(blFBO[0], bw, bh); gfx::bind(4, blTex[1]); pPost.f2("uDir", 0, (1.0f + it) / bh); gfx::drawFull();
     }
     float psp = sqrtf(player.vel.x * player.vel.x + player.vel.z * player.vel.z), blur = chase && !player.dead ? powf(clampf((psp - 22) / 50, 0, 1), 1.4f) * 0.075f : 0;
-    glBindFramebuffer(GL_FRAMEBUFFER, 0); glViewport(0, 0, fbw, fbh); glBindTexture(GL_TEXTURE_2D, resTex); glActiveTexture(GL_TEXTURE5); glBindTexture(GL_TEXTURE_2D, blTex[0]);
+    gfx::use(0, fbw, fbh); gfx::bind(4, resTex); gfx::bind(5, blTex[0]);
     pPost.i1("uMode", 2); pPost.f1("uBlur", blur); pPost.f1("uCA", chase ? caT * 0.012f + blur * 0.04f : 0); pPost.f1("uFlash", clampf(flashT, 0, 1) * 0.55f); pPost.v3("uFlashCol", flashCol);
     pPost.f1("uRain", chase && !debugTop && state != CARSEL && state != TRACKSEL ? wx().rain : 0.0f); pPost.f1("uTime", T);
-    pPost.f1("uVig", 0.45f + blur * 5); pPost.f1("uSat", chase && player.dead && state != TITLE ? 0.5f : 1.0f); glDrawArrays(GL_TRIANGLES, 0, 3); glEnable(GL_DEPTH_TEST);
-    if (!hideUI) { glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); glDisable(GL_BLEND); glEnable(GL_DEPTH_TEST); }
+    pPost.f1("uVig", 0.45f + blur * 5); pPost.f1("uSat", chase && player.dead && state != TITLE ? 0.5f : 1.0f); gfx::drawFull(); gfx::depthTest(true);
+    if (!hideUI) { gfx::depthTest(false); gfx::blend(gfx::B_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); gfx::blend(gfx::B_OFF); gfx::depthTest(true); }
 }
 
 // ------------------------------------------------------------------ menus / input events
@@ -1562,34 +1552,22 @@ int main(int argc, char** argv) {
 #endif
     if (forceLDR) hdrOK = false;
     {   // what this driver and display can do, for the video settings
-        GLint ms = 0; glGetIntegerv(0x8D57 /* GL_MAX_SAMPLES */, &ms); maxAA = ms >= 8 ? 8 : ms >= 4 ? 4 : ms >= 2 ? 2 : 0;
-        float fa = 1; if (SDL_GL_ExtensionSupported("GL_EXT_texture_filter_anisotropic") || SDL_GL_ExtensionSupported("GL_ARB_texture_filter_anisotropic")) glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &fa);
+        int ms = gfx::maxSamples(); maxAA = ms >= 8 ? 8 : ms >= 4 ? 4 : ms >= 2 ? 2 : 0;
+        int fa = gfx::maxAniso();
         maxAF = fa >= 16 ? 16 : fa >= 8 ? 8 : fa >= 4 ? 4 : fa >= 2 ? 2 : 1; vidAA = std::min(vidAA, maxAA); vidAF = std::min(vidAF, maxAF);
         SDL_DisplayMode dm; if (SDL_GetDesktopDisplayMode(std::max(0, SDL_GetWindowDisplayIndex(win)), &dm) == 0) { deskW = dm.w; deskH = dm.h; }
     }
     if (!shot) { bool ok = false; adev = plat::audioOpen(audioCB, ok); if (ok) plat::audioPause(adev, false); else adev = 0; }
     for (int i = 0; i < plat::padCount() && !pad; i++) if (plat::padIsController(i)) pad = plat::padOpen(i);
 
-    pWorld = makeProg(VS_MESH, FS_COMMON, FS_WORLD); pCar = makeProg(VS_MESH, FS_COMMON, FS_CAR); pWater = makeProg(VS_MESH, FS_COMMON, FS_WATER);
-    pSky = makeProg(VS_SKY, FS_COMMON, FS_SKY); pPart = makeProg(VS_PART, FS_COMMON, FS_PART); pDepth = makeProg(VS_MESH, FS_COMMON, FS_DEPTH); pUI = makeProg(VS_UI, "", FS_UI_FULL); pMark = makeProg(VS_PART, FS_COMMON, FS_MARK); pRing = makeProg(VS_PART, FS_COMMON, FS_RING); pPost = makeProg(VS_SKY, "", FS_POST);
-    ui.init(); glGenVertexArrays(1, &emptyVAO);
-    glGenVertexArrays(1, &partVAO); glGenBuffers(1, &partVBO); glBindVertexArray(partVAO); glBindBuffer(GL_ARRAY_BUFFER, partVBO);
-    { int sz[4] = { 3, 2, 4, 2 }; size_t off = 0; for (int i = 0; i < 4; i++) { glEnableVertexAttribArray(i); glVertexAttribPointer(i, sz[i], GL_FLOAT, GL_FALSE, 44, (void*)off); off += sz[i] * 4; } }
-    glGenVertexArrays(1, &markVAO); glGenBuffers(1, &markVBO); glBindVertexArray(markVAO); glBindBuffer(GL_ARRAY_BUFFER, markVBO);
-    { int sz[4] = { 3, 2, 4, 2 }; size_t off = 0; for (int i = 0; i < 4; i++) { glEnableVertexAttribArray(i); glVertexAttribPointer(i, sz[i], GL_FLOAT, GL_FALSE, 44, (void*)off); off += sz[i] * 4; } }
+    gfx::init();
+    pWorld = makeProg("world", VS_MESH, FS_COMMON, FS_WORLD); pCar = makeProg("car", VS_MESH, FS_COMMON, FS_CAR); pWater = makeProg("water", VS_MESH, FS_COMMON, FS_WATER);
+    pSky = makeProg("sky", VS_SKY, FS_COMMON, FS_SKY); pPart = makeProg("part", VS_PART, FS_COMMON, FS_PART); pDepth = makeProg("depth", VS_MESH, FS_COMMON, FS_DEPTH); pUI = makeProg("ui", VS_UI, "", FS_UI_FULL); pMark = makeProg("mark", VS_PART, FS_COMMON, FS_MARK); pRing = makeProg("ring", VS_PART, FS_COMMON, FS_RING); pPost = makeProg("post", VS_SKY, "", FS_POST);
+    ui.init(); gfx::buffer(partBuf, gfx::L_PART); gfx::buffer(markBuf, gfx::L_PART);
     // shadow map
-    glGenTextures(1, &shadowTex); glBindTexture(GL_TEXTURE_2D, shadowTex); glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, SHADOW, SHADOW, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    glGenFramebuffers(1, &shadowFBO); glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO); glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowTex, 0); { GLenum none = GL_NONE; glDrawBuffers(1, &none); } glReadBuffer(GL_NONE);
+    { gfx::Sampler s; s.compare = true; gfx::tex2D(shadowTex, gfx::DEPTH24, SHADOW, SHADOW, nullptr, s); } gfx::target(shadowFBO, 0, -1, shadowTex);
     // reflection cubemap (HDR)
-    glGenTextures(1, &cubeTex); glBindTexture(GL_TEXTURE_CUBE_MAP, cubeTex);
-    for (int i = 0; i < 6; i++) glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, hdrOK ? GL_RGBA16F : GL_RGBA8, CUBE, CUBE, 0, GL_RGBA, hdrOK ? GL_FLOAT : GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    glGenRenderbuffers(1, &cubeDepth); glBindRenderbuffer(GL_RENDERBUFFER, cubeDepth); glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, CUBE, CUBE);
-    glGenFramebuffers(1, &cubeFBO); glBindFramebuffer(GL_FRAMEBUFFER, cubeFBO); glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, cubeDepth);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X, cubeTex, 0); glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    { gfx::Sampler s; s.mips = true; gfx::texCube(cubeTex, hdrOK ? gfx::RGBA16F : gfx::RGBA8, CUBE, s); } gfx::renderbuffer(cubeDepth, gfx::DEPTH24, CUBE, CUBE, 0); gfx::target(cubeFBO, cubeTex, 0, cubeDepth); gfx::use(0, 1, 1);
     {   // ground detail texture: tileable asphalt grain (red) and stone speckle (green), mipmapped. This is what anisotropic filtering works on.
         const int N = 512; std::vector<unsigned char> px(N * N * 3); Rng dr; dr.s = 99;
         auto lat = [](int x, int y, int per, int o) { unsigned h = (unsigned)((x % per + per) % per) * 374761393u + (unsigned)((y % per + per) % per) * 668265263u + (unsigned)o * 2246822519u; h = (h ^ (h >> 13)) * 1274126177u; return ((h ^ (h >> 16)) & 0xFFFF) / 65535.0f; };
@@ -1599,16 +1577,8 @@ int main(int argc, char** argv) {
             float u = x / (float)N, v = y / (float)N, g = 0.34f * pn(u, v, 24, 1) + 0.33f * pn(u, v, 64, 2) + 0.33f * pn(u, v, 170, 3), sp = pn(u, v, 128, 4);
             unsigned char* q = &px[(y * N + x) * 3]; q[0] = (unsigned char)(clampf(g, 0, 1) * 255); q[1] = (unsigned char)(clampf((sp - 0.72f) * 5, 0, 1) * 255); q[2] = 0;
         }
-        glGenTextures(1, &detailTex); glActiveTexture(GL_TEXTURE6); glBindTexture(GL_TEXTURE_2D, detailTex); glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, N, N, 0, GL_RGB, GL_UNSIGNED_BYTE, px.data()); glGenerateMipmap(GL_TEXTURE_2D);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        if (maxAF > 1) glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, (float)std::max(1, vidAF));
-        glActiveTexture(GL_TEXTURE0);
+        { gfx::Sampler s; s.mips = true; s.repeat = true; gfx::tex2D(detailTex, gfx::RGB8, N, N, px.data(), s); } if (maxAF > 1) gfx::aniso(detailTex, std::max(1, vidAF)); gfx::bind(6, detailTex); gfx::bind(0, 0);
     }
-    glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); glDisable(GL_CULL_FACE);
-#ifndef FCF_GLES
-    glEnable(GL_MULTISAMPLE); glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);   // always on in GLES 3
-#endif
 
     for (int t = 0; t < NCARS; t++) { MB m; buildCar(t, m); carMesh[t].upload(m); }
     { MB m; buildWheel(m); wheelMesh.upload(m); } { MB m; buildKey(m); keyMesh.upload(m); } buildShowdownMeshes();
@@ -1622,7 +1592,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < skip; i++) { stepFixed(); if (netWanted || nc.on || state == NETJOIN || state == NETLOBBY) net::sleepMs(16); }
         int fw, fh; SDL_GL_GetDrawableSize(win, &fw, &fh);
         for (int i = 0; i < frames; i++) { stepFixed(); render(fw, fh); SDL_GL_SwapWindow(win); }
-        render(fw, fh); glFinish(); writeBMP(shot, fw, fh); printJSON(stdout);
+        render(fw, fh); gfx::finish(); writeBMP(shot, fw, fh); printJSON(stdout);
         return 0;
     }
     if (!simMode && !grngSeeded) grng.s = (uint32_t)plat::ticks() * 2654435761u + 1u;   // a real game: a new ring each time (sims and tests stay the same)

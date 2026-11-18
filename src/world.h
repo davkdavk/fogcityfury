@@ -69,7 +69,7 @@ struct World {
     std::vector<Box> boxes; std::vector<Ramp> ramps; std::vector<V3> keys; std::vector<Recipe> recipes; std::vector<Excl> excl; std::vector<int> cross;   // cross: middle sample of each bridge
     std::vector<float> keyStreet;   // x0, z0, x1, z1 of the backstreet that leads to the warehouse (empty if it stands by the road)
     std::vector<int> grid[GCN * GCN];
-    Mesh terrain, props, water; GLuint htex = 0; MB mb; Rng rng;
+    Mesh terrain, props, water; gfx::Tex htex = 0; MB mb; Rng rng;
     bool flat = false;   // test mode: an endless level tarmac plane (no walls, no water)
 
     float baseHeight(float x, float z) const {
@@ -487,10 +487,7 @@ struct World {
         terrain.upload(t);
         MB w; w.quad(V3(-5000, 0, -5000), V3(-5000, 0, 5000), V3(5000, 0, 5000), V3(5000, 0, -5000), V3(1, 1, 1), 0); water.upload(w);
         if (g_noGL) return;
-        if (!htex) glGenTextures(1, &htex);
-        glBindTexture(GL_TEXTURE_2D, htex); glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, GN, GN, 0, GL_RED, GL_FLOAT, h.data());   // half float: linear filtering of it is guaranteed on GLES 3 too
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gfx::tex2D(htex, gfx::R16F, GN, GN, h.data(), gfx::Sampler());   // half float: linear filtering of it is guaranteed on GLES 3 too
     }
 };
 

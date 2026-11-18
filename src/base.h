@@ -86,16 +86,6 @@ static float vnoise(float x, float y) {
 }
 static float fbm(float x, float y, int oct) { float a = .5f, s = 0; for (int i = 0; i < oct; i++) { s += a * vnoise(x, y); x *= 2.03f; y *= 2.03f; a *= .5f; } return s; }
 
-// ---- shaders ----
-struct Prog {
-    GLuint id = 0; std::unordered_map<std::string, GLint> loc;
-    GLint L(const char* n) { auto it = loc.find(n); if (it != loc.end()) return it->second; GLint l = glGetUniformLocation(id, n); loc[n] = l; return l; }
-    void use() { glUseProgram(id); }
-    void f1(const char* n, float v) { glUniform1f(L(n), v); }
-    void i1(const char* n, int v) { glUniform1i(L(n), v); }
-    void v3(const char* n, V3 v) { glUniform3f(L(n), v.x, v.y, v.z); }
-    void m4(const char* n, const M4& m) { glUniformMatrix4fv(L(n), 1, GL_FALSE, m.m); }
-};
 // A problem the game cannot continue from. On a phone there is no console, so say it in a dialog (and in the system log).
 static void fatal(const char* what, const char* detail) {
     char msg[900]; snprintf(msg, sizeof msg, "%s\n\n%.700s", what, detail); plat::logLine(msg);
@@ -104,36 +94,12 @@ static void fatal(const char* what, const char* detail) {
 #endif
     exit(1);
 }
-// Shaders are written as GLSL 3.30. On OpenGL ES the version line is swapped for the ES 3.00 one plus default precisions;
-// the bodies are kept to the subset both accept (no implicit int-to-float conversions, for one).
-static GLuint compile(GLenum type, const char* a, const char* b) {
-    GLuint s = glCreateShader(type); const char* head = "";
-#ifdef FCF_GLES
-    static const char V330[] = "#version 330 core";
-    head = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp samplerCube;\nprecision highp sampler2DShadow;\n";
-    if (!strncmp(a, V330, sizeof V330 - 1)) a += sizeof V330 - 1; else if (!strncmp(b, V330, sizeof V330 - 1)) b += sizeof V330 - 1;
-#endif
-    const char* src[3] = { head, a, b };
-    glShaderSource(s, 3, src, nullptr); glCompileShader(s);
-    if (const char* dir = getenv("FCF_DUMP_SHADERS")) {   // write every shader exactly as it is handed to the driver (to check them with another compiler)
-        static int n = 0; char path[512]; snprintf(path, sizeof path, "%s/%02d.%s", dir, n++, type == GL_VERTEX_SHADER ? "vert" : "frag");
-        if (FILE* f = fopen(path, "w")) { fputs(head, f); fputs(a, f); fputs(b, f); fclose(f); }
-    }
-    GLint ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok) { char log[4096]; glGetShaderInfoLog(s, 4096, nullptr, log); fprintf(stderr, "SHADER ERROR:\n%s\n", log); fatal("This graphics driver rejected one of the game's shaders:", log); }
-    return s;
-}
-static Prog makeProg(const char* vs, const char* fsCommon, const char* fs) {
-    Prog p; p.id = glCreateProgram();
-    GLuint v = compile(GL_VERTEX_SHADER, vs, ""), f = compile(GL_FRAGMENT_SHADER, fsCommon, fs);
-    glAttachShader(p.id, v); glAttachShader(p.id, f); glLinkProgram(p.id);
-    GLint ok; glGetProgramiv(p.id, GL_LINK_STATUS, &ok);
-    if (!ok) { char log[4096]; glGetProgramInfoLog(p.id, 4096, nullptr, log); fprintf(stderr, "LINK ERROR:\n%s\n", log); fatal("This graphics driver could not link one of the game's shaders:", log); }
-    return p;
-}
+#include "gfx.h"   // the graphics hardware (and Prog, makeProg)
 
 // ---- mesh ----
-struct Vtx { float px, py, pz, nx, ny, nz, r, g, b, u, v, mat; };
+static bool g_noGL = false;   // headless simulation: skip every GL call
+struct Vtx { float px, py, pz, nx, ny, nz, r, g, b, u, v, mat; };   // gfx::L_MESH
+static_assert(sizeof(Vtx) == 48, "Vtx is the 48-byte L_MESH vertex");
 struct MB {
     std::vector<Vtx> v; std::vector<unsigned> idx;
     unsigned add(V3 p, V3 n, V3 c, float u, float vv, float mat) { v.push_back({ p.x, p.y, p.z, n.x, n.y, n.z, c.x, c.y, c.z, u, vv, mat }); return (unsigned)v.size() - 1; }
@@ -171,21 +137,13 @@ struct MB {
         for (size_t i = v0; i < v.size(); i++) { V3 n = norm(V3(v[i].nx, v[i].ny, v[i].nz)); v[i].nx = n.x; v[i].ny = n.y; v[i].nz = n.z; }
     }
 };
-static bool g_noGL = false;   // headless simulation: skip every GL call
 struct Mesh {
-    GLuint vao = 0, vbo = 0, ebo = 0; int n = 0;
+    gfx::Buf buf = 0; int n = 0;
     void upload(const MB& b) {
-        if (g_noGL) { n = (int)b.idx.size(); return; }
-        if (!vao) { glGenVertexArrays(1, &vao); glGenBuffers(1, &vbo); glGenBuffers(1, &ebo); }
-        glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, b.v.size() * sizeof(Vtx), b.v.data(), GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, b.idx.size() * 4, b.idx.data(), GL_STATIC_DRAW);
-        int sz[5] = { 3, 3, 3, 2, 1 }; size_t off = 0;
-        for (int i = 0; i < 5; i++) { glEnableVertexAttribArray(i); glVertexAttribPointer(i, sz[i], GL_FLOAT, GL_FALSE, sizeof(Vtx), (void*)off); off += sz[i] * 4; }
-        n = (int)b.idx.size(); glBindVertexArray(0);
+        n = (int)b.idx.size(); if (g_noGL) return;
+        gfx::mesh(buf, b.v.data(), (int)b.v.size(), b.idx.data(), n);
     }
-    void draw() { if (!n) return; glBindVertexArray(vao); glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, 0); }
+    void draw() { if (n) gfx::drawMesh(buf, n); }
 };
 
 // ---- 5x7 pixel font, ASCII 32..90 ----
@@ -200,17 +158,13 @@ static const unsigned char FONT[59][7] = {
     {17,17,10,4,10,17,17},{17,17,10,4,4,4,4},{31,1,2,4,8,16,31} };
 
 struct UI {
-    std::vector<float> v; GLuint vao = 0, vbo = 0, tex = 0; float W = 1280, H = 720;
+    std::vector<float> v; gfx::Buf buf = 0; gfx::Tex tex = 0; float W = 1280, H = 720;
     void init() {
         unsigned char px[128 * 32]; memset(px, 0, sizeof px);
         for (int c = 0; c < 59; c++) for (int y = 0; y < 7; y++) for (int x = 0; x < 5; x++)
             if (FONT[c][y] & (16 >> x)) px[((c / 16) * 8 + y) * 128 + (c % 16) * 8 + x] = 255;
-        glGenTextures(1, &tex); glBindTexture(GL_TEXTURE_2D, tex); glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 128, 32, 0, GL_RED, GL_UNSIGNED_BYTE, px);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glGenVertexArrays(1, &vao); glGenBuffers(1, &vbo); glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        int sz[3] = { 2, 2, 4 }; size_t off = 0;
-        for (int i = 0; i < 3; i++) { glEnableVertexAttribArray(i); glVertexAttribPointer(i, sz[i], GL_FLOAT, GL_FALSE, 32, (void*)off); off += sz[i] * 4; }
+        gfx::Sampler s; s.linear = false; s.repeat = true; gfx::tex2D(tex, gfx::R8, 128, 32, px, s);
+        gfx::buffer(buf, gfx::L_UI);
     }
     void vert(float x, float y, float u, float w, V3 c, float a) { float d[8] = { x, y, u, w, c.x, c.y, c.z, a }; v.insert(v.end(), d, d + 8); }
     void quad(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, V3 c, float a) {
@@ -241,17 +195,14 @@ struct UI {
     }
     void flush(Prog& p) {
         if (v.empty()) return;
-        p.use(); glUniform2f(p.L("uScr"), W, H); p.i1("uFont", 3);
-        glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, tex);
-        glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, v.size() * 4, v.data(), GL_STREAM_DRAW);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(v.size() / 8)); v.clear();
+        p.use(); p.f2("uScr", W, H); p.i1("uFont", 3); gfx::bind(3, tex);
+        gfx::data(buf, v.data(), v.size() * 4, true); gfx::draw(buf, 0, (int)(v.size() / 8)); v.clear();
     }
 };
 
 static void writeBMP(const char* path, int w, int h) {
-    std::vector<unsigned char> px(w * h * 3); glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    { std::vector<unsigned char> rgba((size_t)w * h * 4); glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());   // RGBA is the one format every GL and GLES can read back
+    std::vector<unsigned char> px(w * h * 3);
+    { std::vector<unsigned char> rgba((size_t)w * h * 4); gfx::readRGBA(w, h, rgba.data());   // RGBA is the one format every GL and GLES can read back
       for (size_t i = 0; i < (size_t)w * h; i++) { px[i * 3] = rgba[i * 4 + 2]; px[i * 3 + 1] = rgba[i * 4 + 1]; px[i * 3 + 2] = rgba[i * 4]; } }
     FILE* f = fopen(path, "wb"); if (!f) return; int row = (w * 3 + 3) & ~3, size = 54 + row * h;
     unsigned char hd[54] = { 'B', 'M' }; memcpy(hd + 2, &size, 4); int o = 54; memcpy(hd + 10, &o, 4); int s = 40; memcpy(hd + 14, &s, 4);

@@ -382,9 +382,8 @@ static void drawRing(const M4& VP, V3 cam, float hdr) {
     auto vert = [&](float a, float v) { V3 q(shdSite.x + cosf(a) * shdRing, 0, shdSite.z + sinf(a) * shdRing); q.y = std::max(W.H(q.x, q.z), 0.0f) + 0.03f + v * H;
         float d[11] = { q.x, q.y, q.z, a * shdRing, v, col.x, col.y, col.z, alpha, shdRing, closing ? 1.0f : 0.0f }; rv.insert(rv.end(), d, d + 11); };
     for (int i = 0; i < N; i++) { float a0 = 2 * (float)M_PI * i / N, a1 = 2 * (float)M_PI * (i + 1) / N; vert(a0, 0); vert(a1, 0); vert(a1, 1); vert(a0, 0); vert(a1, 1); vert(a0, 1); }
-    setCommon(pRing, VP, cam, hdr); glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); glDepthMask(GL_FALSE);
-    glBindVertexArray(partVAO); glBindBuffer(GL_ARRAY_BUFFER, partVBO); glBufferData(GL_ARRAY_BUFFER, rv.size() * 4, rv.data(), GL_STREAM_DRAW);
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(rv.size() / 11)); glDepthMask(GL_TRUE);
+    setCommon(pRing, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
+    gfx::data(partBuf, rv.data(), rv.size() * 4, true); gfx::draw(partBuf, 0, (int)(rv.size() / 11)); gfx::depthWrite(true);
 }
 
 // ---- HUD ----
