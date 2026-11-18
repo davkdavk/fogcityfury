@@ -51,6 +51,8 @@ files applied with `git am -3 <file>`.
   `xenon/patches/` to `~/xsdk`; Xenia does not emulate display register 0x1928.
 - XEX path: `xenon/build/game/fogcityfury.xex`.
 - Sound, saves, and network remain disabled/not implemented on the 360.
+- Real RGH 360 testing is now in progress; wait for the user's visual result
+  before changing graphics code.
 
 
 ## Later (don't start unless asked)
