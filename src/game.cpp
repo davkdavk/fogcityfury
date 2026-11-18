@@ -1562,6 +1562,9 @@ int main(int argc, char** argv) {
 #ifdef FCF_GLES
     hdrOK = plat::displayExtension("GL_EXT_color_buffer_half_float") || plat::displayExtension("GL_EXT_color_buffer_float");   // nearly every GLES 3 phone; without it the scene is drawn into 8-bit targets
 #endif
+#ifdef FCF_GFX_XSDK
+    hdrOK = false;   // 720p RGBA16F plus depth exceeds Xenos's EDRAM budget
+#endif
     if (forceLDR) hdrOK = false;
     {   // what this driver and display can do, for the video settings
         int ms = gfx::maxSamples(); maxAA = ms >= 8 ? 8 : ms >= 4 ? 4 : ms >= 2 ? 2 : 0;
