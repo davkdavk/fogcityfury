@@ -353,5 +353,9 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
     uint32_t vr=0,fr=0;
     for(uint32_t i=0;i<p.meta->nvu;i++) vr=std::max(vr,(p.meta->vu[i].offset+p.meta->vu[i].size+15)/16);
     for(uint32_t i=0;i<p.meta->nfu;i++) fr=std::max(fr,(p.meta->fu[i].offset+p.meta->fu[i].size+15)/16);
+    uint32_t vlEnd=0,flEnd=0;
+    for(uint32_t i=0;i<p.meta->nvl;i++) vlEnd=std::max(vlEnd,p.meta->vl[i].reg+1);
+    for(uint32_t i=0;i<p.meta->nfl;i++) flEnd=std::max(flEnd,p.meta->fl[i].reg+1);
+    xsdk_log_write("boot: %s registers v=%u/%u p=%u/%u literalEnds v=%u p=%u",name,vr,XSDK_FLOAT_CONSTANTS,fr,XSDK_PIXEL_CONSTANTS,vlEnd,flEnd);
     p.vc.assign(vr*4,0);p.fc.assign(fr*4,0);return p;
 }
