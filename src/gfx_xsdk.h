@@ -38,6 +38,7 @@ static Target activeTarget = 0;
 static int activeW = 0, activeH = 0;
 static bool dirty = false;
 static bool frameActive = false;
+static uint32_t lastFrameFence = 0;
 static StreamArena stream[2];
 static uint32_t streamFrame=1;
 static constexpr uint32_t STREAM_BYTES=8u*1024u*1024u;
@@ -421,11 +422,14 @@ static void readRGBA(int w,int h,unsigned char* out){
     xsdk_texture_attach(&fb,xsdk_present_pixels(xs::screenAddress)); xsdk_texture_download_rows(&fb,0,0,(uint32_t)h,out,(uint32_t)w*4);
 }
 static void finish(){ xsdk_gpu_wait(xsdk_gpu_fence(),1000); }
+static NTSTATUS waitLastFence(uint32_t timeoutMs){ return xs::lastFrameFence?xsdk_gpu_wait(xs::lastFrameFence,timeoutMs):STATUS_IO_TIMEOUT; }
+static uint32_t lastFenceValue(){ return xs::lastFrameFence; }
 
 void presentFrame(uint32_t address,int width,int height){
     xs::resolveCurrent(0xFF000000);
     xsdk_gpu_resolve(address,(uint32_t)width,(uint32_t)height,0xFF000000);
-    xs::stream[xs::streamFrame].fence=xsdk_gpu_fence();
+    xs::lastFrameFence=xsdk_gpu_fence();
+    xs::stream[xs::streamFrame].fence=xs::lastFrameFence;
     xs::frameActive=false;
 }
 

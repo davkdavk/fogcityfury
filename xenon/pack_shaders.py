@@ -3,7 +3,7 @@
 import json, os, re, sys
 xsdk = os.environ.get('XSDK', '/tmp/xsdk')
 sys.path.insert(0, os.path.join(xsdk, 'xenos-toolchain'))
-from xsc import lower, spirv
+from xsc import lower, resolve, spirv
 
 root = os.path.dirname(os.path.abspath(__file__))
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, 'build', 'gen')
@@ -34,6 +34,7 @@ with open(path, 'w') as f:
     for p in programs:
         m = json.load(open(os.path.join(out, p + '.uniforms.json')))
         literals = {}
+        sampler_slots = {}
         for st, key in (('vert','vs'), ('frag','fs')):
             container, ws = words(os.path.join(out, p + '.' + st + '.bin'))
             f.write(f'static const uint32_t fcf_{p}_{key}[] = {{\n')
@@ -42,6 +43,9 @@ with open(path, 'w') as f:
             module = spirv.Module.parse(open(os.path.join(out, p + '.' + st + '.spv'), 'rb').read())
             rebuilt, literals[st] = lower.lower_ex(module, lower.RegisterBudget(pixel=64, vertex=64), True)
             if rebuilt != container: raise ValueError(f'{p}.{st}: xsc output differs from packaged container')
+            if st == 'frag':
+                si = resolve.resolve_interface(module)
+                sampler_slots = {var.name:slot for var,slot in si.samplers}
         for stage, short in (('vertex','v'),('fragment','f')):
             us=m[stage]
             f.write(f'static const FcfUniformMeta fcf_{p}_{short}u[] = {{')
@@ -50,7 +54,9 @@ with open(path, 'w') as f:
         sam=[]
         seen=set()
         for s in m['samplers']:
-            if s['name'] not in seen: sam.append(s); seen.add(s['name'])
+            if s['name'] not in seen:
+                if s['name'] not in sampler_slots: raise ValueError(f'{p}: xsc did not resolve sampler {s["name"]}')
+                sam.append({**s, 'slot':sampler_slots[s['name']]}); seen.add(s['name'])
         f.write(f'static const FcfSamplerMeta fcf_{p}_s[] = {{')
         f.write(','.join(f'{{"{s["name"]}",{s["unit"]},{s["slot"]}}}' for s in sam) if sam else '{nullptr,0,0}')
         f.write('};\n')

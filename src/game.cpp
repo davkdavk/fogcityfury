@@ -1723,6 +1723,9 @@ int main(int argc, char** argv) {
     }
     if (!simMode && !grngSeeded) grng.s = (uint32_t)plat::ticks() * 2654435761u + 1u;   // a real game: a new ring each time (sims and tests stay the same)
     uint64_t last = plat::ticks();
+#ifdef FCF_GFX_XSDK
+    uint64_t lastRuntimeLog = last;
+#endif
     while (!quit) {
         static std::vector<plat::Event> evs;
         { static bool rel = false; bool want = me.on && me.alive && state == RACE && !touchOn && !touchMouse; if (want != rel) { rel = want; plat::relativeMouse(rel); } }   // on foot the mouse is captured: it aims
@@ -1769,6 +1772,13 @@ int main(int argc, char** argv) {
         plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display);
 #endif
 #ifdef FCF_GFX_XSDK
+        if (display.frameCount >= 3 && now - lastRuntimeLog >= (uint64_t)plat::tickFreq()) {
+            NTSTATUS fence = gfx::waitLastFence(1000);
+            xsdk_log_write("runtime: frames=%u present_begin=0x%08X fence=%u wait_status=0x%08X fence_complete=%u",
+                (unsigned)display.frameCount,(unsigned)display.beginStatus,(unsigned)gfx::lastFenceValue(),
+                (unsigned)fence,(unsigned)NT_SUCCESS(fence));
+            lastRuntimeLog = now;
+        }
         static int bootFrames = 0;
         if (bootFrames < 3) xsdk_log_write("boot: frame %d complete", ++bootFrames);
 #endif

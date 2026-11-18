@@ -55,9 +55,25 @@ files applied with `git am -3 <file>`.
   initializers and logs the `world` layout. Xenia reports stride 48 and
   POSITION/FLOAT3/0, COLOR/FLOAT3/12, TEXCOORD0/FLOAT3/24,
   TEXCOORD1/FLOAT2/36, TEXCOORD2/FLOAT1/44. This matches the struct and fcfcar.
-- The XEX rebuilt with that layout log at 2026-11-18 23:00:53 and reached
-  frames 1-3 in Xenia. Xenia's console log still reports unknown writes to
-  0x183B/0x0A10, but no guest assert or crash appeared.
+- The XEX rebuilt with the current layout and sampler mapping at
+  2026-11-19 08:26:31 and reached frames 1-3 in Xenia. Sampler log entries show
+  units mapped to xsc slots, e.g. world `uEnv` 1->0, `uShadow` 0->1,
+  `uDetail` 6->2; UI `uFont` 3->0; post `uTex` 4->0, `uBloom` 5->1.
+- The latest build's `xenia_scan` did not list `lookAt`, `perspective`,
+  `drawCar`, `setCommon`, or a named matrix-builder function. It did flag
+  `UI::text` (`rldic r10,r10,3,57`), `World::decorate` (`rldic r4,r4,47,1`),
+  and `update` (three `rldic` instructions); Xenia silently skips these, so
+  the UI result in Xenia is not conclusive.
+- Runtime diagnostics in `xenia-runtime-final.log` report `present_begin=0`,
+  monotonically increasing fence values, `wait_status=0` / `fence_complete=1`
+  once per second. No `0xC00000B5` appeared during the 30-second run.
+- Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
+  world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
+  (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell
+  coordinates through `sin(dot(id, ...))` (line 366). `mod` is used with
+  world coordinates in `FS_WORLD` (lines 123, 133), block parity (150), and
+  checker UVs (211), where exact multiples may be wrong. No shader `cos` or
+  `atan` calls were found. These are recorded only; not fixed yet.
 - The conservative 262,140-byte fetch cap has been built and run in Xenia; it
   reaches frame 3. The user reports it did not change the corruption.
 - `xenon/build/game/fogcityfury_objects.xex` cycles terrain, props, water, and

@@ -84,6 +84,8 @@ struct Display {
 #endif
     int width = 0, height = 0;
     uint32_t frameAddress = 0;
+    uint32_t beginStatus = 0;
+    uint32_t frameCount = 0;
     bool open = false;
 };
 
@@ -113,8 +115,8 @@ inline void displaySize(const Display& d, int& w, int& h) {
 inline void setVsync(bool on) { SDL_GL_SetSwapInterval(on ? 1 : 0); }
 inline void setFullscreen(Display& d, bool on) { if (d.window) SDL_SetWindowFullscreen(d.window, on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0); }
 inline void setWindowSize(Display& d, int w, int h) { if (d.window) { SDL_SetWindowSize(d.window, w, h); SDL_SetWindowPosition(d.window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED); } }
-inline void beginFrame(Display& d, int& w, int& h) { SDL_GL_GetDrawableSize(d.window, &w, &h); d.width = w; d.height = h; }
-inline void endFrame(Display& d) { if (d.window) SDL_GL_SwapWindow(d.window); }
+inline void beginFrame(Display& d, int& w, int& h) { SDL_GL_GetDrawableSize(d.window, &w, &h); d.width = w; d.height = h; d.beginStatus = 0; }
+inline void endFrame(Display& d) { if (d.window) SDL_GL_SwapWindow(d.window); ++d.frameCount; }
 inline void closeDisplay(Display& d) {
     if (d.context) SDL_GL_DeleteContext(d.context); if (d.window) SDL_DestroyWindow(d.window);
     d.context = nullptr; d.window = nullptr; d.open = false; SDL_Quit();
@@ -135,12 +137,13 @@ inline void setFullscreen(Display&, bool) {}
 inline void setWindowSize(Display&, int, int) {}
 inline void beginFrame(Display& d, int& w, int& h) {
     uint32_t address = 0;
-    if (NT_SUCCESS(xsdk_present_begin(&address, 5000))) d.frameAddress = activeFrameAddress = address;
+    NTSTATUS status=xsdk_present_begin(&address,5000); d.beginStatus=(uint32_t)status;
+    if (NT_SUCCESS(status)) d.frameAddress = activeFrameAddress = address;
     w = d.width; h = d.height;
     ::gfx::beginFrame(w, h);
 }
 inline uint32_t currentFrameAddress() { return activeFrameAddress; }
-inline void endFrame(Display& d) { ::gfx::presentFrame(d.frameAddress, d.width, d.height); xsdk_present_end(); }
+inline void endFrame(Display& d) { ::gfx::presentFrame(d.frameAddress, d.width, d.height); xsdk_present_end(); ++d.frameCount; }
 inline void closeDisplay(Display& d) { xsdk_present_close(); xsdk_gpu_close(); d.open = false; }
 #endif
 
