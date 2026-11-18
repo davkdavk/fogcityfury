@@ -83,6 +83,10 @@ static const int CUBE = 128, SHADOW = 1024, CUBE_FACES = 1;
 #else
 static const int CUBE = 256, SHADOW = 2048, CUBE_FACES = 2;
 #endif
+enum DrawMaskBits { DM_SKY=1, DM_TERRAIN=2, DM_PROPS=4, DM_WATER=8, DM_CARS=16, DM_EFFECTS=32, DM_UI=64, DM_SINGLE_CAR=128 };
+#ifndef DRAW_MASK
+#define DRAW_MASK 127
+#endif
 static M4 lightVP;
 static float T = 0, raceT = 0, countdown = 0, timeLeft = 0, lapStart = 0, bestLapRace = 0, lastLap = 0, msgT = 0, wrongT = 0, shake = 0, resultsT = 0;
 static char msg[96] = ""; static V3 msgCol(1, 1, 1);
@@ -962,6 +966,13 @@ static bool showAI() { State st = viewState(); return nc.on ? false : (st == RAC
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) drawCar(player, p, lit); if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
     if (netRace) for (auto& r : nc.r) if (r.present && r.racing) drawCar(r.car, p, lit); drawShowdown(p, lit); }
 
+#ifdef FCF_GFX_XSDK
+static bool traceDrawGroups = false;
+static void traceDraw(const char* group) { if (traceDrawGroups) xsdk_log_write("draw: %s queued", group); }
+#else
+static void traceDraw(const char*) {}
+#endif
+
 // burnt shells, loose parts, rockets in flight and the pick-up crates
 static void drawWreckage(Prog& p, bool lit) {
     if (lit) p.f1("uBurnt", 1);
@@ -993,12 +1004,18 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
 #else
     bool objectOnly=false;
 #endif
-    if(!objectOnly) {
+    if(!objectOnly && (DRAW_MASK & DM_SKY)) {
+    traceDraw("sky");
     gfx::depthTest(false); setCommon(pSky, VP, cam, hdr);
     pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); pSky.f2("uTan", 1 / P.m[0], 1 / P.m[5]);
     gfx::drawFull(); gfx::depthTest(true);
     }
-    if(!objectOnly) { setCommon(pWorld, VP, cam, hdr); W.terrain.draw(); W.props.draw(); }
+    if(!objectOnly && (DRAW_MASK & (DM_TERRAIN|DM_PROPS))) {
+        traceDraw("terrain+props");
+        setCommon(pWorld, VP, cam, hdr);
+        if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
+        if(DRAW_MASK & DM_PROPS) W.props.draw();
+    }
 #ifdef FCF_XSDK_OBJECT_TEST
     if(objectOnly) {
         // One world component at a time, rotating every three seconds for Xenia screenshots.
@@ -1010,13 +1027,15 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         return;
     }
 #endif
-    if (mainPass && !marks.empty()) {   // skid marks
+    if ((DRAW_MASK & DM_EFFECTS) && mainPass && !marks.empty()) {   // skid marks
+        traceDraw("marks");
         gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); gfx::offset(-2, -2);
         setCommon(pMark, VP, cam, hdr);
         if (marksDirty) { gfx::data(markBuf, marks.data(), marks.size() * 4, false); marksDirty = false; }
         gfx::draw(markBuf, 0, (int)(marks.size() / 11)); gfx::offset(0, 0); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
     }
-    if (mainPass) {   // a soft dark patch under every car, laid on the ground it stands on: without it the sun's shadow can sit a little apart and the car seems to hover
+    if ((DRAW_MASK & DM_EFFECTS) && mainPass) {   // a soft dark patch under every car, laid on the ground it stands on: without it the sun's shadow can sit a little apart and the car seems to hover
+        traceDraw("shadow patches");
         static std::vector<float> ao; ao.clear();
         auto patch = [&](const Car& c) {
             if (c.dead) return; const CarSpec& S = SPECS[c.type]; V3 f(sinf(c.yaw), 0, cosf(c.yaw)), sd(cosf(c.yaw), 0, -sinf(c.yaw));
@@ -1033,15 +1052,21 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
             gfx::draw(partBuf, 0, (int)(ao.size() / 11)); gfx::offset(0, 0); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
         }
     }
-    if (mainPass) {
+    if (mainPass && (DRAW_MASK & DM_CARS)) {
+        traceDraw((DRAW_MASK & DM_SINGLE_CAR) ? "car" : "cars");
         setCommon(pCar, VP, cam, hdr); pCar.i1("uEnv", 1);
-        drawCars(pCar, true, !(camMode == 2 && state == RACE)); drawWreckage(pCar, true);
+        if (DRAW_MASK & DM_SINGLE_CAR) drawCar(player, pCar, true);
+        else drawCars(pCar, true, !(camMode == 2 && state == RACE));
+    }
+    if (mainPass && (DRAW_MASK & DM_CARS) && !(DRAW_MASK & DM_SINGLE_CAR)) {
+        traceDraw("wreckage+pickups");
+        setCommon(pCar, VP, cam, hdr); pCar.i1("uEnv", 1); drawWreckage(pCar, true);
         pCar.v3("uPaint", PAINTS[7]); pCar.f1("uChrome", 1); pCar.f1("uBrake", 0);
         for (size_t k = 0; k < W.keys.size(); k++) if (!(keysGot[W.id] >> k & 1)) { pCar.m4("uModel", mul(translate(W.keys[k] + V3(0, 0.25f * sinf(T * 2 + k), 0)), mul(rotY(T * 2.2f + k), scale(1.9f, 1.9f, 1.9f)))); keyMesh.draw(); }
     }
-    gfx::blend(gfx::B_ALPHA);
-    setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2); W.water.draw();
-    if (mainPass && !parts.empty()) {
+    if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2); W.water.draw(); }
+    if ((DRAW_MASK & DM_EFFECTS) && mainPass && !parts.empty()) {
+        traceDraw("particles");
         V3 R(V.m[0], V.m[4], V.m[8]), U(V.m[1], V.m[5], V.m[9]), F(-V.m[2], -V.m[6], -V.m[10]); static std::vector<float> pv; pv.clear();
         for (auto& p : parts) {
             float t = 1 - p.life / p.maxLife, a = p.a * (1 - t) * std::min(1.0f, t * 12); static const float cu[6] = { -1, 1, 1, -1, 1, -1 }, cv[6] = { -1, -1, 1, -1, 1, 1 };
@@ -1053,7 +1078,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         gfx::data(partBuf, pv.data(), pv.size() * 4, true);
         gfx::draw(partBuf, 0, (int)(pv.size() / 11)); gfx::depthWrite(true);
     }
-    if (mainPass) drawRing(VP, cam, hdr);
+    if ((DRAW_MASK & DM_EFFECTS) && mainPass) { traceDraw("ring"); drawRing(VP, cam, hdr); }
     gfx::blend(gfx::B_OFF);
 }
 
@@ -1279,6 +1304,9 @@ static void drawHUD() {
 }
 
 static void render(int fbw, int fbh) {
+#ifdef FCF_GFX_XSDK
+    static int traceFrames = 0; traceDrawGroups = traceFrames++ == 0;
+#endif
     float asp = fbw / (float)fbh, fov = 62; V3 eye, upv(0, 1, 0); bool chase = false;
     V3 f(sinf(player.yaw), 0, cosf(player.yaw));
     // ---- camera ----
@@ -1314,6 +1342,7 @@ static void render(int fbw, int fbh) {
     gfx::bind(0, shadowTex); gfx::bind(1, cubeTex); gfx::bind(2, W.htex);
 #ifdef FCF_GFX_XSDK
     if (xsdkPasses == 0) {
+        if (DRAW_MASK == 0) traceDraw("clear only");
         gfx::use(0, fbw, fbh); gfx::clear(true, true);
         drawScene(V, P, eye, true);
     } else
@@ -1366,7 +1395,7 @@ static void render(int fbw, int fbh) {
     pPost.f1("uRain", chase && !debugTop && state != CARSEL && state != TRACKSEL ? wx().rain : 0.0f); pPost.f1("uTime", T);
     pPost.f1("uVig", 0.45f + blur * 5); pPost.f1("uSat", chase && player.dead && state != TITLE ? 0.5f : 1.0f); gfx::drawFull(); gfx::depthTest(true);
     }
-    if (!hideUI) { gfx::depthTest(false); gfx::blend(gfx::B_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); gfx::blend(gfx::B_OFF); gfx::depthTest(true); }
+    if (!hideUI && (DRAW_MASK & DM_UI)) { traceDraw("UI"); gfx::depthTest(false); gfx::blend(gfx::B_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); gfx::blend(gfx::B_OFF); gfx::depthTest(true); }
 }
 
 // ------------------------------------------------------------------ menus / input events

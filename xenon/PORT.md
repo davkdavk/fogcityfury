@@ -64,7 +64,7 @@ files applied with `git am -3 <file>`.
   `UI::text` (`rldic r10,r10,3,57`), `World::decorate` (`rldic r4,r4,47,1`),
   and `update` (three `rldic` instructions); Xenia silently skips these, so
   the UI result in Xenia is not conclusive.
-- The RGH log from c85f2bd stopped after repeated `persistent-stream-buffer`
+- The c85f2bd RGH log stopped after repeated `persistent-stream-buffer`
   free/alloc pairs as skid marks grew. `data(..., false)` now starts at 256 KiB,
   doubles capacity, and retires old blocks only after their last-use fence.
 - `xenia-hwdiag.log` shows one persistent marks allocation of 262,144 bytes and
@@ -72,8 +72,62 @@ files applied with `git am -3 <file>`.
   `hardware-frame begin/end` pairs: each begin status is 0, and each 2-second
   fence wait returns status 0 / complete=1. The log calls are `xsdk_log_write`
   to xsdk's synchronous file handle.
-- Current XEX: `xenon/build/game/fogcityfury.xex`, built 2026-11-19 08:48:29.
-  It reaches frame 3 and has the same successful per-frame status in Xenia.
+- The user reports that 10668cf renders correctly in Xenia, but hangs on the
+  RGH console in its first real frame: `present_begin=0`, then fence 548 returns
+  `0xC00000B5` / incomplete, and subsequent frames time out. The preceding
+  colour-only startup frames work. `xenon/fcfcar` draws and animates its car on
+  the same console. Whole-group constant uploads are ruled out by the user.
+- The previous full-game XEX was
+  `xenon/build/game/fogcityfury.xex`; it reached frame 3 in Xenia, where
+  unsupported instructions make visual results unreliable.
+- Six draw-mask diagnostics are built by
+  `XSDK_DRAW_MASKS=ON ./build_game.sh`. Files are named for their numeric mask:
+  `draw_mask_0.xex` clear only; `draw_mask_1.xex` sky; `draw_mask_64.xex` UI;
+  `draw_mask_144.xex` one player car; `draw_mask_6.xex` terrain and props;
+  `draw_mask_95.xex` everything except marks, shadow patches, particles and
+  the ring. Outputs are in `xenon/build/game/`.
+- Each diagnostic logs `draw: <group> queued` immediately before its first-frame
+  draw group. The existing `hardware-frame begin/end` fence diagnostics remain
+  enabled for the first ten frames. The draw-group markers are limited to the
+  first rendered frame to keep the synchronous log concise.
+- The six mask builds change draw selection only; no framebuffer, texture,
+  depth, stream, shader or draw-submission behavior was changed for this test.
+
+## RGH First-Frame Investigation
+- Frame order matches the xsdk samples: `plat::beginFrame` obtains a present
+  address and `gfx::beginFrame` sets the screen target; `render` selects the
+  screen target, configures clear-on-resolve and queues draws; `presentFrame`
+  resolves, records a fence, then `plat::endFrame` calls `xsdk_present_end` and
+  waits on that fence. `samples/triangle/main.c` and `samples/cube/main.c` both
+  set a target, draw, resolve, then end presentation.
+- `docs/GUIDE.md` says `xsdk_gpu_set_target` sets the colour target and its
+  depth allocation, but does not enable the depth test. `samples/cube/main.c`
+  explicitly calls `xsdk_gpu_set_depth_stencil` after `xsdk_gpu_set_target`.
+  The game's normal sky path toggles depth off and back on; the isolated masks
+  do not add a separate depth-state fix, per the test constraint. In particular,
+  car-only and terrain/props-only may not have the same depth state as the full
+  scene; report that alongside each console result.
+- `gfx::drawFull` issues `xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST, 3)` without
+  a vertex stream. xsdk implements that as an auto-indexed draw (`AUTO_INDEX` in
+  `src/gpu_draw.c`); `samples/triangle` and `samples/cube` both use vertex
+  streams, so neither is a hardware sample of the no-stream case. No stream
+  reset was added, keeping the sky diagnostic focused on the existing path.
+- `docs/GUIDE.md`, “Memory the GPU reads,” requires aligned GPU memory, volatile
+  32-bit writes and invalidation after CPU writes. The game's stream arena copy
+  uses volatile word stores and calls `xsdk_gpu_invalidate` before draws; this
+  path is retained in the UI diagnostic.
+- Pass 0 still binds the existing shadow D24S8 texture and environment cube,
+  although that pass does not render either texture first. No fallback texture
+  was introduced, so the masks also preserve this suspected game-vs-`fcfcar`
+  difference for the requested console comparison.
+- Clear-only issues no draw calls. As the guide notes, the first frame after
+  `xsdk_gpu_open` resolves whatever was already in eDRAM; a resolve then clears
+  eDRAM for the next frame. Startup's colour-only diagnostic frames run before
+  the first game frame.
+- The RGH user will run all six XEXes and report which draw groups produce a
+  picture, go black or hang, with the corresponding queued-group and fence log.
+  Do not alter rendering behavior beyond draw-mask gating until those results
+  arrive.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell
@@ -96,8 +150,8 @@ files applied with `git am -3 <file>`.
   `xenon/patches/` to `~/xsdk`; Xenia does not emulate display register 0x1928.
 - XEX path: `xenon/build/game/fogcityfury.xex`.
 - Sound, saves, and network remain disabled/not implemented on the 360.
-- Real RGH 360 testing is now in progress; wait for the user's visual result
-  before changing graphics code.
+- Real RGH 360 testing is in progress; wait for the user's visual result before
+  changing rendering behavior beyond diagnostic draw masks.
 - Startup screen diagnostics (XSDK only): red after `openDisplay`, orange after
   `gfx::init`, yellow after all `makeProg` calls, green after `ui.init`, cyan
   after texture setup, blue after car meshes, purple after `startGame`, then

@@ -14,8 +14,9 @@ elif ! git -C "$XSDK" apply --unidiff-zero --reverse --check "$PATCH" 2>/dev/nul
 fi
 "$HERE/build_shaders.sh"
 OBJECT_TEST="${XSDK_OBJECT_TEST:-OFF}"
+DRAW_MASKS="${XSDK_DRAW_MASKS:-OFF}"
 cmake --fresh -S "$HERE" -B "$HERE/build/game" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$XSDK/cmake/xsdk.cmake" -DXSDK_TOOLCHAIN="$TOOLCHAIN" \
-  -DCMAKE_BUILD_TYPE=Release -DFCF_XSDK_OBJECT_TEST="$OBJECT_TEST"
+  -DCMAKE_BUILD_TYPE=Release -DFCF_XSDK_OBJECT_TEST="$OBJECT_TEST" -DFCF_XSDK_DRAW_MASKS="$DRAW_MASKS"
 cmake --build "$HERE/build/game"
 cp "$HERE/dbgprint.txt" "$HERE/build/game/dbgprint.txt"
