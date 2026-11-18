@@ -10,3 +10,4 @@ cmake -S "$HERE" -B "$HERE/build/game" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$XSDK/cmake/xsdk.cmake" -DXSDK_TOOLCHAIN="$TOOLCHAIN" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build "$HERE/build/game"
+cp "$HERE/dbgprint.txt" "$HERE/build/game/dbgprint.txt"

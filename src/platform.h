@@ -71,6 +71,7 @@ inline const char* SDL_GetScancodeName(SDL_Scancode) { return "-"; }
 #include "xsdk/present.h"
 #include "xsdk/log.h"
 namespace gfx { void presentFrame(uint32_t address, int width, int height); }
+namespace gfx { void beginFrame(int width, int height); }
 #endif
 
 namespace plat {
@@ -136,6 +137,7 @@ inline void beginFrame(Display& d, int& w, int& h) {
     uint32_t address = 0;
     if (NT_SUCCESS(xsdk_present_begin(&address, 5000))) d.frameAddress = activeFrameAddress = address;
     w = d.width; h = d.height;
+    ::gfx::beginFrame(w, h);
 }
 inline uint32_t currentFrameAddress() { return activeFrameAddress; }
 inline void endFrame(Display& d) { ::gfx::presentFrame(d.frameAddress, d.width, d.height); xsdk_present_end(); }

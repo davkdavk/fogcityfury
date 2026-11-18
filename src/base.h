@@ -91,7 +91,12 @@ static void fatal(const char* what, const char* detail) {
 #if defined(__ANDROID__) || defined(_WIN32)
     plat::errorBox("Fog City Fury", msg);
 #endif
+#ifdef FCF_GFX_XSDK
+    const int64_t delay = -10000000;
+    for (;;) KeDelayExecutionThread(0, 0, &delay);
+#else
     exit(1);
+#endif
 }
 #include "gfx.h"   // the graphics hardware (and Prog, makeProg)
 

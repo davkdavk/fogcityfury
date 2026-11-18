@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(fogcityfurysrc CXX)
 set(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
-add_executable(fogcityfury "${REPO_ROOT}/src/game.cpp")
+add_executable(fogcityfury "${REPO_ROOT}/src/game.cpp" "${CMAKE_CURRENT_LIST_DIR}/runtime_compat.cpp")
 set_target_properties(fogcityfury PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
 target_compile_definitions(fogcityfury PRIVATE FCF_GFX_XSDK)
 target_compile_options(fogcityfury PRIVATE -Wall -Wno-unused-function -Wno-misleading-indentation)

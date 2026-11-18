@@ -262,6 +262,9 @@ static const char* keyName(int sc) {
 static int nearestOpt(const int* o, int n, int v) { int b = 0; for (int i = 0; i < n; i++) if (abs(o[i] - v) < abs(o[b] - v)) b = i; return o[b]; }
 static void loadCfg() {
     bindDefaults(); servers.clear(); for (auto h : DEFAULT_SERVERS) srvAdd(h);
+#ifdef FCF_GFX_XSDK
+    return;
+#endif
     if (noSave) return; FILE* f = fopen(cfgPath().c_str(), "r"); if (!f) return;
     int ver = 0, a[6]; if (fscanf(f, "v%d", &ver) == 1 && ver == 1 && fscanf(f, " video %d %d %d %d %d %d", &a[0], &a[1], &a[2], &a[3], &a[4], &a[5]) == 6) {
         vidFull = a[0] != 0; vidW = clampf((float)a[1], 640, 7680); vidH = clampf((float)a[2], 360, 4320); vidAA = nearestOpt(AA_OPT, 4, a[3]); vidAF = nearestOpt(AF_OPT, 5, a[4]); vidVsync = a[5] != 0;
@@ -273,6 +276,9 @@ static void loadCfg() {
     fclose(f);
 }
 static void saveCfg() {
+#ifdef FCF_GFX_XSDK
+    return;
+#endif
     if (noSave) return; FILE* f = fopen(cfgPath().c_str(), "w"); if (!f) return;
     fprintf(f, "v1\nvideo %d %d %d %d %d %d\n", (int)vidFull, vidW, vidH, vidAA, vidAF, (int)vidVsync); for (int i = 0; i < NBIND; i++) fprintf(f, "bind %d %d %d\n", i, binds[i][0], binds[i][1]);
     fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\nlaps %d\n", nc.name, selLaps); fclose(f);
@@ -287,13 +293,21 @@ static void applyVideo() {
     if (detailTex && maxAF > 1) gfx::aniso(detailTex, std::max(1, vidAF));
 }
 static void loadSave() {
+#ifdef FCF_GFX_XSDK
+    return;
+#endif
     if (noSave) return; FILE* f = fopen(savePath().c_str(), "r"); if (!f) return;
     int ver = 0; bool ok = fscanf(f, "v%d", &ver) == 1 && (ver == 2 || ver == 3);
     for (int t = 0; ok && t < NTRACKS; t++) { ok = fscanf(f, "%u %f", &keysGot[t], &bestLap[t]) == 2; if (ok && ver >= 3) { int w = 0; ok = fscanf(f, "%d", &w) == 1; weatherOf[t] = ((w % NWX) + NWX) % NWX; } }
     if (!ok) for (int t = 0; t < NTRACKS; t++) { keysGot[t] = 0; bestLap[t] = 0; weatherOf[t] = W_CLEAR; }
     fclose(f);
 }
-static void writeSave() { if (noSave) return; FILE* f = fopen(savePath().c_str(), "w"); if (!f) return; fprintf(f, "v3"); for (int t = 0; t < NTRACKS; t++) fprintf(f, " %u %f %d", keysGot[t], bestLap[t], weatherOf[t]); fprintf(f, "\n"); fclose(f); }
+static void writeSave() {
+#ifdef FCF_GFX_XSDK
+    return;
+#endif
+    if (noSave) return; FILE* f = fopen(savePath().c_str(), "w"); if (!f) return; fprintf(f, "v3"); for (int t = 0; t < NTRACKS; t++) fprintf(f, " %u %f %d", keysGot[t], bestLap[t], weatherOf[t]); fprintf(f, "\n"); fclose(f);
+}
 static bool allKeys();
 static int keyCount(int t) { int c = 0; for (int i = 0; i < NKEYS; i++) if (keysGot[t] >> i & 1) c++; return c; }
 static bool allKeys() { for (int t = 0; t < NTRACKS; t++) if (keyCount(t) < NKEYS) return false; return true; }
@@ -1500,6 +1514,9 @@ int main(int argc, char** argv) {
         else if (a == "--help") { printf("fogcityfury [--fullscreen] [--size W H]\n"); return 0; }
     }
     loadCfg();   // key bindings and video settings; command-line flags win for this run without being saved
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: loadCfg complete");
+#endif
 #ifdef __ANDROID__
     vidFull = true; touchOn = true;   // a phone has no windows, and no keyboard to bring the buttons up with
 #endif
@@ -1535,6 +1552,9 @@ int main(int argc, char** argv) {
     const int winMsaa = shot ? 0 : 4;
 #endif
     if (!plat::openDisplay(display, "Fog City Fury", w, h, windowed, useGles, winMsaa)) { fprintf(stderr, "Could not open the display: %s\n", plat::displayError()); return 1; }
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: openDisplay complete (%d x %d)", display.width, display.height);
+#endif
 #ifndef FCF_GFX_XSDK
     if (!loadGL()) { plat::errorBox("Fog City Fury", "This graphics driver does not provide OpenGL 3.3."); return 1; }
 #endif
@@ -1553,13 +1573,44 @@ int main(int argc, char** argv) {
     for (int i = 0; i < plat::padCount() && !pad; i++) if (plat::padIsController(i)) pad = plat::padOpen(i);
 
     gfx::init();
-    pWorld = makeProg("world", VS_MESH, FS_COMMON, FS_WORLD); pCar = makeProg("car", VS_MESH, FS_COMMON, FS_CAR); pWater = makeProg("water", VS_MESH, FS_COMMON, FS_WATER);
-    pSky = makeProg("sky", VS_SKY, FS_COMMON, FS_SKY); pPart = makeProg("part", VS_PART, FS_COMMON, FS_PART); pDepth = makeProg("depth", VS_MESH, FS_COMMON, FS_DEPTH); pUI = makeProg("ui", VS_UI, "", FS_UI_FULL); pMark = makeProg("mark", VS_PART, FS_COMMON, FS_MARK); pRing = makeProg("ring", VS_PART, FS_COMMON, FS_RING); pPost = makeProg("post", VS_SKY, "", FS_POST);
-    ui.init(); gfx::buffer(partBuf, gfx::L_PART); gfx::buffer(markBuf, gfx::L_PART);
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: gfx::init complete");
+#endif
+#define FCF_MAKE_PROG(var, name, vs, common, fs) do { var = makeProg(name, vs, common, fs); \
+    /* each program is logged separately to isolate shader-load failures */ \
+    FCF_XSDK_PROG_LOG(name); } while (0)
+#ifdef FCF_GFX_XSDK
+#define FCF_XSDK_PROG_LOG(name) xsdk_log_write("boot: makeProg %s complete", name)
+#else
+#define FCF_XSDK_PROG_LOG(name) ((void)0)
+#endif
+    FCF_MAKE_PROG(pWorld, "world", VS_MESH, FS_COMMON, FS_WORLD);
+    FCF_MAKE_PROG(pCar, "car", VS_MESH, FS_COMMON, FS_CAR);
+    FCF_MAKE_PROG(pWater, "water", VS_MESH, FS_COMMON, FS_WATER);
+    FCF_MAKE_PROG(pSky, "sky", VS_SKY, FS_COMMON, FS_SKY);
+    FCF_MAKE_PROG(pPart, "part", VS_PART, FS_COMMON, FS_PART);
+    FCF_MAKE_PROG(pDepth, "depth", VS_MESH, FS_COMMON, FS_DEPTH);
+    FCF_MAKE_PROG(pUI, "ui", VS_UI, "", FS_UI_FULL);
+    FCF_MAKE_PROG(pMark, "mark", VS_PART, FS_COMMON, FS_MARK);
+    FCF_MAKE_PROG(pRing, "ring", VS_PART, FS_COMMON, FS_RING);
+    FCF_MAKE_PROG(pPost, "post", VS_SKY, "", FS_POST);
+#undef FCF_MAKE_PROG
+#undef FCF_XSDK_PROG_LOG
+    ui.init();
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: ui.init complete");
+#endif
+    gfx::buffer(partBuf, gfx::L_PART); gfx::buffer(markBuf, gfx::L_PART);
     // shadow map
     { gfx::Sampler s; s.compare = true; gfx::tex2D(shadowTex, gfx::DEPTH24, SHADOW, SHADOW, nullptr, s); } gfx::target(shadowFBO, 0, -1, shadowTex);
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: shadow texture complete");
+#endif
     // reflection cubemap (HDR)
     { gfx::Sampler s; s.mips = true; gfx::texCube(cubeTex, hdrOK ? gfx::RGBA16F : gfx::RGBA8, CUBE, s); } gfx::renderbuffer(cubeDepth, gfx::DEPTH24, CUBE, CUBE, 0); gfx::target(cubeFBO, cubeTex, 0, cubeDepth); gfx::use(0, 1, 1);
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: cube texture complete");
+#endif
     {   // ground detail texture: tileable asphalt grain (red) and stone speckle (green), mipmapped. This is what anisotropic filtering works on.
         const int N = 512; std::vector<unsigned char> px(N * N * 3); Rng dr; dr.s = 99;
         auto lat = [](int x, int y, int per, int o) { unsigned h = (unsigned)((x % per + per) % per) * 374761393u + (unsigned)((y % per + per) % per) * 668265263u + (unsigned)o * 2246822519u; h = (h ^ (h >> 13)) * 1274126177u; return ((h ^ (h >> 16)) & 0xFFFF) / 65535.0f; };
@@ -1571,14 +1622,23 @@ int main(int argc, char** argv) {
         }
         { gfx::Sampler s; s.mips = true; s.repeat = true; gfx::tex2D(detailTex, gfx::RGB8, N, N, px.data(), s); } if (maxAF > 1) gfx::aniso(detailTex, std::max(1, vidAF)); gfx::bind(6, detailTex); gfx::bind(0, 0);
     }
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: detail texture complete");
+#endif
 
     for (int t = 0; t < NCARS; t++) { MB m; buildCar(t, m); carMesh[t].upload(m); }
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: car meshes complete");
+#endif
     { MB m; buildWheel(m); wheelMesh.upload(m); } { MB m; buildKey(m); keyMesh.upload(m); } buildShowdownMeshes();
     { MB m; V3 c(0.5f, 0.5f, 0.5f); m.box(0, 0, 1, 1, 0, -1, 1, c, 0, c, 0); boxMesh.upload(m); }
     { MB m; V3 g(0.16f, 0.30f, 0.14f), y(0.95f, 0.72f, 0.05f); m.box(0, 0, 1, 1, 0, -1, 1, g, 0, g, 0); m.box(0, 0, 1.04f, 0.16f, 0, -0.16f, 0.16f, y, 0, y, 0); m.box(0, 0, 0.16f, 1.04f, 0, -0.16f, 0.16f, y, 0, y, 0); crateMesh.upload(m); }
     { MB m; V3 w(0.85f, 0.85f, 0.88f), r(0.85f, 0.10f, 0.06f); m.box(0, 0, 0.085f, 0.42f, 0, -0.085f, 0.085f, w, 0, w, 0); m.box(0, 0.50f, 0.055f, 0.09f, 0, -0.055f, 0.055f, r, 0, r, 0);
       m.box(0, -0.36f, 0.22f, 0.08f, 0, -0.012f, 0.012f, r, 0, r, 0); m.box(0, -0.36f, 0.012f, 0.08f, 0, -0.22f, 0.22f, r, 0, r, 0); rocketMesh.upload(m); }
     startGame();
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: startGame complete");
+#endif
 
     if (shot) {
         for (int i = 0; i < skip; i++) { stepFixed(); if (netWanted || nc.on || state == NETJOIN || state == NETLOBBY) net::sleepMs(16); }
@@ -1629,6 +1689,10 @@ int main(int argc, char** argv) {
         uint64_t now = plat::ticks(); float dt = clampf((now - last) / (float)plat::tickFreq(), 0.0005f, 0.05f); last = now;
         frameDt = dt; if (slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
         update(dt); int fw, fh; plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display);
+#ifdef FCF_GFX_XSDK
+        static int bootFrames = 0;
+        if (bootFrames < 3) xsdk_log_write("boot: frame %d complete", ++bootFrames);
+#endif
     }
     netClose(""); writeSave(); if (adev) plat::audioClose(adev); plat::closeDisplay(display); return 0;
 }

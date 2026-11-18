@@ -32,6 +32,7 @@ static std::array<Tex,7> bound = {};
 static Target activeTarget = 0;
 static int activeW = 0, activeH = 0;
 static bool dirty = false;
+static bool frameActive = false;
 static uint32_t screenAddress = 0;
 static int screenW = 0, screenH = 0;
 static ::Prog* activeProgram = nullptr;
@@ -240,8 +241,18 @@ static void target(Target& t,Tex color,int face,Tex depth) {
 }
 static void use(Target t,int w,int h) {
     if(t>0 && t>=xs::targets.size()) return;
-    if(t==0) { xs::screenAddress=plat::currentFrameAddress(); xs::screenW=w; xs::screenH=h; }
+    if(t==0) {
+        if(xs::activeTarget!=0) xs::resolveCurrent();
+        xs::screenAddress=plat::currentFrameAddress(); xs::screenW=w; xs::screenH=h;
+        xs::activeTarget=0; xs::activeW=w; xs::activeH=h;
+        if(xs::frameActive) xsdk_gpu_set_target((uint32_t)w,(uint32_t)h);
+        return;
+    }
     xs::selectTarget(t,w,h);
+}
+void beginFrame(int width,int height) {
+    xs::frameActive=true;
+    xsdk_gpu_set_target((uint32_t)(xs::screenW>0?xs::screenW:width),(uint32_t)(xs::screenH>0?xs::screenH:height));
 }
 static void clear(bool color,bool depth) {
     auto& t=xs::targets[xs::activeTarget];
@@ -322,6 +333,7 @@ static void finish(){ xsdk_gpu_wait(xsdk_gpu_fence(),1000); }
 void presentFrame(uint32_t address,int width,int height){
     xs::resolveCurrent(0xFF000000);
     xsdk_gpu_resolve(address,(uint32_t)width,(uint32_t)height,0xFF000000);
+    xs::frameActive=false;
 }
 
 } // namespace gfx

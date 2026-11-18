@@ -19,7 +19,7 @@ def cfloat(x):
 def words(path):
     data = open(path, 'rb').read()
     if len(data) % 4: raise ValueError(f'{path}: container length is not dword aligned')
-    return data, [int.from_bytes(data[i:i+4], 'little') for i in range(0, len(data), 4)]
+    return data, [int.from_bytes(data[i:i+4], 'big') for i in range(0, len(data), 4)]
 
 os.makedirs(out, exist_ok=True)
 path = os.path.join(out, 'gfx_shader_data.h')
