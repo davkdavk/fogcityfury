@@ -90,6 +90,11 @@ static int selLaps = LAPS;   // laps for an offline race (1..9), chosen on the t
 static int selWeather = W_CLEAR, selRow = 0, weatherOf[NTRACKS] = {};
 static int selCar = 0, selPaint = 0, selTrack = 0, selMode = 0, camMode = 0, aiFinished = 0, finalPlace = 0, place = 1, gear = 1, cubeFace = 0, frameNo = 0;
 static bool noSave = false; static float maxAir = 0; static int gasOnly = 0;
+#ifdef FCF_GFX_XSDK
+static int xsdkPasses = 0;   // debug bring-up: 0 direct, 1 post, 2 shadows, 3 reflection cube
+#else
+static int xsdkPasses = 3;
+#endif
 static const int NMODES = 4;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races)
 static bool champOn = false, champDone = false, cliChamp = false; static int champRound = 0; static int champPts[NAI + 1];   // championship: running, all four rounds done, round 0-3, points (0: you, 1 + k: ai[k])
 static const int CHAMP_TRACK[4] = { 0, 1, 2, 3 }, CHAMP_LAPS[4] = { 1, 2, 2, 3 }, CHAMP_PTS[10] = { 25, 18, 15, 12, 10, 8, 6, 4, 2, 1 };
@@ -1285,20 +1290,31 @@ static void render(int fbw, int fbh) {
     if (!chase) eye = camPos;
     M4 V = lookAt(eye, camTgt, debugTop ? V3(0, 0, -1) : upv), P = perspective(fov * M_PI / 180, asp, 0.3f, 6000); lastVP = mul(P, V);
     gfx::bind(0, shadowTex); gfx::bind(1, cubeTex); gfx::bind(2, W.htex);
+#ifdef FCF_GFX_XSDK
+    if (xsdkPasses == 0) {
+        gfx::use(0, fbw, fbh); gfx::clear(true, true);
+        drawScene(V, P, eye, true);
+    } else
+#endif
+    {
     // ---- shadow map ----
-    V3 focus = debugTop ? camTgt : footView() ? fighters[shdSpectate ? shdWatch : 0].pos + yawDir(footYaw) * 14 : player.pos + f * 25; float R = debugTop ? 520 : footView() ? 46 : 105;   // on foot the shadow map is drawn tighter: a person needs finer shadows than a car
-    lightVP = mul(ortho(-R, R, -R, R, 1, 900), lookAt(focus + W.def->sun * 400, focus, V3(0, 1, 0)));
-    gfx::use(shadowFBO, SHADOW, SHADOW); gfx::clear(false, true);
-    gfx::offset(2.0f, 4.0f);
-    pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident()); W.terrain.draw(); W.props.draw(); drawCars(pDepth, false, true); drawWreckage(pDepth, false);
-    gfx::offset(0, 0);
+    if (xsdkPasses >= 2) {
+        V3 focus = debugTop ? camTgt : footView() ? fighters[shdSpectate ? shdWatch : 0].pos + yawDir(footYaw) * 14 : player.pos + f * 25; float R = debugTop ? 520 : footView() ? 46 : 105;   // on foot the shadow map is drawn tighter: a person needs finer shadows than a car
+        lightVP = mul(ortho(-R, R, -R, R, 1, 900), lookAt(focus + W.def->sun * 400, focus, V3(0, 1, 0)));
+        gfx::use(shadowFBO, SHADOW, SHADOW); gfx::clear(false, true);
+        gfx::offset(2.0f, 4.0f);
+        pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident()); W.terrain.draw(); W.props.draw(); drawCars(pDepth, false, true); drawWreckage(pDepth, false);
+        gfx::offset(0, 0);
+    }
     // ---- dynamic environment cubemap around the player's car (2 faces per frame) ----
     static const V3 dirs[6] = { {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1} }, ups[6] = { {0,-1,0},{0,-1,0},{0,0,1},{0,0,-1},{0,-1,0},{0,-1,0} };
     V3 cc = player.pos + V3(0, 1.0f, 0); M4 CP = perspective(M_PI / 2, 1, 0.3f, 3000);
-    gfx::use(cubeFBO, CUBE, CUBE);
-    int nf = frameNo < 4 || fixedCam || debugTop ? 6 : CUBE_FACES;
-    for (int k = 0; k < nf; k++) { int face = cubeFace++ % 6; gfx::target(cubeFBO, cubeTex, face, cubeDepth); gfx::clear(true, true); envPass = true; drawScene(lookAt(cc, cc + dirs[face], ups[face]), CP, cc, false); envPass = false; }
-    gfx::mips(cubeTex);
+    if (xsdkPasses >= 3) {
+        gfx::use(cubeFBO, CUBE, CUBE);
+        int nf = frameNo < 4 || fixedCam || debugTop ? 6 : CUBE_FACES;
+        for (int k = 0; k < nf; k++) { int face = cubeFace++ % 6; gfx::target(cubeFBO, cubeTex, face, cubeDepth); gfx::clear(true, true); envPass = true; drawScene(lookAt(cc, cc + dirs[face], ups[face]), CP, cc, false); envPass = false; }
+        gfx::mips(cubeTex);
+    }
     // ---- main view ----
     // scene -> multisampled HDR target
     // the scene is drawn at rw x rh (the chosen resolution when full screen, else the window's own size) and scaled to the screen by the last pass
@@ -1327,6 +1343,7 @@ static void render(int fbw, int fbh) {
     pPost.i1("uMode", 2); pPost.f1("uBlur", blur); pPost.f1("uCA", chase ? caT * 0.012f + blur * 0.04f : 0); pPost.f1("uFlash", clampf(flashT, 0, 1) * 0.55f); pPost.v3("uFlashCol", flashCol);
     pPost.f1("uRain", chase && !debugTop && state != CARSEL && state != TRACKSEL ? wx().rain : 0.0f); pPost.f1("uTime", T);
     pPost.f1("uVig", 0.45f + blur * 5); pPost.f1("uSat", chase && player.dead && state != TITLE ? 0.5f : 1.0f); gfx::drawFull(); gfx::depthTest(true);
+    }
     if (!hideUI) { gfx::depthTest(false); gfx::blend(gfx::B_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); gfx::blend(gfx::B_OFF); gfx::depthTest(true); }
 }
 
@@ -1505,7 +1522,7 @@ int main(int argc, char** argv) {
         else if (a == "--server") cliServers.push_back(argv[++i]);
         else if (a == "--touch") { touchOn = touchMouse = true; } else if (a == "--touchhold") { touchOn = true; touchHoldLabels.push_back(argv[++i]); }
         else if (a == "--tap") { touchOn = true; const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) taps.push_back({ (float)atof(q), std::string(c + 1) }); }
-        else if (a == "--ldr") forceLDR = true;
+        else if (a == "--ldr") forceLDR = true; else if (a == "--xsdk-passes") xsdkPasses = std::max(0, std::min(3, atoi(argv[++i])));
         else if (a == "--rockets") startAmmo = atoi(argv[++i]); else if (a == "--faceai") faceAi = true; else if (a == "--sdnow") sdNow = true; else if (a == "--laps") selLaps = std::max(1, std::min(9, atoi(argv[++i]))); else if (a == "--keys") fakeKeys = atoi(argv[++i]); else if (a == "--sdsite") sdSite = (float)atof(argv[++i]); else if (a == "--sdplace") sdPlace = atoi(argv[++i]); else if (a == "--stick") { testStick = touchOn = true; sscanf(argv[++i], "%f,%f", &stickX, &stickY); } else if (a == "--footai") footAuto = true; else if (a == "--gun") forceGun = ((atoi(argv[++i]) % NGUNS) + NGUNS) % NGUNS; else if (a == "--fire") fireAt.push_back((float)atof(argv[++i])); else if (a == "--reset") resetAt.push_back((float)atof(argv[++i]));
         else if (a == "--script") { const char* p = argv[++i]; while (*p) { ScriptKey k = {}; int hb = 0, nos = 0, used = 0, u2 = 0; if (sscanf(p, "%f:%f,%f,%f,%d%n", &k.t, &k.steer, &k.gas, &k.brake, &hb, &used) < 5) break; k.hb = hb;
             if (p[used] == ',' && sscanf(p + used + 1, "%d%n", &nos, &u2) == 1) { k.nitro = nos; used += 1 + u2; }

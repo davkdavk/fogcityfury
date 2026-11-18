@@ -20,9 +20,11 @@ struct TexObj {
 struct BufObj {
     Layout layout = L_MESH;
     volatile uint32_t* vertices = nullptr;
+    volatile uint32_t* streamVertices = nullptr;
     volatile uint32_t* indices = nullptr;
     uint32_t vertexBytes = 0, indexCount = 0;
 };
+struct StreamArena { volatile uint32_t* memory=nullptr; uint32_t cursor=0; uint32_t fence=0; };
 struct TargetObj { Tex color = 0; int face = -1; Tex depth = 0; };
 static std::vector<TexObj> textures(1);
 static std::vector<BufObj> buffers(1);
@@ -33,6 +35,9 @@ static Target activeTarget = 0;
 static int activeW = 0, activeH = 0;
 static bool dirty = false;
 static bool frameActive = false;
+static StreamArena stream[2];
+static uint32_t streamFrame=1;
+static constexpr uint32_t STREAM_BYTES=8u*1024u*1024u;
 static uint32_t screenAddress = 0;
 static int screenW = 0, screenH = 0;
 static ::Prog* activeProgram = nullptr;
@@ -166,10 +171,6 @@ struct Prog {
         xsdk_gpu_set_shaders(&vs,&fs);
         for(uint32_t i=0;i<meta->nvl;i++) xsdk_gpu_set_vertex_constants(meta->vl[i].reg,meta->vl[i].value,1);
         for(uint32_t i=0;i<meta->nfl;i++) xsdk_gpu_set_pixel_constants(meta->fl[i].reg,meta->fl[i].value,1);
-        for(uint32_t i=0;i<meta->nsamplers;i++) {
-            const auto& s=meta->samplers[i]; gfx::Tex t=s.unit<gfx::xs::bound.size()?gfx::xs::bound[s.unit]:0;
-            if(t) xsdk_gpu_set_texture(s.unit,&gfx::xs::textures[t].tex,&gfx::xs::samplerStates[t]);
-        }
     }
     void set(const char* n, const float* values, int count, uint32_t suppliedType) {
         if(!meta) return;
@@ -200,6 +201,10 @@ static void flushProgram(){
     Prog* p=gfx::xs::activeProgram; if(!p||!p->meta)return;
     if(!p->vc.empty()) xsdk_gpu_set_vertex_constants(0,p->vc.data(),(uint32_t)(p->vc.size()/4));
     if(!p->fc.empty()) xsdk_gpu_set_pixel_constants(0,p->fc.data(),(uint32_t)(p->fc.size()/4));
+    for(uint32_t i=0;i<p->meta->nsamplers;i++) {
+        const auto& s=p->meta->samplers[i]; gfx::Tex t=s.unit<gfx::xs::bound.size()?gfx::xs::bound[s.unit]:0;
+        if(t) xsdk_gpu_set_texture(s.unit,&gfx::xs::textures[t].tex,&gfx::xs::samplerStates[t]);
+    }
 }
 
 static void init() { xsdk_gpu_set_depth_clear(1.0f,0); }
@@ -252,6 +257,11 @@ static void use(Target t,int w,int h) {
 }
 void beginFrame(int width,int height) {
     xs::frameActive=true;
+    xs::streamFrame=(xs::streamFrame+1)&1;
+    auto& arena=xs::stream[xs::streamFrame];
+    if(arena.fence) xsdk_gpu_wait(arena.fence,1000);
+    if(!arena.memory) arena.memory=xsdk_gpu_alloc(xs::STREAM_BYTES);
+    arena.cursor=0;
     xsdk_gpu_set_target((uint32_t)(xs::screenW>0?xs::screenW:width),(uint32_t)(xs::screenH>0?xs::screenH:height));
 }
 static void clear(bool color,bool depth) {
@@ -288,13 +298,14 @@ static void buffer(Buf& b,Layout l) {
     xs::buffers[b].layout=l;
 }
 static void data(Buf b,const void* p,size_t bytes,bool) {
-    auto& o=xs::buffers[b]; uint32_t need=(uint32_t)((bytes+3)&~(size_t)3);
-    if(need>o.vertexBytes){ if(o.vertices) xsdk_gpu_free(o.vertices); o.vertices=xsdk_gpu_alloc(need); o.vertexBytes=need; }
-    if(!o.vertices) return; copyToGpu(o.vertices,p,bytes); xsdk_gpu_invalidate(xsdk_gpu_address(o.vertices),o.vertexBytes);
+    auto& o=xs::buffers[b]; auto& arena=xs::stream[xs::streamFrame]; uint32_t need=(uint32_t)((bytes+3)&~(size_t)3);
+    if(!arena.memory || arena.cursor>xs::STREAM_BYTES || need>xs::STREAM_BYTES-arena.cursor){ o.streamVertices=nullptr; o.vertexBytes=0; return; }
+    o.streamVertices=arena.memory+arena.cursor/4; o.vertexBytes=need; copyToGpu(o.streamVertices,p,bytes);
+    xsdk_gpu_invalidate(xsdk_gpu_address(o.streamVertices),need); arena.cursor+=need;
 }
 static void draw(Buf b,int first,int n) {
-    if(n<=0)return; auto& o=xs::buffers[b]; uint32_t stride=o.layout==L_MESH?48:o.layout==L_PART?44:32;
-    uint32_t skip=(uint32_t)first*stride; xsdk_gpu_set_vertices(0,xsdk_gpu_address(o.vertices)+skip,o.vertexBytes-skip); gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,(uint32_t)n);
+    if(n<=0)return; auto& o=xs::buffers[b]; if(!o.streamVertices)return; uint32_t stride=o.layout==L_MESH?48:o.layout==L_PART?44:32;
+    uint32_t skip=(uint32_t)first*stride; xsdk_gpu_set_vertices(0,xsdk_gpu_address(o.streamVertices)+skip,o.vertexBytes-skip); gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,(uint32_t)n);
 }
 static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
     if(!b){ b=(Buf)xs::buffers.size(); xs::buffers.push_back({}); }
@@ -334,6 +345,7 @@ static void finish(){ xsdk_gpu_wait(xsdk_gpu_fence(),1000); }
 void presentFrame(uint32_t address,int width,int height){
     xs::resolveCurrent(0xFF000000);
     xsdk_gpu_resolve(address,(uint32_t)width,(uint32_t)height,0xFF000000);
+    xs::stream[xs::streamFrame].fence=xsdk_gpu_fence();
     xs::frameActive=false;
 }
 
