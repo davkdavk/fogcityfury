@@ -37,22 +37,40 @@ files applied with `git am -3 <file>`.
 
 
 ## Current Xenia Verification
-- Xenia runs the no-argument, pass-0 XEX for 30 seconds without returning to
-  dash. `xenia-run.log`
-  has `boot: frame 1 complete`, `boot: frame 2 complete`, and
-  `boot: frame 3 complete`; no shader or GPU assertion follows.
-- Pass 0 draws the title's sky/world/props/cars and HUD directly, skipping post,
-  shadows, and reflections. The expected title UI is FOG CITY FURY with RACE,
-  ONLINE, and OPTIONS.
-- X11 creates the `Fog City Fury` Xenia window, but reports it as `IsUnMapped`.
-  XWD gets `BadMatch` on its Vulkan surface and root captures show the desktop,
-  so the pixels are not yet visually confirmed. This is not a locked desktop.
+- Pass-0 XEX reaches `boot: frame 3 complete` in Xenia without a crash. The user
+  reports the screen is cyan/black; title text is absent, cars are thin slivers,
+  city fronts collapse into a diagonal strip, and ground is a flat red plane.
+- XSDK source inspection: `gpu_draw.c:595` encodes `size_bytes / 4` (dwords)
+  shifted by 2. Xenos' fetch constant size is 24 bits (`xe_gpu_vertex_fetch_t`),
+  so its field limit is 16,777,215 dwords, not 65,535. The game nevertheless
+  chunks at 5,461 48-byte vertices (262,128 bytes) as a conservative test.
+- Allocation instrumentation in `gfx_xsdk.h` checks ranges, failures, and
+  running bytes. The 30-second object-test run made 222 app GPU allocations,
+  totaling 53,936,128 live bytes including two 8 MiB stream arenas; no null
+  allocations, overlaps, or 512 MiB-budget warnings appeared. XSDK itself has
+  no fixed GPU sub-pool: `xsdk_gpu_alloc` page-rounds and calls
+  `MmAllocatePhysicalMemoryEx` over the physical address range.
+- `xenon/build/game/fogcityfury_objects.xex` cycles terrain, props, water, and
+  cars every three seconds; its log says which is active. It is the next visual
+  diagnostic. Pass 0 draws UI after the direct scene path, and sampler units
+  are rebound immediately before each draw, but title text still needs visual
+  confirmation.
+- `xenon/build/game/xenia-objects.log` and `xenia-objects-console.log` contain
+  the Xenia run. Xenia reports unknown writes to registers 0x183B and 0x0A10;
+  startup reaches frame 3. Pixel screenshots must come from the user's Xenia
+  window (this environment cannot capture its Vulkan surface).
 - The LUT workaround is reproducible: `build_game.sh` applies the patch under
   `xenon/patches/` to `~/xsdk`; Xenia does not emulate display register 0x1928.
 - XEX path: `xenon/build/game/fogcityfury.xex`.
 - Sound, saves, and network remain disabled/not implemented on the 360.
 - Real RGH 360 testing is now in progress; wait for the user's visual result
   before changing graphics code.
+- Startup screen diagnostics (XSDK only): red after `openDisplay`, orange after
+  `gfx::init`, yellow after all `makeProg` calls, green after `ui.init`, cyan
+  after texture setup, blue after car meshes, purple after `startGame`, then
+  white when startup is complete. Each checkpoint is held for 0.5 s; the last
+  colour shown identifies the last completed step. The main loop then alternates
+  white and black once per second for 5 s before normal rendering.
 
 
 ## Later (don't start unless asked)

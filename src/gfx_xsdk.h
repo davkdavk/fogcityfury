@@ -27,6 +27,7 @@ struct BufObj {
     std::vector<MeshChunk> chunks;
 };
 struct StreamArena { volatile uint32_t* memory=nullptr; uint32_t cursor=0; uint32_t fence=0; };
+struct Allocation { volatile uint32_t* memory; uint32_t address, bytes; const char* tag; };
 struct TargetObj { Tex color = 0; int face = -1; Tex depth = 0; };
 static std::vector<TexObj> textures(1);
 static std::vector<BufObj> buffers(1);
@@ -40,6 +41,11 @@ static bool frameActive = false;
 static StreamArena stream[2];
 static uint32_t streamFrame=1;
 static constexpr uint32_t STREAM_BYTES=8u*1024u*1024u;
+static constexpr uint32_t MAX_FETCH_BYTES=65535u*4u;
+static constexpr uint32_t MAX_MESH_VERTICES=MAX_FETCH_BYTES/48u;
+static std::vector<Allocation> allocations;
+static uint64_t allocatedBytes=0, allocationCount=0;
+static constexpr uint64_t XBOX_RAM_BYTES=512ull*1024ull*1024ull;
 static uint32_t screenAddress = 0;
 static int screenW = 0, screenH = 0;
 static ::Prog* activeProgram = nullptr;
@@ -61,6 +67,31 @@ static uint32_t textureFormat(Fmt f) {
     case RGB8: return XSDK_FORMAT_R8G8B8A8;
     }
     return XSDK_FORMAT_R8G8B8A8;
+}
+static volatile uint32_t* gpuAlloc(uint32_t bytes,const char* tag) {
+    const uint32_t rounded=(bytes+0xffffu)&~0xffffu;
+    volatile uint32_t* p=xsdk_gpu_alloc(bytes);
+    if(!p){ xsdk_log_write("gpu_alloc #%u tag=%s request=%u rounded=%u FAILED",(unsigned)++allocationCount,tag,(unsigned)bytes,(unsigned)rounded); return nullptr; }
+    uint32_t address=xsdk_gpu_address(p); uint64_t end=(uint64_t)address+rounded;
+    for(const auto& a:allocations){
+        uint64_t ae=(uint64_t)a.address+a.bytes;
+        if((uint64_t)address<ae && (uint64_t)a.address<end)
+            xsdk_log_write("gpu_alloc OVERLAP tag=%s [0x%08X,0x%08llX) with %s [0x%08X,0x%08llX)",tag,(unsigned)address,(unsigned long long)end,a.tag,(unsigned)a.address,(unsigned long long)ae);
+    }
+    allocations.push_back({p,address,rounded,tag}); allocatedBytes+=rounded;
+    xsdk_log_write("gpu_alloc #%u tag=%s request=%u rounded=%u cpu=%p gpu=0x%08X total=%llu/536870912%s",
+        (unsigned)++allocationCount,tag,(unsigned)bytes,(unsigned)rounded,(const void*)p,(unsigned)address,
+        (unsigned long long)allocatedBytes,allocatedBytes>XBOX_RAM_BYTES?" EXCEEDS_512MiB":"");
+    return p;
+}
+static void gpuFree(volatile uint32_t* p) {
+    if(!p)return;
+    for(size_t i=0;i<allocations.size();i++) if(allocations[i].memory==p){
+        allocatedBytes-=allocations[i].bytes;
+        xsdk_log_write("gpu_free tag=%s gpu=0x%08X bytes=%u total=%llu",allocations[i].tag,(unsigned)allocations[i].address,(unsigned)allocations[i].bytes,(unsigned long long)allocatedBytes);
+        allocations.erase(allocations.begin()+i); break;
+    }
+    xsdk_gpu_free(p);
 }
 static uint16_t half(float f) {
     uint32_t x; memcpy(&x, &f, 4);
@@ -105,15 +136,15 @@ static void upload(TexObj& o, int w, int h, const void* px) {
     xsdk_gpu_invalidate(o.tex.address,o.tex.size_bytes);
 }
 static void release(TexObj& o) {
-    if(o.allocated) xsdk_texture_free(&o.tex);
-    else if(o.storage) xsdk_gpu_free(o.storage);
+    if(o.storage) gpuFree(o.storage);
     o=TexObj();
 }
 static void makeTexture(Tex t, int w, int h, bool tiled=true, int levels=1) {
     TexObj& o=textures[t]; Fmt fmt=o.fmt; int samples=o.samples; release(o); o.fmt=fmt; o.samples=samples;
     if(o.cube) return;
-    if(!NT_SUCCESS(xsdk_texture_create(&o.tex,textureFormat(o.fmt),(uint32_t)w,(uint32_t)h,(uint32_t)levels,tiled))) return;
-    o.allocated=true; o.storage=o.tex.texels;
+    if(!NT_SUCCESS(xsdk_texture_init(&o.tex,textureFormat(o.fmt),(uint32_t)w,(uint32_t)h,(uint32_t)levels,tiled))) return;
+    o.storage=gpuAlloc(o.tex.size_bytes,"texture2d"); if(!o.storage)return;
+    xsdk_texture_attach(&o.tex,o.storage);
 }
 static void setTarget(TargetObj& t, int w, int h) {
     activeW=w; activeH=h;
@@ -227,7 +258,7 @@ static void texCube(Tex& t,Fmt f,int size,Sampler s) {
     if(!t){ t=(Tex)xs::textures.size(); xs::textures.push_back({}); xs::samplerStates.push_back({}); }
     auto& o=xs::textures[t]; xs::release(o); o.fmt=f;o.sampler=s;o.cube=true;
     if(!NT_SUCCESS(xsdk_texture_init_cube(&o.tex,xs::textureFormat(f),(uint32_t)size,1))) return;
-    o.storage=xsdk_gpu_alloc(o.tex.size_bytes); if(!o.storage) return; xsdk_texture_attach(&o.tex,o.storage);
+    o.storage=xs::gpuAlloc(o.tex.size_bytes,"texture-cube"); if(!o.storage) return; xsdk_texture_attach(&o.tex,o.storage);
     o.allocated=false; XsdkSampler sampler={.mag_filter=s.linear?XSDK_FILTER_LINEAR:XSDK_FILTER_POINT,.min_filter=s.linear?XSDK_FILTER_LINEAR:XSDK_FILTER_POINT,.mip_filter=XSDK_FILTER_POINT,.address_u=XSDK_ADDRESS_CLAMP,.address_v=XSDK_ADDRESS_CLAMP,.level_count=1};
     xsdk_texture_sampler_state(&xs::samplerStates[t],&sampler);
 }
@@ -262,7 +293,7 @@ void beginFrame(int width,int height) {
     xs::streamFrame=(xs::streamFrame+1)&1;
     auto& arena=xs::stream[xs::streamFrame];
     if(arena.fence) xsdk_gpu_wait(arena.fence,1000);
-    if(!arena.memory) arena.memory=xsdk_gpu_alloc(xs::STREAM_BYTES);
+    if(!arena.memory) arena.memory=xs::gpuAlloc(xs::STREAM_BYTES,xs::streamFrame?"stream-arena-1":"stream-arena-0");
     arena.cursor=0;
     for(auto& b:xs::buffers) { b.streamVertices=nullptr; b.streamBytes=0; }
     xsdk_gpu_set_target((uint32_t)(xs::screenW>0?xs::screenW:width),(uint32_t)(xs::screenH>0?xs::screenH:height));
@@ -309,18 +340,24 @@ static void data(Buf b,const void* p,size_t bytes,bool streamData) {
         o.streamVertices=arena.memory+arena.cursor/4; o.streamBytes=need; copyToGpu(o.streamVertices,p,bytes);
         xsdk_gpu_invalidate(xsdk_gpu_address(o.streamVertices),need); arena.cursor+=need;
     } else {
-        if(need>o.vertexBytes){ if(o.vertices) xsdk_gpu_free(o.vertices); o.vertices=xsdk_gpu_alloc(need); o.vertexBytes=need; }
+        if(need>o.vertexBytes){ if(o.vertices) xs::gpuFree(o.vertices); o.vertices=xs::gpuAlloc(need,"persistent-stream-buffer"); o.vertexBytes=need; }
         if(!o.vertices) return; copyToGpu(o.vertices,p,bytes); xsdk_gpu_invalidate(xsdk_gpu_address(o.vertices),o.vertexBytes);
     }
 }
 static void draw(Buf b,int first,int n) {
     if(n<=0)return; auto& o=xs::buffers[b]; volatile uint32_t* vertices=o.streamVertices?o.streamVertices:o.vertices; uint32_t bytes=o.streamVertices?o.streamBytes:o.vertexBytes; if(!vertices)return; uint32_t stride=o.layout==L_MESH?48:o.layout==L_PART?44:32;
-    uint32_t skip=(uint32_t)first*stride; if(skip>=bytes)return; xsdk_gpu_set_vertices(0,xsdk_gpu_address(vertices)+skip,bytes-skip); gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,(uint32_t)n);
+    uint32_t maxVertices=xs::MAX_FETCH_BYTES/stride; maxVertices-=maxVertices%3;
+    for(int done=0;done<n;){
+        uint32_t count=(uint32_t)std::min((int)maxVertices,n-done); count-=count%3; if(!count) return;
+        uint32_t skip=(uint32_t)(first+done)*stride, fetchBytes=count*stride; if(skip>bytes||fetchBytes>bytes-skip)return;
+        xsdk_gpu_set_vertices(0,xsdk_gpu_address(vertices)+skip,fetchBytes); gfx::flushProgram(); xs::dirty=true;
+        xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,count); done+=(int)count;
+    }
 }
 static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
     if(!b){ b=(Buf)xs::buffers.size(); xs::buffers.push_back({}); }
     auto& o=xs::buffers[b]; o.layout=L_MESH;
-    for(const auto& c:o.chunks){ if(c.vertices)xsdk_gpu_free(c.vertices); if(c.indices)xsdk_gpu_free(c.indices); }
+    for(const auto& c:o.chunks){ if(c.vertices)xs::gpuFree(c.vertices); if(c.indices)xs::gpuFree(c.indices); }
     o.chunks.clear();
     const uint8_t* source=(const uint8_t*)v;
     std::unordered_map<uint32_t,uint32_t> remap; remap.reserve(65535);
@@ -329,8 +366,8 @@ static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
     auto flush=[&] {
         if(indices.empty()) return;
         uint32_t vb=(uint32_t)vertices.size(), ib=(uint32_t)(indices.size()*4);
-        volatile uint32_t* vg=xsdk_gpu_alloc(vb); volatile uint32_t* ig=xsdk_gpu_alloc(ib);
-        if(!vg||!ig) { if(vg)xsdk_gpu_free(vg); if(ig)xsdk_gpu_free(ig); return; }
+        volatile uint32_t* vg=xs::gpuAlloc(vb,"mesh-chunk-vertices"); volatile uint32_t* ig=xs::gpuAlloc(ib,"mesh-chunk-indices");
+        if(!vg||!ig) { if(vg)xs::gpuFree(vg); if(ig)xs::gpuFree(ig); return; }
         copyToGpu(vg,vertices.data(),vb); copyToGpu(ig,indices.data(),ib);
         xsdk_gpu_invalidate(xsdk_gpu_address(vg),vb); xsdk_gpu_invalidate(xsdk_gpu_address(ig),ib);
         o.chunks.push_back({vg,ig,vb,(uint32_t)indices.size()});
@@ -343,7 +380,7 @@ static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
             if(!duplicate) add++;
         }
         // Xenos' max-index register is 16-bit; count limits alone don't constrain referenced vertex ids.
-        if(!indices.empty() && (remap.size()+add>65535u || indices.size()+3>65532u)) flush();
+        if(!indices.empty() && (remap.size()+add>xs::MAX_MESH_VERTICES || indices.size()+3>65532u)) flush();
         for(int k=0;k<3;k++) {
             uint32_t old=idx[tri+k]; auto it=remap.find(old);
             if(it==remap.end()) {

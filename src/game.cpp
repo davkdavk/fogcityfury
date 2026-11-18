@@ -984,10 +984,32 @@ static void drawWreckage(Prog& p, bool lit) {
 }
 static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     M4 VP = mul(P, V); float hdr = 1;
+#ifdef FCF_XSDK_OBJECT_TEST
+    static int lastObject=-1;
+    int object=(int)(T/3.0f)%4;
+    static const char* objectName[4]={"terrain","props","water","cars"};
+    if(mainPass && object!=lastObject){ xsdk_log_write("object-test: %d %s",object,objectName[object]); lastObject=object; }
+    bool objectOnly=mainPass;
+#else
+    bool objectOnly=false;
+#endif
+    if(!objectOnly) {
     gfx::depthTest(false); setCommon(pSky, VP, cam, hdr);
     pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); pSky.f2("uTan", 1 / P.m[0], 1 / P.m[5]);
     gfx::drawFull(); gfx::depthTest(true);
-    setCommon(pWorld, VP, cam, hdr); W.terrain.draw(); W.props.draw();
+    }
+    if(!objectOnly) { setCommon(pWorld, VP, cam, hdr); W.terrain.draw(); W.props.draw(); }
+#ifdef FCF_XSDK_OBJECT_TEST
+    if(objectOnly) {
+        // One world component at a time, rotating every three seconds for Xenia screenshots.
+        if(object==0) { setCommon(pWorld,VP,cam,hdr); W.terrain.draw(); }
+        else if(object==1) { setCommon(pWorld,VP,cam,hdr); W.props.draw(); }
+        else if(object==2) { setCommon(pWater,VP,cam,hdr); pWater.i1("uHeight",2); W.water.draw(); }
+        else { setCommon(pCar,VP,cam,hdr); drawCars(pCar,true,true); }
+        gfx::blend(gfx::B_OFF);
+        return;
+    }
+#endif
     if (mainPass && !marks.empty()) {   // skid marks
         gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); gfx::offset(-2, -2);
         setCommon(pMark, VP, cam, hdr);
@@ -1497,6 +1519,22 @@ static void stepFixed() { float d = 1 / 60.f; fixedT += d; for (auto& p : presse
     for (auto& p : taps) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; int b = touchFind(p.name); if (b >= 0) { touchDown(7000, tbtn[b].x + tbtn[b].w / 2, tbtn[b].y + tbtn[b].h / 2); touchUp(7000); } }
     for (size_t k = 0; k < touchHoldLabels.size(); k++) { SDL_FingerID id = 8000 + (SDL_FingerID)k; bool have = false; for (auto& f : fingers) if (f.id == id) have = true; int b = touchFind(touchHoldLabels[k]); if (!have && b >= 0) fingers.push_back({ id, b }); } if (slowT > 0) { slowT -= d; d *= 0.3f; } update(d); }
 
+#ifdef FCF_GFX_XSDK
+static bool bootColorFrame(uint32_t argb) {
+    uint32_t address = 0;
+    if (!NT_SUCCESS(xsdk_present_begin(&address, 5000))) return false;
+    xsdk_gpu_set_target((uint32_t)display.width, (uint32_t)display.height);
+    xsdk_gpu_resolve(address, (uint32_t)display.width, (uint32_t)display.height, argb);
+    xsdk_gpu_resolve(address, (uint32_t)display.width, (uint32_t)display.height, argb);
+    xsdk_present_end();
+    return true;
+}
+static void bootColor(uint32_t argb) {
+    uint64_t until = plat::ticks() + (uint64_t)(plat::tickFreq() * 0.5);
+    do { if (!bootColorFrame(argb)) return; } while (plat::ticks() < until);
+}
+#endif
+
 int main(int argc, char** argv) {
     std::vector<const char*> cliServers;
     bool netWanted = false, wxSet = false; int keyrun = -1; const char* shot = nullptr; bool sim = false, dump = false, speedSet = false; float speed0 = 0; int frames = 3, skip = 0, startState = 0, w = 1280, h = 720, cliAA = -1, cliAF = -1; bool sizeSet = false, fullSet = false; bool posSet = false; float px = 0, pz = 0, pyaw = 0; bool windowed = true;
@@ -1530,6 +1568,9 @@ int main(int argc, char** argv) {
         else if (a == "--wav") { renderWav(argv[i + 1], F(2)); return 0; }
         else if (a == "--help") { printf("fogcityfury [--fullscreen] [--size W H]\n"); return 0; }
     }
+#ifdef FCF_XSDK_OBJECT_TEST
+    hideUI = true;
+#endif
     loadCfg();   // key bindings and video settings; command-line flags win for this run without being saved
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: loadCfg complete");
@@ -1571,6 +1612,7 @@ int main(int argc, char** argv) {
     if (!plat::openDisplay(display, "Fog City Fury", w, h, windowed, useGles, winMsaa)) { fprintf(stderr, "Could not open the display: %s\n", plat::displayError()); return 1; }
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: openDisplay complete (%d x %d)", display.width, display.height);
+    bootColor(0xFFFF0000);   // red: openDisplay returned
 #endif
 #ifndef FCF_GFX_XSDK
     if (!loadGL()) { plat::errorBox("Fog City Fury", "This graphics driver does not provide OpenGL 3.3."); return 1; }
@@ -1595,6 +1637,7 @@ int main(int argc, char** argv) {
     gfx::init();
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: gfx::init complete");
+    bootColor(0xFFFF8000);   // orange: gfx::init returned
 #endif
 #define FCF_MAKE_PROG(var, name, vs, common, fs) do { var = makeProg(name, vs, common, fs); \
     /* each program is logged separately to isolate shader-load failures */ \
@@ -1616,9 +1659,13 @@ int main(int argc, char** argv) {
     FCF_MAKE_PROG(pPost, "post", VS_SKY, "", FS_POST);
 #undef FCF_MAKE_PROG
 #undef FCF_XSDK_PROG_LOG
+#ifdef FCF_GFX_XSDK
+    bootColor(0xFFFFFF00);   // yellow: all makeProg calls returned
+#endif
     ui.init();
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: ui.init complete");
+    bootColor(0xFF00FF00);   // green: ui.init returned
 #endif
     gfx::buffer(partBuf, gfx::L_PART); gfx::buffer(markBuf, gfx::L_PART);
     // shadow map
@@ -1644,11 +1691,13 @@ int main(int argc, char** argv) {
     }
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: detail texture complete");
+    bootColor(0xFF00FFFF);   // cyan: texture setup returned
 #endif
 
     for (int t = 0; t < NCARS; t++) { MB m; buildCar(t, m); carMesh[t].upload(m); }
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: car meshes complete");
+    bootColor(0xFF0000FF);   // blue: car meshes returned
 #endif
     { MB m; buildWheel(m); wheelMesh.upload(m); } { MB m; buildKey(m); keyMesh.upload(m); } buildShowdownMeshes();
     { MB m; V3 c(0.5f, 0.5f, 0.5f); m.box(0, 0, 1, 1, 0, -1, 1, c, 0, c, 0); boxMesh.upload(m); }
@@ -1658,6 +1707,9 @@ int main(int argc, char** argv) {
     startGame();
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: startGame complete");
+    bootColor(0xFF8000FF);   // purple: startGame returned
+    bootColor(0xFFFFFFFF);   // white: startup complete
+    const uint64_t bootLoopStart = plat::ticks();
 #endif
 
     if (shot) {
@@ -1708,7 +1760,14 @@ int main(int argc, char** argv) {
         }
         uint64_t now = plat::ticks(); float dt = clampf((now - last) / (float)plat::tickFreq(), 0.0005f, 0.05f); last = now;
         frameDt = dt; if (slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
-        update(dt); int fw, fh; plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display);
+        update(dt); int fw, fh;
+#ifdef FCF_GFX_XSDK
+        uint64_t bootElapsed = now - bootLoopStart, bootSecond = (uint64_t)plat::tickFreq();
+        if (bootElapsed < bootSecond * 5) bootColorFrame(((bootElapsed / bootSecond) & 1) ? 0xFF000000 : 0xFFFFFFFF);
+        else { plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display); }
+#else
+        plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display);
+#endif
 #ifdef FCF_GFX_XSDK
         static int bootFrames = 0;
         if (bootFrames < 3) xsdk_log_write("boot: frame %d complete", ++bootFrames);
