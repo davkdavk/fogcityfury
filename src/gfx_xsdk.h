@@ -8,6 +8,7 @@
 
 struct Prog;
 namespace gfx {
+static void applyDepth();
 namespace xs {
 struct TexObj {
     XsdkTexture tex = {};
@@ -168,6 +169,12 @@ static void setTarget(TargetObj& t, int w, int h) {
     uint32_t depthTile=xsdk_gpu_color_target_tiles((uint32_t)w,(uint32_t)h,fmt);
     xsdk_gpu_set_resolve_clears(true,true);
     xsdk_gpu_set_targets_samples((uint32_t)w,(uint32_t)h,t.color?std::max(1,textures[t.color].samples):1,&ct,1,depthTile);
+    gfx::applyDepth();
+}
+static void setScreenTarget(int w, int h) {
+    const uint32_t depthTiles=xsdk_gpu_target_tiles((uint32_t)w,(uint32_t)h);
+    xsdk_gpu_set_target_at((uint32_t)w,(uint32_t)h,depthTiles,0);
+    gfx::applyDepth();
 }
 static void resolveCurrent(uint32_t clearArgb=0xFF000000) {
     if(!dirty) return;
@@ -193,7 +200,7 @@ static void resolveCurrent(uint32_t clearArgb=0xFF000000) {
 static void selectTarget(Target t, int w, int h) {
     if(activeTarget!=t || activeW!=w || activeH!=h) resolveCurrent();
     activeTarget=t; activeW=w; activeH=h;
-    if(t==0) { screenW=w; screenH=h; xsdk_gpu_set_target((uint32_t)w,(uint32_t)h); }
+    if(t==0) { screenW=w; screenH=h; setScreenTarget(w,h); }
     else setTarget(targets[t],w,h);
 }
 } // namespace xs
@@ -296,7 +303,7 @@ static void use(Target t,int w,int h) {
         if(xs::activeTarget!=0) xs::resolveCurrent();
         xs::screenAddress=plat::currentFrameAddress(); xs::screenW=w; xs::screenH=h;
         xs::activeTarget=0; xs::activeW=w; xs::activeH=h;
-        if(xs::frameActive) xsdk_gpu_set_target((uint32_t)w,(uint32_t)h);
+        if(xs::frameActive) xs::setScreenTarget(w,h);
         return;
     }
     xs::selectTarget(t,w,h);
@@ -310,7 +317,7 @@ void beginFrame(int width,int height) {
     if(!arena.memory) arena.memory=xs::gpuAlloc(xs::STREAM_BYTES,xs::streamFrame?"stream-arena-1":"stream-arena-0");
     arena.cursor=0;
     for(auto& b:xs::buffers) { b.streamVertices=nullptr; b.streamBytes=0; }
-    xsdk_gpu_set_target((uint32_t)(xs::screenW>0?xs::screenW:width),(uint32_t)(xs::screenH>0?xs::screenH:height));
+    xs::setScreenTarget(xs::screenW>0?xs::screenW:width,xs::screenH>0?xs::screenH:height);
 }
 static void clear(bool color,bool depth) {
     auto& t=xs::targets[xs::activeTarget];

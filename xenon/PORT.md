@@ -39,7 +39,9 @@ files applied with `git am -3 <file>`.
 ## Current Xenia Verification
 - Pass-0 XEX reaches `boot: frame 3 complete` in Xenia without a crash. The user
   reports the screen is cyan/black; title text is absent, cars are thin slivers,
-  city fronts collapse into a diagonal strip, and ground is a flat red plane.
+  city fronts collapse into a diagonal strip, and ground looks red. The user
+  confirms that red surface was not water; the RGH sky-only build shows the sky
+  and brown below-horizon colour.
 - XSDK source inspection: `gpu_draw.c:595` encodes `size_bytes / 4` (dwords)
   shifted by 2. Xenos' fetch constant size is 24 bits (`xe_gpu_vertex_fetch_t`),
   so its field limit is 16,777,215 dwords, not 65,535. The game nevertheless
@@ -100,13 +102,21 @@ files applied with `git am -3 <file>`.
   resolves, records a fence, then `plat::endFrame` calls `xsdk_present_end` and
   waits on that fence. `samples/triangle/main.c` and `samples/cube/main.c` both
   set a target, draw, resolve, then end presentation.
-- `docs/GUIDE.md` says `xsdk_gpu_set_target` sets the colour target and its
-  depth allocation, but does not enable the depth test. `samples/cube/main.c`
-  explicitly calls `xsdk_gpu_set_depth_stencil` after `xsdk_gpu_set_target`.
-  The game's normal sky path toggles depth off and back on; the isolated masks
-  do not add a separate depth-state fix, per the test constraint. In particular,
-  car-only and terrain/props-only may not have the same depth state as the full
-  scene; report that alongside each console result.
+- `docs/GUIDE.md` says `xsdk_gpu_set_target` sets a colour target and a depth
+  surface in eDRAM, but resets the depth test. `samples/cube/main.c` explicitly
+  calls `xsdk_gpu_set_depth_stencil` after setting its target. The first mask-6
+  run skipped the sky path that normally turned depth testing back on; its
+  see-through buildings were consistent with depth testing being off.
+- Step 1 now sets the screen target explicitly with
+  `xsdk_gpu_set_target_at(w,h,color_tiles,0)`: the depth surface occupies tile
+  0 and the colour surface starts after it. The backend reapplies its cached
+  depth/stencil state after every target setup. `gfx::clear` sets depth clear
+  to far (`1.0`) and enables colour/depth resolve clears. xsdk's whole-target
+  resolve establishes Hi-Z automatically when `xsdk_gpu_hiz_fits` accepts the
+  surface; the title does not call a private Hi-Z helper.
+- The depth-fix build is at `xenon/build/game/draw_mask_6.xex`. Desktop tests
+  pass, but the RGH result for this build is pending; check building opacity,
+  frame rate and fence completion before starting the next isolation step.
 - `gfx::drawFull` issues `xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST, 3)` without
   a vertex stream. xsdk implements that as an auto-indexed draw (`AUTO_INDEX` in
   `src/gpu_draw.c`); `samples/triangle` and `samples/cube` both use vertex
@@ -124,21 +134,20 @@ files applied with `git am -3 <file>`.
   `xsdk_gpu_open` resolves whatever was already in eDRAM; a resolve then clears
   eDRAM for the next frame. Startup's colour-only diagnostic frames run before
   the first game frame.
-- RGH logs in `xenon/build/game/` show clean first-frame fences for masks 0
-  (clear only, fence 551), 1 (sky, fence 550), 6 (terrain+props, fence 551),
-  and 144 (single car, fence 550). Their runtime status lines continue to show
-  `present_begin=0` and `fence_complete=1`; mask 1 exits with status 0.
-- Mask 95 queues sky, terrain+props, cars, wreckage+pickups, water and UI, then
-  its first fence 551 times out with `0xC00000B5`; subsequent begin/fence calls
-  also time out. The queued markers are CPU-side and do not identify which GPU
-  draw stalled. There is no `draw_mask_64.log` in the workspace, so the UI-only
-  test is not yet accounted for. The logs alone cannot establish whether a
-  passing frame displayed the expected picture.
-- These results rule out the clear, sky, terrain+props and single-car groups as
-  standalone causes of the fence hang. Mask 95 additionally includes UI,
-  water, wreckage/pickups and interactions between groups; those remain
-  unresolved. Do not alter rendering behavior beyond draw-mask gating until
-  the missing UI result and visual reports arrive.
+- Logs from the `64dda31` diagnostic build showed clean first-frame fences for
+  masks 0, 1, 6 and 144. The user's visual report: clear-only 60 fps; sky-only
+  displays correctly at 20 fps; car-only displays at 60 fps; terrain+props
+  displays with see-through buildings at 6-9 fps. The old mask-6 fence success
+  does not verify the new depth-fix build.
+- In that build, mask 95 queued sky, terrain+props, cars, wreckage+pickups,
+  water and UI, then its first fence timed out with `0xC00000B5`. The latest
+  user report confirms the full combination still hangs on frame 1. Queued
+  markers are CPU-side and do not identify which GPU draw stalled. No
+  `draw_mask_64.log` is present, so UI-only remains unverified.
+- After mask 6 is verified with the depth fix, build isolated masks for UI,
+  water, wreckage+pickups, all cars, and sky+terrain+props+cars to continue
+  finding the full-scene hang. Do not start the culling/performance step until
+  those hang tests are complete.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell
