@@ -22,7 +22,7 @@ struct BufObj {
     volatile uint32_t* vertices = nullptr;
     volatile uint32_t* streamVertices = nullptr;
     volatile uint32_t* indices = nullptr;
-    uint32_t vertexBytes = 0, indexCount = 0;
+    uint32_t vertexBytes = 0, streamBytes = 0, indexCount = 0;
 };
 struct StreamArena { volatile uint32_t* memory=nullptr; uint32_t cursor=0; uint32_t fence=0; };
 struct TargetObj { Tex color = 0; int face = -1; Tex depth = 0; };
@@ -262,6 +262,7 @@ void beginFrame(int width,int height) {
     if(arena.fence) xsdk_gpu_wait(arena.fence,1000);
     if(!arena.memory) arena.memory=xsdk_gpu_alloc(xs::STREAM_BYTES);
     arena.cursor=0;
+    for(auto& b:xs::buffers) { b.streamVertices=nullptr; b.streamBytes=0; }
     xsdk_gpu_set_target((uint32_t)(xs::screenW>0?xs::screenW:width),(uint32_t)(xs::screenH>0?xs::screenH:height));
 }
 static void clear(bool color,bool depth) {
@@ -297,15 +298,22 @@ static void buffer(Buf& b,Layout l) {
     if(!b){ b=(Buf)xs::buffers.size(); xs::buffers.push_back({}); }
     xs::buffers[b].layout=l;
 }
-static void data(Buf b,const void* p,size_t bytes,bool) {
-    auto& o=xs::buffers[b]; auto& arena=xs::stream[xs::streamFrame]; uint32_t need=(uint32_t)((bytes+3)&~(size_t)3);
-    if(!arena.memory || arena.cursor>xs::STREAM_BYTES || need>xs::STREAM_BYTES-arena.cursor){ o.streamVertices=nullptr; o.vertexBytes=0; return; }
-    o.streamVertices=arena.memory+arena.cursor/4; o.vertexBytes=need; copyToGpu(o.streamVertices,p,bytes);
-    xsdk_gpu_invalidate(xsdk_gpu_address(o.streamVertices),need); arena.cursor+=need;
+static void data(Buf b,const void* p,size_t bytes,bool streamData) {
+    auto& o=xs::buffers[b]; uint32_t need=(uint32_t)((bytes+3)&~(size_t)3);
+    o.streamVertices=nullptr; o.streamBytes=0;
+    if(streamData) {
+        auto& arena=xs::stream[xs::streamFrame];
+        if(!arena.memory || arena.cursor>xs::STREAM_BYTES || need>xs::STREAM_BYTES-arena.cursor) return;
+        o.streamVertices=arena.memory+arena.cursor/4; o.streamBytes=need; copyToGpu(o.streamVertices,p,bytes);
+        xsdk_gpu_invalidate(xsdk_gpu_address(o.streamVertices),need); arena.cursor+=need;
+    } else {
+        if(need>o.vertexBytes){ if(o.vertices) xsdk_gpu_free(o.vertices); o.vertices=xsdk_gpu_alloc(need); o.vertexBytes=need; }
+        if(!o.vertices) return; copyToGpu(o.vertices,p,bytes); xsdk_gpu_invalidate(xsdk_gpu_address(o.vertices),o.vertexBytes);
+    }
 }
 static void draw(Buf b,int first,int n) {
-    if(n<=0)return; auto& o=xs::buffers[b]; if(!o.streamVertices)return; uint32_t stride=o.layout==L_MESH?48:o.layout==L_PART?44:32;
-    uint32_t skip=(uint32_t)first*stride; xsdk_gpu_set_vertices(0,xsdk_gpu_address(o.streamVertices)+skip,o.vertexBytes-skip); gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,(uint32_t)n);
+    if(n<=0)return; auto& o=xs::buffers[b]; volatile uint32_t* vertices=o.streamVertices?o.streamVertices:o.vertices; uint32_t bytes=o.streamVertices?o.streamBytes:o.vertexBytes; if(!vertices)return; uint32_t stride=o.layout==L_MESH?48:o.layout==L_PART?44:32;
+    uint32_t skip=(uint32_t)first*stride; if(skip>=bytes)return; xsdk_gpu_set_vertices(0,xsdk_gpu_address(vertices)+skip,bytes-skip); gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,(uint32_t)n);
 }
 static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
     if(!b){ b=(Buf)xs::buffers.size(); xs::buffers.push_back({}); }

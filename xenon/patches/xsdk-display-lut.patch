@@ -1,0 +1,9 @@
+diff --git a/src/display.c b/src/display.c
+index 2c81e3f..1face2a 100644
+--- a/src/display.c
++++ b/src/display.c
+@@ -223,2 +223,2 @@ NTSTATUS xsdk_display_open(XsdkDisplayMode mode, uint32_t *width, uint32_t *height)
+-		xsdk_log_write("display: the LUT autofill didn't finish: 0x%08X", (unsigned)status);
+-		return status;
++		// Xenia doesn't emulate the display LUT autofill register; its presenter can still show frames.
++		xsdk_log_write("display: LUT autofill unavailable (0x%08X), continuing with the existing LUT", (unsigned)status);

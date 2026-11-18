@@ -4,7 +4,7 @@
 #   XSDK=/path/to/xsdk bash xenon/build_shaders.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(dirname "$HERE")"
-XSDK="${XSDK:-/tmp/xsdk}"
+XSDK="${XSDK:-$HOME/xsdk}"
 XSC="$XSDK/xenos-toolchain"
 GEN="$HERE/build/gen"
 [ -d "$XSC" ] || { echo "xsdk not found at $XSC (set XSDK)"; exit 1; }
