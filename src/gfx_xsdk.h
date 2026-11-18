@@ -236,7 +236,7 @@ static void flushProgram(){
     if(!p->fc.empty()) xsdk_gpu_set_pixel_constants(0,p->fc.data(),(uint32_t)(p->fc.size()/4));
     for(uint32_t i=0;i<p->meta->nsamplers;i++) {
         const auto& s=p->meta->samplers[i]; gfx::Tex t=s.unit<gfx::xs::bound.size()?gfx::xs::bound[s.unit]:0;
-        if(t) xsdk_gpu_set_texture(s.unit,&gfx::xs::textures[t].tex,&gfx::xs::samplerStates[t]);
+        if(t) xsdk_gpu_set_texture(s.slot,&gfx::xs::textures[t].tex,&gfx::xs::samplerStates[t]);
     }
 }
 
@@ -436,6 +436,7 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
     for(uint32_t i=0;i<fcf_program_count;i++) if(!strcmp(name,fcf_programs[i].name)){p.meta=&fcf_programs[i];break;}
     if(!p.meta) return p;
     if(!NT_SUCCESS(xsdk_shader_load(&p.vs,p.meta->vs,p.meta->vsBytes)) || !NT_SUCCESS(xsdk_shader_load(&p.fs,p.meta->fs,p.meta->fsBytes))) return Prog();
+    for(uint32_t i=0;i<p.meta->nsamplers;i++) xsdk_log_write("gfx: %s sampler %s unit=%u slot=%u",name,p.meta->samplers[i].name,(unsigned)p.meta->samplers[i].unit,(unsigned)p.meta->samplers[i].slot);
     static const XsdkVertexElement M[]={
         {.usage=XSDK_USAGE_POSITION,.usage_index=0,.format=XSDK_VERTEX_FLOAT3,.offset_bytes=0},
         {.usage=XSDK_USAGE_COLOR,.usage_index=0,.format=XSDK_VERTEX_FLOAT3,.offset_bytes=12},

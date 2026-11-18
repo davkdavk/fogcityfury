@@ -59,12 +59,12 @@ def uniforms_to_block(t):
         uniforms.append({'name':n, 'type':typ, 'offset':offset, 'size':size})
         offset += size
     if members: hdr += 'layout(binding=0) uniform Globals {\n' + '\n'.join(f'{typ} {n};' for typ,n in members) + '\n};\n'
-    for typ, n, unit in samplers: hdr += f'layout(binding={unit}) uniform {typ} {n};\n'
+    for slot, (typ, n, unit) in enumerate(samplers): hdr += f'layout(binding={slot}) uniform {typ} {n};\n'
     if hdr:
         lines = t.split('\n'); vi = next((i for i, l in enumerate(lines) if l.strip().startswith('#version')), None)
         if vi is not None: lines.insert(vi+1, hdr); t = '\n'.join(lines)
         else: t = '#version 450\n' + hdr + t
-    return t, uniforms, [{'name':n, 'type':typ, 'unit':unit} for typ,n,unit in samplers]
+    return t, uniforms, [{'name':n, 'type':typ, 'unit':unit, 'slot':slot} for slot,(typ,n,unit) in enumerate(samplers)]
 
 def version(t): return t.replace('#version 330 core', '#version 450').replace('gl_VertexID', 'gl_VertexIndex')
 def ocol_loc(t): return t.replace('out vec4 oCol;', 'layout(location=0) out vec4 oCol;')
