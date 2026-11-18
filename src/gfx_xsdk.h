@@ -263,6 +263,7 @@ static void clear(bool color,bool depth) {
     }
     if(depth && t.depth && xs::textures[t.depth].fmt==DEPTH24) xsdk_gpu_resolve_depth_texture(&xs::textures[t.depth].tex);
     xs::dirty=false;
+    if(xs::activeTarget) xs::setTarget(t,xs::activeW,xs::activeH);
 }
 static void resolve(Target from,Target to,int w,int h) {
     if(xs::activeTarget!=from || to>=xs::targets.size() || !xs::targets[to].color) return;
@@ -275,7 +276,7 @@ static void resolve(Target from,Target to,int w,int h) {
         face.address=destination.address+(uint32_t)source.face*face.size_bytes; face.size_bytes=face.size_bytes; face.tiled=true;
         xsdk_gpu_resolve_target(0,&face,c);
     } else xsdk_gpu_resolve_target(0,&destination,c);
-    xs::dirty=false; (void)w; (void)h;
+    xs::dirty=false; xs::setTarget(source,xs::activeW,xs::activeH); (void)w; (void)h;
 }
 
 static void copyToGpu(volatile uint32_t* dst,const void* src,size_t bytes) {
