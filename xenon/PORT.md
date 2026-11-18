@@ -124,10 +124,21 @@ files applied with `git am -3 <file>`.
   `xsdk_gpu_open` resolves whatever was already in eDRAM; a resolve then clears
   eDRAM for the next frame. Startup's colour-only diagnostic frames run before
   the first game frame.
-- The RGH user will run all six XEXes and report which draw groups produce a
-  picture, go black or hang, with the corresponding queued-group and fence log.
-  Do not alter rendering behavior beyond draw-mask gating until those results
-  arrive.
+- RGH logs in `xenon/build/game/` show clean first-frame fences for masks 0
+  (clear only, fence 551), 1 (sky, fence 550), 6 (terrain+props, fence 551),
+  and 144 (single car, fence 550). Their runtime status lines continue to show
+  `present_begin=0` and `fence_complete=1`; mask 1 exits with status 0.
+- Mask 95 queues sky, terrain+props, cars, wreckage+pickups, water and UI, then
+  its first fence 551 times out with `0xC00000B5`; subsequent begin/fence calls
+  also time out. The queued markers are CPU-side and do not identify which GPU
+  draw stalled. There is no `draw_mask_64.log` in the workspace, so the UI-only
+  test is not yet accounted for. The logs alone cannot establish whether a
+  passing frame displayed the expected picture.
+- These results rule out the clear, sky, terrain+props and single-car groups as
+  standalone causes of the fence hang. Mask 95 additionally includes UI,
+  water, wreckage/pickups and interactions between groups; those remain
+  unresolved. Do not alter rendering behavior beyond draw-mask gating until
+  the missing UI result and visual reports arrive.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell
