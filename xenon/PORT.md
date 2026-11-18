@@ -114,6 +114,10 @@ files applied with `git am -3 <file>`.
   to far (`1.0`) and enables colour/depth resolve clears. xsdk's whole-target
   resolve establishes Hi-Z automatically when `xsdk_gpu_hiz_fits` accepts the
   surface; the title does not call a private Hi-Z helper.
+- Every target setup after a mid-frame resolve now also calls `Prog::use` for
+  the active program and flushes its current uniform groups and sampler slots.
+  This restores shader state and texture slot 0, which xsdk's resolve leaves
+  unset, before the next draw in pass levels 1-3.
 - The depth-fix build is at `xenon/build/game/draw_mask_6.xex`. Desktop tests
   pass, but the RGH result for this build is pending; check building opacity,
   frame rate and fence completion before starting the next isolation step.
@@ -136,9 +140,10 @@ files applied with `git am -3 <file>`.
   the first game frame.
 - Logs from the `64dda31` diagnostic build showed clean first-frame fences for
   masks 0, 1, 6 and 144. The user's visual report: clear-only 60 fps; sky-only
-  displays correctly at 20 fps; car-only displays at 60 fps; terrain+props
-  displays with see-through buildings at 6-9 fps. The old mask-6 fence success
-  does not verify the new depth-fix build.
+  displays correctly at 20 fps (about 50 ms/frame); car-only displays at 60
+  fps; terrain+props displays with see-through buildings at 6-9 fps. The old
+  mask-6 fence success does not verify the new depth-fix build. Frustum and
+  back-face culling remain for step 3 and have not been changed.
 - In that build, mask 95 queued sky, terrain+props, cars, wreckage+pickups,
   water and UI, then its first fence timed out with `0xC00000B5`. The latest
   user report confirms the full combination still hangs on frame 1. Queued

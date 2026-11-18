@@ -9,6 +9,7 @@
 struct Prog;
 namespace gfx {
 static void applyDepth();
+static void restoreProgram();
 namespace xs {
 struct TexObj {
     XsdkTexture tex = {};
@@ -170,11 +171,13 @@ static void setTarget(TargetObj& t, int w, int h) {
     xsdk_gpu_set_resolve_clears(true,true);
     xsdk_gpu_set_targets_samples((uint32_t)w,(uint32_t)h,t.color?std::max(1,textures[t.color].samples):1,&ct,1,depthTile);
     gfx::applyDepth();
+    gfx::restoreProgram();
 }
 static void setScreenTarget(int w, int h) {
     const uint32_t depthTiles=xsdk_gpu_target_tiles((uint32_t)w,(uint32_t)h);
     xsdk_gpu_set_target_at((uint32_t)w,(uint32_t)h,depthTiles,0);
     gfx::applyDepth();
+    gfx::restoreProgram();
 }
 static void resolveCurrent(uint32_t clearArgb=0xFF000000) {
     if(!dirty) return;
@@ -258,6 +261,9 @@ static void flushProgram(){
         const auto& s=p->meta->samplers[i]; gfx::Tex t=s.unit<gfx::xs::bound.size()?gfx::xs::bound[s.unit]:0;
         if(t) xsdk_gpu_set_texture(s.slot,&gfx::xs::textures[t].tex,&gfx::xs::samplerStates[t]);
     }
+}
+static void restoreProgram() {
+    if(gfx::xs::activeProgram) { gfx::xs::activeProgram->use(); flushProgram(); }
 }
 
 static void init() { xsdk_gpu_set_depth_clear(1.0f,0); }
