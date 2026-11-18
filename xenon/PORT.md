@@ -50,15 +50,25 @@ files applied with `git am -3 <file>`.
   allocations, overlaps, or 512 MiB-budget warnings appeared. XSDK itself has
   no fixed GPU sub-pool: `xsdk_gpu_alloc` page-rounds and calls
   `MmAllocatePhysicalMemoryEx` over the physical address range.
+- Vertex layout fields in xsdk are ordered `usage, usage_index, format,
+  stream, offset_bytes, components, per_instance`; the port now uses designated
+  initializers and logs the `world` layout. Xenia reports stride 48 and
+  POSITION/FLOAT3/0, COLOR/FLOAT3/12, TEXCOORD0/FLOAT3/24,
+  TEXCOORD1/FLOAT2/36, TEXCOORD2/FLOAT1/44. This matches the struct and fcfcar.
+- The XEX rebuilt with that layout log at 2026-11-18 23:00:53 and reached
+  frames 1-3 in Xenia. Xenia's console log still reports unknown writes to
+  0x183B/0x0A10, but no guest assert or crash appeared.
+- The conservative 262,140-byte fetch cap has been built and run in Xenia; it
+  reaches frame 3. The user reports it did not change the corruption.
 - `xenon/build/game/fogcityfury_objects.xex` cycles terrain, props, water, and
-  cars every three seconds; its log says which is active. It is the next visual
-  diagnostic. Pass 0 draws UI after the direct scene path, and sampler units
-  are rebound immediately before each draw, but title text still needs visual
-  confirmation.
-- `xenon/build/game/xenia-objects.log` and `xenia-objects-console.log` contain
-  the Xenia run. Xenia reports unknown writes to registers 0x183B and 0x0A10;
-  startup reaches frame 3. Pixel screenshots must come from the user's Xenia
-  window (this environment cannot capture its Vulkan surface).
+  cars every three seconds; its log says which is active. Pass 0 draws UI after
+  the direct scene path, and sampler units are rebound before each draw, but
+  title text still needs visual confirmation.
+- `xenon/build/game/xenia-objects-final.log` and
+  `xenia-objects-final-console.log` contain the latest object-test run. Modes
+  0 terrain, 1 props, 2 water, and 3 cars all logged repeatedly. Startup reaches
+  frame 3. Pixel screenshots must come from the user's Xenia window (this
+  environment cannot capture its Vulkan surface).
 - The LUT workaround is reproducible: `build_game.sh` applies the patch under
   `xenon/patches/` to `~/xsdk`; Xenia does not emulate display register 0x1928.
 - XEX path: `xenon/build/game/fogcityfury.xex`.

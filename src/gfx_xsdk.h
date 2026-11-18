@@ -436,11 +436,29 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
     for(uint32_t i=0;i<fcf_program_count;i++) if(!strcmp(name,fcf_programs[i].name)){p.meta=&fcf_programs[i];break;}
     if(!p.meta) return p;
     if(!NT_SUCCESS(xsdk_shader_load(&p.vs,p.meta->vs,p.meta->vsBytes)) || !NT_SUCCESS(xsdk_shader_load(&p.fs,p.meta->fs,p.meta->fsBytes))) return Prog();
-    static const XsdkVertexElement M[]={{XSDK_USAGE_POSITION,0,XSDK_VERTEX_FLOAT3,0,0,{0,1,2,3},false},{XSDK_USAGE_COLOR,0,XSDK_VERTEX_FLOAT3,0,12,{0,1,2,3},false},{XSDK_USAGE_TEXCOORD,0,XSDK_VERTEX_FLOAT3,0,24,{0,1,2,3},false},{XSDK_USAGE_TEXCOORD,1,XSDK_VERTEX_FLOAT2,0,36,{0,1,2,3},false},{XSDK_USAGE_TEXCOORD,2,XSDK_VERTEX_FLOAT1,0,44,{0,1,2,3},false}};
-    static const XsdkVertexElement P[]={{XSDK_USAGE_POSITION,0,XSDK_VERTEX_FLOAT3,0,0,{0,1,2,3},false},{XSDK_USAGE_COLOR,0,XSDK_VERTEX_FLOAT2,0,12,{0,1,2,3},false},{XSDK_USAGE_TEXCOORD,0,XSDK_VERTEX_FLOAT4,0,20,{0,1,2,3},false},{XSDK_USAGE_TEXCOORD,1,XSDK_VERTEX_FLOAT2,0,36,{0,1,2,3},false}};
-    static const XsdkVertexElement U[]={{XSDK_USAGE_POSITION,0,XSDK_VERTEX_FLOAT2,0,0,{0,1,2,3},false},{XSDK_USAGE_COLOR,0,XSDK_VERTEX_FLOAT2,0,8,{0,1,2,3},false},{XSDK_USAGE_TEXCOORD,0,XSDK_VERTEX_FLOAT4,0,16,{0,1,2,3},false}};
+    static const XsdkVertexElement M[]={
+        {.usage=XSDK_USAGE_POSITION,.usage_index=0,.format=XSDK_VERTEX_FLOAT3,.offset_bytes=0},
+        {.usage=XSDK_USAGE_COLOR,.usage_index=0,.format=XSDK_VERTEX_FLOAT3,.offset_bytes=12},
+        {.usage=XSDK_USAGE_TEXCOORD,.usage_index=0,.format=XSDK_VERTEX_FLOAT3,.offset_bytes=24},
+        {.usage=XSDK_USAGE_TEXCOORD,.usage_index=1,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=36},
+        {.usage=XSDK_USAGE_TEXCOORD,.usage_index=2,.format=XSDK_VERTEX_FLOAT1,.offset_bytes=44}};
+    static const XsdkVertexElement P[]={
+        {.usage=XSDK_USAGE_POSITION,.usage_index=0,.format=XSDK_VERTEX_FLOAT3,.offset_bytes=0},
+        {.usage=XSDK_USAGE_COLOR,.usage_index=0,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=12},
+        {.usage=XSDK_USAGE_TEXCOORD,.usage_index=0,.format=XSDK_VERTEX_FLOAT4,.offset_bytes=20},
+        {.usage=XSDK_USAGE_TEXCOORD,.usage_index=1,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=36}};
+    static const XsdkVertexElement U[]={
+        {.usage=XSDK_USAGE_POSITION,.usage_index=0,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=0},
+        {.usage=XSDK_USAGE_COLOR,.usage_index=0,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=8},
+        {.usage=XSDK_USAGE_TEXCOORD,.usage_index=0,.format=XSDK_VERTEX_FLOAT4,.offset_bytes=16}};
     static const uint32_t meshStride[]={48}, partStride[]={44}, uiStride[]={32};
-    if(!strcmp(name,"world")||!strcmp(name,"car")||!strcmp(name,"water")||!strcmp(name,"depth")) xsdk_shader_set_vertex_layout(&p.vs,M,5,meshStride);
+    if(!strcmp(name,"world")||!strcmp(name,"car")||!strcmp(name,"water")||!strcmp(name,"depth")) {
+        if(!strcmp(name,"world")) {
+            xsdk_log_write("gfx: %s vertex stride=%u elements=%u",name,(unsigned)meshStride[0],(unsigned)(sizeof M/sizeof M[0]));
+            for(uint32_t i=0;i<sizeof M/sizeof M[0];i++) xsdk_log_write("gfx: %s element %u usage=%u index=%u format=%u offset=%u",name,(unsigned)i,(unsigned)M[i].usage,(unsigned)M[i].usage_index,(unsigned)M[i].format,(unsigned)M[i].offset_bytes);
+        }
+        xsdk_shader_set_vertex_layout(&p.vs,M,5,meshStride);
+    }
     else if(!strcmp(name,"part")||!strcmp(name,"mark")||!strcmp(name,"ring")) xsdk_shader_set_vertex_layout(&p.vs,P,4,partStride);
     else if(!strcmp(name,"ui")) xsdk_shader_set_vertex_layout(&p.vs,U,3,uiStride);
     uint32_t vr=0,fr=0;
