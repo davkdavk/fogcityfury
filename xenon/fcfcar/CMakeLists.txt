@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.25)
+project(fcfcar C)
+add_executable(fcfcar main.c)
+set_target_properties(fcfcar PROPERTIES C_STANDARD 17 C_EXTENSIONS ON)
+target_compile_options(fcfcar PRIVATE -Wall -Wextra -Wno-unused-parameter)
+xsdk_add_shaders(fcfcar car.vert car.frag)
+xsdk_add_xex(fcfcar)
