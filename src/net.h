@@ -223,15 +223,34 @@ inline void turnPacket(uint8_t* p, int len) {
 }
 #undef FCF_AT
 inline void sendTo(int s, const sockaddr_in& to, const void* data, int len) {
+#ifdef FCF_GFX_XSDK
+    uint8_t type = len > (int)offsetof(Header, type) ? ((const uint8_t*)data)[offsetof(Header, type)] : 0;
+#endif
+    int sent;
     if (BIG_ENDIAN_HOST) {
-        uint8_t wire[2048]; if (len < 0 || len > (int)sizeof wire) return;
+        uint8_t wire[2048]; if (len < 0 || len > (int)sizeof wire) {
+#ifdef FCF_GFX_XSDK
+            xsdk_log_write("net: send type=%u len=%d result=-1 errno=%d", (unsigned)type, len, EMSGSIZE);
+#endif
+            return;
+        }
         memcpy(wire, data, (size_t)len); turnPacket(wire, len);
-        sendto(s, (const char*)wire, len, 0, (const sockaddr*)&to, sizeof to); return;
-    }
-    sendto(s, (const char*)data, len, 0, (const sockaddr*)&to, sizeof to);
+        sent = (int)sendto(s, (const char*)wire, len, 0, (const sockaddr*)&to, sizeof to);
+    } else sent = (int)sendto(s, (const char*)data, len, 0, (const sockaddr*)&to, sizeof to);
+#ifdef FCF_GFX_XSDK
+    xsdk_log_write("net: send type=%u len=%d result=%d errno=%d", (unsigned)type, len, sent, sent < 0 ? errno : 0);
+#else
+    (void)sent;
+#endif
 }
 inline int recvFrom(int s, void* buf, int cap, sockaddr_in& from) {
     socklen_t fl = sizeof from; int n = (int)recvfrom(s, (char*)buf, cap, 0, (sockaddr*)&from, &fl);
+#ifdef FCF_GFX_XSDK
+    if (n > 0) {
+        uint8_t type = n > (int)offsetof(Header, type) ? ((uint8_t*)buf)[offsetof(Header, type)] : 0;
+        xsdk_log_write("net: recv type=%u len=%d", (unsigned)type, n);
+    } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) xsdk_log_write("net: recvfrom error errno=%d", errno);
+#endif
     if (BIG_ENDIAN_HOST && n > 0) turnPacket((uint8_t*)buf, n);
     return n;
 }

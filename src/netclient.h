@@ -37,6 +37,11 @@ static int netRacers() { int c = nc.racing ? 1 : 0; for (auto& r : nc.r) if (r.p
 
 // receive, send, and move the remote cars. Game-level reactions to phase changes are in netReact() in game.cpp.
 static void netPump(float dt, bool inLobby) {
+#ifdef FCF_GFX_XSDK
+    static double nextAlive = 0;
+    double now = plat::nowSec();
+    if (nc.on && now >= nextAlive) { xsdk_log_write("net loop alive"); nextAlive = now + 1.0; }
+#endif
     if (!nc.on) return;
     uint8_t buf[2048]; sockaddr_in from;
     for (int guard = 0; guard < 200; guard++) {
@@ -67,11 +72,21 @@ static void netPump(float dt, bool inLobby) {
     nc.sinceRecv += dt; nc.sinceSend += dt;
     if (!nc.connected) {
         nc.sinceJoin += dt; nc.connectT += dt;
-        if (nc.connectT > 6) { netClose("NO RESPONSE FROM SERVER"); return; }
+        if (nc.connectT > 6) {
+#ifdef FCF_GFX_XSDK
+            xsdk_log_write("net: join timeout host=%s after %.1f seconds", nc.host, nc.connectT);
+#endif
+            netClose("NO RESPONSE FROM SERVER"); return;
+        }
         if (nc.sinceJoin > 0.4f) { nc.sinceJoin = 0; net::Join j; memset(&j, 0, sizeof j); j.h = net::header(net::C_JOIN, 0xFF); memcpy(j.name, nc.name, std::min(strlen(nc.name), (size_t)net::NAMELEN)); j.car = (uint8_t)player.type; j.paint = (uint8_t)player.paint; net::sendTo(nc.sock, nc.addr, &j, sizeof j); }
         return;
     }
-    if (nc.sinceRecv > 6) { netClose("CONNECTION LOST"); return; }
+    if (nc.sinceRecv > 6) {
+#ifdef FCF_GFX_XSDK
+        xsdk_log_write("net: receive timeout host=%s after %.1f seconds", nc.host, nc.sinceRecv);
+#endif
+        netClose("CONNECTION LOST"); return;
+    }
     if (nc.sinceSend >= 1 / 30.f) {
         nc.sinceSend = 0; net::State st; memset(&st, 0, sizeof st); st.h = net::header(net::C_STATE, (uint8_t)nc.id); st.seq = ++nc.seq; net::CarState& s = st.s;
         s.x = player.pos.x; s.y = player.pos.y; s.z = player.pos.z; s.vx = player.vel.x; s.vy = player.vel.y; s.vz = player.vel.z; s.yaw = player.yaw; s.pitch = player.pitch; s.roll = player.roll + player.lean; s.steer = player.steer;

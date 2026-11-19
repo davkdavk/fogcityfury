@@ -329,7 +329,9 @@ files applied with `git am -3 <file>`.
 - Xenos UDP networking uses the XSDK POSIX socket layer. `init()` starts XAM's
   network once and logs the link/console IPv4 address; sockets are non-blocking
   and closed with `close()`. XSDK `getaddrinfo` handles numeric IPv4 addresses
-  directly and hostnames through XAM DNS. LAN joining still needs RGH testing.
+  directly and hostnames through XAM DNS. Xenos logs resolved names, every
+  received packet's type/length, each send result, join/server timeouts, and
+  `net loop alive` once a second. LAN joining still needs RGH testing.
 - XEX artifacts are ignored by Git (`*.xex`); do not commit built console binaries.
 - Saves remain disabled/not implemented on the 360.
 - Real RGH 360 testing is in progress; wait for the user's visual result before

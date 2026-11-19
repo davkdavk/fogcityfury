@@ -189,7 +189,12 @@ static void srvPump(float dt) {
     if (qsock < 0) return; srvSkipText = false;
     for (auto& e : servers) {
         if (e.st == 0 && e.job) { int d = plat::atomicGet(e.job->done); if (d == 1) { e.addr = e.job->addr; srvAsk(e); } else if (d == 2) e.st = 4; }
-        if (e.waiting && plat::nowSec() - e.sent > 1.5) { e.waiting = false; e.st = 3; }
+        if (e.waiting && plat::nowSec() - e.sent > 1.5) {
+#ifdef FCF_GFX_XSDK
+            xsdk_log_write("net: server info timeout host=%s after 1500 ms", e.host.c_str());
+#endif
+            e.waiting = false; e.st = 3;
+        }
     }
     uint8_t buf[256]; sockaddr_in from;
     for (int guard = 0; guard < 64; guard++) {
