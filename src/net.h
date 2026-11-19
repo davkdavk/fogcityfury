@@ -54,6 +54,16 @@ struct CarState {                                                               
     uint8_t car, paint, flags, lap; uint16_t cp; float progress, finishT;                // progress: metres along the track incl. laps
     uint8_t hitId, hitSeq;                                                               // rockets: hitSeq goes up each time this player's rocket hits player hitId
 };
+#pragma pack(pop)
+// A car state from the network is used only if its numbers are sane: a garbled or hostile packet must not put
+// NaN or 1e30 into the game, where some loop (wrapPi, a lap count) could then never end.
+inline bool saneF(float v, float lim) { return v == v && v > -lim && v < lim; }
+inline bool sane(const CarState& s) {
+    const float P = 1e5f, V = 2000, A = 1e3f;
+    return saneF(s.x, P) && saneF(s.y, P) && saneF(s.z, P) && saneF(s.vx, V) && saneF(s.vy, V) && saneF(s.vz, V) && saneF(s.yaw, A) && saneF(s.pitch, A) &&
+           saneF(s.roll, A) && saneF(s.steer, A) && saneF(s.progress, 1e7f) && saneF(s.finishT, 1e7f);
+}
+#pragma pack(push, 1)
 struct Join { Header h; char name[NAMELEN]; uint8_t car, paint; };
 struct State { Header h; uint32_t seq; CarState s; };
 struct Welcome { Header h; uint8_t yourId, track, laps, phase, weather; };

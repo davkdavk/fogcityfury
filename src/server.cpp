@@ -139,6 +139,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         Welcome w; w.h = header(S_WELCOME, 0xFF); w.yourId = (uint8_t)who; w.track = (uint8_t)track; w.laps = (uint8_t)laps; w.phase = phase; w.weather = (uint8_t)weather; sendTo(sock, from, &w, sizeof w);
     } else if (h.type == C_STATE && len >= (int)sizeof(State) && who >= 0 && h.id == who) {
         State st; memcpy(&st, buf, sizeof st); Player& p = P[who]; p.lastHeard = t;
+        if (!sane(st.s)) return;   // garbled numbers: keep the last good state rather than pass them on
         if (st.seq < p.seq && p.seq - st.seq < 100000) return;   // out-of-order datagram
         p.seq = st.seq;
         const float* f = &st.s.x; for (int k = 0; k < 10; k++) if (!std::isfinite(f[k])) return;   // refuse NaN / inf positions

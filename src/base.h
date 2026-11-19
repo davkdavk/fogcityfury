@@ -32,7 +32,10 @@
 static inline float clampf(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
 static inline float lerpf(float a, float b, float t) { return a + (b - a) * t; }
 static inline float smooth(float a, float b, float x) { float t = clampf((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
-static inline float wrapPi(float a) { while (a > M_PI) a -= 2 * M_PI; while (a < -M_PI) a += 2 * M_PI; return a; }
+static inline float wrapPi(float a) {
+    if (!(fabsf(a) < 1000.0f)) return std::isfinite(a) ? remainderf(a, 6.28318531f) : 0.0f;   // a bad number must not spin the loops below forever
+    while (a > M_PI) a -= 2 * M_PI; while (a < -M_PI) a += 2 * M_PI; return a;
+}
 
 struct Rng { uint32_t s = 12345; float f() { s = s * 1664525u + 1013904223u; return (s >> 8) / 16777216.f; } float r(float a, float b) { return a + (b - a) * f(); } };
 static Rng grng;

@@ -53,6 +53,8 @@ static void netPump(float dt, bool inLobby) {
         else if (h.type == net::S_SNAPSHOT && n >= 20 && nc.connected) {
             net::Snapshot sn; memset(&sn, 0, sizeof sn); memcpy(&sn, buf, std::min(n, (int)sizeof sn));
             if (sn.count > net::MAXP || n < 20 + sn.count * (int)sizeof(net::PlayerSnap) || (nc.gotSnap && sn.tick < nc.lastTick && nc.lastTick - sn.tick < 100000)) continue;
+            { bool ok = net::saneF(sn.phaseT, 1e7f); for (int k = 0; k < sn.count && ok; k++) ok = net::sane(sn.p[k].s);
+              if (!ok) { static int bad = 0; if (bad++ < 5) { char m[96]; snprintf(m, sizeof m, "net: dropped a snapshot with bad numbers (tick %u, %d cars)", sn.tick, sn.count); plat::logLine(m); } continue; } }
             nc.lastTick = sn.tick; nc.gotSnap = true; nc.snap = sn; nc.phase = sn.phase; nc.track = sn.track % net::TRACKS; nc.laps = sn.laps; nc.weather = sn.weather % 4; nc.phaseT = sn.phaseT; nc.count = sn.count; nc.maxCount = std::max(nc.maxCount, (int)sn.count);
             bool seen[net::MAXP] = {};
             for (int k = 0; k < sn.count; k++) {
