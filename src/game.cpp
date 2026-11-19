@@ -1931,6 +1931,8 @@ int main(int argc, char** argv) {
     uint64_t last = plat::ticks();
 #ifdef FCF_GFX_XSDK
     uint64_t lastRuntimeLog = last;
+    uint64_t runtimeFrames = 0, runtimeSlowFrames = 0, runtimeUpdateTicks = 0, runtimeDrawTicks = 0;
+    bool runtimeLogging = false;
 #endif
     while (!quit) {
         static std::vector<plat::Event> evs;
@@ -1969,7 +1971,14 @@ int main(int argc, char** argv) {
         }
         uint64_t now = plat::ticks(); float dt = clampf((now - last) / (float)plat::tickFreq(), 0.0005f, 0.05f); last = now;
         frameDt = dt; if (slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
+#ifdef FCF_GFX_XSDK
+        uint64_t updateBegin = plat::ticks();
+#endif
         update(dt); int fw, fh;
+#ifdef FCF_GFX_XSDK
+        uint64_t updateTicks = plat::ticks() - updateBegin;
+        uint64_t drawBegin = plat::ticks();
+#endif
 #ifdef FCF_GFX_XSDK
         uint64_t bootElapsed = now - bootLoopStart, bootSecond = (uint64_t)plat::tickFreq();
         if (bootElapsed < bootSecond * 5) bootColorFrame(((bootElapsed / bootSecond) & 1) ? 0xFF000000 : 0xFFFFFFFF);
@@ -1978,13 +1987,26 @@ int main(int argc, char** argv) {
         plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display);
 #endif
 #ifdef FCF_GFX_XSDK
-        if (display.frameCount >= 3 && now - lastRuntimeLog >= (uint64_t)plat::tickFreq()) {
+        uint64_t drawTicks = plat::ticks() - drawBegin, frameDone = plat::ticks();
+        double tickFrequency = plat::tickFreq();
+        if (display.frameCount >= 3) {
+            if (!runtimeLogging) { runtimeLogging = true; lastRuntimeLog = frameDone; }
+            runtimeFrames++; runtimeUpdateTicks += updateTicks; runtimeDrawTicks += drawTicks;
+            if (frameDone - now > (uint64_t)(tickFrequency / 30.0)) runtimeSlowFrames++;
+        }
+        if (runtimeLogging && frameDone - lastRuntimeLog >= (uint64_t)tickFrequency) {
+            double elapsed = (frameDone - lastRuntimeLog) / tickFrequency;
+            uint64_t waitBegin = plat::ticks();
             NTSTATUS fence = gfx::waitLastFence(1000);
-            xsdk_log_write("runtime: frames=%u present_begin=0x%08X fence=%u wait_status=0x%08X fence_complete=%u",
-                (unsigned)display.frameCount,(unsigned)display.beginStatus,(unsigned)gfx::lastFenceValue(),
+            double gpuWaitMs = (plat::ticks() - waitBegin) * 1000.0 / tickFrequency;
+            xsdk_log_write("runtime: fps=%.1f frames=%u slow_frames=%u cpu_update=%.2fms draw_submit=%.2fms gpu_wait=%.2fms present_begin=0x%08X fence=%u wait_status=0x%08X fence_complete=%u",
+                runtimeFrames / elapsed,(unsigned)runtimeFrames,(unsigned)runtimeSlowFrames,
+                runtimeFrames ? runtimeUpdateTicks * 1000.0 / tickFrequency / runtimeFrames : 0.0,
+                runtimeFrames ? runtimeDrawTicks * 1000.0 / tickFrequency / runtimeFrames : 0.0,
+                gpuWaitMs,(unsigned)display.beginStatus,(unsigned)gfx::lastFenceValue(),
                 (unsigned)fence,(unsigned)NT_SUCCESS(fence));
             if (adev) { XsdkAudioStats a; xsdk_audio_stats(&a); xsdk_log_write("audio: played=%u silent=%u",(unsigned)a.played,(unsigned)a.silent); }
-            lastRuntimeLog = now;
+            lastRuntimeLog = plat::ticks(); runtimeFrames = runtimeSlowFrames = runtimeUpdateTicks = runtimeDrawTicks = 0;
         }
         static int bootFrames = 0;
         if (bootFrames < 3) xsdk_log_write("boot: frame %d complete", ++bootFrames);

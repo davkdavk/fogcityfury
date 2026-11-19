@@ -213,9 +213,13 @@ files applied with `git am -3 <file>`.
 - Comparison titles are disabled by default. CMake options
   `FCF_XSDK_LEAN_NOPREPASS`, `FCF_XSDK_LEAN_SKYFIRST`,
   `FCF_XSDK_LEAN_NOEFFECTS`, `FCF_XSDK_LEAN_DEPTHFILL`, and
-  `FCF_XSDK_LEAN_SKY_BEHIND` keep them available for later; `FCF_LEAN_DEBUG=mat`
-  separately enables `lean_debug.xex`. The no-effects mask is 343 (all default
-  bits except water and effects).
+  `FCF_XSDK_LEAN_SKY_BEHIND` keep them available for later; setting
+  `FCF_XSDK_LEAN_NOHIZ=ON` with `FCF_PERF_TEST=lean` additionally builds
+  `lean_nohiz.xex`, which drops Xenos Hi-Z after the screen target is set each
+  frame. `FCF_LEAN_DEBUG=mat` separately enables `lean_debug.xex`. The
+  no-effects mask is 343 (all default bits except water and effects). Lean
+  runtime logs report FPS, slow frames, average update/submission time, and the
+  once-per-second GPU fence-wait duration.
 - Material diagnostic: build with
   `FCF_PERF_TEST=lean FCF_LEAN_DEBUG=mat xenon/build_game.sh`. It writes to the
   separate `xenon/build/gen_lean_debug` and `xenon/build/perf_lean_debug` paths,

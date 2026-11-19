@@ -5,6 +5,9 @@
 #include "xsdk/texture.h"
 #include "gfx_shader_data.h"
 #include <array>
+#ifdef FCF_XENOS_NO_HIZ
+extern "C" void xsdk_gpu_hiz_drop(void);
+#endif
 
 struct Prog;
 namespace gfx {
@@ -324,6 +327,9 @@ void beginFrame(int width,int height) {
     arena.cursor=0;
     for(auto& b:xs::buffers) { b.streamVertices=nullptr; b.streamBytes=0; }
     xs::setScreenTarget(xs::screenW>0?xs::screenW:width,xs::screenH>0?xs::screenH:height);
+#ifdef FCF_XENOS_NO_HIZ
+    xsdk_gpu_hiz_drop();
+#endif
 }
 static void clear(bool color,bool depth) {
     auto& t=xs::targets[xs::activeTarget];
