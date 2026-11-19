@@ -74,6 +74,9 @@ static World W;
 static Car player, ai[NAI];
 static Mesh carMesh[NCARS], wheelMesh, keyMesh;
 static Prog pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
+#ifdef FCF_XENOS_LEAN
+static Prog pGround, pRoad, pWall, pMisc;   // the 360's own world shaders, one per kind of surface (xenon/lean_shaders.py)
+#endif
 static UI ui;
 static gfx::Target shadowFBO = 0, cubeFBO = 0; static gfx::Tex shadowTex = 0, cubeTex = 0, cubeDepth = 0; static gfx::Buf partBuf = 0;   // shadow map, reflection cube, particles (and anything else drawn as L_PART triangles)
 #ifdef FCF_GFX_XSDK  // keep each eDRAM pass within Xenos's 2048-tile memory
@@ -1011,12 +1014,23 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
 #else
     bool objectOnly=false;
 #endif
+    // behind: drawn after the terrain and props with the depth test on, so only the pixels nothing covered are shaded
+    // (the sky is at the far plane, where the depth buffer was cleared to). Otherwise first, over the whole screen.
+    auto drawSky = [&](bool behind) {
     if(!objectOnly && (DRAW_MASK & DM_SKY)) {
-    traceDraw("sky");
-    gfx::depthTest(false); setCommon(pSky, VP, cam, hdr);
+    traceDraw(behind ? "sky behind" : "sky");
+    if (behind) { gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(false); } else gfx::depthTest(false);
+    setCommon(pSky, VP, cam, hdr);
     pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); pSky.f2("uTan", 1 / P.m[0], 1 / P.m[5]);
-    gfx::drawFull(); gfx::depthTest(true);
+    gfx::drawFull(); gfx::depthTest(true); gfx::depthWrite(true);
     }
+    };
+#ifdef FCF_SKY_BEHIND
+    const bool skyBehind = mainPass;
+#else
+    const bool skyBehind = false;
+#endif
+    if (!skyBehind) drawSky(false);
     if(!objectOnly && (DRAW_MASK & (DM_TERRAIN|DM_PROPS))) {
         traceDraw("terrain+props");
 #ifdef FCF_GFX_XSDK
@@ -1027,9 +1041,18 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         if(DRAW_MASK & DM_PROPS) W.props.draw();
         gfx::colorWrite(true); gfx::depthTest(true); gfx::depthWrite(false);
         traceDraw("terrain+props world color");
+#ifdef FCF_XENOS_LEAN
+        // the terrain mesh is all one material and has its own program; "world" here is road + walls + the rest, picked by
+        // vMat, for the whole props mesh (pRoad, pWall, pMisc are for drawing it in per-material ranges)
+        setCommon(pGround, VP, cam, hdr);
+        if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
+        setCommon(pWorld, VP, cam, hdr);
+        if(DRAW_MASK & DM_PROPS) W.props.draw();
+#else
         setCommon(pWorld, VP, cam, hdr);
         if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
         if(DRAW_MASK & DM_PROPS) W.props.draw();
+#endif
         gfx::depthWrite(true);
 #else
         setCommon(pWorld, VP, cam, hdr);
@@ -1037,6 +1060,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         if(DRAW_MASK & DM_PROPS) W.props.draw();
 #endif
     }
+    if (skyBehind) drawSky(true);
 #ifdef FCF_XSDK_OBJECT_TEST
     if(objectOnly) {
         // One world component at a time, rotating every three seconds for Xenia screenshots.
@@ -1707,6 +1731,12 @@ int main(int argc, char** argv) {
     FCF_MAKE_PROG(pMark, "mark", VS_PART, FS_COMMON, FS_MARK);
     FCF_MAKE_PROG(pRing, "ring", VS_PART, FS_COMMON, FS_RING);
     FCF_MAKE_PROG(pPost, "post", VS_SKY, "", FS_POST);
+#ifdef FCF_XENOS_LEAN
+    FCF_MAKE_PROG(pGround, "ground", VS_MESH, FS_COMMON, FS_WORLD);
+    FCF_MAKE_PROG(pRoad, "road", VS_MESH, FS_COMMON, FS_WORLD);
+    FCF_MAKE_PROG(pWall, "wall", VS_MESH, FS_COMMON, FS_WORLD);
+    FCF_MAKE_PROG(pMisc, "misc", VS_MESH, FS_COMMON, FS_WORLD);
+#endif
 #undef FCF_MAKE_PROG
 #undef FCF_XSDK_PROG_LOG
 #ifdef FCF_GFX_XSDK
@@ -1740,8 +1770,20 @@ int main(int argc, char** argv) {
         { gfx::Sampler s; s.mips = true; s.repeat = true; gfx::tex2D(detailTex, gfx::RGB8, N, N, px.data(), s); } if (maxAF > 1) gfx::aniso(detailTex, std::max(1, vidAF)); gfx::bind(6, detailTex); gfx::bind(0, 0);
     }
 #ifdef FCF_PERF_NOISE
-    { std::vector<unsigned char> px(256 * 256 * 4); Rng nr; nr.s = 0x4E4F4953u;
+    { std::vector<unsigned char> px(256 * 256 * 4);
+#ifdef FCF_XENOS_LEAN
+      // r, g: two four-octave value noises that repeat across the texture (8 lattice cells wide at the coarsest, so
+      // texture(uNoise, p/8).r stands in for the shaders' fbm(p)); b: white noise; a: one smooth octave, 16 cells wide
+      auto lat = [](int x, int y, int period, uint32_t seed) { uint32_t h = (uint32_t)(x & (period - 1)) * 374761393u + (uint32_t)(y & (period - 1)) * 668265263u + seed * 2246822519u; h = (h ^ (h >> 13)) * 1274126177u; return (float)((h ^ (h >> 16)) & 0xFFFFu) / 65535.0f; };
+      auto vn = [&](float x, float y, int period, uint32_t seed) { int xi = (int)floorf(x), yi = (int)floorf(y); float fx = x - xi, fy = y - yi; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+          float a = lat(xi, yi, period, seed), b = lat(xi + 1, yi, period, seed), c = lat(xi, yi + 1, period, seed), d = lat(xi + 1, yi + 1, period, seed), top = a + (b - a) * fx, bot = c + (d - c) * fx; return top + (bot - top) * fy; };
+      for (int y = 0; y < 256; y++) for (int x = 0; x < 256; x++) { unsigned char* q = &px[(size_t)(y * 256 + x) * 4];
+          for (int ch = 0; ch < 2; ch++) { float sum = 0, amp = 0.5f; int cells = 8; for (int o = 0; o < 4; o++) { sum += amp * vn(x * cells / 256.0f, y * cells / 256.0f, cells, 17u + ch * 101u + o); amp *= 0.5f; cells *= 2; } q[ch] = (unsigned char)(clampf(sum / 0.9375f, 0, 1) * 255.0f); }
+          q[2] = (unsigned char)(lat(x, y, 256, 7u) * 255.0f); q[3] = (unsigned char)(vn(x / 16.0f, y / 16.0f, 16, 9u) * 255.0f); }
+#else
+      Rng nr; nr.s = 0x4E4F4953u;
       for (size_t i = 0; i < 256u * 256u; i++) { unsigned char v = (unsigned char)(nr.f() * 256.0f); px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = px[i * 4 + 3] = v; }
+#endif
       gfx::Sampler s; s.linear = true; s.repeat = true; gfx::tex2D(noiseTex, gfx::RGBA8, 256, 256, px.data(), s); gfx::bind(7, noiseTex); }
     xsdk_log_write("boot: perf noise texture complete");
 #endif

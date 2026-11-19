@@ -10,7 +10,7 @@ GEN="$HERE/build/gen"
 [ -d "$XSC" ] || { echo "xsdk not found at $XSC (set XSDK)"; exit 1; }
 python3 "$HERE/transform.py" "$GEN" || exit 1
 fail=0
-for p in world car water sky part depth ui mark ring post; do
+for p in $(cat "$GEN/programs.txt"); do
   for st in vert frag; do
     f="$GEN/$p.$st"
     if ! glslang -V "$f" -o "$f.spv" 2>"$f.glslang.log"; then
@@ -23,7 +23,7 @@ for p in world car water sky part depth ui mark ring post; do
     fi
   done
 done
-[ $fail -eq 0 ] && echo "ALL 20 STAGES COMPILED" || echo "SOME STAGES FAILED"
+[ $fail -eq 0 ] && echo "ALL STAGES COMPILED" || echo "SOME STAGES FAILED"
 [ $fail -eq 0 ] || exit $fail
 python3 "$HERE/pack_shaders.py" "$GEN" || exit 1
 exit $fail

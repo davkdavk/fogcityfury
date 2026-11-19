@@ -9,6 +9,7 @@ shadow(); world's texture fetches hoisted out of divergent material branches; po
 equality comparisons turned into float ones. The result is compiled by xenon/build_shaders.sh.
 """
 import re, os, sys, json
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))          # <repo>/xenon
 REPO = os.path.dirname(HERE)
@@ -17,7 +18,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, 'build', 'gen')
 WATER_TEST = int(os.environ.get('FCF_WATER_TEST', '0'))
 if WATER_TEST not in (0, 1, 2, 3): raise ValueError('FCF_WATER_TEST must be 0, 1, 2, or 3')
 PERF_TEST = os.environ.get('FCF_PERF_TEST', '0')
-if PERF_TEST not in ('0', 'flat', 'noise'): raise ValueError('FCF_PERF_TEST must be 0, flat, or noise')
+if PERF_TEST not in ('0', 'flat', 'noise', 'lean'): raise ValueError('FCF_PERF_TEST must be 0, flat, noise, or lean')
 s = open(SRC).read()
 sh = {m.group(1): m.group(2) for m in re.finditer(r'static const char\* (\w+) = R"\((.*?)\)";', s, re.S)}
 
@@ -137,6 +138,8 @@ void main(){
 SKY_FLAT = '''in vec2 vNdc; uniform vec3 uCamR, uCamU, uCamF, uSkyHor, uSkyTop; uniform vec2 uTan; out vec4 oCol;
 void main(){ vec3 d = normalize(uCamF + uCamR*vNdc.x*uTan.x + uCamU*vNdc.y*uTan.y); oCol = vec4(mix(uSkyHor, uSkyTop, clamp(d.y, 0.0, 1.0)), 1.0); }
 '''
+from lean_shaders import LEAN, LEAN_VS, LEAN_EXTRA
+
 def fix_world(f):
     return f.split('void main(){')[0] + WORLD_MAIN
 
@@ -160,10 +163,17 @@ progs = {
  'ring':('VS_PART','FS_COMMON','FS_RING',PART),
  'post':('VS_SKY','','FS_POST',SKY),
 }
+if PERF_TEST == 'lean':
+    for n in LEAN_EXTRA: progs[n] = ('VS_MESH', 'FS_COMMON', 'FS_WORLD', MESH)
 os.makedirs(OUT, exist_ok=True)
+open(os.path.join(OUT, 'programs.txt'), 'w').write(' '.join(progs))
 for name, (vs, fc, fs, loc) in progs.items():
-    v = version(sh[vs]); v = add_locations(v, loc); v, vu, vsam = uniforms_to_block(v)
-    if PERF_TEST == 'flat' and name == 'world':
+    if PERF_TEST == 'lean' and name in LEAN_VS: vsrc, loc = LEAN_VS[name]
+    else: vsrc = sh[vs]
+    v = version(vsrc); v = add_locations(v, loc); v, vu, vsam = uniforms_to_block(v)
+    if PERF_TEST == 'lean' and name in LEAN:
+        f = LEAN[name]
+    elif PERF_TEST == 'flat' and name == 'world':
         f = WORLD_MAIN_FLAT
     elif PERF_TEST == 'flat' and name == 'sky':
         f = SKY_FLAT
@@ -173,7 +183,7 @@ for name, (vs, fc, fs, loc) in progs.items():
         f = f.replace('#ifdef FCF_PERF_NOISE\nuniform sampler2D uNoise;\n#endif\n', '')
     f = f.replace(SHADOW_OLD, SHADOW_NEW)
     f = version(f); f = ocol_loc(f); f = add_locations(f, loc)
-    if name == 'world' and PERF_TEST != 'flat': f = fix_world(f)
+    if name == 'world' and PERF_TEST not in ('flat', 'lean'): f = fix_world(f)
     if name == 'post': f = fix_post(f)
     f, fu, fsam = uniforms_to_block(f)
     if not f.lstrip().startswith('#version'): f = '#version 450\n' + f

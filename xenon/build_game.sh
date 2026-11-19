@@ -13,8 +13,8 @@ esac
 export FCF_WATER_TEST="$WATER_TEST"
 PERF_TEST="${FCF_PERF_TEST:-0}"
 case "$PERF_TEST" in
-  0|flat|noise) ;;
-  *) echo "FCF_PERF_TEST must be 0, flat, or noise" >&2; exit 1 ;;
+  0|flat|noise|lean) ;;
+  *) echo "FCF_PERF_TEST must be 0, flat, noise, or lean" >&2; exit 1 ;;
 esac
 export FCF_PERF_TEST="$PERF_TEST"
 if [ "$WATER_TEST" != 0 ] && [ "$PERF_TEST" != 0 ]; then
@@ -46,6 +46,6 @@ if [ "$WATER_TEST" != 0 ]; then
 fi
 if [ "$PERF_TEST" != 0 ]; then
   mkdir -p "$HERE/build/game"
-  cp "$BUILD_DIR/perf_$PERF_TEST.xex" "$HERE/build/game/"
+  if [ "$PERF_TEST" = lean ]; then cp "$BUILD_DIR"/lean*.xex "$HERE/build/game/"; else cp "$BUILD_DIR/perf_$PERF_TEST.xex" "$HERE/build/game/"; fi
   cp "$HERE/dbgprint.txt" "$HERE/build/game/dbgprint.txt"
 fi

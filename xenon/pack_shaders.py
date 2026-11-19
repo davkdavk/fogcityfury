@@ -9,7 +9,7 @@ from xdis import xenos_ucode
 
 root = os.path.dirname(os.path.abspath(__file__))
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, 'build', 'gen')
-programs = ('world','car','water','sky','part','depth','ui','mark','ring','post')
+programs = tuple(open(os.path.join(out, 'programs.txt')).read().split())   # written by transform.py
 types = {'float':'FCF_FLOAT','int':'FCF_INT','vec2':'FCF_VEC2','vec3':'FCF_VEC3','vec4':'FCF_VEC4',
          'mat2':'FCF_MAT2','mat3':'FCF_MAT3','mat4':'FCF_MAT4'}
 
