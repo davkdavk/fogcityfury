@@ -158,21 +158,67 @@ files applied with `git am -3 <file>`.
 - FPS from the console: UI-only and all-cars-only are 60 fps; mask 23 is 5-9
   fps; sky-only is about 20 fps. Thus terrain+props and sky dominate current
   frame time, not cars or UI. The 5-9 fps mask-23 reading is the pre-step-2a
-  baseline. Sky-only's 20 fps is a separate cost that the terrain/props prepass
-  will not reduce.
+  baseline. The user reports the 0533aeb terrain/props depth pre-pass did not
+  improve mask-23 FPS; keep that pre-pass. Sky-only's 20 fps is a separate cost.
 - Wreckage+pickups-only remains deferred until requested; its previous mask-95
   appearance was not an isolated test, and the title state has no wreckage with
   crates hidden. No synthetic sample wreck was added.
-- Performance step 2a uses mask 23, which excludes the hanging water path, as
-  the FPS baseline. `runtime:` lines are emitted about once per second with a
-  cumulative frame count; subtract adjacent counts to estimate FPS after each
-  pushed performance step. Continue with chunk sorting, frustum culling and
-  prop back-face culling in the user's stated order.
-- Step 2a is implemented in the Xenos backend: terrain and props first draw with
-  the depth program, depth writes on and color writes disabled; then draw with
-  the world program using LEQUAL and depth writes off. The backend-only color
-  write state leaves `gfx.h` and OpenGL unchanged. The four diagnostic XEXes
-  were rebuilt; retest mask 23 for FPS and visual correctness before step 2b.
+- FPS measurements use `runtime:` lines, emitted about once per second with a
+  cumulative frame count; subtract adjacent counts for each interval.
+- Water bisection builds use `FCF_WATER_TEST=1|2|3 xenon/build_game.sh` and
+  produce `xenon/build/game/water_test_1.xex` (RGBA8 packed height, nearest),
+  `water_test_2.xex` (R16F, discard replaced by alpha 0), and
+  `water_test_3.xex` (R16F/discard, flat normal). Each changes only the named
+  water factor; these are Xenos-only diagnostics, not fixes to default behavior.
+- The measured texture source height range is `[-67.266, 82.933]` across the
+  four tracks. Test 1 therefore encodes `[-96,96]` as
+  `clamp((h+96)/192,0,1)*65535`, with R=high byte and G=low byte; the shader
+  decodes using `R*65280 + G*255`. The margin covers every measured terrain.
+- Each Xenos program load logs its fragment microcode slots, xsc kill/discard
+  and loop presence. Slot count is container `sh_size/12`. Baseline world is
+  1184 slots, sky 994, water 2986 (`kill_gt`, no loop). The perf builds report
+  world/sky: flat 10/11 slots; noise 468/485. Both perf variants have no kill
+  or loop in world or sky. All stages compile with xsc's 64-pixel-GPR budget;
+  `xsc.md`'s relevant limits are 64 GPRs, four nested hardware loops and 255
+  passes per loop, with discard unsupported inside a hardware loop. There are
+  no loops in these fragment programs, and xsc.md specifies no total slot cap.
+- Performance builds use `FCF_PERF_TEST=flat|noise xenon/build_game.sh`, both
+  `DRAW_MASK=23` and Xenos-only: `xenon/build/game/perf_flat.xex` is the
+  geometry ceiling test; `perf_noise.xex` uses a CPU-filled, fixed-seed
+  256x256 RGBA8 noise texture on unit 7, all channels equal, linear/repeat, no
+  mips. Its `vnoise` is one lookup, `fbm` remains four lookups, and the pass-0
+  shadow function compiles to 1. No shader text or water behavior is being
+  changed beyond these diagnostics.
+- Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
+  within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
+  2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
+  about 300. `floor`'s integer part is exact at these magnitudes; float spacing
+  after the `/256` scale is about 0.06 texel at 2381. The dormant burnt-car
+  `fbm` branch can reach about 19k (roughly 0.5 texel fractional spacing); no
+  burnt cars are drawn in mask 23. Water's largest spatial input is about 1.3k.
+  Slow `uTime` offsets remain, and direct `hash()` uses such as stars are
+  unchanged.
+- Console results: `perf_flat` is about 30 fps steady; `perf_noise` is 8-9 fps
+  (correcting the earlier 15-20 estimate). Water tests 1 and 2 hang, while test
+  3 runs. This isolates the water hang to the `wh()` normal/noise work; neither
+  the packed height texture nor replacing discard alone removes it. The default
+  water shader remains unchanged.
+- The 0533aeb depth pre-pass is retained but did not improve mask-23 FPS. Next
+  is shared 16x16 cell binning/culling, with desktop draw path unchanged and
+  terrain LOD enabled only on Xenos. Each cell needs three index lists over the
+  same vertices (every quad, every 2nd vertex, every 4th), plus one skirt strip
+  per edge. Choose LOD by cell-box distance: defaults 150/400 m; keep road cells
+  at LOD0 through 250 m. Make the two thresholds build-time tunables.
+- Bin props by whole object into the same cells: buildings are large and always
+  drawn when visible; trees/signs/barriers/lamps are small and omitted beyond
+  300 m. Each frame extract six VP planes, cull cells, sort visible cells
+  near-to-far, and log cells drawn/total, cells per LOD, and indices submitted.
+- Build three mask-23 flat-shader titles: `cull_only.xex` (culling, pre-pass on),
+  `cull_lod.xex` (culling+LOD, pre-pass on), and `cull_lod_noprepass.xex`
+  (culling+LOD, pre-pass off). No culling/LOD code is included in this checkpoint.
+- Do not start later fbm baking or per-vertex fog until the user reports the
+  flat/noise FPS comparison. No back-face culling or LOD beyond the specified
+  cell implementation is included in this checkpoint.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell

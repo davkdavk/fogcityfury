@@ -205,7 +205,11 @@ static bool vidFull = false, vidVsync = true; static int vidW = 1280, vidH = 720
 #endif
 static int maxAA = 8, maxAF = 16, deskW = 1 << 20, deskH = 1 << 20;           // what the driver / display can do (filled in once the window exists)
 static int renderH = 0, lastRW = 0, lastRH = 0;                               // --renderh (tests); size the scene was last drawn at
-static plat::Display display; static gfx::Tex detailTex = 0; static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
+static plat::Display display; static gfx::Tex detailTex = 0;
+#ifdef FCF_PERF_NOISE
+static gfx::Tex noiseTex = 0;
+#endif
+static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
 static int optPage = 0, optRow = 0, optCol = 0; static bool optCapture = false; static State optReturn = TITLE;
 static State viewState() { return state == OPTS ? optReturn : state; }        // what is on screen behind the options
 // which buttons the current screen needs, in HUD units (the screen is uiW x 720)
@@ -948,6 +952,9 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
     p.f1("uWet", w.wet); p.f1("uRain", w.rain); p.f1("uOvercast", w.grey); p.f1("uFogNoise", weather == W_FOG ? 1.0f : w.rain > 0 ? 0.4f : 0.0f); p.f1("uBoltI", bolt); p.v3("uBoltDir", boltDir);
     p.i1("uDetail", 6); if (p.has("uKeySt")) { if (W.keyStreet.size() == 4) p.v4("uKeySt", W.keyStreet[0], W.keyStreet[1], W.keyStreet[2], W.keyStreet[3]); else p.v4("uKeySt", 0, 0, 0, 0); if (p.has("uKeyLot")) { if (W.keyLot.size() == 4) p.v4("uKeyLot", W.keyLot[0], W.keyLot[1], W.keyLot[2], W.keyLot[3]); else p.v4("uKeyLot", 1, 1, 0, 0); } } p.i1("uEnv", 1); p.f1("uUseEnv", envPass ? 0.0f : 1.0f); p.v3("uEnvPos", player.pos + V3(0, 1.0f, 0));   // the cubemap cannot be read while it is being drawn
     p.v3("uCamPos", cam); p.f1("uTime", T); p.f1("uFogDen", debugTop ? 0.0f : d.fogDen * w.fog); p.f1("uHDR", hdr); p.m4("uLightVP", lightVP); p.i1("uShadow", 0);
+#ifdef FCF_PERF_NOISE
+    p.i1("uNoise", 7);
+#endif
     p.f1("uNight", d.night); V3 hf(sinf(player.yaw), 0, cosf(player.yaw)); p.v3("uHeadPos", player.pos + V3(0, 0.75f, 0) + hf * 1.6f); p.v3("uHeadDir", norm(hf + V3(0, -0.07f + sinf(player.pitch), 0))); p.f1("uHeadOn", player.dead ? 0.0f : 1.0f);
 }
 static void drawCar(const Car& c, Prog& p, bool lit) {
@@ -1732,6 +1739,12 @@ int main(int argc, char** argv) {
         }
         { gfx::Sampler s; s.mips = true; s.repeat = true; gfx::tex2D(detailTex, gfx::RGB8, N, N, px.data(), s); } if (maxAF > 1) gfx::aniso(detailTex, std::max(1, vidAF)); gfx::bind(6, detailTex); gfx::bind(0, 0);
     }
+#ifdef FCF_PERF_NOISE
+    { std::vector<unsigned char> px(256 * 256 * 4); Rng nr; nr.s = 0x4E4F4953u;
+      for (size_t i = 0; i < 256u * 256u; i++) { unsigned char v = (unsigned char)(nr.f() * 256.0f); px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = px[i * 4 + 3] = v; }
+      gfx::Sampler s; s.linear = true; s.repeat = true; gfx::tex2D(noiseTex, gfx::RGBA8, 256, 256, px.data(), s); gfx::bind(7, noiseTex); }
+    xsdk_log_write("boot: perf noise texture complete");
+#endif
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: detail texture complete");
     bootColor(0xFF00FFFF);   // cyan: texture setup returned

@@ -20,7 +20,7 @@
 //   aniso(t, n)                        anisotropic filtering, n = 1..maxAniso()
 //   mips(t)                            rebuild the mip chain from level 0 (the cube map, after it is drawn into)
 //   bind(unit, t)                      units the game uses: 0 shadow map, 1 reflection cube, 2 height map, 3 font,
-//                                      4 post input, 5 bloom, 6 ground detail. A shader's sampler uniform names its unit
+//                                      4 post input, 5 bloom, 6 ground detail, 7 Xenos perf-test noise. A shader's sampler uniform names its unit
 //                                      with Prog::i1 (e.g. i1("uShadow", 0)); a backend with fixed sampler slots maps
 //                                      units to its slots there.
 //   A DEPTH24 texture with sampler.compare is a shadow map: sampled with a depth comparison (less-or-equal), linear.

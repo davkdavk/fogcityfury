@@ -38,7 +38,7 @@ static std::vector<TexObj> textures(1);
 static std::vector<BufObj> buffers(1);
 static std::vector<TargetObj> targets(1);  // handle 0 is the present buffer
 static std::vector<XsdkSamplerState> samplerStates(1);
-static std::array<Tex,7> bound = {};
+static std::array<Tex,8> bound = {};
 static Target activeTarget = 0;
 static int activeW = 0, activeH = 0;
 static bool dirty = false;
@@ -493,6 +493,7 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
     for(uint32_t i=0;i<fcf_program_count;i++) if(!strcmp(name,fcf_programs[i].name)){p.meta=&fcf_programs[i];break;}
     if(!p.meta) return p;
     if(!NT_SUCCESS(xsdk_shader_load(&p.vs,p.meta->vs,p.meta->vsBytes)) || !NT_SUCCESS(xsdk_shader_load(&p.fs,p.meta->fs,p.meta->fsBytes))) return Prog();
+    if(!strcmp(name,"world")||!strcmp(name,"sky")||!strcmp(name,"water")) xsdk_log_write("gfx: %s fragment slots=%u kill=%u loops=%u",name,(unsigned)p.meta->fsSlots,(unsigned)p.meta->fsKill,(unsigned)p.meta->fsLoops);
     for(uint32_t i=0;i<p.meta->nsamplers;i++) xsdk_log_write("gfx: %s sampler %s unit=%u slot=%u",name,p.meta->samplers[i].name,(unsigned)p.meta->samplers[i].unit,(unsigned)p.meta->samplers[i].slot);
     static const XsdkVertexElement M[]={
         {.usage=XSDK_USAGE_POSITION,.usage_index=0,.format=XSDK_VERTEX_FLOAT3,.offset_bytes=0},

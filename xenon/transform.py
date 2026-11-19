@@ -14,6 +14,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))          # <repo>/xenon
 REPO = os.path.dirname(HERE)
 SRC = os.path.join(REPO, 'src', 'shaders.h')
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, 'build', 'gen')
+WATER_TEST = int(os.environ.get('FCF_WATER_TEST', '0'))
+if WATER_TEST not in (0, 1, 2, 3): raise ValueError('FCF_WATER_TEST must be 0, 1, 2, or 3')
+PERF_TEST = os.environ.get('FCF_PERF_TEST', '0')
+if PERF_TEST not in ('0', 'flat', 'noise'): raise ValueError('FCF_PERF_TEST must be 0, flat, or noise')
 s = open(SRC).read()
 sh = {m.group(1): m.group(2) for m in re.finditer(r'static const char\* (\w+) = R"\((.*?)\)";', s, re.S)}
 
@@ -33,7 +37,7 @@ def add_locations(t, locmap):
         return ' '.join(out)
     return re.sub(r'(?<!layout\(location=\d\) )\b(in|out)\s+(vec[234]|float|int)\s+([A-Za-z_][\w, ]*);', repl, t)
 
-SAMPLER_UNITS = {'uShadow':0, 'uEnv':1, 'uHeight':2, 'uFont':3, 'uTex':4, 'uBloom':5, 'uDetail':6}
+SAMPLER_UNITS = {'uShadow':0, 'uEnv':1, 'uHeight':2, 'uFont':3, 'uTex':4, 'uBloom':5, 'uDetail':6, 'uNoise':7}
 
 def uniforms_to_block(t):
     t = strip_comments(t)
@@ -124,6 +128,15 @@ WORLD_MAIN = '''void main(){
   finish(applyFog(col, vP), 1.0);
 }
 '''
+WORLD_MAIN_FLAT = '''in vec3 vN, vC; uniform vec3 uSunDir; out vec4 oCol;
+void main(){
+  float lit = max(dot(normalize(vN), uSunDir), 0.0);
+  oCol = vec4(vC * (0.35 + 0.65*lit), 1.0);
+}
+'''
+SKY_FLAT = '''in vec2 vNdc; uniform vec3 uCamR, uCamU, uCamF, uSkyHor, uSkyTop; uniform vec2 uTan; out vec4 oCol;
+void main(){ vec3 d = normalize(uCamF + uCamR*vNdc.x*uTan.x + uCamU*vNdc.y*uTan.y); oCol = vec4(mix(uSkyHor, uSkyTop, clamp(d.y, 0.0, 1.0)), 1.0); }
+'''
 def fix_world(f):
     return f.split('void main(){')[0] + WORLD_MAIN
 
@@ -150,13 +163,23 @@ progs = {
 os.makedirs(OUT, exist_ok=True)
 for name, (vs, fc, fs, loc) in progs.items():
     v = version(sh[vs]); v = add_locations(v, loc); v, vu, vsam = uniforms_to_block(v)
-    f = (sh[fc] if fc else '') + sh[fs]
+    if PERF_TEST == 'flat' and name == 'world':
+        f = WORLD_MAIN_FLAT
+    elif PERF_TEST == 'flat' and name == 'sky':
+        f = SKY_FLAT
+    else:
+        f = (sh[fc] if fc else '') + sh[fs]
+    if PERF_TEST != 'noise':
+        f = f.replace('#ifdef FCF_PERF_NOISE\nuniform sampler2D uNoise;\n#endif\n', '')
     f = f.replace(SHADOW_OLD, SHADOW_NEW)
     f = version(f); f = ocol_loc(f); f = add_locations(f, loc)
-    if name == 'world': f = fix_world(f)
+    if name == 'world' and PERF_TEST != 'flat': f = fix_world(f)
     if name == 'post': f = fix_post(f)
     f, fu, fsam = uniforms_to_block(f)
     if not f.lstrip().startswith('#version'): f = '#version 450\n' + f
+    if name == 'water' and WATER_TEST: f = f.replace('#version 450', f'#version 450\n#define FCF_WATER_TEST {WATER_TEST}', 1)
+    if PERF_TEST == 'flat': f = f.replace('#version 450', '#version 450\n#define FCF_FLAT_TEST 1', 1)
+    if PERF_TEST == 'noise': f = f.replace('#version 450', '#version 450\n#define FCF_PERF_NOISE 1\n#define FCF_PERF_PASS_LEVEL 0', 1)
     open(os.path.join(OUT, name + '.vert'), 'w').write(v)
     open(os.path.join(OUT, name + '.frag'), 'w').write(f)
     with open(os.path.join(OUT, name + '.uniforms.json'), 'w') as mf:
