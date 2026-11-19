@@ -514,7 +514,7 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
         {.usage=XSDK_USAGE_COLOR,.usage_index=0,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=8},
         {.usage=XSDK_USAGE_TEXCOORD,.usage_index=0,.format=XSDK_VERTEX_FLOAT4,.offset_bytes=16}};
     static const uint32_t meshStride[]={48}, partStride[]={44}, uiStride[]={32};
-    if(!strcmp(name,"world")||!strcmp(name,"car")||!strcmp(name,"water")||!strcmp(name,"depth")) {
+    if(!strcmp(name,"world")||!strcmp(name,"car")||!strcmp(name,"water")||!strcmp(name,"depth")||!strcmp(name,"ground")||!strcmp(name,"road")||!strcmp(name,"wall")||!strcmp(name,"misc")) {
         if(!strcmp(name,"world")) {
             xsdk_log_write("gfx: %s vertex stride=%u elements=%u",name,(unsigned)meshStride[0],(unsigned)(sizeof M/sizeof M[0]));
             for(uint32_t i=0;i<sizeof M/sizeof M[0];i++) xsdk_log_write("gfx: %s element %u usage=%u index=%u format=%u offset=%u",name,(unsigned)i,(unsigned)M[i].usage,(unsigned)M[i].usage_index,(unsigned)M[i].format,(unsigned)M[i].offset_bytes);

@@ -190,17 +190,27 @@ files applied with `git am -3 <file>`.
   shadow function compiles to 1. No shader text or water behavior is being
   changed beyond these diagnostics.
 - `src/shaders.h` remains unchanged. Claude's lean-shader patches are commits
-  `eb7fdf2` and `30fa372`; they only add/update `xenon/lean_shaders.py` (do not
-  edit that file). The latter removes the broken unit-6 detail texture from the
-  lean ground/road shaders and moves the lean sky just inside the far plane.
+  `eb7fdf2`, `30fa372`, and the black-ground fix (only
+  `xenon/lean_shaders.py`; do not edit that file). The latest patch makes the
+  lean depth program use the same vertex shader as ground/world. It also removes
+  the broken unit-6 detail sample from lean ground/road and uses the sky colors
+  instead of the unwritten reflection cube for cars.
   `FCF_PERF_TEST=lean xenon/build_game.sh` builds `lean.xex`,
   `lean_sky_behind.xex`, and `lean_23.xex`; all 14 programs / 28 stages compile
   with glslang and xsc. All three enable `FCF_SKY_BEHIND`, cell culling, and
   four-level LOD; the depth pre-pass remains enabled.
-- The user reports the patched lean ground and road are no longer black and
-  lean water no longer hangs. Their previous console readings were `lean` 25
-  fps, `lean_23` 27 fps, and `lean_sky_behind` 44 fps (often 60). No console
-  reading has yet been reported for the combined lean+culling+sky-behind build.
+- The Xenos backend assigns the L_MESH vertex-fetch layout to the lean-specific
+  `ground`, `road`, `wall`, and `misc` programs as well as `world`/`depth`.
+  After rebuilding, `depth.vert.bin`, `ground.vert.bin`, and `world.vert.bin`
+  have identical MD5 hashes. Xenia emits cull logs with positive `propsIdx`.
+  The title screenshot `/tmp/lean_xenia_layout_fix.png` shows colored off-road
+  ground and road markings, but a black hill-shaped area remains over the
+  upper-left sky; this Xenia visual check is not a full pass. Confirm the title
+  screen on the console before calling the black-hill issue resolved.
+- The user reports lean water no longer hangs. Their previous console readings
+  were `lean` 25 fps, `lean_23` 27 fps, and `lean_sky_behind` 44 fps (often 60),
+  before the depth-pre-pass vertex fix. No console visual or FPS result has yet
+  been reported for the latest combined lean+culling+sky-behind build.
 - Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
   within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
   2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
