@@ -2,6 +2,7 @@
 // No SDL or OpenGL here: the server builds from this and server.cpp alone. See docs/NETWORK.md.
 #pragma once
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -41,7 +42,8 @@ const float SD_SITE_WAIT = 4, SD_DRIVE_MAX = 90, SD_PREP_LEN = 20, SD_OVER_LEN =
 enum Flags : uint8_t { F_READY = 1, F_BRAKING = 2, F_DEAD = 4, F_FINISHED = 8, F_NITRO = 16, F_RACING = 32, F_BOT = 64, F_HOST = 128 };   // the last three are set by the server only. F_BOT: computer-driven. F_HOST: this player's game drives the bots
 enum RejectReason : uint8_t { R_FULL = 1, R_VERSION = 2 };
 
-// All integers little-endian, floats IEEE-754, structs packed. Every packet starts with Header.
+// All integers little-endian, floats IEEE-754, structs packed. Every packet starts with Header. A big-endian host
+// turns packets round in sendTo and recvFrom (turnPacket, below).
 #pragma pack(push, 1)
 struct Header { uint32_t magic; uint16_t proto; uint8_t type; uint8_t id; };            // id: sender's player id (0xFF before it has one)
 struct CarState {                                                                        // 56 bytes
@@ -126,7 +128,76 @@ inline bool resolve(const char* hostport, sockaddr_in& out) {
     if (getaddrinfo(host[0] ? host : "127.0.0.1", nullptr, &hints, &res) != 0 || !res) return false;
     memcpy(&out, res->ai_addr, sizeof out); out.sin_port = htons((uint16_t)port); freeaddrinfo(res); return true;
 }
-inline void sendTo(int s, const sockaddr_in& to, const void* data, int len) { sendto(s, (const char*)data, len, 0, (const sockaddr*)&to, sizeof to); }
-inline int recvFrom(int s, void* buf, int cap, sockaddr_in& from) { socklen_t fl = sizeof from; return (int)recvfrom(s, (char*)buf, cap, 0, (sockaddr*)&from, &fl); }
+// ---- byte order: on the wire every integer and float is little-endian, as the PC and Android keep them ----
+// A big-endian machine (the Xbox 360) turns each packet round as it goes out and as it comes in, here and nowhere
+// else: every packet passes through sendTo and recvFrom. Turning round is its own inverse, so one walker does both.
+// Arrays are walked only as far as the packet's length reaches (a snapshot carries `count` players, not MAXP).
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+const bool BIG_ENDIAN_HOST = true;
+#else
+const bool BIG_ENDIAN_HOST = false;
+#endif
+inline void turn16(uint8_t* p) { uint8_t t = p[0]; p[0] = p[1]; p[1] = t; }
+inline void turn32(uint8_t* p) { uint8_t t = p[0]; p[0] = p[3]; p[3] = t; t = p[1]; p[1] = p[2]; p[2] = t; }
+inline void turn32s(uint8_t* p, int n) { for (int i = 0; i < n; i++) turn32(p + 4 * i); }
+#define FCF_AT(T, f) ((int)offsetof(T, f))
+inline void turnHeader(uint8_t* p) { turn32(p + FCF_AT(Header, magic)); turn16(p + FCF_AT(Header, proto)); }
+inline void turnCar(uint8_t* p) {
+    turn32s(p + FCF_AT(CarState, x), 10);   // x y z vx vy vz yaw pitch roll steer
+    turn16(p + FCF_AT(CarState, cp)); turn32(p + FCF_AT(CarState, progress)); turn32(p + FCF_AT(CarState, finishT));
+}
+inline void turnFoot(uint8_t* p) {
+    turn32s(p + FCF_AT(FootState, x), 6);   // x y z vx vz yaw
+    for (int i = 0; i < SD_FIGHT; i++) turn16(p + FCF_AT(FootState, dealt) + 2 * i);
+    turn16(p + FCF_AT(FootState, claim));
+}
+inline void turnDrop(uint8_t* p) { turn32s(p + FCF_AT(SdDrop, x), 3); }
+// each element of an array at `at`, `size` bytes apart, as many as fit in the packet's len and `most`
+template <class F> inline void turnEach(uint8_t* p, int len, int at, int size, int most, F f) {
+    for (int i = 0; i < most && at + (i + 1) * size <= len; i++) f(p + at + i * size);
+}
+inline void turnPacket(uint8_t* p, int len) {
+    if (len < (int)sizeof(Header)) return;
+    const uint8_t type = p[FCF_AT(Header, type)];
+    turnHeader(p);
+    auto has = [&](int end) { return len >= end; };
+    switch (type) {
+    case C_STATE: if (has(sizeof(State))) { turn32(p + FCF_AT(State, seq)); turnCar(p + FCF_AT(State, s)); } break;
+    case C_FOOT: if (has(sizeof(Foot))) { turn32(p + FCF_AT(Foot, seq)); turnFoot(p + FCF_AT(Foot, s)); } break;
+    case C_QUERY: if (has(FCF_AT(Query, nonce) + 4)) turn32(p + FCF_AT(Query, nonce)); break;
+    case S_INFO: if (has(FCF_AT(Info, nonce) + 4)) turn32(p + FCF_AT(Info, nonce)); break;
+    case C_SDSETUP:
+        if (has(FCF_AT(SdSetup, d))) turn32s(p + FCF_AT(SdSetup, site), 3);
+        turnEach(p, len, FCF_AT(SdSetup, d), sizeof(SdDrop), SD_DROPS, turnDrop); break;
+    case C_BOTS:
+        if (has(FCF_AT(Bots, n))) turn32(p + FCF_AT(Bots, seq));
+        turnEach(p, len, FCF_AT(Bots, b), sizeof(BotCar), BOTS, [](uint8_t* e) { turnCar(e + FCF_AT(BotCar, s)); }); break;
+    case C_BOTFOOT:
+        if (has(FCF_AT(BotFoot, n))) turn32(p + FCF_AT(BotFoot, seq));
+        turnEach(p, len, FCF_AT(BotFoot, f), sizeof(BotFootOne), SD_FIGHT, [](uint8_t* e) { turnFoot(e + FCF_AT(BotFootOne, s)); }); break;
+    case S_SNAPSHOT:
+        if (has(FCF_AT(Snapshot, p))) { turn32(p + FCF_AT(Snapshot, tick)); turn32(p + FCF_AT(Snapshot, phaseT)); }
+        turnEach(p, len, FCF_AT(Snapshot, p), sizeof(PlayerSnap), MAXP, [](uint8_t* e) { turnCar(e + FCF_AT(PlayerSnap, s)); }); break;
+    case S_SHOWDOWN:
+        if (has(FCF_AT(Showdown, siteKind))) { turn32(p + FCF_AT(Showdown, tick)); turn32(p + FCF_AT(Showdown, stageT)); turn32(p + FCF_AT(Showdown, ring)); turn32s(p + FCF_AT(Showdown, site), 3); }
+        turnEach(p, len, FCF_AT(Showdown, f), sizeof(FootState), SD_FIGHT, turnFoot);
+        turnEach(p, len, FCF_AT(Showdown, d), sizeof(SdDrop), SD_DROPS, turnDrop); break;
+    default: break;   // C_JOIN, C_LEAVE, S_WELCOME, S_REJECT: bytes and the header only
+    }
+}
+#undef FCF_AT
+inline void sendTo(int s, const sockaddr_in& to, const void* data, int len) {
+    if (BIG_ENDIAN_HOST) {
+        uint8_t wire[2048]; if (len < 0 || len > (int)sizeof wire) return;
+        memcpy(wire, data, (size_t)len); turnPacket(wire, len);
+        sendto(s, (const char*)wire, len, 0, (const sockaddr*)&to, sizeof to); return;
+    }
+    sendto(s, (const char*)data, len, 0, (const sockaddr*)&to, sizeof to);
+}
+inline int recvFrom(int s, void* buf, int cap, sockaddr_in& from) {
+    socklen_t fl = sizeof from; int n = (int)recvfrom(s, (char*)buf, cap, 0, (sockaddr*)&from, &fl);
+    if (BIG_ENDIAN_HOST && n > 0) turnPacket((uint8_t*)buf, n);
+    return n;
+}
 inline bool sameAddr(const sockaddr_in& a, const sockaddr_in& b) { return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port; }
 }
