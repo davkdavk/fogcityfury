@@ -25,6 +25,14 @@ vec3 tone(vec3 c){ c = min(c, vec3(2.5)); return sqrt(max(c*(1.3246 + c*(c*0.128
 vec3 ambient(float ny){ return mix(uSkyHor*0.55 + vec3(0.05,0.045,0.04), uSkyTop*0.6 + uSkyHor*0.35, ny*0.5+0.5); }
 '''
 
+# The sky sits a hair in front of the far plane. Drawn behind the world (FCF_SKY_BEHIND) it is depth-tested against
+# the cleared depth, 1.0; at exactly 1.0 the GPU's depth rounding across the screen-covering triangle failed the
+# test on part of the screen, which cut the sky off along a diagonal.
+SKY_VS = '''#version 330 core
+out vec2 vNdc;
+void main(){ vec2 p = vec2((gl_VertexID<<1)&2, gl_VertexID&2)*2.0-1.0; vNdc = p; gl_Position = vec4(p, 0.99998, 1.0); }
+'''
+
 SKY = COMMON + '''
 in vec2 vNdc; uniform vec3 uCamR, uCamU, uCamF; uniform vec2 uTan;
 void main(){
@@ -64,12 +72,14 @@ WORLD_LOC = {'vP':0, 'vL':1, 'vC':2, 'vUV':3, 'vMat':4, 'vFx':5}
 #   world   road + wall + misc picked by vMat: the whole props mesh in one draw, until it is split
 _HEAD = '''#version 330 core
 uniform vec3 uSkyHor; uniform float uNight, uWet;
-uniform sampler2D uNoise, uDetail;
+uniform sampler2D uNoise;
 in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx;
 out vec4 oCol;
 vec3 tone(vec3 c){ c = min(c, vec3(2.5)); return sqrt(max(c*(1.3246 + c*(c*0.1284 - 0.6999)) - 0.0257, 0.0)); }
 void main(){
-  float det = mix(0.5, texture(uDetail, vP.xz*0.21).r, vFx.y);
+  // fine grain from the noise texture's white-noise channel (8 cm a texel), faded out with distance: no mip maps here.
+  // (The game's own detail texture, unit 6, is not used: on the console the ground and road that sampled it came out black.)
+  float det = mix(0.5, texture(uNoise, vP.xz*0.05).b, vFx.y);
   float nz = texture(uNoise, vP.xz*0.026).r;
   vec3 alb = vC, lit = vL; vec3 glow = vec3(0.0);
 '''
@@ -199,5 +209,6 @@ void main(){
 '''
 
 LEAN_VS = {n: (WORLD_VS, WORLD_LOC) for n in ('world', 'ground', 'road', 'wall', 'misc')}
+LEAN_VS['sky'] = (SKY_VS, {'vNdc': 0})
 LEAN_EXTRA = ('ground', 'road', 'wall', 'misc')   # programs only the lean build has
 LEAN = {'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING}
