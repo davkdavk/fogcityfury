@@ -458,7 +458,18 @@ static void meshChunkCheck(Buf b,const char* label,int ni) {
     }
     xsdk_log_write("bin: cross-chunk triangles=%u mesh=%s",(unsigned)cross,label);
 }
-static void drawFull(){ gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,3); }
+// The full-screen programs (sky, post) make their triangle from gl_VertexIndex, which xsc reads as the GPU's index
+// plus a vertex base the runtime must write: float constant c0.x, as these programs have no vertex uniforms (xsdk:
+// include/xsdk/xsc.h, XSDK_XSC_VERTEX_BASE). Nothing wrote it, so it held the last program's c0 (its uVP), and with a
+// base of 1 the corners came out (3,-1) (-1,3) (3,3): the sky covered part of the screen, cut along a diagonal that
+// moved with the camera. It is 0 for these draws.
+static void drawFull(){
+    gfx::flushProgram();
+    if(gfx::xs::activeProgram && gfx::xs::activeProgram->meta && gfx::xs::activeProgram->meta->nvu==0) {
+        static const float base[4]={0,0,0,0}; xsdk_gpu_set_vertex_constants(0,base,1);
+    }
+    xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,3);
+}
 
 static XsdkDepthStencilState depthState(bool test,bool write) {
     XsdkDepthStencil ds={.depth_test=test,.depth_write=write,.depth_compare=XSDK_COMPARE_LESS_EQUAL};
