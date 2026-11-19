@@ -24,6 +24,9 @@
 #endif
 #ifdef FCF_GFX_XSDK
 #include "xsdk/thread.h"
+#include "xsdk/net.h"
+#include "xsdk/log.h"
+#include <errno.h>
 #endif
 
 namespace net {
@@ -102,10 +105,32 @@ inline void prepare(int s) {
     DWORD off = 0, ret = 0; WSAIoctl((SOCKET)s, _WSAIOW(IOC_VENDOR, 12), &off, sizeof off, nullptr, 0, &ret, nullptr, nullptr);   // SIO_UDP_CONNRESET off: an ICMP "port unreachable" must not break recvfrom
 }
 #elif defined(FCF_GFX_XSDK)
-inline void init() {}
-inline void closeSock(int s) { (void)s; }
+#include <pthread.h>
+inline void init() {
+    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; static bool started = false, ipLogged = false;
+    pthread_mutex_lock(&mutex);
+    if (!started) {
+        started = true; uint32_t link = 0; int error = xsdk_net_link(&link);
+        if (error) xsdk_log_write("net: xsdk_net_link failed: %d", error);
+        else xsdk_log_write("net: Ethernet link=0x%08X", (unsigned)link);
+    }
+    if (!ipLogged) {
+        struct in_addr ip; int error = xsdk_net_address(&ip);
+        if (!error) {
+            char text[INET_ADDRSTRLEN];
+            if (inet_ntop(AF_INET, &ip, text, sizeof text)) xsdk_log_write("net: console IP %s", text);
+            else xsdk_log_write("net: console IP format failed: %d", errno);
+            ipLogged = true;
+        } else if (error != EAGAIN) { xsdk_log_write("net: console IP unavailable: %d", error); ipLogged = true; }
+    }
+    pthread_mutex_unlock(&mutex);
+}
+inline void closeSock(int s) { if (s >= 0) close(s); }
 inline void sleepMs(int ms) { xsdk_thread_sleep((uint32_t)ms); }
-inline void prepare(int s) { (void)s; }
+inline void prepare(int s) {
+    int flags = fcntl(s, F_GETFL, 0);
+    if (flags < 0 || fcntl(s, F_SETFL, flags | O_NONBLOCK) < 0) xsdk_log_write("net: non-blocking socket setup failed: %d", errno);
+}
 #else
 inline void init() {}
 inline void closeSock(int s) { close(s); }
@@ -125,8 +150,19 @@ inline bool resolve(const char* hostport, sockaddr_in& out) {
     init(); char host[128]; snprintf(host, sizeof host, "%s", hostport); int port = DEFPORT;
     char* c = strrchr(host, ':'); if (c) { *c = 0; port = atoi(c + 1); if (port <= 0 || port > 65535) return false; }
     addrinfo hints; memset(&hints, 0, sizeof hints); hints.ai_family = AF_INET; hints.ai_socktype = SOCK_DGRAM; addrinfo* res = nullptr;
-    if (getaddrinfo(host[0] ? host : "127.0.0.1", nullptr, &hints, &res) != 0 || !res) return false;
-    memcpy(&out, res->ai_addr, sizeof out); out.sin_port = htons((uint16_t)port); freeaddrinfo(res); return true;
+    int error = getaddrinfo(host[0] ? host : "127.0.0.1", nullptr, &hints, &res);
+    if (error != 0 || !res) {
+#ifdef FCF_GFX_XSDK
+        xsdk_log_write("net: getaddrinfo(%s) failed: %d", host, error);
+#endif
+        return false;
+    }
+    memcpy(&out, res->ai_addr, sizeof out); out.sin_port = htons((uint16_t)port); freeaddrinfo(res);
+#ifdef FCF_GFX_XSDK
+    char text[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &out.sin_addr, text, sizeof text)) xsdk_log_write("net: resolved %s -> %s:%d", host, text, port);
+#endif
+    return true;
 }
 // ---- byte order: on the wire every integer and float is little-endian, as the PC and Android keep them ----
 // A big-endian machine (the Xbox 360) turns each packet round as it goes out and as it comes in, here and nowhere

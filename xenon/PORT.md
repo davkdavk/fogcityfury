@@ -326,7 +326,12 @@ files applied with `git am -3 <file>`.
   verified by ear or on the RGH console. Desktop remains 44.1 kHz.
 - Xenos controller Y axes are negated to SDL's positive-down convention, with
   `-32768` saturated to `32767` to avoid signed overflow.
-- Saves and network remain disabled/not implemented on the 360.
+- Xenos UDP networking uses the XSDK POSIX socket layer. `init()` starts XAM's
+  network once and logs the link/console IPv4 address; sockets are non-blocking
+  and closed with `close()`. XSDK `getaddrinfo` handles numeric IPv4 addresses
+  directly and hostnames through XAM DNS. LAN joining still needs RGH testing.
+- XEX artifacts are ignored by Git (`*.xex`); do not commit built console binaries.
+- Saves remain disabled/not implemented on the 360.
 - Real RGH 360 testing is in progress; wait for the user's visual result before
   changing rendering behavior beyond diagnostic draw masks.
 - Startup screen diagnostics (XSDK only): red after `openDisplay`, orange after
@@ -339,7 +344,7 @@ files applied with `git am -3 <file>`.
 
 ## Later (don't start unless asked)
 - Big-endian data: save files, network packets, anything read from disk.
-- Saves and network on the 360.
+- Saves on the 360.
 - Splitting the full world shader so the 360 town matches the PC.
 
 
