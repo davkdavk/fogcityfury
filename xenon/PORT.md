@@ -195,10 +195,12 @@ files applied with `git am -3 <file>`.
   lean depth program use the same vertex shader as ground/world. It also removes
   the broken unit-6 detail sample from lean ground/road and uses the sky colors
   instead of the unwritten reflection cube for cars.
-  `FCF_PERF_TEST=lean xenon/build_game.sh` builds `lean.xex`,
-  `lean_sky_behind.xex`, and `lean_23.xex`; all 14 programs / 28 stages compile
-  with glslang and xsc. All three enable `FCF_SKY_BEHIND`, cell culling, and
-  four-level LOD; the depth pre-pass remains enabled.
+  `FCF_PERF_TEST=lean xenon/build_game.sh` builds `lean.xex` and `lean_23.xex`
+  by default; all 14 programs / 28 stages compile with glslang and xsc. Default
+  lean builds use cell culling, four-level LOD, the depth pre-pass, and draw the
+  sky first (`FCF_SKY_BEHIND` and `FCF_SKY_DEPTH_FILL` are not defined).
+  The rebuilt default `lean.xex` Xenia capture at
+  `/tmp/lean_skyfirst_title.png` shows the sky whole in the title view.
 - The Xenos backend assigns the L_MESH vertex-fetch layout to the lean-specific
   `ground`, `road`, `wall`, and `misc` programs as well as `world`/`depth`.
   After rebuilding, `depth.vert.bin`, `ground.vert.bin`, and `world.vert.bin`
@@ -208,10 +210,12 @@ files applied with `git am -3 <file>`.
   when both declare it. The lean world fragment shader shares `uSkyHor` and
   `uWet` with its vertex shader; leaving the fragment copies zeroed made the
   road's sky-lit color black.
-- The lean comparison set now includes `lean_noprepass.xex`, `lean_skyfirst.xex`,
-  and `lean_noeffects.xex` alongside `lean.xex`. They isolate the depth
-  pre-pass, sky ordering, and water/effects respectively; `lean_noeffects` uses
-  `DRAW_MASK=343` (all default bits except water and effects).
+- Comparison titles are disabled by default. CMake options
+  `FCF_XSDK_LEAN_NOPREPASS`, `FCF_XSDK_LEAN_SKYFIRST`,
+  `FCF_XSDK_LEAN_NOEFFECTS`, `FCF_XSDK_LEAN_DEPTHFILL`, and
+  `FCF_XSDK_LEAN_SKY_BEHIND` keep them available for later; `FCF_LEAN_DEBUG=mat`
+  separately enables `lean_debug.xex`. The no-effects mask is 343 (all default
+  bits except water and effects).
 - Material diagnostic: build with
   `FCF_PERF_TEST=lean FCF_LEAN_DEBUG=mat xenon/build_game.sh`. It writes to the
   separate `xenon/build/gen_lean_debug` and `xenon/build/perf_lean_debug` paths,
@@ -229,12 +233,14 @@ files applied with `git am -3 <file>`.
   were `lean` 25 fps, `lean_23` 27 fps, and `lean_sky_behind` 44 fps (often 60),
   before the depth-pre-pass vertex fix. No console visual or FPS result has yet
   been reported for the latest combined lean+culling+sky-behind build.
-- `lean_depthfill.xex` is the sky-depth experiment (`FCF_SKY_DEPTH_FILL`): in
-  the pass-0 Xenos path it writes the lean sky's 0.99998 depth across the full
-  target before the world pre-pass and color pass. The Xenia title capture
-  `/tmp/lean_depthfill_xenia.png` shows the whole sky and colored ground/road,
-  supporting the hypothesis that pass 0 starts with depth values other than 1.0.
-  Console confirmation remains pending.
+- The `lean_depthfill.xex` experiment (`FCF_XSDK_LEAN_DEPTHFILL`) writes the
+  lean sky's 0.99998 depth over the pass-0 target before the world pre-pass and
+  color pass. The user reports the black cut-off persists in Xenia, disproving
+  the frame-start-depth theory; this variant is no longer built by default.
+- Open issue: "sky drawn after the world (LESS_EQUAL, depth writes off) is hidden
+  in one view direction in Xenia and on the console; not the sky shader
+  (simulated), not the prepass, not water or effects, not depth left at frame
+  start; sky-first is used meanwhile". All default lean titles are now sky-first.
 - Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
   within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
   2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
