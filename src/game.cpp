@@ -1478,6 +1478,12 @@ static void render(int fbw, int fbh) {
     if (xsdkPasses == 0) {
         if (DRAW_MASK == 0) traceDraw("clear only");
         gfx::use(0, fbw, fbh); gfx::clear(true, true);
+#if defined(FCF_GFX_XSDK) && defined(FCF_SKY_DEPTH_FILL)
+        M4 VP = mul(P, V);
+        gfx::colorWrite(false); gfx::depthTest(false); gfx::depthWrite(true);
+        setCommon(pSky, VP, eye, 1); gfx::drawFull();
+        gfx::colorWrite(true); gfx::depthTest(true); gfx::depthWrite(true);
+#endif
         drawScene(V, P, eye, true);
     } else
 #endif

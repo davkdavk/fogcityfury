@@ -229,6 +229,12 @@ files applied with `git am -3 <file>`.
   were `lean` 25 fps, `lean_23` 27 fps, and `lean_sky_behind` 44 fps (often 60),
   before the depth-pre-pass vertex fix. No console visual or FPS result has yet
   been reported for the latest combined lean+culling+sky-behind build.
+- `lean_depthfill.xex` is the sky-depth experiment (`FCF_SKY_DEPTH_FILL`): in
+  the pass-0 Xenos path it writes the lean sky's 0.99998 depth across the full
+  target before the world pre-pass and color pass. The Xenia title capture
+  `/tmp/lean_depthfill_xenia.png` shows the whole sky and colored ground/road,
+  supporting the hypothesis that pass 0 starts with depth values other than 1.0.
+  Console confirmation remains pending.
 - Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
   within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
   2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
