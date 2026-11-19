@@ -209,10 +209,10 @@ files applied with `git am -3 <file>`.
   separate `xenon/build/gen_lean_debug` and `xenon/build/perf_lean_debug` paths,
   and copies only `lean_debug.xex`, leaving normal lean shaders and titles
   unchanged. Xenia's `/tmp/lean_debug_materials.png` shows the road red, terrain
-  yellow, walls green, props blue, and the sky whole. The formerly black
-  hill-shaped area turns green (material 2/wall), so it is being drawn by the
-  world color pass; this diagnostic does not explain why its normal lean color
-  is black.
+  yellow, walls green, and props blue. The sky is whole in some orientations;
+  in the problematic direction the black shape remains black in the material
+  diagnostic, indicating that region is not colored by the world color pass.
+  That direction-dependent omission remains unresolved.
 - `lean_debug.xex` logs `bin: cross-chunk triangles=N` after regrouped mesh
   uploads. The Xenia log reports `N=0` for `props`, `small-props`, and
   `terrain`. The chunker checks and flushes at source-triangle boundaries, so
