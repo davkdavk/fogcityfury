@@ -157,8 +157,9 @@ files applied with `git am -3 <file>`.
   test does not yet distinguish its `uHeight` sampling from blending/state.
 - FPS from the console: UI-only and all-cars-only are 60 fps; mask 23 is 5-9
   fps; sky-only is about 20 fps. Thus terrain+props and sky dominate current
-  frame time, not cars or UI. Step 2a targets terrain/props pixel overdraw;
-  it will not reduce the sky-only cost.
+  frame time, not cars or UI. The 5-9 fps mask-23 reading is the pre-step-2a
+  baseline. Sky-only's 20 fps is a separate cost that the terrain/props prepass
+  will not reduce.
 - Wreckage+pickups-only remains deferred until requested; its previous mask-95
   appearance was not an isolated test, and the title state has no wreckage with
   crates hidden. No synthetic sample wreck was added.
@@ -167,6 +168,11 @@ files applied with `git am -3 <file>`.
   cumulative frame count; subtract adjacent counts to estimate FPS after each
   pushed performance step. Continue with chunk sorting, frustum culling and
   prop back-face culling in the user's stated order.
+- Step 2a is implemented in the Xenos backend: terrain and props first draw with
+  the depth program, depth writes on and color writes disabled; then draw with
+  the world program using LEQUAL and depth writes off. The backend-only color
+  write state leaves `gfx.h` and OpenGL unchanged. The four diagnostic XEXes
+  were rebuilt; retest mask 23 for FPS and visual correctness before step 2b.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell

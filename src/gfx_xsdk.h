@@ -462,6 +462,11 @@ static void blend(Blend mode){
     if(!ready[mode]){ XsdkBlend b={.color_source=mode==B_PREMUL?XSDK_BLEND_ONE:XSDK_BLEND_SRC_ALPHA,.color_dest=mode==B_OFF?XSDK_BLEND_ZERO:XSDK_BLEND_ONE_MINUS_SRC_ALPHA,.color_op=XSDK_BLEND_OP_ADD,.alpha_source=mode==B_PREMUL?XSDK_BLEND_ONE:XSDK_BLEND_SRC_ALPHA,.alpha_dest=mode==B_OFF?XSDK_BLEND_ZERO:XSDK_BLEND_ONE_MINUS_SRC_ALPHA,.alpha_op=XSDK_BLEND_OP_ADD,.write_mask=XSDK_WRITE_ALL}; xsdk_gpu_blend_state(&states[mode],&b);ready[mode]=true; }
     xsdk_gpu_set_blend(&states[mode]);
 }
+static void colorWrite(bool on){
+    static XsdkBlendState states[2]; static bool ready[2]={}; int i=on?1:0;
+    if(!ready[i]){ uint32_t mask=on?XSDK_WRITE_ALL:0; XsdkBlend b={.color_source=XSDK_BLEND_ONE,.color_dest=XSDK_BLEND_ZERO,.color_op=XSDK_BLEND_OP_ADD,.alpha_source=XSDK_BLEND_ONE,.alpha_dest=XSDK_BLEND_ZERO,.alpha_op=XSDK_BLEND_OP_ADD,.write_mask=mask}; xsdk_gpu_blend_state(&states[i],&b); ready[i]=true; }
+    xsdk_gpu_set_blend(&states[i]);
+}
 static void offset(float factor,float units){ XsdkRaster r={.cull=XSDK_CULL_NONE,.front_clockwise=false,.depth_bias=units*0.00001f,.depth_bias_slope=factor*0.00001f,.fill=XSDK_FILL_SOLID}; XsdkRasterState s; xsdk_gpu_raster_state(&s,&r); xsdk_gpu_set_raster(&s); }
 static void readRGBA(int w,int h,unsigned char* out){
     XsdkTexture fb; if(!NT_SUCCESS(xsdk_texture_init(&fb,XSDK_FORMAT_R8G8B8A8,(uint32_t)w,(uint32_t)h,1,true))) return;

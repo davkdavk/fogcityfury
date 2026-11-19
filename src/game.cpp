@@ -1012,9 +1012,23 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     }
     if(!objectOnly && (DRAW_MASK & (DM_TERRAIN|DM_PROPS))) {
         traceDraw("terrain+props");
+#ifdef FCF_GFX_XSDK
+        traceDraw("terrain+props depth prepass");
+        gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); gfx::colorWrite(false);
+        pDepth.use(); pDepth.m4("uVP", VP); pDepth.m4("uModel", ident());
+        if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
+        if(DRAW_MASK & DM_PROPS) W.props.draw();
+        gfx::colorWrite(true); gfx::depthTest(true); gfx::depthWrite(false);
+        traceDraw("terrain+props world color");
         setCommon(pWorld, VP, cam, hdr);
         if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
         if(DRAW_MASK & DM_PROPS) W.props.draw();
+        gfx::depthWrite(true);
+#else
+        setCommon(pWorld, VP, cam, hdr);
+        if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
+        if(DRAW_MASK & DM_PROPS) W.props.draw();
+#endif
     }
 #ifdef FCF_XSDK_OBJECT_TEST
     if(objectOnly) {
