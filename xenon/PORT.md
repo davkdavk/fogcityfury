@@ -189,6 +189,8 @@ files applied with `git am -3 <file>`.
   mips. Its `vnoise` is one lookup, `fbm` remains four lookups, and the pass-0
   shadow function compiles to 1. No shader text or water behavior is being
   changed beyond these diagnostics.
+- This checkpoint freezes `src/shaders.h` for the Xenos shader-set work. The
+  subsequent cell-culling/LOD implementation must not edit shader source.
 - Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
   within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
   2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
