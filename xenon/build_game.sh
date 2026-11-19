@@ -18,6 +18,18 @@ case "$CULL_TEST" in
 esac
 PERF_TEST="${FCF_PERF_TEST:-0}"
 LEAN_DEBUG="${FCF_LEAN_DEBUG:-}"
+LEAN_MASK23="${FCF_XSDK_LEAN_MASK23:-OFF}"
+LEAN_NOPREPASS="${FCF_XSDK_LEAN_NOPREPASS:-OFF}"
+LEAN_SKYFIRST="${FCF_XSDK_LEAN_SKYFIRST:-OFF}"
+LEAN_NOEFFECTS="${FCF_XSDK_LEAN_NOEFFECTS:-OFF}"
+LEAN_DEPTHFILL="${FCF_XSDK_LEAN_DEPTHFILL:-OFF}"
+LEAN_SKY_BEHIND="${FCF_XSDK_LEAN_SKY_BEHIND:-OFF}"
+for option in "$LEAN_MASK23" "$LEAN_NOPREPASS" "$LEAN_SKYFIRST" "$LEAN_NOEFFECTS" "$LEAN_DEPTHFILL" "$LEAN_SKY_BEHIND"; do
+  case "$option" in
+    ON|OFF) ;;
+    *) echo "FCF_XSDK_LEAN_* options must be ON or OFF" >&2; exit 1 ;;
+  esac
+done
 case "$LEAN_DEBUG" in
   ""|mat) ;;
   *) echo "FCF_LEAN_DEBUG must be empty or mat" >&2; exit 1 ;;
@@ -59,7 +71,8 @@ if [ "$CULL_TEST" = ON ]; then BUILD_DIR="$HERE/build/cull_test"; fi
 if [ "$LEAN_DEBUG" = mat ]; then BUILD_DIR="$HERE/build/perf_lean_debug"; fi
 cmake --fresh -S "$HERE" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$XSDK/cmake/xsdk.cmake" -DXSDK_TOOLCHAIN="$TOOLCHAIN" \
-  -DCMAKE_BUILD_TYPE=Release -DFCF_XSDK_OBJECT_TEST="$OBJECT_TEST" -DFCF_XSDK_DRAW_MASKS="$DRAW_MASKS" -DFCF_XSDK_CULL_TEST="$CULL_TEST" -DFCF_WATER_TEST="$WATER_TEST" -DFCF_PERF_TEST="$PERF_TEST" -DFCF_LEAN_DEBUG="$LEAN_DEBUG" -DFCF_SHADER_DIR="$SHADER_DIR"
+  -DCMAKE_BUILD_TYPE=Release -DFCF_XSDK_OBJECT_TEST="$OBJECT_TEST" -DFCF_XSDK_DRAW_MASKS="$DRAW_MASKS" -DFCF_XSDK_CULL_TEST="$CULL_TEST" -DFCF_WATER_TEST="$WATER_TEST" -DFCF_PERF_TEST="$PERF_TEST" -DFCF_LEAN_DEBUG="$LEAN_DEBUG" -DFCF_SHADER_DIR="$SHADER_DIR" \
+  -DFCF_XSDK_LEAN_MASK23="$LEAN_MASK23" -DFCF_XSDK_LEAN_NOPREPASS="$LEAN_NOPREPASS" -DFCF_XSDK_LEAN_SKYFIRST="$LEAN_SKYFIRST" -DFCF_XSDK_LEAN_NOEFFECTS="$LEAN_NOEFFECTS" -DFCF_XSDK_LEAN_DEPTHFILL="$LEAN_DEPTHFILL" -DFCF_XSDK_LEAN_SKY_BEHIND="$LEAN_SKY_BEHIND"
 cmake --build "$BUILD_DIR"
 cp "$HERE/dbgprint.txt" "$BUILD_DIR/dbgprint.txt"
 if [ "$WATER_TEST" != 0 ]; then
@@ -69,7 +82,9 @@ if [ "$WATER_TEST" != 0 ]; then
 fi
 if [ "$PERF_TEST" != 0 ] && [ "$CULL_TEST" != ON ]; then
   mkdir -p "$HERE/build/game"
-  if [ "$LEAN_DEBUG" = mat ]; then cp "$BUILD_DIR/lean_debug.xex" "$HERE/build/game/"; elif [ "$PERF_TEST" = lean ]; then cp "$BUILD_DIR"/lean*.xex "$HERE/build/game/"; else cp "$BUILD_DIR/perf_$PERF_TEST.xex" "$HERE/build/game/"; fi
+  if [ "$LEAN_DEBUG" = mat ]; then cp "$BUILD_DIR/lean_debug.xex" "$HERE/build/game/"
+  elif [ "$PERF_TEST" = lean ]; then while IFS= read -r target; do cp "$BUILD_DIR/$target.xex" "$HERE/build/game/"; done < "$BUILD_DIR/lean_xex_targets.txt"
+  else cp "$BUILD_DIR/perf_$PERF_TEST.xex" "$HERE/build/game/"; fi
   cp "$HERE/dbgprint.txt" "$HERE/build/game/dbgprint.txt"
 fi
 if [ "$CULL_TEST" = ON ]; then
