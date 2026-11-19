@@ -223,12 +223,15 @@ LEAN_EXTRA = ('ground', 'road', 'wall', 'misc')   # programs only the lean build
 # Text: the font texture holds, for the 5x7 pixel font, the signed distance to each glyph's edge in font pixels
 # (base.h, UI::init under FCF_XENOS_LEAN), sampled linearly. Each font pixel comes out as a square with a smooth
 # one-screen-pixel edge at any text size, where point sampling at sizes like 1.8 or 3.2 gave pixels of uneven widths.
+# The edge is one screen pixel wide from the text's size, which UI::glyph carries in vUV.y's whole part (eighths of a
+# screen pixel per font pixel; the 720-line UI is drawn 1:1). No fwidth: on the console it drew a line down each letter.
 # vUV.x < -0.5 marks the solid quads (panels, bars).
 UI = '''#version 330 core
 in vec2 vUV; in vec4 vC; uniform sampler2D uFont; out vec4 oCol;
 void main(){
-  float d = (texture(uFont, vUV).r - 0.5)*2.0;
-  float a = vUV.x < -0.5 ? 1.0 : clamp(d/max(fwidth(d), 0.0001) + 0.5, 0.0, 1.0);
+  float k = floor(vUV.y + 0.25);
+  float d = (texture(uFont, vec2(vUV.x, (vUV.y - k)*2.0)).r - 0.5)*2.0;
+  float a = vUV.x < -0.5 ? 1.0 : clamp(d*k*0.125 + 0.5, 0.0, 1.0);
   oCol = vec4(vC.rgb, vC.a*a);
 }
 '''

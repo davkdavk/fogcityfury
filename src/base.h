@@ -216,6 +216,11 @@ struct UI {
     void glyph(int ch, float x, float y, float sc, V3 c, float a, float skew = 0) {
         ch = toupper(ch); if (ch < 32 || ch > 90) ch = '?'; ch -= 32; if (!ch) return;
         float u0 = (ch % 16) * 8 / 128.f, v0 = (ch / 16) * 8 / 32.f, u1 = u0 + 5 / 128.f, v1 = v0 + 7 / 32.f;
+#ifdef FCF_XENOS_LEAN
+        // The 360's text shader needs the size, in eighths of a screen pixel per font pixel: carried in v's whole part
+        // (v is halved so its fraction stays clear of the next whole number), read back as floor(v + 0.25).
+        { float k = std::max(1.0f, std::round(sc * 8)); v0 = v0 * 0.5f + k; v1 = v1 * 0.5f + k; }
+#endif
         float X0 = x, Y0 = y, X1 = X0 + 5 * sc, Y1 = Y0 + 7 * sc, sk = skew * 7 * sc;
         vert(X0 + sk, Y0, u0, v0, c, a); vert(X1 + sk, Y0, u1, v0, c, a); vert(X1, Y1, u1, v1, c, a);
         vert(X0 + sk, Y0, u0, v0, c, a); vert(X1, Y1, u1, v1, c, a); vert(X0, Y1, u0, v1, c, a);
