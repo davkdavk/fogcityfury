@@ -221,3 +221,20 @@ void main(){ oCol = vec4(1.0); }
 '''
 LEAN_EXTRA = ('ground', 'road', 'wall', 'misc')   # programs only the lean build has
 LEAN = {'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING}
+
+# Diagnostic (FCF_LEAN_DEBUG=mat): every world surface in one flat colour per material, so a picture shows which
+# geometry is where. Road (vMat 1) red, walls (2) green, the rest of the props (3-6) blue, terrain yellow. Anything
+# still black was not drawn by the world colour pass at all.
+import os as _os
+if _os.environ.get('FCF_LEAN_DEBUG') == 'mat':
+    _DBG = '''#version 330 core
+in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx;
+out vec4 oCol;
+void main(){ oCol = vec4(vMat < 0.5 ? vec3(1.0, 1.0, 0.0) : vMat < 1.5 ? vec3(1.0, 0.0, 0.0) : vMat < 2.5 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.3, 1.0), 1.0); }
+'''
+    for _n in ('world', 'road', 'wall', 'misc'): LEAN[_n] = _DBG
+    LEAN['ground'] = '''#version 330 core
+in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx;
+out vec4 oCol;
+void main(){ oCol = vec4(1.0, 1.0, 0.0, 1.0); }
+'''
