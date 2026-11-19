@@ -108,7 +108,8 @@ static void mesh(Buf& b, const void* v, int nv, const uint32_t* idx, int ni) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, o.ebo); glBufferData(GL_ELEMENT_ARRAY_BUFFER, (size_t)ni * 4, idx, GL_STATIC_DRAW);
     gl::attribs(L_MESH); glBindVertexArray(0);
 }
-static void drawMesh(Buf b, int ni) { if (!ni) return; glBindVertexArray(gl::buf[b].vao); glDrawElements(GL_TRIANGLES, ni, GL_UNSIGNED_INT, 0); }
+static void drawMeshRange(Buf b, int first, int ni) { if (ni <= 0) return; glBindVertexArray(gl::buf[b].vao); glDrawElements(GL_TRIANGLES, ni, GL_UNSIGNED_INT, (void*)((size_t)first * sizeof(uint32_t))); }
+static void drawMesh(Buf b, int ni) { drawMeshRange(b, 0, ni); }
 static void drawFull() { glBindVertexArray(gl::emptyVAO); glDrawArrays(GL_TRIANGLES, 0, 3); }
 
 // ---- state ----

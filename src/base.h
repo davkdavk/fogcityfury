@@ -106,15 +106,24 @@ struct Vtx { float px, py, pz, nx, ny, nz, r, g, b, u, v, mat; };   // gfx::L_ME
 static_assert(sizeof(Vtx) == 48, "Vtx is the 48-byte L_MESH vertex");
 struct MB {
     std::vector<Vtx> v; std::vector<unsigned> idx;
+#ifdef FCF_XENOS_CULL
+    int cellTag = -1; std::vector<int> triTags;
+#endif
     unsigned add(V3 p, V3 n, V3 c, float u, float vv, float mat) { v.push_back({ p.x, p.y, p.z, n.x, n.y, n.z, c.x, c.y, c.z, u, vv, mat }); return (unsigned)v.size() - 1; }
     void tri(V3 a, V3 b, V3 c, V3 col, float mat) {
         V3 n = norm(cross(b - a, c - a)); unsigned i = add(a, n, col, 0, 0, mat); add(b, n, col, 0, 0, mat); add(c, n, col, 0, 0, mat);
         idx.push_back(i); idx.push_back(i + 1); idx.push_back(i + 2);
+#ifdef FCF_XENOS_CULL
+        triTags.push_back(cellTag);
+#endif
     }
     void quad(V3 a, V3 b, V3 c, V3 d, V3 col, float mat, float u0 = 0, float v0 = 0, float u1 = 1, float v1 = 1) {
         V3 n = norm(cross(b - a, d - a));
         unsigned i = add(a, n, col, u0, v0, mat); add(b, n, col, u1, v0, mat); add(c, n, col, u1, v1, mat); add(d, n, col, u0, v1, mat);
         idx.insert(idx.end(), { i, i + 1, i + 2, i, i + 2, i + 3 });
+#ifdef FCF_XENOS_CULL
+        triTags.push_back(cellTag); triTags.push_back(cellTag);
+#endif
     }
     // oriented box. local x axis = (ca,0,-sa), local z = (sa,0,ca)
     void box(float cx, float cz, float hx, float hz, float ang, float y0, float y1, V3 wallCol, float wallMat, V3 roofCol, float roofMat, float vRef = 0, float uOff = 0) {

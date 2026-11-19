@@ -15,6 +15,16 @@ struct Excl { float x, z, r; };
 // How a scripted driver collects a key: start pose, waypoints, speed. Used by --keyrun and the tests,
 // so key tests follow the level when it is edited.
 struct Recipe { const char* kind; float x, z, yaw, speed, secs; std::vector<V3> wps; };
+#ifdef FCF_XENOS_CULL
+static const int WCELLS = 16, WCELL = 96, NCELL = WCELLS * WCELLS;
+struct MeshRange { int first = 0, count = 0; };
+struct CellBounds {
+    float x0 = 1e9f, y0 = 1e9f, z0 = 1e9f, x1 = -1e9f, y1 = -1e9f, z1 = -1e9f;
+    bool valid = false;
+    void include(const Vtx& v) { x0 = std::min(x0, v.px); y0 = std::min(y0, v.py); z0 = std::min(z0, v.pz); x1 = std::max(x1, v.px); y1 = std::max(y1, v.py); z1 = std::max(z1, v.pz); valid = true; }
+};
+struct WorldCell { CellBounds bounds, smallBounds; MeshRange terrain[4], props, small; bool road = false; };
+#endif
 struct TrackDef {
     const char* name; const char* sub;
     std::vector<float> ctrl; std::vector<Gauss> hills;
@@ -69,7 +79,10 @@ struct World {
     std::vector<Box> boxes; std::vector<Ramp> ramps; std::vector<V3> keys; std::vector<Recipe> recipes; std::vector<Excl> excl; std::vector<int> cross;   // cross: middle sample of each bridge
     std::vector<float> keyStreet;   // x0, z0, x1, z1 of the backstreet that leads to the warehouse (empty if it stands by the road)
     std::vector<int> grid[GCN * GCN];
-    Mesh terrain, props, water; gfx::Tex htex = 0; MB mb; Rng rng;
+    Mesh terrain, props, water; gfx::Tex htex = 0; MB mb, smallMb; Rng rng; bool smallMode = false;
+#ifdef FCF_XENOS_CULL
+    Mesh smallProps; WorldCell worldCells[NCELL];
+#endif
     bool flat = false;   // test mode: an endless level tarmac plane (no walls, no water)
 
     float baseHeight(float x, float z) const {
@@ -108,6 +121,63 @@ struct World {
         p = V3(lerpf(a.x, b.x, t) + tz * lat, lerpf(a.y, b.y, t), lerpf(a.z, b.z, t) - tx * lat); yaw = atan2f(tx, tz);
     }
     std::vector<int>& cell(float x, float z) { int i = (int)clampf((x + HALF) / GCELL, 0, GCN - 1), j = (int)clampf((z + HALF) / GCELL, 0, GCN - 1); return grid[j * GCN + i]; }
+    MB& geometry() {
+#ifdef FCF_XENOS_CULL
+        return smallMode ? smallMb : mb;
+#else
+        return mb;
+#endif
+    }
+
+#ifdef FCF_XENOS_CULL
+    static int worldCell(float x, float z) {
+        int i = (int)clampf(floorf((x + HALF) / WCELL), 0, WCELLS - 1), j = (int)clampf(floorf((z + HALF) / WCELL), 0, WCELLS - 1); return j * WCELLS + i;
+    }
+    static int setCellTag(MB& m, float x, float z) { int old = m.cellTag; m.cellTag = worldCell(x, z); return old; }
+    void arrangeProps(MB& src, bool small) {
+        std::vector<unsigned> bins[NCELL];
+        for (size_t i = 0; i + 2 < src.idx.size(); i += 3) {
+            unsigned ia = src.idx[i], ib = src.idx[i + 1], ic = src.idx[i + 2]; const Vtx& a = src.v[ia], &b = src.v[ib], &c = src.v[ic];
+            int tag = i / 3 < src.triTags.size() ? src.triTags[i / 3] : -1;
+            int cellId = tag >= 0 ? tag : worldCell((a.px + b.px + c.px) / 3, (a.pz + b.pz + c.pz) / 3); bins[cellId].insert(bins[cellId].end(), { ia, ib, ic });
+            CellBounds& bounds = small ? worldCells[cellId].smallBounds : worldCells[cellId].bounds; bounds.include(a); bounds.include(b); bounds.include(c);
+        }
+        src.idx.clear();
+        for (int i = 0; i < NCELL; i++) {
+            MeshRange& r = small ? worldCells[i].small : worldCells[i].props; r.first = (int)src.idx.size(); r.count = (int)bins[i].size();
+            src.idx.insert(src.idx.end(), bins[i].begin(), bins[i].end());
+        }
+    }
+    void buildTerrainCells(MB& t) {
+        for (int cz = 0; cz < WCELLS; cz++) for (int cx = 0; cx < WCELLS; cx++) {
+            int ci = cz * WCELLS + cx, x0 = cx * 32, z0 = cz * 32; WorldCell& c = worldCells[ci];
+            for (int z = 0; z <= 32; z++) for (int x = 0; x <= 32; x++) c.bounds.include(t.v[(z0 + z) * GN + x0 + x]);
+            unsigned skirt[4][33];
+            auto bottom = [&](int e, int k, unsigned top) { Vtx v = t.v[top]; v.py -= 24.0f; c.bounds.include(v); t.v.push_back(v); skirt[e][k] = (unsigned)t.v.size() - 1; };
+            for (int k = 0; k <= 32; k++) {
+                bottom(0, k, z0 * GN + x0 + k); bottom(1, k, (z0 + 32) * GN + x0 + k);
+                bottom(2, k, (z0 + k) * GN + x0); bottom(3, k, (z0 + k) * GN + x0 + 32);
+            }
+            for (int lod = 0; lod < 4; lod++) {
+                int step = 1 << lod; MeshRange& r = c.terrain[lod]; r.first = (int)t.idx.size();
+                for (int z = 0; z < 32; z += step) for (int x = 0; x < 32; x += step) {
+                    unsigned a = (z0 + z) * GN + x0 + x, b = a + step * GN, d = a + step, e = b + step;
+                    t.idx.insert(t.idx.end(), { a, b, d, d, b, e });
+                }
+                auto edge = [&](int e) {
+                    for (int k = 0; k < 32; k += step) {
+                        unsigned a, b;
+                        if (e < 2) { int z = z0 + (e ? 32 : 0); a = z * GN + x0 + k; b = a + step; }
+                        else { int x = x0 + (e == 3 ? 32 : 0); a = (z0 + k) * GN + x; b = a + step * GN; }
+                        unsigned d = skirt[e][k], f = skirt[e][k + step]; t.idx.insert(t.idx.end(), { a, d, b, b, d, f });
+                    }
+                };
+                for (int e = 0; e < 4; e++) edge(e);
+                r.count = (int)t.idx.size() - r.first;
+            }
+        }
+    }
+#endif
 
     static float rampH(const Ramp& r, float x, float z, bool& inside) {
         float dx = x - r.x, dz = z - r.z, u = dx * r.sa + dz * r.ca, v = dx * r.ca - dz * r.sa;
@@ -166,40 +236,72 @@ struct World {
         float ca = cosf(ang), sa = sinf(ang), mn = 1e9f, mx = -1e9f;
         for (int k = 0; k < 5; k++) { float lx = k == 4 ? 0 : (k & 1 ? hx : -hx), lz = k == 4 ? 0 : (k & 2 ? hz : -hz); float hh = H(cx + ca * lx + sa * lz, cz - sa * lx + ca * lz); mn = std::min(mn, hh); mx = std::max(mx, hh); }
         float y0 = mn - 1.5f, top = absTop ? height : mx + height;
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(mb, cx, cz);
+#endif
         mb.box(cx, cz, hx, hz, ang, y0, top, col, wallMat, col * 0.45f, 3, (mn + mx) * .5f, rng.f() * 20);
+#ifdef FCF_XENOS_CULL
+        mb.cellTag = oldTag;
+#endif
         addBox(cx, cz, hx, hz, ang, y0, top); return top;
     }
     void ramp(float x, float z, float ang, float L, float hw, float rise) {
         float ca = cosf(ang), sa = sinf(ang), base = H(x, z) - 0.15f;
         ramps.push_back({ x, z, ca, sa, L, hw, base, rise });
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(mb, x + sa * L * 0.5f, z + ca * L * 0.5f);
+#endif
         auto P = [&](float u, float v, float y) { return V3(x + sa * u + ca * v, y, z + ca * u - sa * v); };
         V3 a = P(0, -hw, base), b = P(0, hw, base), c = P(L, hw, base + rise), d = P(L, -hw, base + rise);
         float lo = std::min(base, H(x + sa * L, z + ca * L)) - 2; V3 c0 = P(L, hw, lo), d0 = P(L, -hw, lo), a0 = P(0, -hw, lo), b0 = P(0, hw, lo);
         V3 steel(0.33f, 0.34f, 0.37f);
         mb.quad(a, b, c, d, V3(1, 1, 1), 5, 0, 0, 1, L / 6);
         mb.quad(d, c, c0, d0, steel, 3); mb.quad(a, d, d0, a0, steel, 3); mb.quad(b, c, c0, b0, steel, 3);
+#ifdef FCF_XENOS_CULL
+        mb.cellTag = oldTag;
+#endif
     }
     void tree(float x, float z, float s) {
-        float y = H(x, z); V3 tc(0.22f, 0.15f, 0.09f); mb.box(x, z, 0.22f * s, 0.22f * s, 0, y - 0.5f, y + 2.2f * s, tc, 3, tc, 3);
+        bool wasSmall = smallMode; smallMode = true;
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(smallMb, x, z);
+#endif
+        float y = H(x, z); V3 tc(0.22f, 0.15f, 0.09f); geometry().box(x, z, 0.22f * s, 0.22f * s, 0, y - 0.5f, y + 2.2f * s, tc, 3, tc, 3);
         V3 g(rng.r(0.07f, 0.14f), rng.r(0.26f, 0.42f), rng.r(0.07f, 0.13f)); int N = 7;
         for (int L = 0; L < 2; L++) {
             float yb = y + (1.5f + L * 1.9f) * s, r = (2.0f - L * 0.6f) * s; V3 apex(x, yb + 3.2f * s, z);
             for (int i = 0; i < N; i++) {
                 float a0 = i * 2 * M_PI / N, a1 = (i + 1) * 2 * M_PI / N;
-                mb.tri(V3(x + cosf(a0) * r, yb, z + sinf(a0) * r), V3(x + cosf(a1) * r, yb, z + sinf(a1) * r), apex, g * (0.8f + 0.4f * (i % 2)), 3);
+                geometry().tri(V3(x + cosf(a0) * r, yb, z + sinf(a0) * r), V3(x + cosf(a1) * r, yb, z + sinf(a1) * r), apex, g * (0.8f + 0.4f * (i % 2)), 3);
             }
         }
+        smallMode = wasSmall;
+#ifdef FCF_XENOS_CULL
+        smallMb.cellTag = oldTag;
+#endif
     }
     void gate(int i, bool start) {
         const TS& s = ts[i]; float yaw = atan2f(s.tx, s.tz), lx = s.tz, lz = -s.tx; V3 pc(0.75f, 0.75f, 0.78f), bc = start ? V3(1, 1, 1) : V3(0.95f, 0.75f, 0.05f);
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(mb, s.x, s.z);
+#endif
         for (int sd = -1; sd <= 1; sd += 2) { float x = s.x + lx * sd * (ROADW + 2.4f), z = s.z + lz * sd * (ROADW + 2.4f); mb.box(x, z, 0.4f, 0.4f, yaw, H(x, z) - 1, s.y + 8.2f, pc, 3, pc, 3); }
         mb.box(s.x, s.z, ROADW + 2.8f, 0.3f, yaw, s.y + 6.6f, s.y + 8.2f, bc, start ? 4 : 3, bc * 0.5f, 3, s.y + 6.6f);
         if (start) { V3 l(lx * ROADW, 0, lz * ROADW), t(s.tx * 1.4f, 0, s.tz * 1.4f), c(s.x, s.y + 0.07f, s.z); mb.quad(c - l - t, c + l - t, c + l + t, c - l + t, V3(1, 1, 1), 4, 0, 0, ROADW * 2, 2.8f); }
+#ifdef FCF_XENOS_CULL
+        mb.cellTag = oldTag;
+#endif
     }
     void towers(int i) {
         const TS& s = ts[i]; float yaw = atan2f(s.tx, s.tz), lx = s.tz, lz = -s.tx; V3 c(0.85f, 0.22f, 0.10f);
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(mb, s.x, s.z);
+#endif
         for (int sd = -1; sd <= 1; sd += 2) { float x = s.x + lx * sd * (ROADW + 3.5f), z = s.z + lz * sd * (ROADW + 3.5f); mb.box(x, z, 1.6f, 1.6f, yaw, H(x, z) - 3, s.y + 46, c, 3, c, 3); addBox(x, z, 1.6f, 1.6f, yaw, -30, s.y + 46); }
         for (float yy : { 16.f, 30.f, 43.f }) mb.box(s.x, s.z, ROADW + 3.5f, 1.2f, yaw, s.y + yy, s.y + yy + 2.6f, c, 3, c, 3);
+#ifdef FCF_XENOS_CULL
+        mb.cellTag = oldTag;
+#endif
     }
     // blend terrain towards height y around a segment (never touches the road corridor). y = NAN keeps the height at the first point
     void flatten(V3 a, V3 b, float y, float rin, float rout) {
@@ -284,6 +386,9 @@ struct World {
         V3 conc(0.50f, 0.49f, 0.47f), dark(0.30f, 0.30f, 0.32f); const int SP = BR_SPAN + 6;
         for (int d = -SP; d < SP; d += 6) {
             const TS& a = ts[(j + d + n) % n], & b = ts[(j + d + 6 + n) % n]; float dx = b.x - a.x, dz = b.z - a.z, L = sqrtf(dx * dx + dz * dz), yaw = atan2f(dx, dz), ca = cosf(yaw), sa = sinf(yaw);
+#ifdef FCF_XENOS_CULL
+            int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f);
+#endif
             Ramp r = { a.x, a.z, ca, sa, L, ROADW + 0.7f, a.y, b.y - a.y }; r.thick = 1.1f; ramps.push_back(r);
             float mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2, lo = std::min(a.y, b.y), hi = std::max(a.y, b.y);
             if (abs(d + 3) <= BR_SPAN) mb.box(mx, mz, ROADW + 0.7f, L / 2 + 0.05f, yaw, lo - 1.0f, lo - 0.12f, conc, 3, dark, 3);
@@ -291,10 +396,19 @@ struct World {
                 float x = mx + ca * sd * (ROADW + 1.0f), z = mz - sa * sd * (ROADW + 1.0f);
                 mb.box(x, z, 0.3f, L / 2 + 0.05f, yaw, lo - 1.0f, hi + 0.95f, conc, 3, conc, 3); addBox(x, z, 0.3f, L / 2, yaw, lo - 1.2f, hi + 1.0f);
             }
+#ifdef FCF_XENOS_CULL
+            mb.cellTag = oldTag;
+#endif
         }
         for (int d : { -BR_SPAN + 2, -20, 20, BR_SPAN - 2 }) {
             const TS& s = ts[(j + d + n) % n]; float yaw = atan2f(s.tx, s.tz), y0 = H(s.x, s.z) - 2;
+#ifdef FCF_XENOS_CULL
+            int oldTag = setCellTag(mb, s.x, s.z);
+#endif
             mb.box(s.x, s.z, ROADW - 0.5f, 0.9f, yaw, y0, s.y - 0.9f, conc, 3, conc, 3); addBox(s.x, s.z, ROADW - 0.5f, 0.9f, yaw, y0, s.y - 0.9f);
+#ifdef FCF_XENOS_CULL
+            mb.cellTag = oldTag;
+#endif
         }
     }
     // ---- city grid: building lots are GRID m apart, with a backstreet on every line half-way between them ----
@@ -307,6 +421,9 @@ struct World {
     // the warehouse with the fifth key: door at local (0,0) facing -Z, th = the heading you drive in on. Its roller door is up.
     void warehouse(float cx, float cz, float th, float floorY, V3 from) {
         float ca = cosf(th), sa = sinf(th); auto P = [&](float lx, float lz) { return V3(cx + ca * lx + sa * lz, 0, cz - sa * lx + ca * lz); };
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(mb, cx, cz);
+#endif
         flatten(P(0, -14), P(0, 27), floorY, 17, 27); V3 c = P(0, 13); float g = H(c.x, c.z), top = g + 9;
         V3 wall(0.46f, 0.30f, 0.22f), steel(0.40f, 0.44f, 0.50f), yel(0.95f, 0.72f, 0.05f), dark(0.16f, 0.16f, 0.18f), lampc(1.0f, 0.62f, 0.25f), q;
         q = P(-11.75f, 12.9f); building(q.x, q.z, 0.75f, 13.65f, th, top, true, wall); q = P(11.75f, 12.9f); building(q.x, q.z, 0.75f, 13.65f, th, top, true, wall);
@@ -323,14 +440,28 @@ struct World {
         { V3 f0 = P(-11, 0.75f), f1 = P(11, 0.75f), f2 = P(11, 25.05f), f3 = P(-11, 25.05f), fc(0.34f, 0.34f, 0.35f); f0.y = f1.y = f2.y = f3.y = g + 0.05f; mb.quad(f0, f1, f2, f3, fc, 3); }   // concrete floor
         V3 k = P(0, 19); addExcl(c.x, c.z, 8);
         addKey(V3(k.x, g + 1.3f, k.z), "garage", from, th, 10, (len(P(0, 0) - from) + 30) / 10 + 4, { P(0, -6), P(0, 8), k });
+#ifdef FCF_XENOS_CULL
+        mb.cellTag = oldTag;
+#endif
     }
     // a line of orange lamps on both sides of a backstreet from a to b: follow them to the warehouse
     void lampTrail(V3 a, V3 b) {
+        bool wasSmall = smallMode; smallMode = true;
+#ifdef FCF_XENOS_CULL
+        int oldTag = smallMb.cellTag;
+#endif
         V3 d = norm(b - a), sd(d.z, 0, -d.x), pc(0.22f, 0.22f, 0.24f), lampc(1.0f, 0.62f, 0.25f); float L = len(b - a), yaw = atan2f(d.x, d.z); int n = 0;
         for (float e = 4; e < L - 3; e += 9, n++) {
             V3 p = a + d * e + sd * ((n & 1 ? 1 : -1) * 3.55f); float y = H(p.x, p.z); if (RD(p.x, p.z) < ROADW + 3) continue;
-            mb.box(p.x, p.z, 0.08f, 0.08f, yaw, y - 0.5f, y + 4.6f, pc, 3, pc, 3); V3 h = p - sd * ((n & 1 ? 1 : -1) * 0.5f); mb.box(h.x, h.z, 0.5f, 0.16f, yaw + (float)M_PI / 2, y + 4.5f, y + 4.66f, lampc, 6, lampc, 6);
+#ifdef FCF_XENOS_CULL
+            geometry().cellTag = worldCell(p.x, p.z);
+#endif
+            geometry().box(p.x, p.z, 0.08f, 0.08f, yaw, y - 0.5f, y + 4.6f, pc, 3, pc, 3); V3 h = p - sd * ((n & 1 ? 1 : -1) * 0.5f); geometry().box(h.x, h.z, 0.5f, 0.16f, yaw + (float)M_PI / 2, y + 4.5f, y + 4.66f, lampc, 6, lampc, 6);
         }
+        smallMode = wasSmall;
+#ifdef FCF_XENOS_CULL
+        smallMb.cellTag = oldTag;
+#endif
     }
     // The fifth key. In town: the warehouse stands across the end of a backstreet that starts at the main road, a few blocks in.
     // (i0 picks where round the lap to start looking.) Where there is no town to speak of it stands beside the road instead.
@@ -375,7 +506,11 @@ struct World {
 
     void build(int id_) {
         id = id_; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB();
-        boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); for (auto& g : grid) g.clear();
+        boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
+#ifdef FCF_XENOS_CULL
+        for (auto& c : worldCells) c = WorldCell();
+#endif
+        smallMb = MB();
         h.assign(GN * GN, 0); hr.assign(GN * GN, 0); rd.assign(GN * GN, 999);
         for (int j = 0; j < GN; j++) for (int i = 0; i < GN; i++) h[j * GN + i] = baseHeight(-HALF + i * CELL, -HALF + j * CELL);
         // --- centre line: closed Catmull-Rom, resampled at 1 m ---
@@ -393,6 +528,11 @@ struct World {
         for (int i = 0; i < n; i++) { const TS& a = ts[(i + n - 1) % n], & b = ts[(i + 1) % n]; V3 t = norm(V3(b.x - a.x, 0, b.z - a.z)); ts[i].tx = t.x; ts[i].tz = t.z; ts[i].y = std::max(H(ts[i].x, ts[i].z), 2.2f); }
         for (int pass = 0; pass < 3; pass++) { std::vector<float> y(n); for (int i = 0; i < n; i++) { float s = 0; for (int k = -5; k <= 5; k++) s += ts[(i + k + n) % n].y; y[i] = s / 11; } for (int i = 0; i < n; i++) ts[i].y = y[i]; }
         for (int i = 0; i < n; i++) { const TS& a = ts[(i + n - 6) % n], & b = ts[(i + 6) % n]; ts[i].curv = fabsf(wrapPi(atan2f(b.tx, b.tz) - atan2f(a.tx, a.tz))) / 12; }
+#ifdef FCF_XENOS_CULL
+        for (const TS& s : ts) for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) {
+            int c = worldCell(s.x + dx * 8.0f, s.z + dz * 8.0f); worldCells[c].road = true;
+        }
+#endif
         // --- crossings: where the road meets itself, the later pass climbs over the earlier one on a bridge ---
         cross.clear();
         for (int i = 0; i < n; i++) for (int j = i + 150; j < n; j++) {
@@ -425,15 +565,32 @@ struct World {
             const TS& a = ts[i], & b = ts[(i + 1) % n]; float w = ROADW + 0.7f;
             V3 al(a.x + a.tz * w, a.y + 0.03f, a.z - a.tx * w), ar(a.x - a.tz * w, a.y + 0.03f, a.z + a.tx * w), bl(b.x + b.tz * w, b.y + 0.03f, b.z - b.tx * w), br(b.x - b.tz * w, b.y + 0.03f, b.z + b.tx * w);
             V3 nrm(0, 1, 0);
+#ifdef FCF_XENOS_CULL
+            int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f);
+#endif
             unsigned q = mb.add(ar, nrm, V3(1, 1, 1), -w, (float)i, 1); mb.add(al, nrm, V3(1, 1, 1), w, (float)i, 1); mb.add(bl, nrm, V3(1, 1, 1), w, (float)i + 1, 1); mb.add(br, nrm, V3(1, 1, 1), -w, (float)i + 1, 1);
             mb.idx.insert(mb.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
+#ifdef FCF_XENOS_CULL
+            mb.triTags.push_back(oldTag); mb.triTags.push_back(oldTag);
+#endif
             V3 dn(0, -0.9f, 0); mb.quad(al, bl, bl + dn + V3(b.tz, 0, -b.tx) * 0.4f, al + dn + V3(a.tz, 0, -a.tx) * 0.4f, kerb, 3); mb.quad(ar, br, br + dn - V3(b.tz, 0, -b.tx) * 0.4f, ar + dn - V3(a.tz, 0, -a.tx) * 0.4f, kerb, 3);
+#ifdef FCF_XENOS_CULL
+            mb.cellTag = oldTag;
+#endif
         }
         for (int j : cross) bridge(j);
         for (int c = 0; c < NCP; c++) gate(c * n / NCP, c == 0);
         for (int k = 0; k < GRID_SLOTS; k++) {   // starting grid: a painted box for every slot, staggered left and right behind the line
             float s = gridS(k), lat = gridLat(k); V3 w(0.88f, 0.88f, 0.86f);
-            auto Q = [&](float s0, float l0, float s1, float l1) { V3 a, b, c2, d; float yw; at(s0, l0, a, yw); at(s0, l1, b, yw); at(s1, l1, c2, yw); at(s1, l0, d, yw); a.y += 0.07f; b.y += 0.07f; c2.y += 0.07f; d.y += 0.07f; mb.quad(a, b, c2, d, w, 3); };
+            auto Q = [&](float s0, float l0, float s1, float l1) { V3 a, b, c2, d; float yw; at(s0, l0, a, yw); at(s0, l1, b, yw); at(s1, l1, c2, yw); at(s1, l0, d, yw); a.y += 0.07f; b.y += 0.07f; c2.y += 0.07f; d.y += 0.07f;
+#ifdef FCF_XENOS_CULL
+                int oldTag = setCellTag(mb, (a.x + b.x + c2.x + d.x) * 0.25f, (a.z + b.z + c2.z + d.z) * 0.25f);
+#endif
+                mb.quad(a, b, c2, d, w, 3);
+#ifdef FCF_XENOS_CULL
+                mb.cellTag = oldTag;
+#endif
+            };
             Q(s + 2.55f, lat - 1.45f, s + 2.80f, lat + 1.45f);                                            // the line the nose stops at
             Q(s + 0.4f, lat - 1.45f, s + 2.55f, lat - 1.27f); Q(s + 0.4f, lat + 1.27f, s + 2.55f, lat + 1.45f);   // and a short bracket down each side
         }
@@ -453,12 +610,28 @@ struct World {
             if (ct && fr.f() < 0.30f) {   // a dumpster or a stack of pallets against one wall, on the backstreet side (it leaves the middle of the street clear)
                 int sdn = (int)(fr.f() * 4) & 3; float ox = sdn == 0 ? hx + 0.85f : sdn == 1 ? -hx - 0.85f : fr.r(-hx + 2, hx - 2), oz = sdn == 2 ? hz + 0.85f : sdn == 3 ? -hz - 0.85f : fr.r(-hz + 2, hz - 2);
                 float px = x + ox, pz = z + oz, py = H(px, pz); bool bin = fr.f() < 0.65f; V3 col = bin ? (fr.f() < 0.5f ? V3(0.10f, 0.26f, 0.16f) : V3(0.12f, 0.18f, 0.32f)) : V3(0.50f, 0.38f, 0.22f);
-                if (cityGround(px, pz) && py > 2.6f) { float bx = sdn < 2 ? 0.7f : 1.3f, bz = sdn < 2 ? 1.3f : 0.7f; mb.box(px, pz, bx, bz, 0, py - 0.6f, py + (bin ? 1.35f : 0.9f), col, 3, col * 0.6f, 3); addBox(px, pz, bx, bz, 0, py - 0.6f, py + (bin ? 1.35f : 0.9f)); }
+                if (cityGround(px, pz) && py > 2.6f) { float bx = sdn < 2 ? 0.7f : 1.3f, bz = sdn < 2 ? 1.3f : 0.7f; smallMode = true;
+#ifdef FCF_XENOS_CULL
+                    int oldTag = setCellTag(smallMb, px, pz);
+#endif
+                    geometry().box(px, pz, bx, bz, 0, py - 0.6f, py + (bin ? 1.35f : 0.9f), col, 3, col * 0.6f, 3);
+#ifdef FCF_XENOS_CULL
+                    smallMb.cellTag = oldTag;
+#endif
+                    smallMode = false; addBox(px, pz, bx, bz, 0, py - 0.6f, py + (bin ? 1.35f : 0.9f)); }
             }
         }
         for (int j = 0; j < 49; j++) for (int i = 0; i < 49; i++) if (((i + j) & 1) == 0) {   // street lamps (the terrain shader lights the ground under these at night)
             float x = alleyLine(i) + 3.6f, z = alleyLine(j) + 3.6f; if (!cityGround(x, z) || !cityGround(x - 3.6f, z - 3.6f)) continue;
-            float y = H(x, z); V3 pc(0.22f, 0.22f, 0.24f), lc(0.85f, 0.92f, 1.0f); mb.box(x, z, 0.08f, 0.08f, 0, y - 0.5f, y + 5.2f, pc, 3, pc, 3); mb.box(x - 0.45f, z - 0.45f, 0.5f, 0.16f, (float)M_PI / 4, y + 5.1f, y + 5.26f, lc, 6, lc, 6);
+            float y = H(x, z); V3 pc(0.22f, 0.22f, 0.24f), lc(0.85f, 0.92f, 1.0f); smallMode = true;
+#ifdef FCF_XENOS_CULL
+            int oldTag = setCellTag(smallMb, x, z);
+#endif
+            geometry().box(x, z, 0.08f, 0.08f, 0, y - 0.5f, y + 5.2f, pc, 3, pc, 3); geometry().box(x - 0.45f, z - 0.45f, 0.5f, 0.16f, (float)M_PI / 4, y + 5.1f, y + 5.26f, lc, 6, lc, 6);
+#ifdef FCF_XENOS_CULL
+            smallMb.cellTag = oldTag;
+#endif
+            smallMode = false;
         }
         // --- trees ---
         for (int k = 0; k < 5500; k++) {
@@ -468,7 +641,14 @@ struct World {
             bool in = false; for (int bi : cell(x, z)) { const Box& b = boxes[bi]; float dx = x - b.cx, dz = z - b.cz; if (fabsf(dx * b.ca - dz * b.sa) < b.hx + 2.5f && fabsf(dx * b.sa + dz * b.ca) < b.hz + 2.5f) in = true; }
             if (!in) tree(x, z, s);
         }
-        props.upload(mb); mb = MB();
+ #ifdef FCF_XENOS_CULL
+        arrangeProps(mb, false); arrangeProps(smallMb, true);
+ #endif
+        props.upload(mb);
+#ifdef FCF_XENOS_CULL
+        smallProps.upload(smallMb);
+#endif
+        mb = MB(); smallMb = MB();
         // --- terrain mesh ---
         MB t; t.v.reserve(GN * GN);
         for (int j = 0; j < GN; j++) for (int i = 0; i < GN; i++) {
@@ -483,7 +663,11 @@ struct World {
             if (hh < 0) c = c * clampf(1 + hh * 0.12f, 0.35f, 1);
             t.add(V3(x, hr[j * GN + i], z), nrm, c, cityGround(x, z) ? 1.0f : 0.0f, 0, 0);   // u = 1 where the shader paves city blocks and alleys
         }
+#ifdef FCF_XENOS_CULL
+        buildTerrainCells(t);
+#else
         for (int j = 0; j < GN - 1; j++) for (int i = 0; i < GN - 1; i++) { unsigned a = j * GN + i; t.idx.insert(t.idx.end(), { a, a + GN, a + 1, a + 1, a + GN, a + GN + 1 }); }
+#endif
         terrain.upload(t);
         MB w; w.quad(V3(-5000, 0, -5000), V3(-5000, 0, 5000), V3(5000, 0, 5000), V3(5000, 0, -5000), V3(1, 1, 1), 0); water.upload(w);
         if (g_noGL) return;

@@ -189,8 +189,11 @@ files applied with `git am -3 <file>`.
   mips. Its `vnoise` is one lookup, `fbm` remains four lookups, and the pass-0
   shadow function compiles to 1. No shader text or water behavior is being
   changed beyond these diagnostics.
-- This checkpoint freezes `src/shaders.h` for the Xenos shader-set work. The
-  subsequent cell-culling/LOD implementation must not edit shader source.
+- `src/shaders.h` remains unchanged. Claude's lean-shader patch is applied as
+  commit `eb7fdf2`; its separate Xenos shader set lives in
+  `xenon/lean_shaders.py` (do not edit that file). `FCF_PERF_TEST=lean
+  xenon/build_game.sh` builds `lean.xex`, `lean_sky_behind.xex`, and
+  `lean_23.xex`; all 14 programs / 28 stages compile with glslang and xsc.
 - Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
   within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
   2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
@@ -205,22 +208,41 @@ files applied with `git am -3 <file>`.
   3 runs. This isolates the water hang to the `wh()` normal/noise work; neither
   the packed height texture nor replacing discard alone removes it. The default
   water shader remains unchanged.
-- The 0533aeb depth pre-pass is retained but did not improve mask-23 FPS. Next
-  is shared 16x16 cell binning/culling, with desktop draw path unchanged and
-  terrain LOD enabled only on Xenos. Each cell needs three index lists over the
-  same vertices (every quad, every 2nd vertex, every 4th), plus one skirt strip
-  per edge. Choose LOD by cell-box distance: defaults 150/400 m; keep road cells
-  at LOD0 through 250 m. Make the two thresholds build-time tunables.
-- Bin props by whole object into the same cells: buildings are large and always
-  drawn when visible; trees/signs/barriers/lamps are small and omitted beyond
-  300 m. Each frame extract six VP planes, cull cells, sort visible cells
-  near-to-far, and log cells drawn/total, cells per LOD, and indices submitted.
-- Build three mask-23 flat-shader titles: `cull_only.xex` (culling, pre-pass on),
-  `cull_lod.xex` (culling+LOD, pre-pass on), and `cull_lod_noprepass.xex`
-  (culling+LOD, pre-pass off). No culling/LOD code is included in this checkpoint.
+- The 0533aeb depth pre-pass is retained but did not improve mask-23 FPS. The
+  Xenos-only culling path now partitions the world into shared 16x16 (96 m)
+  cells. Terrain uses four contiguous index ranges per cell over the same
+  vertices (steps 1, 2, 4, and 8), with a skirt on each edge at every level.
+  LOD0 is under 120 m, LOD1 is 120-300 m, LOD2 is 300-600 m, and LOD3 is beyond
+  600 m; road cells use LOD0 under 120 m. CMake cache variables
+  `FCF_XENOS_LOD_NEAR`, `FCF_XENOS_LOD_FAR`, `FCF_XENOS_LOD_ULTRA`, and
+  `FCF_XENOS_ROAD_LOD0` tune those distances.
+- Props are grouped into per-cell index ranges. Buildings and larger scenery
+  are assigned as whole objects; tree, street-lamp, warehouse-trail-lamp, and
+  dumpster batches use the small-prop mesh, omitted when their cell bounds are
+  beyond 300 m. Freeform road and terrain-side triangles use their segment or
+  centroid cell. The renderer extracts six VP planes, culls cell AABBs, sorts
+  visible cells near-to-far, and logs visible/total cells, cells and terrain
+  indices per LOD, separate terrain/props index totals, and visible small-prop
+  cells once per second.
+- Build the three mask-23 flat-shader comparisons with
+  `FCF_XSDK_CULL_TEST=ON xenon/build_game.sh`: `cull_only.xex` (culling, LOD0,
+  pre-pass on), `cull_lod.xex` (culling+LOD, pre-pass on), and
+  `cull_lod_noprepass.xex` (culling+LOD, pre-pass off). All three built and
+  packaged successfully; the Xenos backend range draw and the XSDK build compile.
+  Initial console measurements: `perf_flat` 30 fps, `cull_only` 37 fps,
+  `cull_lod` 47 fps, and `cull_lod_noprepass` 48 fps. The console presents at
+  60 or 30 fps; `cull_lod` holds 60 with fewer than about 100 visible cells and
+  drops to 30 around 140-160 cells on wide open-ground views. The first culling
+  log incorrectly reported `propsIdx=0`: props were already drawn from their
+  per-cell ranges, but the flat path accumulated their indices in the terrain
+  counter. The counters are now separate; verify the corrected log on console.
+- Desktop tests after these changes: 61 headless tests pass, and
+  `python3 tests/run_tests.py --render` passes 64/64 including the GLES render
+  smoke test. Desktop world generation and full-mesh draw path remain selected
+  unless the Xenos culling compile flag is enabled.
 - Do not start later fbm baking or per-vertex fog until the user reports the
-  flat/noise FPS comparison. No back-face culling or LOD beyond the specified
-  cell implementation is included in this checkpoint.
+  new four-level LOD comparison. No back-face culling or additional shader
+  optimization is included here.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell

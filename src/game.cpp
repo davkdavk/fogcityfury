@@ -116,6 +116,18 @@ static void champRaceEnd(); static void champShowdownEnd(); static void champBeg
 static void netHitMe(); static void netHitBot(int id); static void remoteWreck(const Car& c);   // called by the net client: a rocket hit us / another player blew up
 #include "netclient.h"
 static_assert(net::TRACKS == NTRACKS, "server and client disagree on the number of tracks");
+#ifndef FCF_XENOS_LOD_NEAR
+#define FCF_XENOS_LOD_NEAR 120
+#endif
+#ifndef FCF_XENOS_LOD_FAR
+#define FCF_XENOS_LOD_FAR 300
+#endif
+#ifndef FCF_XENOS_LOD_ULTRA
+#define FCF_XENOS_LOD_ULTRA 600
+#endif
+#ifndef FCF_XENOS_ROAD_LOD0
+#define FCF_XENOS_ROAD_LOD0 120
+#endif
 // feel: camera springs, screen effects, gear-shift cut, skid marks
 static float frameDt = 1 / 60.f, slowT = 0, flashT = 0, caT = 0, fovKick = 0, shiftCut = 0, camRoll = 0, camLag = 0, camDip = 0, camDipV = 0, gasHold = 0, whooshCD[NAI] = {};
 static V3 flashCol(1, 1, 1);
@@ -1003,8 +1015,59 @@ static void drawWreckage(Prog& p, bool lit) {
         for (int e = -1; e <= 1; e += 2) { p.m4("uModel", mul(translate(q + V3(0, 1.05f, 0)), mul(rotY(T * 1.3f + k), mul(translate(V3(e * 0.32f, 0, 0)), mul(rotX(-0.5f), scale(1.5f, 1.5f, 1.5f)))))); rocketMesh.draw(); }
     }
 }
+#ifdef FCF_XENOS_CULL
+struct VisibleCell { int id, lod; float dist2; };
+static std::vector<VisibleCell> visibleWorldCells;
+static float cellDistance2(const CellBounds& b, V3 p) {
+    if (!b.valid) return 1e30f;
+    float x = std::max(std::max(b.x0 - p.x, 0.0f), p.x - b.x1), y = std::max(std::max(b.y0 - p.y, 0.0f), p.y - b.y1), z = std::max(std::max(b.z0 - p.z, 0.0f), p.z - b.z1);
+    return x * x + y * y + z * z;
+}
+static void selectWorldCells(const M4& VP, V3 cam) {
+    float p[6][4];
+    for (int i = 0; i < 4; i++) {
+        int k = i * 4;
+        p[0][i] = VP.m[k + 3] + VP.m[k]; p[1][i] = VP.m[k + 3] - VP.m[k];
+        p[2][i] = VP.m[k + 3] + VP.m[k + 1]; p[3][i] = VP.m[k + 3] - VP.m[k + 1];
+        p[4][i] = VP.m[k + 3] + VP.m[k + 2]; p[5][i] = VP.m[k + 3] - VP.m[k + 2];
+    }
+    for (auto& q : p) { float l = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]); if (l > 1e-8f) for (float& v : q) v /= l; }
+    visibleWorldCells.clear();
+    for (int i = 0; i < NCELL; i++) {
+        const WorldCell& c = W.worldCells[i]; const CellBounds& b = c.bounds; if (!b.valid) continue;
+        bool inside = true;
+        for (auto& q : p) {
+            float x = q[0] >= 0 ? b.x1 : b.x0, y = q[1] >= 0 ? b.y1 : b.y0, z = q[2] >= 0 ? b.z1 : b.z0;
+            if (q[0] * x + q[1] * y + q[2] * z + q[3] < 0) { inside = false; break; }
+        }
+        if (!inside) continue;
+        float d2 = cellDistance2(b, cam); int lod = 0;
+#ifdef FCF_XENOS_LOD
+        if (d2 > FCF_XENOS_LOD_ULTRA * FCF_XENOS_LOD_ULTRA) lod = 3;
+        else if (d2 > FCF_XENOS_LOD_FAR * FCF_XENOS_LOD_FAR) lod = 2;
+        else if (d2 > FCF_XENOS_LOD_NEAR * FCF_XENOS_LOD_NEAR) lod = 1;
+        if (c.road && d2 <= FCF_XENOS_ROAD_LOD0 * FCF_XENOS_ROAD_LOD0) lod = 0;
+#endif
+        visibleWorldCells.push_back({ i, lod, d2 });
+    }
+    std::sort(visibleWorldCells.begin(), visibleWorldCells.end(), [](const VisibleCell& a, const VisibleCell& b) { return a.dist2 < b.dist2; });
+}
+static void drawWorldCells(bool terrain, bool props, V3 cam, int* terrainSubmitted = nullptr, int* propsSubmitted = nullptr) {
+    for (const VisibleCell& v : visibleWorldCells) {
+        const WorldCell& c = W.worldCells[v.id];
+        if (terrain) { const MeshRange& r = c.terrain[v.lod]; if (r.count) { gfx::drawMeshRange(W.terrain.buf, r.first, r.count); if (terrainSubmitted) *terrainSubmitted += r.count; } }
+        if (props) {
+            const MeshRange& r = c.props; if (r.count) { gfx::drawMeshRange(W.props.buf, r.first, r.count); if (propsSubmitted) *propsSubmitted += r.count; }
+            if (c.small.count && cellDistance2(c.smallBounds, cam) <= 300.0f * 300.0f) { gfx::drawMeshRange(W.smallProps.buf, c.small.first, c.small.count); if (propsSubmitted) *propsSubmitted += c.small.count; }
+        }
+    }
+}
+#endif
 static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     M4 VP = mul(P, V); float hdr = 1;
+#ifdef FCF_XENOS_CULL
+    selectWorldCells(VP, cam);
+#endif
 #ifdef FCF_XSDK_OBJECT_TEST
     static int lastObject=-1;
     int object=(int)(T/3.0f)%4;
@@ -1034,13 +1097,36 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     if(!objectOnly && (DRAW_MASK & (DM_TERRAIN|DM_PROPS))) {
         traceDraw("terrain+props");
 #ifdef FCF_GFX_XSDK
+#ifndef FCF_XENOS_NO_PREPASS
         traceDraw("terrain+props depth prepass");
         gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); gfx::colorWrite(false);
         pDepth.use(); pDepth.m4("uVP", VP); pDepth.m4("uModel", ident());
+#ifdef FCF_XENOS_CULL
+        drawWorldCells((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam);
+#else
         if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
         if(DRAW_MASK & DM_PROPS) W.props.draw();
+#endif
         gfx::colorWrite(true); gfx::depthTest(true); gfx::depthWrite(false);
+#else
+        gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true);
+#endif
         traceDraw("terrain+props world color");
+#ifdef FCF_XENOS_CULL
+        int terrainIndices = 0, propIndices = 0;
+#ifdef FCF_XENOS_LEAN
+        if (DRAW_MASK & DM_TERRAIN) { setCommon(pGround, VP, cam, hdr); drawWorldCells(true, false, cam, &terrainIndices, nullptr); }
+        if (DRAW_MASK & DM_PROPS) { setCommon(pWorld, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices); }
+#else
+        setCommon(pWorld, VP, cam, hdr);
+        drawWorldCells((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam, &terrainIndices, &propIndices);
+#endif
+        if (mainPass && frameNo % 60 == 0) {
+            int lod[4] = {}, lodIndices[4] = {}, smallCells = 0;
+            for (const VisibleCell& v : visibleWorldCells) { const WorldCell& c = W.worldCells[v.id]; lod[v.lod]++; lodIndices[v.lod] += c.terrain[v.lod].count; if (c.small.count && cellDistance2(c.smallBounds, cam) <= 300.0f * 300.0f) smallCells++; }
+            xsdk_log_write("cull: cells=%u/%d lod=%d,%d,%d,%d lodIdx=%d,%d,%d,%d terrainIdx=%d propsIdx=%d smallCells=%d", (unsigned)visibleWorldCells.size(), NCELL, lod[0], lod[1], lod[2], lod[3], lodIndices[0], lodIndices[1], lodIndices[2], lodIndices[3], terrainIndices, propIndices, smallCells);
+        }
+#else
 #ifdef FCF_XENOS_LEAN
         // the terrain mesh is all one material and has its own program; "world" here is road + walls + the rest, picked by
         // vMat, for the whole props mesh (pRoad, pWall, pMisc are for drawing it in per-material ranges)
@@ -1052,6 +1138,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         setCommon(pWorld, VP, cam, hdr);
         if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
         if(DRAW_MASK & DM_PROPS) W.props.draw();
+#endif
 #endif
         gfx::depthWrite(true);
 #else

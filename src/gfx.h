@@ -41,7 +41,8 @@
 //   data(b, p, bytes, stream)          its contents; stream: rewritten every frame (else now and then)
 //   draw(b, first, n)                  triangles from vertices first .. first+n-1
 //   mesh(b, v, nv, idx, ni)            an L_MESH buffer with 32-bit indices, uploaded once
-//   drawMesh(b, ni)                    its triangles
+//   drawMesh(b, ni)                    its first ni triangles
+//   drawMeshRange(b, first, n)         indexed triangles in [first, first+n)
 //   drawFull()                         one triangle covering the target; the vertex shader makes it from the vertex
 //                                      index (no vertices are read)
 //
