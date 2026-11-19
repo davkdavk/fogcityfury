@@ -82,17 +82,20 @@ files applied with `git am -3 <file>`.
 - The previous full-game XEX was
   `xenon/build/game/fogcityfury.xex`; it reached frame 3 in Xenia, where
   unsupported instructions make visual results unreliable.
-- Six draw-mask diagnostics are built by
-  `XSDK_DRAW_MASKS=ON ./build_game.sh`. Files are named for their numeric mask:
-  `draw_mask_0.xex` clear only; `draw_mask_1.xex` sky; `draw_mask_64.xex` UI;
-  `draw_mask_144.xex` one player car; `draw_mask_6.xex` terrain and props;
-  `draw_mask_95.xex` everything except marks, shadow patches, particles and
-  the ring. Outputs are in `xenon/build/game/`.
+- The first six diagnostic masks (0, 1, 64, 144, 6 and 95) isolated the initial
+  RGH hang and are recorded below. The current four-title follow-up set is
+  built by `XSDK_DRAW_MASKS=ON ./build_game.sh`; outputs are in
+  `xenon/build/game/`: `draw_mask_64.xex` UI only, `draw_mask_8.xex` water only,
+  `draw_mask_16.xex` all cars only, and `draw_mask_23.xex`
+  sky+terrain+props+all cars. Wreckage+pickups is deferred until these four
+  pass, as requested.
+- `DM_WRECKAGE` is separate from `DM_CARS`; the default mask enables both,
+  while the all-cars diagnostics omit wreckage and pickups.
 - Each diagnostic logs `draw: <group> queued` immediately before its first-frame
   draw group. The existing `hardware-frame begin/end` fence diagnostics remain
   enabled for the first ten frames. The draw-group markers are limited to the
   first rendered frame to keep the synchronous log concise.
-- The six mask builds change draw selection only; no framebuffer, texture,
+- The mask builds change draw selection only; no framebuffer, texture,
   depth, stream, shader or draw-submission behavior was changed for this test.
 
 ## RGH First-Frame Investigation
@@ -118,9 +121,9 @@ files applied with `git am -3 <file>`.
   the active program and flushes its current uniform groups and sampler slots.
   This restores shader state and texture slot 0, which xsdk's resolve leaves
   unset, before the next draw in pass levels 1-3.
-- The depth-fix build is at `xenon/build/game/draw_mask_6.xex`. Desktop tests
-  pass, but the RGH result for this build is pending; check building opacity,
-  frame rate and fence completion before starting the next isolation step.
+- RGH verification of `xenon/build/game/draw_mask_6.xex` from 8701b43 confirmed
+  opaque buildings and working depth. The earlier 6-9 fps result remains; the
+  next isolation step is now unblocked.
 - `gfx::drawFull` issues `xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST, 3)` without
   a vertex stream. xsdk implements that as an auto-indexed draw (`AUTO_INDEX` in
   `src/gpu_draw.c`); `samples/triangle` and `samples/cube` both use vertex
@@ -138,21 +141,24 @@ files applied with `git am -3 <file>`.
   `xsdk_gpu_open` resolves whatever was already in eDRAM; a resolve then clears
   eDRAM for the next frame. Startup's colour-only diagnostic frames run before
   the first game frame.
-- Logs from the `64dda31` diagnostic build showed clean first-frame fences for
+- Logs from the `64dda31` first-pass diagnostic build showed clean first-frame fences for
   masks 0, 1, 6 and 144. The user's visual report: clear-only 60 fps; sky-only
   displays correctly at 20 fps (about 50 ms/frame); car-only displays at 60
-  fps; terrain+props displays with see-through buildings at 6-9 fps. The old
-  mask-6 fence success does not verify the new depth-fix build. Frustum and
-  back-face culling remain for step 3 and have not been changed.
+  fps; terrain+props displays with see-through buildings at 6-9 fps. The user
+  retested mask 6 with 8701b43 and confirmed opaque buildings and working depth;
+  performance remains the issue. Frustum and back-face culling remain for step
+  3 and have not been changed.
+- `runtime:` lines are emitted about once per second with a cumulative frame
+  count; subtract adjacent counts to estimate FPS after each performance change.
 - In that build, mask 95 queued sky, terrain+props, cars, wreckage+pickups,
   water and UI, then its first fence timed out with `0xC00000B5`. The latest
   user report confirms the full combination still hangs on frame 1. Queued
   markers are CPU-side and do not identify which GPU draw stalled. No
   `draw_mask_64.log` is present, so UI-only remains unverified.
-- After mask 6 is verified with the depth fix, build isolated masks for UI,
-  water, wreckage+pickups, all cars, and sky+terrain+props+cars to continue
-  finding the full-scene hang. Do not start the culling/performance step until
-  those hang tests are complete.
+- The four-title set above includes the screen-depth fix and active
+  shader/sampler restoration after resolves. Run those titles to isolate the
+  full-scene hang; add wreckage+pickups only if all four pass. Begin the
+  culling/performance step after the hang is isolated.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell

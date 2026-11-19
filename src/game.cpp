@@ -83,9 +83,9 @@ static const int CUBE = 128, SHADOW = 1024, CUBE_FACES = 1;
 #else
 static const int CUBE = 256, SHADOW = 2048, CUBE_FACES = 2;
 #endif
-enum DrawMaskBits { DM_SKY=1, DM_TERRAIN=2, DM_PROPS=4, DM_WATER=8, DM_CARS=16, DM_EFFECTS=32, DM_UI=64, DM_SINGLE_CAR=128 };
+enum DrawMaskBits { DM_SKY=1, DM_TERRAIN=2, DM_PROPS=4, DM_WATER=8, DM_CARS=16, DM_EFFECTS=32, DM_UI=64, DM_SINGLE_CAR=128, DM_WRECKAGE=256 };
 #ifndef DRAW_MASK
-#define DRAW_MASK 127
+#define DRAW_MASK 383
 #endif
 static M4 lightVP;
 static float T = 0, raceT = 0, countdown = 0, timeLeft = 0, lapStart = 0, bestLapRace = 0, lastLap = 0, msgT = 0, wrongT = 0, shake = 0, resultsT = 0;
@@ -1058,7 +1058,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         if (DRAW_MASK & DM_SINGLE_CAR) drawCar(player, pCar, true);
         else drawCars(pCar, true, !(camMode == 2 && state == RACE));
     }
-    if (mainPass && (DRAW_MASK & DM_CARS) && !(DRAW_MASK & DM_SINGLE_CAR)) {
+    if (mainPass && (DRAW_MASK & DM_WRECKAGE)) {
         traceDraw("wreckage+pickups");
         setCommon(pCar, VP, cam, hdr); pCar.i1("uEnv", 1); drawWreckage(pCar, true);
         pCar.v3("uPaint", PAINTS[7]); pCar.f1("uChrome", 1); pCar.f1("uBrake", 0);
