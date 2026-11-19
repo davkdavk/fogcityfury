@@ -189,13 +189,18 @@ files applied with `git am -3 <file>`.
   mips. Its `vnoise` is one lookup, `fbm` remains four lookups, and the pass-0
   shadow function compiles to 1. No shader text or water behavior is being
   changed beyond these diagnostics.
-- `src/shaders.h` remains unchanged. Claude's lean-shader patch is applied as
-  commit `eb7fdf2`; its separate Xenos shader set lives in
-  `xenon/lean_shaders.py` (do not edit that file). `FCF_PERF_TEST=lean
-  xenon/build_game.sh` builds `lean.xex`, `lean_sky_behind.xex`, and
-  `lean_23.xex`; all 14 programs / 28 stages compile with glslang and xsc.
-  These lean titles also enable cell culling and four-level LOD; their depth
-  pre-pass remains enabled.
+- `src/shaders.h` remains unchanged. Claude's lean-shader patches are commits
+  `eb7fdf2` and `30fa372`; they only add/update `xenon/lean_shaders.py` (do not
+  edit that file). The latter removes the broken unit-6 detail texture from the
+  lean ground/road shaders and moves the lean sky just inside the far plane.
+  `FCF_PERF_TEST=lean xenon/build_game.sh` builds `lean.xex`,
+  `lean_sky_behind.xex`, and `lean_23.xex`; all 14 programs / 28 stages compile
+  with glslang and xsc. All three enable `FCF_SKY_BEHIND`, cell culling, and
+  four-level LOD; the depth pre-pass remains enabled.
+- The user reports the patched lean ground and road are no longer black and
+  lean water no longer hangs. Their previous console readings were `lean` 25
+  fps, `lean_23` 27 fps, and `lean_sky_behind` 44 fps (often 60). No console
+  reading has yet been reported for the combined lean+culling+sky-behind build.
 - Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
   within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
   2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
@@ -237,7 +242,11 @@ files applied with `git am -3 <file>`.
   drops to 30 around 140-160 cells on wide open-ground views. The first culling
   log incorrectly reported `propsIdx=0`: props were already drawn from their
   per-cell ranges, but the flat path accumulated their indices in the terrain
-  counter. The counters are now separate; verify the corrected log on console.
+  counter. The counters are now separate. The cull line is time-based (once per
+  simulation second) instead of requiring an exact frame-number multiple, which
+  could be skipped when rendering and simulation rates differ. The rebuilt lean
+  XEX contains the `cull: ... terrainIdx=... propsIdx=...` format; verify the
+  runtime counts on console.
 - Desktop tests after these changes: 61 headless tests pass, and
   `python3 tests/run_tests.py --render` passes 64/64 including the GLES render
   smoke test. Desktop world generation and full-mesh draw path remain selected
