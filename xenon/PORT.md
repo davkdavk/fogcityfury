@@ -150,15 +150,23 @@ files applied with `git am -3 <file>`.
   3 and have not been changed.
 - `runtime:` lines are emitted about once per second with a cumulative frame
   count; subtract adjacent counts to estimate FPS after each performance change.
-- In that build, mask 95 queued sky, terrain+props, cars, wreckage+pickups,
-  water and UI, then its first fence timed out with `0xC00000B5`. The latest
-  user report confirms the full combination still hangs on frame 1. Queued
-  markers are CPU-side and do not identify which GPU draw stalled. No
-  `draw_mask_64.log` is present, so UI-only remains unverified.
-- The four-title set above includes the screen-depth fix and active
-  shader/sampler restoration after resolves. Run those titles to isolate the
-  full-scene hang; add wreckage+pickups only if all four pass. Begin the
-  culling/performance step after the hang is isolated.
+- On the current four-title set, the user reports that all-cars (16),
+  sky+terrain+props+cars (23), and UI (64) run correctly. Water-only (8) hangs
+  on frame 1: its log reaches `draw: water queued`, then fence 550 times out
+  with `0xC00000B5`. The water group is isolated as the hang source; the group
+  test does not yet distinguish its `uHeight` sampling from blending/state.
+- FPS from the console: UI-only and all-cars-only are 60 fps; mask 23 is 5-9
+  fps; sky-only is about 20 fps. Thus terrain+props and sky dominate current
+  frame time, not cars or UI. Step 2a targets terrain/props pixel overdraw;
+  it will not reduce the sky-only cost.
+- Wreckage+pickups-only remains deferred until requested; its previous mask-95
+  appearance was not an isolated test, and the title state has no wreckage with
+  crates hidden. No synthetic sample wreck was added.
+- Performance step 2a uses mask 23, which excludes the hanging water path, as
+  the FPS baseline. `runtime:` lines are emitted about once per second with a
+  cumulative frame count; subtract adjacent counts to estimate FPS after each
+  pushed performance step. Continue with chunk sorting, frustum culling and
+  prop back-face culling in the user's stated order.
 - Unfixed xost GLSL math sites: `FS_COMMON::hash` uses `sin(dot(p, ...))` on
   world/cloud coordinates (line 37); `FS_WATER` uses `sin(depth*9-uTime*2.5)`
   (line 290); `FS_RING` uses `sin(uTime*10)` (line 339); `FS_POST` hashes cell
