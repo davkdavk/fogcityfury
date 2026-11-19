@@ -209,6 +209,14 @@ static std::vector<int> heldKeys; static int binds[NBIND][2];
 enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON };
 struct TouchBtn { const char* label; float x, y, w, h; int hold; int act; SDL_Keycode key; };   // hold: a Bind held while a finger is on it (-1: a tap button)
 struct Finger { SDL_FingerID id; int btn; };
+// Prompts name controller buttons ("{A} OK", drawn as buttons by UI::text) once the last thing pressed was on a
+// controller, and keys after a key press; the Xbox 360 has only controllers.
+#ifdef FCF_GFX_XSDK
+static const bool padOnly = true; static bool padUI = true;
+#else
+static const bool padOnly = false; static bool padUI = false;
+#endif
+static const char* P(const char* key, const char* pad) { return padUI ? pad : key; }
 static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBtn> tbtn; static std::vector<Finger> fingers; static int touchLaid = -1;
 static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold == b) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
 static const int RES[][2] = { { 854, 480 }, { 1024, 576 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } }; static const int NRES = 8;
@@ -1239,19 +1247,19 @@ static void drawHUD() {
         if (optPage == 0) {
             ui.text(Wd / 2 - 490, 166, 2, dim, "ACTION"); ui.text(Wd / 2 - 20, 166, 2, dim, "KEY", 1); ui.text(Wd / 2 + 270, 166, 2, dim, "SECOND KEY", 1);
             for (int i = 0; i < NBIND; i++) {
-                float y = 192 + i * 32.0f; bool sel = i == optRow; ui.text(Wd / 2 - 490, y + 6, 2.6f, sel ? white : V3(0.8f, 0.82f, 0.86f), BIND_NAME[i]);
+                float y = 190 + i * 30.0f; bool sel = i == optRow; ui.text(Wd / 2 - 490, y + 6, 2.6f, sel ? white : V3(0.8f, 0.82f, 0.86f), BIND_NAME[i]);
                 for (int c = 0; c < 2; c++) {
                     float x = Wd / 2 - 20 + c * 290; bool cur = sel && c == optCol; ui.rect(x - 130, y, 260, 27, cur ? hi : V3(0.06f, 0.07f, 0.10f), cur ? 0.95f : 0.6f);
                     if (cur && optCapture) { if (fmodf(T, 0.6f) < 0.4f) ui.text(x, y + 6, 2.4f, yel, "PRESS A KEY", 1); } else ui.text(x, y + 6, 2.4f, cur ? white : V3(0.75f, 0.85f, 1), keyName(binds[i][c]), 1);
                 }
             }
-            ui.text(Wd / 2 - 490, 496, 2, yel, "GAMEPAD (FIXED)");
-            ui.text(Wd / 2 - 490, 518, 2, dim, "LEFT STICK: STEER   RIGHT TRIGGER / A: ACCELERATE   LEFT TRIGGER / B: BRAKE");
-            ui.text(Wd / 2 - 490, 538, 2, dim, "X: HANDBRAKE   RIGHT SHOULDER: NITRO   LEFT SHOULDER: ROCKET   Y: CAMERA");
-            ui.text(Wd / 2 - 490, 558, 2, dim, "BACK: BACK ON TRACK   START: PAUSE   X IN THE MENUS: OPTIONS");
-            ui.text(Wd / 2 - 490, 588, 2, dim, "ALWAYS: ESC PAUSE   M MUSIC   F1 OPTIONS   F11 FULL SCREEN");
+            ui.text(Wd / 2 - 490, 528, 2, yel, "GAMEPAD (FIXED)");
+            ui.text(Wd / 2 - 490, 549, 2, dim, "{LS} STEER   {RT} / {A} ACCELERATE   {LT} / {B} BRAKE   {X} HANDBRAKE");
+            ui.text(Wd / 2 - 490, 569, 2, dim, "{RB} NITRO   {LB} ROCKET   {Y} CAMERA   {BACK} BACK ON TRACK   {START} PAUSE");
+            ui.text(Wd / 2 - 490, 589, 2, dim, "IN THE MENUS:  {DPAD} MOVE   {A} OK   {B} BACK   {X} OPTIONS");
+            if (!padOnly) ui.text(Wd / 2 + 490, 528, 2, dim, "KEYBOARD, ALWAYS: ESC PAUSE  M MUSIC  F1 OPTIONS  F11 FULL SCREEN", 2);
             if (optCapture) ui.text(Wd / 2, 646, 2.2f, white, "PRESS THE KEY TO USE     ESC: CANCEL", 1);
-            else { if (!touchOn) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, "TAB: VIDEO SETTINGS     ESC: BACK", 1); }
+            else { if (!touchOn && !padUI) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, P("TAB: VIDEO SETTINGS     ESC: BACK", "{LB} {RB} VIDEO SETTINGS     {B} BACK"), 1); }
         } else {
             char v[NVIDROWS][48]; static const char* nm[NVIDROWS] = { "DISPLAY", "RESOLUTION", "ANTI-ALIASING", "ANISOTROPIC FILTERING", "VSYNC" };
             static const char* help[NVIDROWS] = { "F11 SWITCHES THIS AT ANY TIME", "", "MSAA: SMOOTHS THE EDGES OF CARS AND BUILDINGS", "KEEPS THE ROAD AND GROUND SHARP INTO THE DISTANCE", "OFF: NO FRAME-RATE CAP, MAY TEAR" };
@@ -1265,7 +1273,7 @@ static void drawHUD() {
                 const char* h = i == 1 ? (vidFull ? "FULL SCREEN: THE GAME IS DRAWN AT THIS SIZE AND SCALED TO THE SCREEN" : "THE SIZE OF THE WINDOW") : help[i]; if (sel) ui.text(Wd / 2, 530, 2.2f, dim, h, 1);
             }
             snprintf(b, sizeof b, "DRAWING AT %d X %d", lastRW, lastRH); ui.text(Wd / 2, 570, 2, dim, b, 1);
-            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, "UP / DOWN: SETTING    LEFT / RIGHT: CHANGE (APPLIED AT ONCE)    TAB: CONTROLS    ESC: BACK", 1);
+            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, P("UP / DOWN: SETTING    LEFT / RIGHT: CHANGE (APPLIED AT ONCE)    TAB: CONTROLS    ESC: BACK", "{DPAD} PICK AND CHANGE (APPLIED AT ONCE)    {LB} {RB} CONTROLS    {B} BACK"), 1);
         }
     } else if (state == NETLOBBY) {
         // the ready-up screen: who is on the server and who has pressed READY (the server sends each player's flag)
@@ -1286,7 +1294,7 @@ static void drawHUD() {
         if (nc.phase == net::COUNTDOWN) { snprintf(b, sizeof b, "STARTING IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 4, yel, b, 1); }
         else if (nc.phase == net::LOBBY && nc.phaseT > 0) { snprintf(b, sizeof b, "AUTO START IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 3, yel, b, 1); }
         else if (nc.phase == net::RESULTS) ui.text(Wd / 2, yy + 40, 3, V3(0.75f, 0.8f, 0.9f), "RACE OVER - NEXT TRACK COMING UP", 1);
-        if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, nc.ready ? "YOU ARE READY   ENTER: NOT READY    ESC: BACK" : "ENTER: READY    ESC: BACK", 1);
+        if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, nc.ready ? P("YOU ARE READY   ENTER: NOT READY    ESC: BACK", "YOU ARE READY   {A} NOT READY    {B} BACK") : P("ENTER: READY    ESC: BACK", "{A} READY    {B} BACK"), 1);
     } else if (state == NETJOIN) {
         ui.text(Wd / 2, 30, 6, yel, "ONLINE RACE", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f), good(0.4f, 1, 0.6f), bad(1, 0.4f, 0.3f); bool blink = fmodf(T, 0.8f) < 0.5f;
         panel(Wd / 2 - 580, 110, 1160, 430, 0.72f); float x0 = Wd / 2 - 560;
@@ -1303,25 +1311,25 @@ static void drawHUD() {
                 snprintf(b, sizeof b, "%d MS", (int)e.ping); ui.text(x0 + 1120, y + 5, 2.2f, e.ping < 80 ? good : e.ping < 180 ? yel : bad, b, 2);
             } else ui.text(x0 + 330, y + 5, 2.4f, e.st == 3 || e.st == 4 ? bad : dim, e.st == 0 ? "LOOKING UP THE ADDRESS..." : e.st == 1 ? "ASKING..." : e.st == 3 ? "NO REPLY (OFFLINE, OR AN OLDER SERVER)" : "ADDRESS NOT FOUND (ARE YOU ONLINE?)");
         }
-        if (servers.empty()) ui.text(Wd / 2, 300, 3, dim, "NO SERVERS YET - PRESS A TO ADD ONE", 1);
+        if (servers.empty()) ui.text(Wd / 2, 300, 3, dim, P("NO SERVERS YET - PRESS A TO ADD ONE", "NO SERVERS YET"), 1);
         if (srvMode == 1) { ui.rect(x0 - 10, 496, 1140, 36, hi, 0.95f); snprintf(b, sizeof b, "NEW SERVER ADDRESS:  %s%s", srvNew, blink ? "_" : ""); for (char* c = b; *c; c++) *c = (char)toupper((unsigned char)*c); ui.text(x0, 506, 2.4f, white, b); }
         snprintf(b, sizeof b, "YOUR NAME:  %s%s", nc.name, srvMode == 2 && blink ? "_" : ""); ui.text(Wd / 2, 560, 3, srvMode == 2 ? yel : white, b, 1);
-        if (nc.on) ui.text(Wd / 2, 600, 3, good, "CONNECTING...   ESC: CANCEL", 1); else if (nc.error[0]) ui.text(Wd / 2, 600, 3, bad, nc.error, 1);
-        if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, srvMode == 1 ? "TYPE THE ADDRESS (NAME OR IP, :PORT IS OPTIONAL)    ENTER: ADD    ESC: CANCEL" : srvMode == 2 ? "TYPE YOUR NAME    ENTER: DONE    ESC: CANCEL" : "UP/DOWN: PICK   ENTER: JOIN   A: ADD   DEL: REMOVE   N: YOUR NAME   R: REFRESH   ESC: BACK", 1);
+        if (nc.on) ui.text(Wd / 2, 600, 3, good, P("CONNECTING...   ESC: CANCEL", "CONNECTING...   {B} CANCEL"), 1); else if (nc.error[0]) ui.text(Wd / 2, 600, 3, bad, nc.error, 1);
+        if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, srvMode == 1 ? "TYPE THE ADDRESS (NAME OR IP, :PORT IS OPTIONAL)    ENTER: ADD    ESC: CANCEL" : srvMode == 2 ? "TYPE YOUR NAME    ENTER: DONE    ESC: CANCEL" : P("UP/DOWN: PICK   ENTER: JOIN   A: ADD   DEL: REMOVE   N: YOUR NAME   R: REFRESH   ESC: BACK", "{DPAD} PICK   {A} JOIN   {X} REFRESH   {B} BACK"), 1);
         if (!touchOn) ui.text(Wd / 2, 676, 2, V3(0.75f, 0.8f, 0.9f), "HOST A GAME WITH:  FOGCITYFURY-SERVER  (IT LISTENS ON UDP PORT 27015)", 1);
     } else if (state == TITLE) {
         ui.text(Wd / 2, 110, 14, yel, "FOG CITY", 1, 1, 0.12f); ui.text(Wd / 2, 225, 22, org, "FURY", 1, 1, 0.12f);
         ui.text(Wd / 2, 420, 3, white, "ARCADE HILL-JUMP STREET RACING", 1);
-        if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 530, 5, white, "PRESS ENTER", 1);
-        if (!touchOn) ui.text(Wd / 2, 590, 3, V3(0.5f, 0.9f, 1), "O: ONLINE RACE        F1: OPTIONS", 1); if (nc.error[0]) ui.text(Wd / 2, 625, 2.5f, V3(1, 0.4f, 0.3f), nc.error, 1);
-        if (!touchOn) ui.text(Wd / 2, 660, 2, V3(0.8f, 0.8f, 0.8f), "F1: CONTROLS AND VIDEO SETTINGS      M: MUSIC      F11: FULL SCREEN      ESC: QUIT", 1);
+        if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 530, 5, white, P("PRESS ENTER", "PRESS {A}"), 1);
+        if (!touchOn) ui.text(Wd / 2, 590, 3, V3(0.5f, 0.9f, 1), P("O: ONLINE RACE        F1: OPTIONS", "{Y} ONLINE RACE        {X} OPTIONS"), 1); if (nc.error[0]) ui.text(Wd / 2, 625, 2.5f, V3(1, 0.4f, 0.3f), nc.error, 1);
+        if (!touchOn) ui.text(Wd / 2, 660, 2, V3(0.8f, 0.8f, 0.8f), P("F1: CONTROLS AND VIDEO SETTINGS      M: MUSIC      F11: FULL SCREEN      ESC: QUIT", "{X} CONTROLS AND VIDEO SETTINGS      {B} QUIT"), 1);
     } else if (state == CARSEL) {
         const CarSpec& S = SPECS[selCar]; ui.text(Wd / 2, 40, 6, yel, "CHOOSE YOUR CAR", 1, 1, 0.12f);
         panel(60, 440, 470, 230); ui.text(84, 462, 5, white, S.name); ui.text(84, 506, 2.5f, V3(0.75f, 0.8f, 0.9f), S.blurb);
         static const char* sn[4] = { "TOP SPEED", "ACCEL", "GRIP", "OFF-ROAD" };
         for (int i = 0; i < 4; i++) { ui.text(84, 542 + i * 30, 2.5f, white, sn[i]); for (int k = 0; k < 10; k++) ui.rect(250 + k * 26, 541 + i * 30, 22, 17, k < S.stat[i] ? org : V3(0.25f, 0.25f, 0.3f), k < S.stat[i] ? 1 : 0.6f); }
         ui.text(Wd / 2, 620, 3, white, "<  >  CAR", 1); snprintf(b, sizeof b, "UP / DOWN  PAINT: %s", PAINT_NAMES[selPaint]); ui.text(Wd / 2, 652, 3, PAINTS[selPaint] * 0.7f + V3(0.3f, 0.3f, 0.3f), b, 1);
-        if (!touchOn) ui.text(Wd - 60, 660, 3, white, "ENTER: OK", 2);
+        if (!touchOn) ui.text(Wd - 60, 660, 3, white, P("ENTER: OK", "{A} OK   {B} BACK"), 2);
     } else if (state == TRACKSEL) {
         ui.text(Wd / 2, 36, 6, yel, "CHOOSE YOUR TRACK", 1, 1, 0.12f);
         panel(60, 396, 620, 280);
@@ -1341,7 +1349,7 @@ static void drawHUD() {
         if (selMode == 3) ui.text(96, ry[3], 2.8f, V3(0.45f, 0.47f, 0.52f), "LAPS     1 / 2 / 2 / 3, SET BY THE CHAMPIONSHIP");
         else { snprintf(b, sizeof b, "LAPS     %s %d %s", selRow == 3 ? "<" : " ", selLaps, selRow == 3 ? ">" : " "); ui.text(96, ry[3], 2.8f, selMode == 1 ? V3(0.45f, 0.47f, 0.52f) : white, b); }
         panel(Wd - 400, 396, 340, 280); drawMap(Wd - 230, 536, 0.14f, false);
-        if (!touchOn) ui.text(Wd - 60, 692, 2.5f, white, "UP / DOWN: PICK ROW   LEFT / RIGHT: CHANGE   ENTER: START   ESC: BACK", 2);
+        if (!touchOn) ui.text(Wd - 60, 692, 2.5f, white, P("UP / DOWN: PICK ROW   LEFT / RIGHT: CHANGE   ENTER: START   ESC: BACK", "{DPAD} PICK ROW AND CHANGE   {A} START   {B} BACK"), 2);
     } else {
         // --- in-race HUD ---
         float Hb = Hd - (touchOn ? 190.0f : 0.0f);   // with on-screen buttons along the bottom, the speedometer and the map move up out of their way
@@ -1364,7 +1372,7 @@ static void drawHUD() {
                 }
             }
         }
-        if (resetHint > 3 && state == RACE && fmodf(T, 1.0f) < 0.7f) { snprintf(b, sizeof b, "STUCK?  PRESS %s TO GET BACK ON THE ROAD", keyName(binds[B_RESET][0] ? binds[B_RESET][0] : binds[B_RESET][1])); ui.text(Wd / 2, Hb - 96, 3.2f, V3(1, 1, 1), b, 1, 1, 0.12f); }
+        if (resetHint > 3 && state == RACE && fmodf(T, 1.0f) < 0.7f) { snprintf(b, sizeof b, "STUCK?  PRESS %s TO GET BACK ON THE ROAD", padUI ? "{BACK}" : keyName(binds[B_RESET][0] ? binds[B_RESET][0] : binds[B_RESET][1])); ui.text(Wd / 2, Hb - 96, 3.2f, V3(1, 1, 1), b, 1, 1, 0.12f); }
         {   // nitro meter: ten segments, blue when ready, white while burning, red while locked out
             float nx = Wd - 300, ny = Hb - 194, nw = 280, nh = 38; bool burn = player.boost > 0.2f, lock = player.nitroLock;
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f);
@@ -1406,7 +1414,7 @@ static void drawHUD() {
             float cx = m[0] * q.x + m[4] * q.y + m[8] * q.z + m[12], cy = m[1] * q.x + m[5] * q.y + m[9] * q.z + m[13], cw = m[3] * q.x + m[7] * q.y + m[11] * q.z + m[15];
             if (cw > 2 && cw < 260) ui.text((cx / cw * 0.5f + 0.5f) * Wd, (1 - (cy / cw * 0.5f + 0.5f)) * Hd, clampf(60 / cw, 1.2f, 3), PAINTS[r.car.paint] * 0.5f + V3(0.5f, 0.5f, 0.5f), r.name, 1, clampf(2 - cw / 130, 0.3f, 1));
         }
-        if (state == PAUSED) { ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.55f); ui.text(Wd / 2, 240, 10, yel, netRace ? "MENU" : "PAUSED", 1, 1, 0.12f); ui.text(Wd / 2, 380, 3.5f, white, netRace ? "ESC: BACK TO THE RACE     Q: LEAVE THE SERVER" : "ESC: RESUME     F1: OPTIONS     Q: QUIT TO MENU", 1); }
+        if (state == PAUSED) { ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.55f); ui.text(Wd / 2, 240, 10, yel, netRace ? "MENU" : "PAUSED", 1, 1, 0.12f); ui.text(Wd / 2, 380, 3.5f, white, netRace ? P("ESC: BACK TO THE RACE     Q: LEAVE THE SERVER", "{B} BACK TO THE RACE     {Y} LEAVE THE SERVER") : P("ESC: RESUME     F1: OPTIONS     Q: QUIT TO MENU", "{START} RESUME     {X} OPTIONS     {Y} QUIT TO MENU"), 1); }
         if (state == RESULTS && netRace) {   // online standings, live from the server
             bool sd = nc.sdGot && nc.phase == net::RESULTS; float rh = nc.snap.count > 5 ? 26.0f : 40.0f, sy = 250 + rh * nc.snap.count;   // the showdown's order goes under the race standings (rows close up for a big field)
             ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 360, 20, 720, 220 + rh * nc.snap.count + (sd ? 180 : 0), 0.75f);
@@ -1432,7 +1440,7 @@ static void drawHUD() {
             snprintf(b, sizeof b, "KEYS FOUND  %d/%d", keyCount(W.id), NKEYS); ui.text(Wd / 2, 390, 4, yel, b, 1);
             if (finalPlace == 1 && !timeUp) ui.text(Wd / 2, 440, 4, V3(0.4f, 1, 0.5f), "WINNER!", 1);
             if (rampage && !timeUp && finalPlace > NFIGHT) ui.text(Wd / 2, 440, 3, V3(1, 0.5f, 0.3f), "ONLY THE TOP 5 GO TO THE SHOWDOWN", 1);
-            if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 500, 3.5f, white, "PRESS ENTER", 1);
+            if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 500, 3.5f, white, P("PRESS ENTER", "PRESS {A}"), 1);
         }
     }
 }
@@ -1712,7 +1720,7 @@ int main(int argc, char** argv) {
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
-        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true;
+        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--padui") padUI = true;
         else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
@@ -1926,17 +1934,17 @@ int main(int argc, char** argv) {
         for (const plat::Event& e : evs) {
             if (e.type == plat::EV_QUIT) quit = true;
             if (e.type == plat::EV_KEY_DOWN && !e.repeat) {
-                handleKey(e.key, e.scancode);
+                if (!padOnly) padUI = false; handleKey(e.key, e.scancode);
             }
             if (e.type == plat::EV_TEXT && state == NETJOIN && !nc.on && srvMode != 0 && !srvSkipText) {   // typing a server address / our name
                 char* f = srvMode == 2 ? nc.name : srvNew; size_t cap = srvMode == 2 ? net::NAMELEN : sizeof srvNew - 1;
                 for (const char* c = e.text; *c; c++) { size_t n = strlen(f); char ch = srvMode == 2 ? (char)toupper((unsigned char)*c) : *c; if (n < cap && ch > 32 && ch < 127) { f[n] = ch; f[n + 1] = 0; } }
             }
             if (e.type == plat::EV_PAD_DOWN) {
-                switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;
-                case SDL_CONTROLLER_BUTTON_B: if (state != RACE) onKey(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_Y: if (state == RACE) camMode = (camMode + 1) % 3; else onKey(SDLK_q); break; case SDL_CONTROLLER_BUTTON_BACK: if (state == PAUSED) state = RACE; doReset(); break;
+                padUI = true; switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;
+                case SDL_CONTROLLER_BUTTON_B: if (state != RACE) onKey(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_Y: if (state == RACE) camMode = (camMode + 1) % 3; else onKey(state == TITLE ? SDLK_o : SDLK_q); break; case SDL_CONTROLLER_BUTTON_BACK: if (state == PAUSED) state = RACE; doReset(); break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (!me.on) fireRocket(); break; case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); break;
-                case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); break;
+                case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break; case SDL_CONTROLLER_BUTTON_DPAD_UP: if (state == RACE && me.on) cycleGun(); else onKey(SDLK_UP); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: if (state == RACE) footToggle(); else onKey(SDLK_DOWN); break; }
             }
             if (e.type == plat::EV_PAD_ADDED && !pad) pad = plat::padOpen(e.padIndex);

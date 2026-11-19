@@ -211,20 +211,51 @@ struct UI {
         float dx = x1 - x0, dy = y1 - y0, l = sqrtf(dx * dx + dy * dy); if (l < 1e-4f) return; float nx = -dy / l * th * .5f, ny = dx / l * th * .5f;
         quad(x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, c, a);
     }
-    float textW(const char* s, float sc) { return strlen(s) * 6 * sc - sc; }
+    void tri(float x0, float y0, float x1, float y1, float x2, float y2, V3 c, float a) { vert(x0, y0, -1, 0, c, a); vert(x1, y1, -1, 0, c, a); vert(x2, y2, -1, 0, c, a); }
+    void disc(float cx, float cy, float r, V3 c, float a) { const int N = 20; for (int i = 0; i < N; i++) { float a0 = i * 6.2831853f / N, a1 = (i + 1) * 6.2831853f / N; tri(cx, cy, cx + r * cosf(a0), cy + r * sinf(a0), cx + r * cosf(a1), cy + r * sinf(a1), c, a); } }
+    void glyph(int ch, float x, float y, float sc, V3 c, float a, float skew = 0) {
+        ch = toupper(ch); if (ch < 32 || ch > 90) ch = '?'; ch -= 32; if (!ch) return;
+        float u0 = (ch % 16) * 8 / 128.f, v0 = (ch / 16) * 8 / 32.f, u1 = u0 + 5 / 128.f, v1 = v0 + 7 / 32.f;
+        float X0 = x, Y0 = y, X1 = X0 + 5 * sc, Y1 = Y0 + 7 * sc, sk = skew * 7 * sc;
+        vert(X0 + sk, Y0, u0, v0, c, a); vert(X1 + sk, Y0, u1, v0, c, a); vert(X1, Y1, u1, v1, c, a);
+        vert(X0 + sk, Y0, u0, v0, c, a); vert(X1, Y1, u1, v1, c, a); vert(X0, Y1, u0, v1, c, a);
+    }
+    // Controller buttons inside text: "{A}", "{B}", "{X}", "{Y}" are round coloured buttons; "{DPAD}" a cross; any other
+    // name ("{LB}", "{START}") a dark rounded tag with the name on it. Each is 9 font pixels tall, centred on the line.
+    static bool padTok(const char* p, const char*& name, int& len) { if (*p != '{') return false; const char* e = strchr(p, '}'); if (!e || e - p > 7) return false; name = p + 1; len = (int)(e - p - 1); return true; }
+    static bool padRound(const char* n, int len) { return len == 1 && strchr("ABXY", *n); }
+    static float padW(const char* n, int len, float sc) { return padRound(n, len) || (len == 4 && !strncmp(n, "DPAD", 4)) ? 9 * sc : (len * 6 - 1) * sc * .8f + 6 * sc; }
+    void padButton(const char* n, int len, float x, float y, float sc, float a, bool shade) {
+        float w = padW(n, len, sc), cy = y + 3.5f * sc, r = 4.5f * sc; V3 k(0, 0, 0);
+        if (padRound(n, len)) {
+            V3 c = *n == 'A' ? V3(0.36f, 0.72f, 0.14f) : *n == 'B' ? V3(0.86f, 0.18f, 0.14f) : *n == 'X' ? V3(0.12f, 0.42f, 0.88f) : V3(0.96f, 0.72f, 0.06f);
+            if (shade) { disc(x + r, cy, r, k, a * .7f); return; }
+            disc(x + r, cy, r, c, a); disc(x + r, cy - .4f * sc, r * .78f, V3(c.x * 1.15f + .08f, c.y * 1.15f + .08f, c.z * 1.15f + .08f), a * .35f);
+            float g = sc * .85f; glyph(*n, x + r - 2.5f * g, cy - 3.5f * g, g, V3(1, 1, 1), a);
+        } else if (len == 4 && !strncmp(n, "DPAD", 4)) {
+            V3 c = shade ? k : V3(0.30f, 0.32f, 0.36f); float al = shade ? a * .7f : a;
+            rect(x + 3 * sc, y - sc, 3 * sc, 9 * sc, c, al); rect(x, cy - 1.5f * sc, 9 * sc, 3 * sc, c, al);
+            if (!shade) disc(x + 4.5f * sc, cy, .9f * sc, V3(0.12f, 0.13f, 0.15f), a);
+        } else {
+            V3 c = shade ? k : V3(0.20f, 0.22f, 0.26f); float al = shade ? a * .7f : a;
+            rect(x + r, y - sc, w - 2 * r, 9 * sc, c, al); disc(x + r, cy, r, c, al); disc(x + w - r, cy, r, c, al);
+            if (!shade) { float g = sc * .8f, cx = x + 3 * sc; for (int i = 0; i < len; i++, cx += 6 * g) glyph(n[i], cx, cy - 3.5f * g, g, V3(0.92f, 0.94f, 1), a); }
+        }
+    }
+    float textW(const char* s, float sc) {
+        float w = 0; const char* n; int len;
+        for (const char* p = s; *p; p++) { if (padTok(p, n, len)) { w += padW(n, len, sc) + sc; p += len + 1; } else w += 6 * sc; }
+        return w - sc;
+    }
     // align: 0 left, 1 center, 2 right. skew slants the glyphs (arcade italic)
     void text(float x, float y, float sc, V3 c, const char* s, int align = 0, float a = 1, float skew = 0, bool shadow = true) {
         float w = textW(s, sc); if (align == 1) x -= w / 2; if (align == 2) x -= w;
         for (int pass = shadow ? 0 : 1; pass < 2; pass++) {
             float ox = pass == 0 ? sc * .8f : 0, oy = ox; V3 col = pass == 0 ? V3(0, 0, 0) : c; float al = pass == 0 ? a * .7f : a; float cx = x;
             for (const char* p = s; *p; p++) {
-                int ch = toupper((unsigned char)*p); if (ch < 32 || ch > 90) ch = '?'; ch -= 32;
-                if (ch) {
-                    float u0 = (ch % 16) * 8 / 128.f, v0 = (ch / 16) * 8 / 32.f, u1 = u0 + 5 / 128.f, v1 = v0 + 7 / 32.f;
-                    float X0 = cx + ox, Y0 = y + oy, X1 = X0 + 5 * sc, Y1 = Y0 + 7 * sc, sk = skew * 7 * sc;
-                    vert(X0 + sk, Y0, u0, v0, col, al); vert(X1 + sk, Y0, u1, v0, col, al); vert(X1, Y1, u1, v1, col, al);
-                    vert(X0 + sk, Y0, u0, v0, col, al); vert(X1, Y1, u1, v1, col, al); vert(X0, Y1, u0, v1, col, al);
-                }
+                const char* n; int len;
+                if (padTok(p, n, len)) { padButton(n, len, cx + ox, y + oy, sc, a, pass == 0); cx += padW(n, len, sc) + sc; p += len + 1; continue; }
+                glyph((unsigned char)*p, cx + ox, y + oy, sc, col, al, skew);
                 cx += 6 * sc;
             }
         }
