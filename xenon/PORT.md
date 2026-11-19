@@ -194,6 +194,8 @@ files applied with `git am -3 <file>`.
   `xenon/lean_shaders.py` (do not edit that file). `FCF_PERF_TEST=lean
   xenon/build_game.sh` builds `lean.xex`, `lean_sky_behind.xex`, and
   `lean_23.xex`; all 14 programs / 28 stages compile with glslang and xsc.
+  These lean titles also enable cell culling and four-level LOD; their depth
+  pre-pass remains enabled.
 - Noise-coordinate review for the Xenos mask-23 shaders: world coordinates are
   within +/-768. The largest active input is world `vnoise(vP.xz*3.1)`, about
   2381; terrain `fbm` reaches about 1400 at its last octave and sky-cloud `fbm`
