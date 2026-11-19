@@ -245,8 +245,11 @@ files applied with `git am -3 <file>`.
   counter. The counters are now separate. The cull line is time-based (once per
   simulation second) instead of requiring an exact frame-number multiple, which
   could be skipped when rendering and simulation rates differ. The rebuilt lean
-  XEX contains the `cull: ... terrainIdx=... propsIdx=...` format; verify the
-  runtime counts on console.
+  XEX prints repeated cull lines in an Xenia smoke run; a sample is
+  `cells=124/256 ... terrainIdx=98304 propsIdx=71400 smallCells=16`. Other
+  captured `propsIdx` values were also positive. Xenia reports unsupported GPU
+  register writes, so it verifies logging/counters only; verify visuals and
+  counts on the console.
 - Desktop tests after these changes: 61 headless tests pass, and
   `python3 tests/run_tests.py --render` passes 64/64 including the GLES render
   smoke test. Desktop world generation and full-mesh draw path remain selected
