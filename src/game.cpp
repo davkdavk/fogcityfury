@@ -1970,6 +1970,7 @@ int main(int argc, char** argv) {
             xsdk_log_write("runtime: frames=%u present_begin=0x%08X fence=%u wait_status=0x%08X fence_complete=%u",
                 (unsigned)display.frameCount,(unsigned)display.beginStatus,(unsigned)gfx::lastFenceValue(),
                 (unsigned)fence,(unsigned)NT_SUCCESS(fence));
+            if (adev) { XsdkAudioStats a; xsdk_audio_stats(&a); xsdk_log_write("audio: played=%u silent=%u",(unsigned)a.played,(unsigned)a.silent); }
             lastRuntimeLog = now;
         }
         static int bootFrames = 0;

@@ -10,7 +10,11 @@
 #endif
 #else
 #include "xsdk/kernel.h"
+#include "xsdk/audio.h"
+#include "xsdk/log.h"
+#include <pthread.h>
 #include <atomic>
+#include <cstring>
 #include <thread>
 using Uint8 = uint8_t;
 using SDL_Keycode = int32_t;
@@ -184,14 +188,66 @@ inline void runDetached(int (*fn)(void*), void* arg, const char* name) {
 }
 #endif
 
-// ---- audio: a float stereo stream at 44.1 kHz, pulled by the device through `cb` ----
+// ---- audio: a float stereo stream at the platform sample rate, pulled by the device through `cb` ----
 using AudioCB = void (*)(void* user, uint8_t* stream, int bytes);
 #ifdef FCF_GFX_XSDK
-inline uint32_t audioOpen(AudioCB, bool& ok) { ok=false; return 0; }
-inline void audioPause(uint32_t, bool) {}
-inline void audioLock(uint32_t) {}
-inline void audioUnlock(uint32_t) {}
-inline void audioClose(uint32_t) {}
+struct XAudioDevice {
+    AudioCB cb = nullptr;
+    pthread_t thread = {};
+    pthread_mutex_t mutex = {};
+    std::atomic<bool> stop{false}, paused{true};
+    bool mutexReady = false, threadReady = false, opened = false;
+};
+static XAudioDevice xaudio;
+inline void* audioFeed(void* arg) {
+    XAudioDevice* d = (XAudioDevice*)arg; float stereo[XSDK_AUDIO_FRAME_SAMPLES * 2];
+    for (;;) {
+        if (d->stop.load()) break;
+        float* frame = nullptr; NTSTATUS status = xsdk_audio_next_frame(100, &frame);
+        if (status == STATUS_IO_TIMEOUT) continue;
+        if (!NT_SUCCESS(status) || d->stop.load()) break;
+        if (d->paused.load()) memset(stereo, 0, sizeof(stereo));
+        else {
+            pthread_mutex_lock(&d->mutex);
+            if (d->stop.load() || d->paused.load()) memset(stereo, 0, sizeof(stereo));
+            else d->cb(nullptr, (uint8_t*)stereo, (int)sizeof(stereo));
+            pthread_mutex_unlock(&d->mutex);
+        }
+        if (d->stop.load()) break;
+        for (int i = 0; i < XSDK_AUDIO_FRAME_SAMPLES; i++) {
+            frame[XSDK_AUDIO_FRONT_LEFT * XSDK_AUDIO_FRAME_SAMPLES + i] = stereo[i * 2];
+            frame[XSDK_AUDIO_FRONT_RIGHT * XSDK_AUDIO_FRAME_SAMPLES + i] = stereo[i * 2 + 1];
+            frame[XSDK_AUDIO_CENTER * XSDK_AUDIO_FRAME_SAMPLES + i] = 0;
+            frame[XSDK_AUDIO_LOW_FREQUENCY * XSDK_AUDIO_FRAME_SAMPLES + i] = 0;
+            frame[XSDK_AUDIO_BACK_LEFT * XSDK_AUDIO_FRAME_SAMPLES + i] = 0;
+            frame[XSDK_AUDIO_BACK_RIGHT * XSDK_AUDIO_FRAME_SAMPLES + i] = 0;
+        }
+        xsdk_audio_queue_frame();
+    }
+    return nullptr;
+}
+inline uint32_t audioOpen(AudioCB cb, bool& ok) {
+    ok = false; if (!cb || xaudio.opened) return 0;
+    NTSTATUS status = xsdk_audio_open(XSDK_AUDIO_FRAMES_AHEAD_DEFAULT);
+    if (!NT_SUCCESS(status)) { xsdk_log_write("audio: xsdk_audio_open failed: 0x%08X", (unsigned)status); return 0; }
+    if (pthread_mutex_init(&xaudio.mutex, nullptr) != 0) { xsdk_audio_close(); return 0; }
+    xaudio.mutexReady = true; xaudio.cb = cb; xaudio.stop.store(false); xaudio.paused.store(true);
+    if (pthread_create(&xaudio.thread, nullptr, audioFeed, &xaudio) != 0) {
+        xaudio.stop.store(true); xsdk_audio_close(); pthread_mutex_destroy(&xaudio.mutex); xaudio.mutexReady = false; xaudio.cb = nullptr; return 0;
+    }
+    xaudio.threadReady = true; xaudio.opened = true; ok = true; return 1;
+}
+inline void audioPause(uint32_t dev, bool paused) { if (dev == 1 && xaudio.opened) xaudio.paused.store(paused); }
+inline void audioLock(uint32_t dev) { if (dev == 1 && xaudio.mutexReady) pthread_mutex_lock(&xaudio.mutex); }
+inline void audioUnlock(uint32_t dev) { if (dev == 1 && xaudio.mutexReady) pthread_mutex_unlock(&xaudio.mutex); }
+inline void audioClose(uint32_t dev) {
+    if (dev != 1 || !xaudio.opened) return;
+    xaudio.stop.store(true); NTSTATUS status = xsdk_audio_close();
+    if (xaudio.threadReady) pthread_join(xaudio.thread, nullptr);
+    if (!NT_SUCCESS(status)) xsdk_log_write("audio: xsdk_audio_close failed: 0x%08X", (unsigned)status);
+    if (xaudio.mutexReady) pthread_mutex_destroy(&xaudio.mutex);
+    xaudio.cb = nullptr; xaudio.threadReady = xaudio.mutexReady = xaudio.opened = false;
+}
 #else
 inline uint32_t audioOpen(AudioCB cb, bool& ok) {
     SDL_AudioSpec want = {}, have; want.freq = 44100; want.format = AUDIO_F32SYS; want.channels = 2; want.samples = 1024; want.callback = cb;
@@ -213,8 +269,8 @@ inline bool padIsController(int i) { return i==0; }
 inline Pad* padOpen(int i) { static Pad p; p.port=(uint32_t)i; return &p; }
 inline int16_t padAxisRaw(Pad* p, PadAxis a) {
     if(!p) return 0; XamInputGetState(p->port,0,&p->state);
-    switch(a){ case AX_LX:return p->state.gamepad.thumb_lx; case AX_LY:return p->state.gamepad.thumb_ly;
-    case AX_RX:return p->state.gamepad.thumb_rx; case AX_RY:return p->state.gamepad.thumb_ry;
+    switch(a){ case AX_LX:return p->state.gamepad.thumb_lx; case AX_LY:{int16_t v=p->state.gamepad.thumb_ly;return v==-32768?32767:(int16_t)-v;}
+    case AX_RX:return p->state.gamepad.thumb_rx; case AX_RY:{int16_t v=p->state.gamepad.thumb_ry;return v==-32768?32767:(int16_t)-v;}
     case AX_TRIG_L:return (int16_t)(p->state.gamepad.left_trigger*257); default:return (int16_t)(p->state.gamepad.right_trigger*257); }
 }
 inline bool padButton(Pad* p, PadBtn b) {

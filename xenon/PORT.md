@@ -318,7 +318,15 @@ files applied with `git am -3 <file>`.
 - The LUT workaround is reproducible: `build_game.sh` applies the patch under
   `xenon/patches/` to `~/xsdk`; Xenia does not emulate display register 0x1928.
 - XEX path: `xenon/build/game/fogcityfury.xex`.
-- Sound, saves, and network remain disabled/not implemented on the 360.
+- Xenos sound uses a pthread feeder over `xsdk_audio_*`: the game mixer stays
+  stereo/interleaved at 48 kHz, then the feeder writes front L/R into the
+  six-channel planar 48 kHz frame and zeros the other channels. `audioPause`
+  queues silence; the same mutex protects mixer callbacks and one-shot tones.
+  Xenia reports increasing `played` frames and `silent=0`; playback has not been
+  verified by ear or on the RGH console. Desktop remains 44.1 kHz.
+- Xenos controller Y axes are negated to SDL's positive-down convention, with
+  `-32768` saturated to `32767` to avoid signed overflow.
+- Saves and network remain disabled/not implemented on the 360.
 - Real RGH 360 testing is in progress; wait for the user's visual result before
   changing rendering behavior beyond diagnostic draw masks.
 - Startup screen diagnostics (XSDK only): red after `openDisplay`, orange after
@@ -331,7 +339,7 @@ files applied with `git am -3 <file>`.
 
 ## Later (don't start unless asked)
 - Big-endian data: save files, network packets, anything read from disk.
-- Sound, saves, network on the 360.
+- Saves and network on the 360.
 - Splitting the full world shader so the 360 town matches the PC.
 
 

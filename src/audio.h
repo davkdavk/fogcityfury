@@ -2,7 +2,11 @@
 #pragma once
 #include "base.h"
 
+#ifdef FCF_GFX_XSDK
+static const int SR = 48000;
+#else
 static const int SR = 44100;
+#endif
 struct Tone { float f, slide, dur, t, vol; int type; };
 static struct Snd { float engF = 60, engV = 0, skid = 0, wind = 0, nitro = 0, rain = 0, master = 0.5f, music = 0.6f, musicDuck = 1; bool musicOn = true; Tone tones[12] = {}; } snd;
 static uint32_t adev = 0;   // the platform's audio device (0: none)
