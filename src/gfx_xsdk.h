@@ -240,8 +240,8 @@ struct Prog {
             }
             return false;
         };
-        if(put(meta->vu,meta->nvu,vc)) return;
-        if(put(meta->fu,meta->nfu,fc)) return;
+        bool v=put(meta->vu,meta->nvu,vc), f=put(meta->fu,meta->nfu,fc);
+        if(v||f) return;
         (void)count;
     }
     void f1(const char* n,float a){set(n,&a,1,FCF_FLOAT);}

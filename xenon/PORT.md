@@ -204,6 +204,14 @@ files applied with `git am -3 <file>`.
   After rebuilding, `depth.vert.bin`, `ground.vert.bin`, and `world.vert.bin`
   have identical MD5 hashes. Xenia's earlier normal-shader title screenshot
   showed very dark ground/road and a black hill-shaped region over the sky.
+- `Prog::set` now writes a uniform to both vertex and fragment constant blocks
+  when both declare it. The lean world fragment shader shares `uSkyHor` and
+  `uWet` with its vertex shader; leaving the fragment copies zeroed made the
+  road's sky-lit color black.
+- The lean comparison set now includes `lean_noprepass.xex`, `lean_skyfirst.xex`,
+  and `lean_noeffects.xex` alongside `lean.xex`. They isolate the depth
+  pre-pass, sky ordering, and water/effects respectively; `lean_noeffects` uses
+  `DRAW_MASK=343` (all default bits except water and effects).
 - Material diagnostic: build with
   `FCF_PERF_TEST=lean FCF_LEAN_DEBUG=mat xenon/build_game.sh`. It writes to the
   separate `xenon/build/gen_lean_debug` and `xenon/build/perf_lean_debug` paths,
