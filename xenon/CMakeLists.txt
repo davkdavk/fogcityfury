@@ -42,13 +42,13 @@ elseif(NOT FCF_PERF_TEST STREQUAL "0")
   endif()
   if(FCF_PERF_TEST STREQUAL "lean")
     # The whole game with xenon/lean_shaders.py. FCF_PERF_NOISE makes and binds the noise texture (unit 7),
-    # FCF_XENOS_LEAN fills it and adds per-surface programs; all lean titles use cell culling and LOD with the depth pre-pass.
+    # FCF_XENOS_LEAN fills it and adds per-surface programs; all lean titles use cell culling, LOD, and sky-behind with the depth pre-pass.
     set(FCF_XENOS_LEAN_LOD FCF_XENOS_CULL FCF_XENOS_LOD FCF_XENOS_LOD_NEAR=${FCF_XENOS_LOD_NEAR} FCF_XENOS_LOD_FAR=${FCF_XENOS_LOD_FAR} FCF_XENOS_LOD_ULTRA=${FCF_XENOS_LOD_ULTRA} FCF_XENOS_ROAD_LOD0=${FCF_XENOS_ROAD_LOD0})
-    add_fcf_xex(lean FCF_PERF_NOISE FCF_XENOS_LEAN ${FCF_XENOS_LEAN_LOD} FCF_WATER_TEST=0)
+    add_fcf_xex(lean FCF_PERF_NOISE FCF_XENOS_LEAN ${FCF_XENOS_LEAN_LOD} FCF_SKY_BEHIND FCF_WATER_TEST=0)
     xsdk_add_xex(lean TITLE_ID 0x46434C31 NAME "FCF Lean" VERSION 1.3.6.0)
     add_fcf_xex(lean_sky_behind FCF_PERF_NOISE FCF_XENOS_LEAN ${FCF_XENOS_LEAN_LOD} FCF_SKY_BEHIND FCF_WATER_TEST=0)
     xsdk_add_xex(lean_sky_behind TITLE_ID 0x46434C32 NAME "FCF Lean Sky Behind" VERSION 1.3.6.0)
-    add_fcf_xex(lean_23 DRAW_MASK=23 FCF_PERF_NOISE FCF_XENOS_LEAN ${FCF_XENOS_LEAN_LOD} FCF_WATER_TEST=0)
+    add_fcf_xex(lean_23 DRAW_MASK=23 FCF_PERF_NOISE FCF_XENOS_LEAN ${FCF_XENOS_LEAN_LOD} FCF_SKY_BEHIND FCF_WATER_TEST=0)
     xsdk_add_xex(lean_23 TITLE_ID 0x46434C33 NAME "FCF Lean Mask 23" VERSION 1.3.6.0)
   elseif(FCF_PERF_TEST STREQUAL "flat")
     add_fcf_xex(perf_flat DRAW_MASK=23 FCF_FLAT_TEST FCF_WATER_TEST=0)

@@ -1121,7 +1121,9 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         setCommon(pWorld, VP, cam, hdr);
         drawWorldCells((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam, &terrainIndices, &propIndices);
 #endif
-        if (mainPass && frameNo % 60 == 0) {
+        static float nextCullLog = 0;
+        if (mainPass && T >= nextCullLog) {
+            nextCullLog = T + 1.0f;
             int lod[4] = {}, lodIndices[4] = {}, smallCells = 0;
             for (const VisibleCell& v : visibleWorldCells) { const WorldCell& c = W.worldCells[v.id]; lod[v.lod]++; lodIndices[v.lod] += c.terrain[v.lod].count; if (c.small.count && cellDistance2(c.smallBounds, cam) <= 300.0f * 300.0f) smallCells++; }
             xsdk_log_write("cull: cells=%u/%d lod=%d,%d,%d,%d lodIdx=%d,%d,%d,%d terrainIdx=%d propsIdx=%d smallCells=%d", (unsigned)visibleWorldCells.size(), NCELL, lod[0], lod[1], lod[2], lod[3], lodIndices[0], lodIndices[1], lodIndices[2], lodIndices[3], terrainIndices, propIndices, smallCells);
