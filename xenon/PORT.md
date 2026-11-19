@@ -202,11 +202,21 @@ files applied with `git am -3 <file>`.
 - The Xenos backend assigns the L_MESH vertex-fetch layout to the lean-specific
   `ground`, `road`, `wall`, and `misc` programs as well as `world`/`depth`.
   After rebuilding, `depth.vert.bin`, `ground.vert.bin`, and `world.vert.bin`
-  have identical MD5 hashes. Xenia emits cull logs with positive `propsIdx`.
-  The title screenshot `/tmp/lean_xenia_layout_fix.png` shows colored off-road
-  ground and road markings, but a black hill-shaped area remains over the
-  upper-left sky; this Xenia visual check is not a full pass. Confirm the title
-  screen on the console before calling the black-hill issue resolved.
+  have identical MD5 hashes. Xenia's earlier normal-shader title screenshot
+  showed very dark ground/road and a black hill-shaped region over the sky.
+- Material diagnostic: build with
+  `FCF_PERF_TEST=lean FCF_LEAN_DEBUG=mat xenon/build_game.sh`. It writes to the
+  separate `xenon/build/gen_lean_debug` and `xenon/build/perf_lean_debug` paths,
+  and copies only `lean_debug.xex`, leaving normal lean shaders and titles
+  unchanged. Xenia's `/tmp/lean_debug_materials.png` shows the road red, terrain
+  yellow, walls green, props blue, and the sky whole. The formerly black
+  hill-shaped area turns green (material 2/wall), so it is being drawn by the
+  world color pass; this diagnostic does not explain why its normal lean color
+  is black.
+- `lean_debug.xex` logs `bin: cross-chunk triangles=N` after regrouped mesh
+  uploads. The Xenia log reports `N=0` for `props`, `small-props`, and
+  `terrain`. The chunker checks and flushes at source-triangle boundaries, so
+  no split fix or vertex duplication was needed.
 - The user reports lean water no longer hangs. Their previous console readings
   were `lean` 25 fps, `lean_23` 27 fps, and `lean_sky_behind` 44 fps (often 60),
   before the depth-pre-pass vertex fix. No console visual or FPS result has yet

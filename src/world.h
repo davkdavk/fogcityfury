@@ -644,9 +644,10 @@ struct World {
  #ifdef FCF_XENOS_CULL
         arrangeProps(mb, false); arrangeProps(smallMb, true);
  #endif
-        props.upload(mb);
 #ifdef FCF_XENOS_CULL
-        smallProps.upload(smallMb);
+        props.upload(mb, "props"); smallProps.upload(smallMb, "small-props");
+#else
+        props.upload(mb);
 #endif
         mb = MB(); smallMb = MB();
         // --- terrain mesh ---
@@ -668,7 +669,11 @@ struct World {
 #else
         for (int j = 0; j < GN - 1; j++) for (int i = 0; i < GN - 1; i++) { unsigned a = j * GN + i; t.idx.insert(t.idx.end(), { a, a + GN, a + 1, a + 1, a + GN, a + GN + 1 }); }
 #endif
+#ifdef FCF_XENOS_CULL
+        terrain.upload(t, "terrain");
+#else
         terrain.upload(t);
+#endif
         MB w; w.quad(V3(-5000, 0, -5000), V3(-5000, 0, 5000), V3(5000, 0, 5000), V3(5000, 0, -5000), V3(1, 1, 1), 0); water.upload(w);
         if (g_noGL) return;
 #if defined(FCF_GFX_XSDK) && FCF_WATER_TEST == 1

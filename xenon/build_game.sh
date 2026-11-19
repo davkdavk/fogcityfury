@@ -17,6 +17,15 @@ case "$CULL_TEST" in
   *) echo "FCF_XSDK_CULL_TEST must be ON or OFF" >&2; exit 1 ;;
 esac
 PERF_TEST="${FCF_PERF_TEST:-0}"
+LEAN_DEBUG="${FCF_LEAN_DEBUG:-}"
+case "$LEAN_DEBUG" in
+  ""|mat) ;;
+  *) echo "FCF_LEAN_DEBUG must be empty or mat" >&2; exit 1 ;;
+esac
+if [ -n "$LEAN_DEBUG" ] && [ "$PERF_TEST" != lean ]; then
+  echo "FCF_LEAN_DEBUG requires FCF_PERF_TEST=lean" >&2
+  exit 1
+fi
 if [ "$CULL_TEST" = ON ]; then
   if [ "$PERF_TEST" = 0 ]; then PERF_TEST=flat; fi
   if [ "$PERF_TEST" != flat ]; then echo "FCF_XSDK_CULL_TEST requires FCF_PERF_TEST=flat" >&2; exit 1; fi
@@ -30,6 +39,9 @@ if [ "$WATER_TEST" != 0 ] && [ "$PERF_TEST" != 0 ]; then
   echo "FCF_WATER_TEST and FCF_PERF_TEST cannot be combined" >&2
   exit 1
 fi
+SHADER_DIR="$HERE/build/gen"
+if [ "$LEAN_DEBUG" = mat ]; then SHADER_DIR="$HERE/build/gen_lean_debug"; fi
+export FCF_SHADER_OUT="$SHADER_DIR"
 PATCH="$HERE/patches/xsdk-display-lut.patch"
 if git -C "$XSDK" apply --unidiff-zero --check "$PATCH" 2>/dev/null; then
   git -C "$XSDK" apply --unidiff-zero "$PATCH"
@@ -44,9 +56,10 @@ BUILD_DIR="$HERE/build/game"
 if [ "$WATER_TEST" != 0 ]; then BUILD_DIR="$HERE/build/water_test_$WATER_TEST"; fi
 if [ "$PERF_TEST" != 0 ]; then BUILD_DIR="$HERE/build/perf_$PERF_TEST"; fi
 if [ "$CULL_TEST" = ON ]; then BUILD_DIR="$HERE/build/cull_test"; fi
+if [ "$LEAN_DEBUG" = mat ]; then BUILD_DIR="$HERE/build/perf_lean_debug"; fi
 cmake --fresh -S "$HERE" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$XSDK/cmake/xsdk.cmake" -DXSDK_TOOLCHAIN="$TOOLCHAIN" \
-  -DCMAKE_BUILD_TYPE=Release -DFCF_XSDK_OBJECT_TEST="$OBJECT_TEST" -DFCF_XSDK_DRAW_MASKS="$DRAW_MASKS" -DFCF_XSDK_CULL_TEST="$CULL_TEST" -DFCF_WATER_TEST="$WATER_TEST" -DFCF_PERF_TEST="$PERF_TEST"
+  -DCMAKE_BUILD_TYPE=Release -DFCF_XSDK_OBJECT_TEST="$OBJECT_TEST" -DFCF_XSDK_DRAW_MASKS="$DRAW_MASKS" -DFCF_XSDK_CULL_TEST="$CULL_TEST" -DFCF_WATER_TEST="$WATER_TEST" -DFCF_PERF_TEST="$PERF_TEST" -DFCF_LEAN_DEBUG="$LEAN_DEBUG" -DFCF_SHADER_DIR="$SHADER_DIR"
 cmake --build "$BUILD_DIR"
 cp "$HERE/dbgprint.txt" "$BUILD_DIR/dbgprint.txt"
 if [ "$WATER_TEST" != 0 ]; then
@@ -56,7 +69,7 @@ if [ "$WATER_TEST" != 0 ]; then
 fi
 if [ "$PERF_TEST" != 0 ] && [ "$CULL_TEST" != ON ]; then
   mkdir -p "$HERE/build/game"
-  if [ "$PERF_TEST" = lean ]; then cp "$BUILD_DIR"/lean*.xex "$HERE/build/game/"; else cp "$BUILD_DIR/perf_$PERF_TEST.xex" "$HERE/build/game/"; fi
+  if [ "$LEAN_DEBUG" = mat ]; then cp "$BUILD_DIR/lean_debug.xex" "$HERE/build/game/"; elif [ "$PERF_TEST" = lean ]; then cp "$BUILD_DIR"/lean*.xex "$HERE/build/game/"; else cp "$BUILD_DIR/perf_$PERF_TEST.xex" "$HERE/build/game/"; fi
   cp "$HERE/dbgprint.txt" "$HERE/build/game/dbgprint.txt"
 fi
 if [ "$CULL_TEST" = ON ]; then

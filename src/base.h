@@ -152,9 +152,14 @@ struct MB {
 };
 struct Mesh {
     gfx::Buf buf = 0; int n = 0;
-    void upload(const MB& b) {
+    void upload(const MB& b, const char* label = nullptr) {
         n = (int)b.idx.size(); if (g_noGL) return;
         gfx::mesh(buf, b.v.data(), (int)b.v.size(), b.idx.data(), n);
+#ifdef FCF_GFX_XSDK
+        if (label) gfx::meshChunkCheck(buf, label, n);
+#else
+        (void)label;
+#endif
     }
     void draw() { if (n) gfx::drawMesh(buf, n); }
 };

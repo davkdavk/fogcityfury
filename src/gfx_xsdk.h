@@ -428,6 +428,7 @@ static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
             if(!duplicate) add++;
         }
         // Xenos' max-index register is 16-bit; count limits alone don't constrain referenced vertex ids.
+        // This loop advances per triangle and flushes before inserting it, keeping all three rebased indices together.
         if(!indices.empty() && (remap.size()+add>xs::MAX_MESH_VERTICES || indices.size()+3>65532u)) { flush(); firstIndex=(uint32_t)tri; }
         for(int k=0;k<3;k++) {
             uint32_t old=idx[tri+k]; auto it=remap.find(old);
@@ -449,6 +450,14 @@ static void drawMeshRange(Buf b,int first,int ni) {
     }
 }
 static void drawMesh(Buf b,int ni) { drawMeshRange(b,0,ni); }
+static void meshChunkCheck(Buf b,const char* label,int ni) {
+    const auto& chunks=xs::buffers[b].chunks; uint32_t cross=0; size_t c=0;
+    for(uint32_t tri=0;tri+2<(uint32_t)ni;tri+=3) {
+        while(c<chunks.size() && tri>=chunks[c].firstIndex+chunks[c].indexCount) c++;
+        if(c>=chunks.size() || tri<chunks[c].firstIndex || tri+2>=chunks[c].firstIndex+chunks[c].indexCount) cross++;
+    }
+    xsdk_log_write("bin: cross-chunk triangles=%u mesh=%s",(unsigned)cross,label);
+}
 static void drawFull(){ gfx::flushProgram(); xs::dirty=true; xsdk_gpu_draw(XSDK_PRIMITIVE_TRIANGLE_LIST,3); }
 
 static XsdkDepthStencilState depthState(bool test,bool write) {

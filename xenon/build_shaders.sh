@@ -6,7 +6,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(dirname "$HERE")"
 XSDK="${XSDK:-$HOME/xsdk}"
 XSC="$XSDK/xenos-toolchain"
-GEN="$HERE/build/gen"
+GEN="${FCF_SHADER_OUT:-$HERE/build/gen}"
 [ -d "$XSC" ] || { echo "xsdk not found at $XSC (set XSDK)"; exit 1; }
 python3 "$HERE/transform.py" "$GEN" || exit 1
 fail=0
