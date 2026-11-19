@@ -181,7 +181,25 @@ struct UI {
         unsigned char px[128 * 32]; memset(px, 0, sizeof px);
         for (int c = 0; c < 59; c++) for (int y = 0; y < 7; y++) for (int x = 0; x < 5; x++)
             if (FONT[c][y] & (16 >> x)) px[((c / 16) * 8 + y) * 128 + (c % 16) * 8 + x] = 255;
+#ifdef FCF_XENOS_LEAN
+        // The 360's text shader (xenon/lean_shaders.py, UI) draws from distances: at 8 texels a font pixel, each texel
+        // holds how far it lies inside (above 128) or outside (below) the glyph, in font pixels, clamped to one.
+        { const int K = 8, TW = 128 * K, TH = 32 * K; std::vector<unsigned char> sd((size_t)TW * TH);
+          auto on = [&](int x, int y) { return x >= 0 && y >= 0 && x < 128 && y < 32 && px[y * 128 + x] == 255; };
+          for (int Y = 0; Y < TH; Y++) for (int X = 0; X < TW; X++) {
+              float fx = (X + 0.5f) / K, fy = (Y + 0.5f) / K; int cx = (int)fx, cy = (int)fy; bool inside = on(cx, cy);
+              float best = 1;   // distance to the nearest cell of the other kind, in font pixels, at most 1
+              for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+                  if (!i && !j) continue; if (on(cx + i, cy + j) == inside) continue;
+                  float dx = std::max(std::max((float)(cx + i) - fx, fx - (float)(cx + i + 1)), 0.0f), dy = std::max(std::max((float)(cy + j) - fy, fy - (float)(cy + j + 1)), 0.0f);
+                  best = std::min(best, sqrtf(dx * dx + dy * dy));
+              }
+              float d = inside ? best : -best; sd[(size_t)Y * TW + X] = (unsigned char)std::lround((0.5f + 0.5f * d) * 255.0f);
+          }
+          gfx::Sampler s; s.linear = true; s.repeat = false; gfx::tex2D(tex, gfx::R8, TW, TH, sd.data(), s); }
+#else
         gfx::Sampler s; s.linear = false; s.repeat = true; gfx::tex2D(tex, gfx::R8, 128, 32, px, s);
+#endif
         gfx::buffer(buf, gfx::L_UI);
     }
     void vert(float x, float y, float u, float w, V3 c, float a) { float d[8] = { x, y, u, w, c.x, c.y, c.z, a }; v.insert(v.end(), d, d + 8); }
