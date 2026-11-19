@@ -120,13 +120,14 @@ WORLD = (_HEAD + '  vec3 base = alb, g0 = glow;\n' + _ROAD + '  vec3 aRoad = alb
 # vMat: 0 plain 1 paint 2 glass 3 headlight 4 taillight 5 rubber
 CAR = COMMON + '''
 in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
-uniform samplerCube uEnv;
 uniform vec3 uPaint; uniform float uBrake, uChrome, uBurnt, uGone;
 void main(){
   vec3 n = normalize(vN)*(gl_FrontFacing ? 1.0 : -1.0);
   vec3 toCam = uCamPos - vP; float dist = length(toCam); vec3 V = toCam/dist;
   float ndv = max(dot(n, V), 0.0), f1 = 1.0 - ndv, F = 0.05 + 0.95*f1*f1*f1*f1;
-  vec3 env = texture(uEnv, reflect(-V, n)).rgb;
+  // the sky reflected, from its two colours: the reflection cube is only drawn at pass level 3, and unwritten it read
+  // as dark red on the console
+  vec3 R = reflect(-V, n); vec3 env = mix(uSkyHor*0.5, mix(uSkyHor, uSkyTop, sqrt(clamp(R.y, 0.0, 1.0))), clamp(R.y*4.0 + 1.0, 0.0, 1.0));
   vec3 lit = ambient(n.y) + uSunCol*max(dot(n, uSunDir), 0.0);
   float ndh = max(dot(n, normalize(V + uSunDir)), 0.0), s = ndh*ndh; s *= s; s *= s; s *= s; s *= s;
   vec3 spec = uSunCol*s*0.5;
@@ -210,5 +211,13 @@ void main(){
 
 LEAN_VS = {n: (WORLD_VS, WORLD_LOC) for n in ('world', 'ground', 'road', 'wall', 'misc')}
 LEAN_VS['sky'] = (SKY_VS, {'vNdc': 0})
+# The depth pre-pass must place every vertex exactly where the colour pass does, or the colour pass's depth test
+# (less-or-equal, depth writes off) fails on the ground and the road and leaves them black. So it runs the colour
+# pass's own vertex shader; its pixel shader writes nothing that is kept (colour writes are off).
+LEAN_VS['depth'] = (WORLD_VS, WORLD_LOC)
+DEPTH = '''#version 330 core
+out vec4 oCol;
+void main(){ oCol = vec4(1.0); }
+'''
 LEAN_EXTRA = ('ground', 'road', 'wall', 'misc')   # programs only the lean build has
-LEAN = {'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING}
+LEAN = {'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING}
