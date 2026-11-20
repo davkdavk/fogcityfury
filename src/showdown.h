@@ -89,11 +89,28 @@ static bool shdTryOffRoad(float s, float off) {
     if (!shdFindRoute(ex, c)) return false;                            // and a way in for the bots
     shdSiteS = (float)i; shdSite = c; shdExitP = ex; shdOffRoad = true; return true;
 }
+#ifdef FCF_GFX_XSDK
+static void shdLogSite(const char* source) {
+    float ground = W.ground(shdSite.x, shdSite.z, shdSite.y + 1.5f);
+    xsdk_log_write("showdown: site source=%s pos=(%.2f,%.2f,%.2f) ground=%.2f", source, shdSite.x, shdSite.y, shdSite.z, ground);
+}
+#endif
 static void shdPickSiteAny(float u) {   // u < 0: anywhere
     shdOffRoad = false; shdPath.clear();
-    if (u < 0) { for (int k = 0; k < 1500; k++) if (shdTryOffRoad(grng.f() * W.n, grng.r(40, 220) * (grng.f() < 0.5f ? -1.0f : 1.0f))) return; u = grng.r(0.05f, 0.95f); }
+    if (u < 0) {
+        for (int k = 0; k < 1500; k++) if (shdTryOffRoad(grng.f() * W.n, grng.r(40, 220) * (grng.f() < 0.5f ? -1.0f : 1.0f))) {
+#ifdef FCF_GFX_XSDK
+            shdLogSite("shdTryOffRoad");
+#endif
+            return;
+        }
+        u = grng.r(0.05f, 0.95f);
+    }
     int n = W.n, i = (int)(clampf(u, 0, 0.999f) * n); for (int k = 0; k < 60 && (W.ts[i].br || W.ts[(i + 30) % n].br || W.ts[(i + n - 30) % n].br); k++) i = (i + 15) % n;
     shdSiteS = (float)i; V3 p; float yaw; W.at(shdSiteS, 0, p, yaw); shdSite = V3(p.x, W.ground(p.x, p.z, p.y + 1), p.z);
+#ifdef FCF_GFX_XSDK
+    shdLogSite("road fallback");
+#endif
 }
 // a new ring: wherever it lands, not where the last one was
 static void shdPickSite(float u) { shdPickSiteAny(u); shdLastSite = shdSite; shdHaveLast = true; }
@@ -232,8 +249,21 @@ static void showdownSkip() {   // Enter: once you are out (or it is over), go to
     if ((shdPhase == SH_FIGHT && ((!me.alive && me.deadT > 1.5f) || shdSpectate)) || (shdPhase == SH_OVER && shdOverT > 1.5f)) shdFinish();
 }
 static void stepShowdown(float dt) {
-    if (netShd) { netShdFrame(dt); return; }
-    if (!showdownOn || state != RACE) return;
+    if (netShd) netShdFrame(dt);
+    else if (!showdownOn || state != RACE) return;
+#ifdef FCF_GFX_XSDK
+    static float nextDebug = 0;
+    if (showdownOn && state == RACE && T >= nextDebug) {
+        nextDebug = T + 1.0f;
+        xsdk_log_write("showdown: site=(%.2f,%.2f,%.2f) ring=%.2f offroad=%u path=%u phase=%d",
+            shdSite.x, shdSite.y, shdSite.z, shdRing, (unsigned)shdOffRoad, (unsigned)shdPath.size(), (int)shdPhase);
+        for (const auto& f : fighters)
+            xsdk_log_write("showdown: fighter=%d on=%u alive=%u arrived=%u pos=(%.2f,%.2f,%.2f) dist=%.2f ringT=%.2f gun=%d target=%d",
+                f.id, (unsigned)f.on, (unsigned)f.alive, (unsigned)f.arrived, f.pos.x, f.pos.y, f.pos.z,
+                flatDist(f.pos, shdSite), f.ringT, (int)f.gun, f.target);
+    }
+#endif
+    if (netShd) return;
     shdT += dt;
     for (auto& d : drops) if (d.back > 0) { d.back -= dt; if (d.back <= 0) { d.back = 0; shdBack++; sfx(d.p, 880, 0.12f, 0.25f, 2); for (int k = 0; k < 10; k++) spawn(d.p + V3(0, 0.6f, 0), V3(grng.r(-2, 2), grng.r(1, 4), grng.r(-2, 2)), 0.4f, 0.10f, 0, V3(3, 3, 3), 1, 1, -4); } }   // a pick-up is back
     if (shdPhase == SH_DRIVE) {
