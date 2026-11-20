@@ -77,6 +77,11 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.39
+
+- **Faster on Android**: phones and tablets draw the world in chunks, as the Xbox 360 does: nothing out of view, simpler ground in the distance, small props only up close. It looks the same.
+- **Shadows** draw each piece of ground once (the 360 drew it four times over).
+
 ## What's new in 1.38
 
 - **Sunset Causeway shortcut**: a backstreet route through town gives racers and bots another way to the finish.

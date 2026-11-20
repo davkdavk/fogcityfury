@@ -1,4 +1,15 @@
 // FOG CITY FURY - an arcade hill-jumping street racer for Linux (SDL2 + OpenGL 3.3 / GLSL 3.30)
+// Phones and tablets (GLES) draw the world in chunks, as the 360 does: the 48 m cells outside the view are skipped,
+// distant ones use coarser ground, and the small props only near the camera. -DFCF_NO_CHUNKS turns it off.
+#if defined(FCF_GLES) && !defined(FCF_NO_CHUNKS)
+#define FCF_CHUNKS
+#ifndef FCF_XENOS_CULL
+#define FCF_XENOS_CULL
+#endif
+#ifndef FCF_XENOS_LOD
+#define FCF_XENOS_LOD
+#endif
+#endif
 #include "base.h"
 #include "shaders.h"
 #include "world.h"
@@ -1275,8 +1286,8 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     if (!skyBehind) drawSky(false);
     if(!objectOnly && (DRAW_MASK & (DM_TERRAIN|DM_PROPS))) {
         traceDraw("terrain+props");
-#ifdef FCF_GFX_XSDK
-#ifndef FCF_XENOS_NO_PREPASS
+#if defined(FCF_GFX_XSDK) || defined(FCF_CHUNKS)
+#if defined(FCF_GFX_XSDK) && !defined(FCF_XENOS_NO_PREPASS)   // (no depth prepass on phones: their tiled GPUs sort hidden pixels out themselves)
         traceDraw("terrain+props depth prepass");
         gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); gfx::colorWrite(false);
         pDepth.use(); pDepth.m4("uVP", VP); pDepth.m4("uModel", ident());
@@ -1304,6 +1315,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         setCommon(pWorld, VP, cam, hdr);
         drawWorldCells((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam, &terrainIndices, &propIndices);
 #endif
+#ifdef FCF_GFX_XSDK   // the cull log (once a second): the 360 only
         static float nextCullLog = 0;
         if (mainPass && T >= nextCullLog) {
             nextCullLog = T + 1.0f;
@@ -1311,6 +1323,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
             for (const VisibleCell& v : visibleWorldCells) { const WorldCell& c = W.worldCells[v.id]; lod[v.lod]++; lodIndices[v.lod] += c.terrain[v.lod].count; if (c.small.count && cellDistance2(c.smallBounds, cam) <= 300.0f * 300.0f) smallCells++; }
             xsdk_log_write("cull: cells=%u/%d lod=%d,%d,%d,%d lodIdx=%d,%d,%d,%d terrainIdx=%d propsIdx=%d smallCells=%d", (unsigned)visibleWorldCells.size(), NCELL, lod[0], lod[1], lod[2], lod[3], lodIndices[0], lodIndices[1], lodIndices[2], lodIndices[3], terrainIndices, propIndices, smallCells);
         }
+#endif
 #else
 #ifdef FCF_XENOS_LEAN
         // the terrain mesh is all one material and has its own program; "world" here is road + walls + the rest, picked by
@@ -1764,7 +1777,17 @@ static void render(int fbw, int fbh) {
         lightVP = mul(ortho(-R, R, -R, R, 1, 900), lookAt(focus + W.def->sun * 400, focus, V3(0, 1, 0)));
         gfx::use(shadowFBO, SHADOW, SHADOW); gfx::clear(false, true);
         gfx::offset(2.0f, 4.0f);
-        pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident()); W.terrain.draw(); W.props.draw(); drawCars(pDepth, false, true); drawWreckage(pDepth, false);
+        pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident());
+#ifdef FCF_XENOS_CULL
+        // chunked: the terrain buffer holds every level of detail, so draw the finest of the cells under the shadow map only
+        for (int i = 0; i < NCELL; i++) {
+            const WorldCell& c = W.worldCells[i]; const CellBounds& b = c.bounds; if (!b.valid || b.x1 < focus.x - R - 60 || b.x0 > focus.x + R + 60 || b.z1 < focus.z - R - 60 || b.z0 > focus.z + R + 60) continue;
+            gfx::drawMeshRange(W.terrain.buf, c.terrain[0].first, c.terrain[0].count); gfx::drawMeshRange(W.props.buf, c.props.first, c.props.count); gfx::drawMeshRange(W.smallProps.buf, c.small.first, c.small.count);
+        }
+#else
+        W.terrain.draw(); W.props.draw();
+#endif
+        drawCars(pDepth, false, true); drawWreckage(pDepth, false);
         gfx::offset(0, 0);
     }
     // ---- dynamic environment cubemap around the player's car (2 faces per frame) ----

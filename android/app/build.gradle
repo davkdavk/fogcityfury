@@ -10,8 +10,8 @@ android {
         applicationId "com.fogcityfury.game"
         minSdkVersion 21
         targetSdkVersion 34
-        versionCode 3
-        versionName "1.38"
+        versionCode 4
+        versionName "1.39"
         externalNativeBuild {
             ndkBuild {
                 arguments "APP_PLATFORM=android-21"
