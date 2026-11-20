@@ -77,6 +77,10 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.43
+
+- Nitro jets you can see; rain shows on the 360; the shortcut is one smooth curve with kerbs; windows sit properly on the buildings; town paving meets the road cleanly.
+
 ## What's new in 1.42
 
 - Nitro jets you can see; rain shows on the 360; the shortcut is one smooth curve with kerbs; windows sit properly on the buildings.
