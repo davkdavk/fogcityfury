@@ -222,6 +222,14 @@ static const bool padOnly = true; static bool padUI = true;
 static const bool padOnly = false; static bool padUI = false;
 #endif
 static const char* P(const char* key, const char* pad) { return padUI ? pad : key; }
+static float logoT = -1; static bool noLogo = false;                                   // seconds into the logo; < 0 when it isn't showing
+static const float LOGO_LEN = 4.6f;
+static void logoSounds(float t0, float t1) {
+    auto at = [&](float t) { return t0 < t && t1 >= t; };
+    if (at(0.02f)) tone(2600, 1.5f, 0.16f, 1, -1500);                                        // the whoosh in
+    if (at(1.55f)) { tone(392, 0.9f, 0.22f); tone(587, 0.9f, 0.2f, 0, 0, 0.09f); tone(784, 1.3f, 0.2f, 0, 0, 0.18f); }   // landing chime
+    for (int i = 0; i < 11; i++) if (at(1.9f + i * 0.075f)) tone(1500 + i * 70, 0.035f, 0.06f, 2);   // the small letters clicking in
+}
 static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBtn> tbtn; static std::vector<Finger> fingers; static int touchLaid = -1;
 static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold == b) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
 static const int RES[][2] = { { 854, 480 }, { 1024, 576 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } }; static const int NRES = 8;
@@ -738,6 +746,7 @@ static void finishRace(bool tu) {
 #include "champ.h"
 static void update(float dt) {
     T += dt; frameNo++;
+    if (logoT >= 0) { float t0 = logoT; logoT += dt; logoSounds(t0, logoT); if (logoT >= LOGO_LEN) logoT = -1; }
     if (pendingTrack >= 0 && (pendingT -= dt) <= 0) flushPendingTrack();
     netPump(dt, state == NETLOBBY); netReact();
     if (state == NETJOIN && !nc.on) srvPump(dt);
@@ -1250,6 +1259,80 @@ static void drawMap(float cx, float cy, float sc, bool cars) {
 }
 static void panel(float x, float y, float w, float h, float a = 0.55f) { ui.rect(x, y, w, h, V3(0.02f, 0.03f, 0.06f), a); ui.rect(x, y, w, 3, V3(1, 0.55f, 0.1f), 0.9f); }
 
+// ------------------------------------------------------------------ start-up logo
+// "H.J.B" in chunky gold blocks (one block per pixel of the HUD font) flies in spinning, settles, a shine sweeps
+// across it, then "ENTERPRIZEZ" flips up letter by letter beneath it. Drawn with the HUD's flat triangles: each block's
+// faces are turned and projected here, far blocks first, so it needs no depth buffer or special shader on any
+// platform. Any key or button skips it.
+static void drawLogo(float t) {
+    const float W = ui.W, H = ui.H, F = H / (2 * tanf(20 * (float)M_PI / 180));   // 40 degree view
+    auto ease = [](float x) { x = clampf(x, 0, 1); return 1 - (1 - x) * (1 - x) * (1 - x); };
+    // backdrop: deep blue fading to black, a soft glow behind the logo, a few twinkles
+    for (int i = 0; i < 24; i++) { float k = i / 23.0f; ui.rect(0, H * i / 24, W, H / 24 + 1, V3(0.02f + 0.05f * (1 - k), 0.03f + 0.07f * (1 - k), 0.10f + 0.16f * (1 - k)), 1); }
+    float land = ease(t / 1.6f);
+    for (int i = 0; i < 6; i++) ui.disc(W / 2, H * 0.44f, H * (0.10f + 0.07f * i) * (0.4f + 0.6f * land), V3(0.25f, 0.35f, 0.9f), 0.035f * land);
+    for (int i = 0; i < 40; i++) {
+        uint32_t h = (uint32_t)i * 2654435761u; float x = (h & 1023) / 1023.0f * W, y = ((h >> 10) & 1023) / 1023.0f * H * 0.9f;
+        float tw = 0.5f + 0.5f * sinf(t * (2 + (h >> 20) % 5) + i); ui.rect(x, y, 2, 2, V3(0.8f, 0.85f, 1), 0.15f + 0.45f * tw * land);
+    }
+    struct Face { float z; V3 p[4]; V3 c; };
+    static std::vector<Face> faces; faces.clear();
+    // one text as blocks. s: block size; (cx, cy, cz): centre; yaw/pitch: turn about its centre; front/side: colours
+    auto blocks = [&](const char* txt, float s, float cx, float cy, float cz, float yaw, float pitch, V3 frontTop, V3 frontBot, V3 side, float shine, int only = -1, float flip = 0) {
+        int n = (int)strlen(txt); float tw = (n * 6 - 1) * s, th = 7 * s, d = 1.8f * s;
+        float cyw = cosf(yaw), syw = sinf(yaw), cp = cosf(pitch), sp = sinf(pitch);
+        for (int ci = 0; ci < n; ci++) {
+            if (only >= 0 && ci > only) break;
+            int g = toupper((unsigned char)txt[ci]) - 32; if (g <= 0 || g >= 59) continue;
+            float lflip = only >= 0 ? (ci == only ? flip : 0) : 0;   // the newest small letter is still flipping up
+            float lc = cosf(lflip), ls = sinf(lflip), lx0 = -tw / 2 + ci * 6 * s;
+            auto on = [&](int x, int y) { return x >= 0 && x < 5 && y >= 0 && y < 7 && (FONT[g][y] & (16 >> x)); };
+            for (int y = 0; y < 7; y++) for (int x = 0; x < 5; x++) {
+                if (!on(x, y)) continue;
+                float x0 = lx0 + x * s, x1 = x0 + s, y1 = th / 2 - y * s, y0 = y1 - s;
+                auto P = [&](float px, float py, float pz) {   // model -> view: the letter's flip, then pitch and yaw, then place
+                    float qy = (py + th / 2) * lc - pz * ls - th / 2, qz = (py + th / 2) * ls + pz * lc;
+                    float ry = qy * cp - qz * sp, rz = qy * sp + qz * cp;
+                    return V3(px * cyw + rz * syw + cx, ry + cy, -px * syw + rz * cyw + cz);
+                };
+                V3 c[8] = { P(x0, y0, -d / 2), P(x1, y0, -d / 2), P(x1, y1, -d / 2), P(x0, y1, -d / 2), P(x0, y0, d / 2), P(x1, y0, d / 2), P(x1, y1, d / 2), P(x0, y1, d / 2) };
+                float ky = (float)y / 6; V3 front = frontTop * (1 - ky) + frontBot * ky;
+                // faces: corners, colour, and whether a neighbouring block hides it
+                struct FD { int a, b, c2, d2; bool show; V3 col; } fd[6] = {
+                    { 0, 1, 2, 3, true, front }, { 5, 4, 7, 6, true, front * 0.8f },
+                    { 1, 5, 6, 2, !on(x + 1, y), side }, { 4, 0, 3, 7, !on(x - 1, y), side },
+                    { 3, 2, 6, 7, !on(x, y - 1), side * 1.35f }, { 4, 5, 1, 0, !on(x, y + 1), side * 0.6f } };
+                for (auto& f : fd) {
+                    if (!f.show) continue;
+                    V3 a = c[f.a], b = c[f.b], e = c[f.c2], q = c[f.d2], nrm = cross(b - a, q - a), mid = (a + b + e + q) * 0.25f;
+                    if (dot(nrm, mid) >= 0) continue;                      // facing away from the camera at the origin
+                    float lit = 0.55f + 0.45f * clampf(dot(norm(nrm), norm(V3(0.4f, 0.6f, -0.7f))), 0, 1);
+                    V3 col = f.col * lit;
+                    if (shine > -100 && f.a == 0) { float k = expf(-((x0 + s / 2 - shine) / (3 * s)) * ((x0 + s / 2 - shine) / (3 * s))); col = col + V3(1, 1, 0.9f) * (1.1f * k); }
+                    faces.push_back({ mid.z, { a, b, e, q }, V3(std::min(col.x, 1.0f), std::min(col.y, 1.0f), std::min(col.z, 1.0f)) });
+                }
+            }
+        }
+    };
+    // the big letters: two and a half turns while flying in from far away, then a gentle sway
+    float spin = 0.16f + (1 - land) * 5 * (float)M_PI + (t > 1.6f ? 0.07f * sinf((t - 1.6f) * 1.7f) : 0);
+    float dist = 42 + (1 - land) * 160, tilt = 0.10f + (1 - land) * 0.5f;
+    float shine = t > 1.8f && t < 3.0f ? -18 + (t - 1.8f) / 1.2f * 36 : -1000;
+    blocks("H.J.B", 1.0f, 0, 2.2f, dist, spin, tilt, V3(1.0f, 0.86f, 0.32f), V3(0.95f, 0.42f, 0.08f), V3(0.50f, 0.22f, 0.05f), shine);
+    if (t > 1.9f) {   // the small word, letter by letter
+        float k = (t - 1.9f) / 0.075f; int upTo = std::min(10, (int)k); float flip = upTo < 10 || k < 11 ? (1 - ease(k - upTo)) * -1.6f : 0;
+        blocks("ENTERPRIZEZ", 0.45f, 0, -5.6f, 42, 0.10f + 0.04f * sinf((t - 1.6f) * 1.7f), 0.08f, V3(0.92f, 0.95f, 1.0f), V3(0.62f, 0.70f, 0.85f), V3(0.30f, 0.36f, 0.50f), -1000, upTo, flip);
+    }
+    std::sort(faces.begin(), faces.end(), [](const Face& a, const Face& b) { return a.z > b.z; });   // far first
+    for (auto& f : faces) {
+        float sx[4], sy[4]; bool ok = true;
+        for (int i = 0; i < 4; i++) { if (f.p[i].z < 1) { ok = false; break; } sx[i] = W / 2 + f.p[i].x * F / f.p[i].z; sy[i] = H * 0.5f - f.p[i].y * F / f.p[i].z; }
+        if (ok) ui.quad(sx[0], sy[0], sx[1], sy[1], sx[2], sy[2], sx[3], sy[3], f.c, 1);
+    }
+    if (t > LOGO_LEN - 0.6f) ui.rect(0, 0, W, H, V3(0, 0, 0), clampf((t - (LOGO_LEN - 0.6f)) / 0.6f, 0, 1));   // fade out
+    else if (t < 0.25f) ui.rect(0, 0, W, H, V3(0, 0, 0), 1 - t / 0.25f);                                     // fade in
+}
+
 static void drawHUD() {
     float Wd = ui.W, Hd = ui.H; char b[160]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f);
     if (state == OPTS) {
@@ -1462,6 +1545,11 @@ static void render(int fbw, int fbh) {
     static int traceFrames = 0; traceDrawGroups = traceFrames++ == 0;
 #endif
     float asp = fbw / (float)fbh, fov = 62; V3 eye, upv(0, 1, 0); bool chase = false;
+    if (logoT >= 0) {   // the start-up logo replaces the whole frame: no world drawn behind it
+        gfx::use(0, fbw, fbh); gfx::clear(true, true); gfx::depthWrite(false); gfx::depthTest(false); gfx::blend(gfx::B_ALPHA);
+        ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawLogo(logoT); ui.flush(pUI);
+        gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); return;
+    }
     V3 f(sinf(player.yaw), 0, cosf(player.yaw));
     // ---- camera ----
     if (fixedCam) { /* set from the command line */ }
@@ -1732,7 +1820,7 @@ int main(int argc, char** argv) {
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
-        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--padui") padUI = true;
+        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
         else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
@@ -1935,7 +2023,8 @@ int main(int argc, char** argv) {
         plat::endFrame(display);
         return 0;
     }
-    if (!simMode && !grngSeeded) grng.s = (uint32_t)plat::ticks() * 2654435761u + 1u;   // a real game: a new ring each time (sims and tests stay the same)
+    if (!simMode && !grngSeeded) grng.s = (uint32_t)plat::ticks() * 2654435761u + 1u;
+    if (startState == 0 && !noLogo && logoT < 0) logoT = 0;   // a real start: the logo first   // a real game: a new ring each time (sims and tests stay the same)
     uint64_t last = plat::ticks();
 #ifdef FCF_GFX_XSDK
     uint64_t lastRuntimeLog = last;
@@ -1949,6 +2038,7 @@ int main(int argc, char** argv) {
         plat::pollEvents(evs);
         for (const plat::Event& e : evs) {
             if (e.type == plat::EV_QUIT) quit = true;
+            if (logoT >= 0 && (e.type == plat::EV_KEY_DOWN || e.type == plat::EV_PAD_DOWN || e.type == plat::EV_FINGER_DOWN || e.type == plat::EV_MOUSE_DOWN)) { logoT = -1; continue; }   // skip the logo
             if (e.type == plat::EV_KEY_DOWN && !e.repeat) {
                 if (!padOnly) padUI = false; handleKey(e.key, e.scancode);
             }
