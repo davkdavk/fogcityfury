@@ -54,7 +54,7 @@ static void initTracks() {
     b.baseH = 6.5f; b.noiseAmp = 2.2f; b.landR = 577; b.cityThr = 0.50f; b.night = 0;
     b.sun = norm(V3(-0.72f, 0.24f, 0.45f)); b.sunCol = V3(3.0f, 1.55f, 0.72f);
     b.skyTop = V3(0.10f, 0.13f, 0.42f); b.skyHor = V3(0.95f, 0.50f, 0.28f); b.fogDen = 0.0010f; b.seed = 11;
-    b.branch = { 0.8841f, 0.9622f, -425, -95, -431, -160 };   // the backstreet cut: inside the bend before the start, through town
+    b.branch = { 0.8647f, 0.9622f, -469.1f, -54.2f, -450.3f, -73.3f, -425, -95, -431, -160 };   // the backstreet cut: inside the bend before the start, through town. It peels off 60 m earlier as a slip lane (6 m, then 12 m off the centre line), so it can be taken at speed; the gate at 7/8 is passed within reach on it
     TRACKS.push_back(b);
     TrackDef c;
     c.name = "SUMMIT SWITCHBACKS"; c.sub = "MISTY MOUNTAIN PASS - LONG CLIMB";
@@ -577,19 +577,27 @@ struct World {
     }
     // its road: narrower than the loop (a centre line and lane dashes, no edge lines), laid a hair under the loop's so
     // that where the two overlap at the ends the loop's markings stay on top
+    // the alternate route's surface: the road shader paints by u, metres from the centre on the main road's 8 m half
+    // width (lines at 0.17, 4 and 7.5, red and white kerbs from 8 to 8.7). The branch is narrower (BRANCH_W), so its
+    // tarmac carries u from -8 to 8 across its own width and its kerbs 8 to 8.7: the same markings and kerbs, scaled
     void branchRibbon() {
         int m = (int)bts.size(); if (m < 2) return; const float w = BRANCH_W + 0.7f; V3 kerb(0.5f, 0.5f, 0.5f), nrm(0, 1, 0);
+        const float X[4] = { -w, -BRANCH_W, BRANCH_W, w }, U[4] = { -8.7f, -8.0f, 8.0f, 8.7f };
         for (int i = 0; i + 1 < m; i++) {
             const TS& a = bts[i], & b = bts[i + 1];
-            V3 al(a.x + a.tz * w, a.y + 0.02f, a.z - a.tx * w), ar(a.x - a.tz * w, a.y + 0.02f, a.z + a.tx * w), bl(b.x + b.tz * w, b.y + 0.02f, b.z - b.tx * w), br(b.x - b.tz * w, b.y + 0.02f, b.z + b.tx * w);
+            auto at = [&](const TS& t, float x) { return V3(t.x - t.tz * x, t.y + 0.02f, t.z + t.tx * x); };   // x > 0: the side ar was on
 #ifdef FCF_XENOS_CULL
             int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f);
 #endif
-            unsigned q = mb.add(ar, nrm, V3(1, 1, 1), -w, (float)i, 1); mb.add(al, nrm, V3(1, 1, 1), w, (float)i, 1); mb.add(bl, nrm, V3(1, 1, 1), w, (float)i + 1, 1); mb.add(br, nrm, V3(1, 1, 1), -w, (float)i + 1, 1);
-            mb.idx.insert(mb.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
+            for (int k = 0; k < 3; k++) {   // kerb, tarmac, kerb
+                unsigned q = mb.add(at(a, X[k + 1]), nrm, V3(1, 1, 1), U[k + 1], (float)i, 1); mb.add(at(a, X[k]), nrm, V3(1, 1, 1), U[k], (float)i, 1);
+                mb.add(at(b, X[k]), nrm, V3(1, 1, 1), U[k], (float)i + 1, 1); mb.add(at(b, X[k + 1]), nrm, V3(1, 1, 1), U[k + 1], (float)i + 1, 1);
+                mb.idx.insert(mb.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
 #ifdef FCF_XENOS_CULL
-            mb.triTags.push_back(oldTag); mb.triTags.push_back(oldTag);
+                mb.triTags.push_back(oldTag); mb.triTags.push_back(oldTag);
 #endif
+            }
+            V3 al = at(a, -w), ar = at(a, w), bl = at(b, -w), br = at(b, w);
             V3 dn(0, -0.9f, 0); mb.quad(al, bl, bl + dn + V3(b.tz, 0, -b.tx) * 0.4f, al + dn + V3(a.tz, 0, -a.tx) * 0.4f, kerb, 3); mb.quad(ar, br, br + dn - V3(b.tz, 0, -b.tx) * 0.4f, ar + dn - V3(a.tz, 0, -a.tx) * 0.4f, kerb, 3);
 #ifdef FCF_XENOS_CULL
             mb.cellTag = oldTag;

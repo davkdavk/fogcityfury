@@ -48,7 +48,7 @@
 //
 // State. Whatever was set last stays set.
 //   depthTest(on), depthWrite(on)      the depth test is less-or-equal
-//   blend(mode)                        B_OFF, B_ALPHA (src*a + dst*(1-a)), B_PREMUL (src + dst*(1-a))
+//   blend(mode)                        B_OFF, B_ALPHA (src*a + dst*(1-a)), B_PREMUL (src + dst*(1-a)), B_ADD (src + dst)
 //   offset(factor, units)              polygon depth offset; offset(0, 0) turns it off
 //   No face culling, ever.
 //
@@ -67,7 +67,7 @@
 namespace gfx {
 enum Fmt : uint8_t { R8, R16F, RGB8, RGBA8, RGBA16F, DEPTH24 };
 enum Layout : uint8_t { L_MESH, L_PART, L_UI };
-enum Blend : uint8_t { B_OFF, B_ALPHA, B_PREMUL };
+enum Blend : uint8_t { B_OFF, B_ALPHA, B_PREMUL, B_ADD };
 struct Sampler { bool linear = true, mips = false, repeat = false, compare = false; };
 typedef uint32_t Tex, Buf, Target;
 }

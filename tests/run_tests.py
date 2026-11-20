@@ -122,7 +122,7 @@ def alternate_route():
         if t != 1:
             check(d["branchLen"] == 0, "track %d has no alternate route yet" % t, d["branchLen"])
             continue
-        check(150 < d["branchLen"] < 260 and d["branchB"] - d["branchA"] > d["branchLen"], "Sunset Causeway's backstreet is a shortcut", (d["branchLen"], d["branchA"], d["branchB"]))
+        check(150 < d["branchLen"] < 285 and d["branchB"] - d["branchA"] > d["branchLen"], "Sunset Causeway's backstreet is a shortcut", (d["branchLen"], d["branchA"], d["branchB"]))
         check(d["branchBlocked"] == 0, "no building stands on it", d["branchBlocked"])
     # driving down it: on the route, counted as the matching stretch of the loop, never 'wrong way'
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", -428, -120, 3.14, "--speed", 25, seconds=2.5)
@@ -131,7 +131,7 @@ def alternate_route():
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", -428, -120, 0, "--speed", 25, seconds=2.5)
     check(d["maxWrongT"] > 1, "driving up it is the wrong way", d["maxWrongT"])
     # bots take it on some laps and still finish
-    d = sim("--track", 1, "--state", 3, "--auto", seconds=200)
+    d = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=200)   # (a bot rocket can cost the autopilot the clock)
     between(d["aiBranch"], 4, 30, "bot trips down the backstreet over three laps")
     check(d["lap"] >= 3, "the race still runs to the end", d["lap"])
 

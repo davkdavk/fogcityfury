@@ -117,7 +117,7 @@ static void depthTest(bool on) { if (on) glEnable(GL_DEPTH_TEST); else glDisable
 static void depthWrite(bool on) { glDepthMask(on ? GL_TRUE : GL_FALSE); }
 static void blend(Blend m) {
     if (m == B_OFF) { glDisable(GL_BLEND); return; }
-    glEnable(GL_BLEND); glBlendFunc(m == B_ALPHA ? GL_SRC_ALPHA : GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND); glBlendFunc(m == B_ALPHA ? GL_SRC_ALPHA : GL_ONE, m == B_ADD ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
 }
 static void offset(float factor, float units) { if (factor == 0 && units == 0) { glDisable(GL_POLYGON_OFFSET_FILL); return; } glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(factor, units); }
 static void readRGBA(int w, int h, unsigned char* out) { glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out); }

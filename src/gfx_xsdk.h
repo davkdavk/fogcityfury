@@ -487,8 +487,8 @@ static void applyDepth(){ int i=(depthTestOn?2:0)+(depthWriteOn?1:0); if(!depthR
 static void depthTest(bool on){ depthTestOn=on; applyDepth(); }
 static void depthWrite(bool on){ depthWriteOn=on; applyDepth(); }
 static void blend(Blend mode){
-    static XsdkBlendState states[3]; static bool ready[3]={};
-    if(!ready[mode]){ XsdkBlend b={.color_source=mode==B_PREMUL?XSDK_BLEND_ONE:XSDK_BLEND_SRC_ALPHA,.color_dest=mode==B_OFF?XSDK_BLEND_ZERO:XSDK_BLEND_ONE_MINUS_SRC_ALPHA,.color_op=XSDK_BLEND_OP_ADD,.alpha_source=mode==B_PREMUL?XSDK_BLEND_ONE:XSDK_BLEND_SRC_ALPHA,.alpha_dest=mode==B_OFF?XSDK_BLEND_ZERO:XSDK_BLEND_ONE_MINUS_SRC_ALPHA,.alpha_op=XSDK_BLEND_OP_ADD,.write_mask=XSDK_WRITE_ALL}; xsdk_gpu_blend_state(&states[mode],&b);ready[mode]=true; }
+    static XsdkBlendState states[4]; static bool ready[4]={};
+    if(!ready[mode]){ XsdkBlend b={.color_source=(mode==B_PREMUL||mode==B_ADD)?XSDK_BLEND_ONE:XSDK_BLEND_SRC_ALPHA,.color_dest=mode==B_OFF?XSDK_BLEND_ZERO:mode==B_ADD?XSDK_BLEND_ONE:XSDK_BLEND_ONE_MINUS_SRC_ALPHA,.color_op=XSDK_BLEND_OP_ADD,.alpha_source=(mode==B_PREMUL||mode==B_ADD)?XSDK_BLEND_ONE:XSDK_BLEND_SRC_ALPHA,.alpha_dest=mode==B_OFF?XSDK_BLEND_ZERO:mode==B_ADD?XSDK_BLEND_ONE:XSDK_BLEND_ONE_MINUS_SRC_ALPHA,.alpha_op=XSDK_BLEND_OP_ADD,.write_mask=XSDK_WRITE_ALL}; xsdk_gpu_blend_state(&states[mode],&b);ready[mode]=true; }
     xsdk_gpu_set_blend(&states[mode]);
 }
 static void colorWrite(bool on){

@@ -390,7 +390,7 @@ static bool cratesOn() { return rocketLap != player.lap; }
 static float goneOf(float age) { return clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); }   // 0 solid .. 1 faded away
 static float fireCD = 0, resetCD = 0, resetHint = 0, ammoFlash = 0; static V3 boltDir(0, 0.5f, 1), rainRel;
 static std::vector<float> fireAt, resetAt;                                   // --fire T / --reset T (tests)
-static Mesh boxMesh, rocketMesh, crateMesh, shieldMesh;
+static Mesh boxMesh, rocketMesh, crateMesh, shieldMesh, jetMesh;
 // the shield: one pick-up halfway down a track's alternate route, there once a lap. It lasts SHIELD_TIME seconds and
 // takes the next thing that would blow the car up (a hard crash, or a rocket from another player) in its place
 static const float SHIELD_TIME = 15; static float shieldFx = 0, shieldPopT = 0;
@@ -1061,9 +1061,9 @@ static void update(float dt) {
         if (nb) {
             for (int w = -1; w <= 1; w += 2) {
                 V3 ep = player.pos - f * (S.wbR + 0.9f) + sd * (w * 0.42f) + V3(0, 0.50f, 0);   // at the exhaust tips
-                for (int i = 0; i < 3; i++) if (grng.f() < dt * 170 * player.boost) {
-                    float t = grng.f(); V3 col = V3(1.2f, 3.6f, 9.0f) * (1 - t) + V3(8.0f, 5.0f, 2.2f) * t;   // bright enough to read in daylight
-                    spawn(ep - f * (t * 1.1f), player.vel * 0.80f - f * grng.r(6, 12) + V3(grng.r(-0.6f, 0.6f), grng.r(-0.3f, 0.5f), grng.r(-0.6f, 0.6f)), grng.r(0.09f, 0.18f), grng.r(0.17f, 0.30f), 1.1f, col, 1.0f, 1, 0);
+                for (int i = 0; i < 2; i++) if (grng.f() < dt * 120 * player.boost) {   // sparks of flame off the end of the jet (the jet itself is drawn by drawJets)
+                    float t = grng.f(); V3 col = V3(0.5f, 0.9f, 2.4f) * (1 - t) + V3(2.6f, 1.1f, 0.3f) * t;   // blue to orange; not so bright that they bloom into white puffs
+                    spawn(ep - f * (1.2f + t * 1.0f), player.vel * 0.85f - f * grng.r(4, 9) + V3(grng.r(-0.5f, 0.5f), grng.r(-0.2f, 0.4f), grng.r(-0.5f, 0.5f)), grng.r(0.07f, 0.14f), grng.r(0.10f, 0.18f), 0.6f, col, 0.9f, 1, 0);
                 }
             }
             if (grng.f() < dt * 14) spawn(player.pos - f * (S.wbR + 2.0f) + V3(0, 0.45f, 0), player.vel * 0.55f + V3(grng.r(-0.8f, 0.8f), grng.r(0.4f, 1.4f), grng.r(-0.8f, 0.8f)), grng.r(0.35f, 0.6f), 0.18f, 1.5f, V3(0.30f, 0.38f, 0.5f), 0.10f);
@@ -1076,8 +1076,8 @@ static void update(float dt) {
         if (netRace) for (auto& r : nc.r) {   // other players' flames
             if (!r.present || !r.racing || r.car.boost < 0.25f) continue; const Car& a = r.car; V3 rf(sinf(a.yaw), 0, cosf(a.yaw)), rs(cosf(a.yaw), 0, -sinf(a.yaw));
             for (int w = -1; w <= 1; w += 2) if (grng.f() < dt * 90 * a.boost) {
-                float t = grng.f(); V3 col = V3(1.2f, 3.6f, 9.0f) * (1 - t) + V3(8.0f, 5.0f, 2.2f) * t;   // bright enough to read in daylight
-                spawn(a.pos - rf * (SPECS[a.type].wbR + 0.9f) + rs * (w * 0.42f) + V3(0, 0.50f, 0) - rf * (t * 1.1f), a.vel * 0.80f - rf * grng.r(6, 12), grng.r(0.09f, 0.18f), grng.r(0.17f, 0.30f), 1.1f, col, 1.0f, 1, 0);
+                float t = grng.f(); V3 col = V3(0.5f, 0.9f, 2.4f) * (1 - t) + V3(2.6f, 1.1f, 0.3f) * t;
+                spawn(a.pos - rf * (SPECS[a.type].wbR + 0.9f) + rs * (w * 0.42f) + V3(0, 0.50f, 0) - rf * (1.2f + t * 1.0f), a.vel * 0.85f - rf * grng.r(4, 9), grng.r(0.07f, 0.14f), grng.r(0.10f, 0.18f), 0.6f, col, 0.9f, 1, 0);
             }
         }
         if (sp < 14 && grng.f() < dt * (8 + in.gas * 20)) spawn(player.pos - f * (S.wbR + 0.9f) + sd * 0.45f + V3(0, 0.35f, 0), f * -2.5f + V3(0, 0.5f, 0) + player.vel * 0.6f, 0.45f, 0.14f, 0.9f, V3(0.5f, 0.5f, 0.52f), 0.16f + 0.2f * in.gas);
@@ -1175,6 +1175,20 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
 #endif
     p.f1("uNight", d.night); V3 hf(sinf(player.yaw), 0, cosf(player.yaw)); p.v3("uHeadPos", player.pos + V3(0, 0.75f, 0) + hf * 1.6f); p.v3("uHeadDir", norm(hf + V3(0, -0.07f + sinf(player.pitch), 0))); p.f1("uHeadOn", player.dead ? 0.0f : 1.0f);
 }
+// the nitro jets: glowing cones from both exhaust tips, flickering in length, added onto what is behind them.
+// Drawn with the car shader's glow (mat 3), which every platform draws, the 360 included (where the flame particles
+// alone did not read). The particles still fly off behind them
+static void drawJets(const Car& c, Prog& p) {
+    if (c.boost < 0.25f || c.dead) return; const CarSpec& S = SPECS[c.type];
+    gfx::blend(gfx::B_ADD); gfx::depthWrite(false); p.f1("uBrake", 0);
+    for (int w = -1; w <= 1; w += 2) {
+        float fl = 0.75f + 0.35f * sinf(T * 61.0f + w * 1.7f) * sinf(T * 23.0f + w) + 0.15f * sinf(T * 97.0f);   // flicker
+        float ln = (0.9f + 1.3f * c.boost) * fl, wd = 0.75f + 0.45f * c.boost;
+        M4 M = mul(mul(translate(c.pos), rotY(c.yaw)), mul(translate(V3(w * 0.42f, 0.50f, -(S.wbR + 0.9f))), scale(wd, wd, ln)));
+        p.m4("uModel", M); jetMesh.draw();
+    }
+    gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
+}
 static void drawCar(const Car& c, Prog& p, bool lit) {
     if (c.dead) return; const CarSpec& S = SPECS[c.type];
     M4 M = mul(translate(c.pos + V3(0, 0.03f + c.heave + c.ride, 0)), mul(rotY(c.yaw), mul(rotX(-c.pitch - c.squat), rotZ(c.roll + c.lean))));
@@ -1188,8 +1202,8 @@ static void drawCar(const Car& c, Prog& p, bool lit) {
     }
 }
 static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode : st == TITLE; }
-static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) drawCar(player, p, lit); if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
-    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) drawCar(r.car, p, lit); drawShowdown(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); }   // (past 900 m the fog has it)
+static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); } if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
+    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); }   // (past 900 m the fog has it)
 
 #ifdef FCF_GFX_XSDK
 static bool traceDrawGroups = false;
@@ -1442,7 +1456,13 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         for (auto& p : parts) {
             float t = 1 - p.life / p.maxLife, a = p.a * (1 - t) * std::min(1.0f, t * 12); static const float cu[6] = { -1, 1, 1, -1, 1, -1 }, cv[6] = { -1, -1, 1, -1, 1, 1 };
             V3 pr = R * p.size, pu = U * (p.size * (p.add > 0.5f ? 1.0f : 1.0f)); float off = p.add > 0.5f ? 0 : 0.75f;
-            if (p.stretch > 0) { V3 d = norm(p.v - rainRel); pr = norm(cross(d, F)) * (p.size * 0.12f); pu = d * (p.size * p.stretch); off = 0; }
+            if (p.stretch > 0) {   // a rain streak: at least about a pixel wide however far off (thinner ones flickered out between pixels, worst at the 360's
+                                   // resolution with no MSAA), dimmed to match so the rain is as heavy as before
+                V3 d = norm(p.v - rainRel); float hw = p.size * 0.12f, mw = len(p.p - cam) * 0.0011f; if (mw > hw) { a *= hw / mw; hw = mw; }
+#ifdef FCF_GFX_XSDK
+                a *= 1.6f;   // and a touch brighter there: the 360's tone curve flattens faint additive streaks
+#endif
+                pr = norm(cross(d, F)) * hw; pu = d * (p.size * p.stretch); off = 0; }
             for (int k = 0; k < 6; k++) { V3 q = p.p + pr * cu[k] + pu * (cv[k] + off); float d[11] = { q.x, q.y, q.z, cu[k], cv[k], p.col.x, p.col.y, p.col.z, a, p.seed, p.add }; pv.insert(pv.end(), d, d + 11); }
         }
         setCommon(pPart, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
@@ -2243,6 +2263,13 @@ int main(int argc, char** argv) {
     { MB m; V3 b(0.10f, 0.45f, 1.0f), w(0.92f, 0.95f, 1.0f);   // shield pick-up: an upright blue badge, edged and crossed in white, narrowing to a point
       for (int k = 0; k < 6; k++) { float y0 = -0.9f + k * 0.3f, hw = k < 3 ? 0.25f + 0.22f * k : 0.75f; m.box(0, 0, hw + 0.06f, 0.11f, 0, y0, y0 + 0.3f, w, 0, w, 0); m.box(0, 0, hw, 0.15f, 0, y0 + (k ? 0 : 0.06f), y0 + 0.3f - (k == 5 ? 0.06f : 0), b, 0, b, 0); }
       m.box(0, 0, 0.07f, 0.17f, 0, -0.7f, 0.82f, w, 0, w, 0); m.box(0, 0, 0.55f, 0.17f, 0, 0.25f, 0.4f, w, 0, w, 0); shieldMesh.upload(m); }
+    {   // the nitro jet: three nested glowing cones along -z from the nozzle (drawn added on, so they glow through each other)
+        MB m; mech::cyl(m, V3(0, 0, 0), V3(0, 0, -1.0f), 0.17f, 0.0f, 12, V3(0.55f, 0.22f, 0.05f), 3);   // orange outer flame
+        mech::cyl(m, V3(0, 0, 0.02f), V3(0, 0, -0.62f), 0.11f, 0.0f, 12, V3(0.25f, 0.42f, 0.95f), 3);    // blue core
+        mech::cyl(m, V3(0, 0, 0.04f), V3(0, 0, -0.28f), 0.07f, 0.0f, 10, V3(0.8f, 0.85f, 1.0f), 3);      // white-hot heart
+        mech::cyl(m, V3(0, 0, 0.05f), V3(0, 0, -0.02f), 0.13f, 0.13f, 12, V3(0.9f, 0.6f, 0.3f), 3, false);  // the glowing nozzle lip
+        jetMesh.upload(m, "jet");
+    }
     if (mech::on) mech::build();
     startGame();
 #ifdef FCF_GFX_XSDK
