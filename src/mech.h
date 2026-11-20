@@ -269,51 +269,98 @@ static void build() {
     tris = 0; for (int i = 0; i < NPART; i++) { MB m; fn[i](m); part[i].upload(m, "mech"); tris += (int)m.idx.size() / 3; }
 }
 
-// ---- pose ----
-static bool on = false; static V3 at; static float yaw = 0;
+// ---- where it is and how it walks ----
+// It patrols beside the road, against the direction of the race (so you meet it head on), 40 m out on the side with
+// more dry land, wading where that is sea. 28 s walking, 12 s standing to look round; while it stands it turns its
+// head and body towards you. Everything is worked out from the clock, the same on every machine (no random numbers).
+static bool on = true, fixed = false;   // fixed (--mechat): stands where put, idling
+static V3 at; static float yaw = 0;
+static float s0 = 0, side = -1;         // where on the loop it starts, which side of the road
+static const float HIP = -0.55f, KNEE = 1.30f, ANKLE = -1.05f;   // the stance
+static const float SPEED = 4.2f, STRIDE = 17.0f, CYCLE = 40.0f, WALK = 28.0f, OUT = 40.0f;
+static float gait = 0, phase = 0, lookYaw = 0, lookPitch = 0;   // 0 standing .. 1 walking; step phase; where it looks (radians, relative)
 static const V3 PAINT(0.42f, 0.07f, 0.04f);   // the accent plates: oxide red
-// the leg angles of the stance; the hips sit where the feet reach the ground
-static const float HIP = -0.55f, KNEE = 1.30f, ANKLE = -1.05f;
-static float hipHeight() { return L_THIGH * cosf(HIP) + L_SHIN * cosf(HIP + KNEE) + L_META * cosf(HIP + KNEE + ANKLE) + FOOT_H; }
+// metres walked by time t: 2 s to get going, steady, 2 s to stop, then standing till the cycle ends
+static float walked(float t) {
+    float n = floorf(t / CYCLE), c = t - n * CYCLE, w;
+    if (c < 2) w = c * c / 4; else if (c < WALK - 2) w = 1 + (c - 2); else if (c < WALK) { float e = c - (WALK - 2); w = WALK - 3 + e - e * e / 4; } else w = WALK - 2;
+    return SPEED * (n * (WALK - 2) + w);
+}
+static float gaitAt(float t) { float c = fmodf(t, CYCLE); return c < WALK ? std::min(1.0f, std::min(c, WALK - c) / 2) : 0; }
+static V3 pathAt(float s) {   // a smoothed point on its patrol line (an average along the road, so tight bends don't kink it)
+    V3 acc(0, 0, 0); for (int k = -5; k <= 5; k++) { V3 q; float y; W.at(s + k * 5.0f, side * OUT, q, y); acc = acc + q; } return acc * (1.0f / 11);
+}
+static void setup() {   // pick the side with more dry land along the first few hundred metres it walks
+    s0 = W.n * 0.085f; int dry[2] = {};
+    for (int k = 0; k < 40; k++) for (int e = 0; e < 2; e++) { V3 q; float y; W.at(s0 - k * 15.0f, (e ? 1 : -1) * OUT, q, y); if (W.H(q.x, q.z) > 0.5f) dry[e]++; }
+    side = dry[1] > dry[0] ? 1.0f : -1.0f;
+}
+static float groundAt(float x, float z) { return std::max(W.H(x, z), -9.0f); }   // in the sea it wades on the shelf, the water to its thighs
+// footfalls: returns 0, or the side (-1, 1) of a foot that has just come down
+static int update(float t, V3 target) {
+    if (!on) return 0;
+    float g0 = gait, p0 = phase;
+    if (fixed) { gait = 0; } else {
+        float s = s0 - walked(t); V3 a = pathAt(s), b = pathAt(s - 3);
+        at = V3(a.x, groundAt(a.x, a.z), a.z); yaw = atan2f(b.x - a.x, b.z - a.z);
+        gait = gaitAt(t); phase = walked(t) / STRIDE * 6.2831853f;
+    }
+    // look at the target when it is near: the head always, the body a little while standing
+    V3 d = target - (at + V3(0, 26, 0)); float want = 0, wantP = 0, dist = sqrtf(d.x * d.x + d.z * d.z);
+    if (dist < 220) { want = wrapPi(atan2f(d.x, d.z) - yaw); want = clampf(want, -1.4f, 1.4f); wantP = clampf(atan2f(-d.y, dist), -0.2f, 0.5f); }
+    lookYaw += (want - lookYaw) * 0.04f; lookPitch += (wantP - lookPitch) * 0.04f;
+    if (fixed || gait < 0.3f) return 0;
+    for (int e = 0; e < 2; e++) {   // a foot lands when its phase passes pi/2 (see legs below)
+        float off = e ? 3.14159265f : 0; int k0 = (int)floorf((p0 + off - 1.5708f) / 6.2831853f), k1 = (int)floorf((phase + off - 1.5708f) / 6.2831853f);
+        if (k1 != k0 && g0 > 0.3f) return e ? 1 : -1;
+    }
+    return 0;
+}
+static float legExtent(float h, float k, float a) { return L_THIGH * cosf(h) + L_SHIN * cosf(h + k) + L_META * cosf(h + k + a) + FOOT_H; }
+static void legAngles(int s, float t, float& h, float& k, float& a) {   // s: -1 left, 1 right
+    float crouch = 0.04f * sinf(t * 0.8f) * (1 - gait);
+    float p = phase + (s > 0 ? 3.14159265f : 0), sw = sinf(p), lift = std::max(0.0f, cosf(p)); lift = lift * lift;
+    h = HIP - crouch - gait * (0.30f * sw + 0.10f * lift);   // swings forward while lifted
+    k = KNEE + crouch * 2 + gait * 0.55f * lift;            // the knee folds to lift the foot
+    a = ANKLE - crouch - gait * 0.25f * lift;
+}
+static M4 torsoOf(float t, M4& pel) {
+    float hL, kL, aL, hR, kR, aR; legAngles(-1, t, hL, kL, aL); legAngles(1, t, hR, kR, aR);
+    float breathe = sinf(t * 0.8f) * 0.12f * (1 - gait), sway = sinf(phase) * 0.045f * gait;
+    float y = std::max(legExtent(hL, kL, aL), legExtent(hR, kR, aR));   // the planted leg is the longer one
+    pel = mul(mul(translate(at), rotY(yaw)), mul(translate(V3(0, y - 0.15f + breathe * 0.5f, 0)), rotZ(sway)));
+    float twist = (1 - gait) * (sinf(t * 0.23f) * 0.12f + lookYaw * 0.45f) - sway * 2.5f;
+    return mul(pel, mul(translate(V3(0, 1.9f, 0)), mul(rotY(twist), rotX(0.14f + gait * 0.06f + breathe * 0.1f))));
+}
 static void draw(Prog& p, bool lit, float t) {
     if (!on) return;
     auto put = [&](const M4& M, int k, float glow = 0) { p.m4("uModel", M); if (lit) p.f1("uBrake", glow); part[k].draw(); };
     if (lit) { p.v3("uPaint", PAINT); p.f1("uChrome", 0); p.f1("uBurnt", 0); p.f1("uGone", 0); }
-    float breathe = sinf(t * 0.8f) * 0.12f, crouch = 0.04f * sinf(t * 0.8f);
-    M4 root = mul(translate(at), rotY(yaw));
-    M4 pel = mul(root, translate(V3(0, hipHeight() - 0.15f + breathe * 0.5f, 0)));
+    M4 pel; M4 tor = torsoOf(t, pel);
     put(pel, P_PELVIS);
     for (int s = -1; s <= 1; s += 2) {   // legs: thigh forward, shin back, foot flat on the ground
-        float h = HIP - crouch, k = KNEE + crouch * 2, a = ANKLE - crouch;
-        M4 hip = mul(pel, mul(translate(V3(s * (HIP_X + 1.35f) * 0.82f, 0, 0)), rotX(h)));
-        put(hip, P_THIGH);
+        float h, k, a; legAngles(s, t, h, k, a);
+        M4 hip = mul(pel, mul(translate(V3(s * (HIP_X + 1.35f) * 0.82f, 0, 0)), rotX(h))); put(hip, P_THIGH);
         M4 kn = mul(hip, mul(translate(V3(0, -L_THIGH, 0)), rotX(k))); put(kn, P_SHIN);
         M4 an = mul(kn, mul(translate(V3(0, -L_SHIN, 0)), rotX(a))); put(an, P_META);
         M4 ft = mul(an, mul(translate(V3(0, -L_META, 0)), rotX(-(h + k + a)))); put(ft, P_FOOT);
     }
-    float twist = sinf(t * 0.23f) * 0.22f;
-    M4 tor = mul(pel, mul(translate(V3(0, 1.9f, 0)), mul(rotY(twist), rotX(0.14f + breathe * 0.1f))));
     put(tor, P_TORSO);
     put(tor, P_BEACONS, fmodf(t, 1.4f) < 0.18f ? 2.0f : 0.0f);
-    float scan = sinf(t * 0.37f) * 0.55f + sinf(t * 1.7f) * 0.04f;
-    put(mul(tor, mul(translate(NECK), mul(rotY(scan), rotX(0.18f + sinf(t * 0.5f) * 0.08f)))), P_HEAD, 0.75f + 0.25f * sinf(t * 9.0f) * sinf(t * 2.3f));
-    // left arm: the claw, held low and forward, slowly opening and closing
-    M4 shL = mul(tor, mul(translate(V3(-SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(-0.12f), rotX(-0.35f + sinf(t * 0.4f) * 0.06f))));
+    float scan = (1 - gait) * sinf(t * 0.37f) * 0.35f * (fabsf(lookYaw) < 0.05f ? 1.0f : 0.3f) + lookYaw * 0.55f + sinf(t * 1.7f) * 0.03f;
+    put(mul(tor, mul(translate(NECK), mul(rotY(scan), rotX(0.18f + lookPitch + sinf(t * 0.5f) * 0.05f)))), P_HEAD, 0.75f + 0.25f * sinf(t * 9.0f) * sinf(t * 2.3f));
+    float armSw = sinf(phase) * 0.22f * gait;   // the arms swing against the legs
+    M4 shL = mul(tor, mul(translate(V3(-SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(-0.12f), rotX(-0.35f + armSw + sinf(t * 0.4f) * 0.06f))));
     put(shL, P_UPPER);
     M4 elL = mul(shL, mul(translate(V3(0, -L_UPPER, 0)), rotX(-0.95f))); put(elL, P_CLAW);
     float open = 0.35f + 0.3f * (0.5f + 0.5f * sinf(t * 0.9f));
     for (int f = 0; f < 3; f++) put(mul(elL, mul(translate(V3(0, -L_FORE - 0.4f, 0)), mul(rotY(f * 2.0944f + 0.5f), mul(translate(V3(0, 0, 0.85f)), rotX(open))))), P_FINGER);
-    // right arm: the cannon, levelled forward, barrels idling round
-    M4 shR = mul(tor, mul(translate(V3(SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(0.1f), rotX(-0.25f + sinf(t * 0.33f + 1) * 0.05f))));
+    M4 shR = mul(tor, mul(translate(V3(SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(0.1f), rotX(-0.25f - armSw * 0.6f + sinf(t * 0.33f + 1) * 0.05f))));
     put(shR, P_UPPER);
     M4 elR = mul(shR, mul(translate(V3(0, -L_UPPER, 0)), rotX(-1.25f))); put(elR, P_CANNON);
     put(mul(elR, mul(translate(V3(0, -3.6f, 0)), rotY(t * 1.5f))), P_BARRELS);
 }
-// smoke from the stacks, in world space (the same pose as draw)
-static V3 stackTop(int s, float t) {
-    float breathe = sinf(t * 0.8f) * 0.12f, twist = sinf(t * 0.23f) * 0.22f;
-    M4 tor = mul(mul(translate(at), rotY(yaw)), mul(translate(V3(0, hipHeight() - 0.15f + breathe * 0.5f + 1.9f, 0)), mul(rotY(twist), rotX(0.14f + breathe * 0.1f))));
-    V3 q(s * 2.4f, 15.6f, -5.6f); const float* m = tor.m;
-    return V3(m[0] * q.x + m[4] * q.y + m[8] * q.z + m[12], m[1] * q.x + m[5] * q.y + m[9] * q.z + m[13], m[2] * q.x + m[6] * q.y + m[10] * q.z + m[14]);
-}
+static V3 xf(const M4& M, V3 q) { const float* m = M.m; return V3(m[0] * q.x + m[4] * q.y + m[8] * q.z + m[12], m[1] * q.x + m[5] * q.y + m[9] * q.z + m[13], m[2] * q.x + m[6] * q.y + m[10] * q.z + m[14]); }
+static V3 stackTop(int s, float t) { M4 pel; M4 tor = torsoOf(t, pel); return xf(tor, V3(s * 2.4f, 15.6f, -5.6f)); }
+static V3 footAt(int s) { return at + V3(cosf(yaw), 0, -sinf(yaw)) * (s * 4.9f) + V3(sinf(yaw), 0, cosf(yaw)) * 2.0f; }
 }   // namespace mech
