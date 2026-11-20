@@ -54,7 +54,7 @@ static void initTracks() {
     b.baseH = 6.5f; b.noiseAmp = 2.2f; b.landR = 577; b.cityThr = 0.50f; b.night = 0;
     b.sun = norm(V3(-0.72f, 0.24f, 0.45f)); b.sunCol = V3(3.0f, 1.55f, 0.72f);
     b.skyTop = V3(0.10f, 0.13f, 0.42f); b.skyHor = V3(0.95f, 0.50f, 0.28f); b.fogDen = 0.0010f; b.seed = 11;
-    b.branch = { 0.8647f, 0.9622f, -469.1f, -54.2f, -450.3f, -73.3f, -425, -95, -431, -160 };   // the backstreet cut: inside the bend before the start, through town. It peels off 60 m earlier as a slip lane (6 m, then 12 m off the centre line), so it can be taken at speed; the gate at 7/8 is passed within reach on it
+    b.branch = { 0.8647f, 0.9622f, -461.7f, -60.4f, -439.6f, -96.5f, -427.6f, -137.0f, -426.7f, -179.3f, -436.8f, -220.4f };   // the backstreet cut, inside the bend before the start: one steady 160 m-radius arc, tangent to the road where it leaves and rejoining it 6 degrees off, so it can be taken flat out (no kink). The gate at 7/8 is passed within reach on it
     TRACKS.push_back(b);
     TrackDef c;
     c.name = "SUMMIT SWITCHBACKS"; c.sub = "MISTY MOUNTAIN PASS - LONG CLIMB";
