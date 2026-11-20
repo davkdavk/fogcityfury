@@ -460,6 +460,12 @@ struct World {
     // in the shader: see vUV.y on the terrain)
     bool pavedGround(float x, float z) const { return city(x, z) && RD(x, z) > ROADW + 0.4f && H(x, z) > 1.5f && !excluded(x, z, 4); }
     bool cityGround(float x, float z) const { return city(x, z) && RD(x, z) > ROADW + 8 && H(x, z) > 1.5f && !excluded(x, z, 4); }   // where the terrain shader paves blocks and backstreets
+    // The open strip along the main road: nearby lots and backstreets become a grass verge and brick promenade.
+    bool openStrip(float x, float z) const {
+        auto snap = [](float v) { return roundf((v - GRID0) / GRID) * GRID + GRID0; };
+        for (int k = 0; k < 4; k++) { float bx = snap(x + (k & 1 ? 4.2f : -4.2f)), bz = snap(z + (k & 2 ? 4.2f : -4.2f)); if (city(bx, bz) && RD(bx, bz) < 26) return true; }
+        return false;
+    }
     // the warehouse with the fifth key: door at local (0,0) facing -Z, th = the heading you drive in on. Its roller door is up.
     void warehouse(float cx, float cz, float th, float floorY, V3 from) {
         float ca = cosf(th), sa = sinf(th); auto P = [&](float lx, float lz) { return V3(cx + ca * lx + sa * lz, 0, cz - sa * lx + ca * lz); };
@@ -762,14 +768,14 @@ struct World {
         for (int j = 0; j < GN; j++) for (int i = 0; i < GN; i++) {
             float x = -HALF + i * CELL, z = -HALF + j * CELL; int i0 = std::max(i - 1, 0), i1 = std::min(i + 1, GN - 1), j0 = std::max(j - 1, 0), j1 = std::min(j + 1, GN - 1);
             V3 nrm = norm(V3(-(hr[j * GN + i1] - hr[j * GN + i0]) / ((i1 - i0) * CELL), 1, -(hr[j1 * GN + i] - hr[j0 * GN + i]) / ((j1 - j0) * CELL)));
-            float hh = h[j * GN + i], d = rd[j * GN + i], slope = 1 - nrm.y; float nz = fbm(x * 0.02f, z * 0.02f, 3);
+            float hh = h[j * GN + i], d = rd[j * GN + i], slope = 1 - nrm.y; bool paved = pavedGround(x, z), open = paved && openStrip(x, z); float nz = fbm(x * 0.02f, z * 0.02f, 3);
             V3 c = V3(0.20f, 0.36f, 0.12f) * (1 - nz) + V3(0.42f, 0.40f, 0.18f) * nz;
-            if (city(x, z)) c = V3(0.21f, 0.21f, 0.225f);
-            float sw = 1 - smooth(ROADW + 3, ROADW + 7, d); c = c * (1 - sw) + V3(0.27f, 0.265f, 0.26f) * sw;
+            if (city(x, z) && !open) c = V3(0.21f, 0.21f, 0.225f);
+            float sw = open ? 0.0f : 1 - smooth(ROADW + 3, ROADW + 7, d); c = c * (1 - sw) + V3(0.27f, 0.265f, 0.26f) * sw;
             float rk = smooth(0.10f, 0.22f, slope) * (1 - sw); c = c * (1 - rk) + V3(0.36f, 0.33f, 0.30f) * rk;
             float sn = 1 - smooth(0.8f, 2.0f, hh); c = c * (1 - sn) + V3(0.52f, 0.45f, 0.31f) * sn;
             if (hh < 0) c = c * clampf(1 + hh * 0.12f, 0.35f, 1);
-            t.add(V3(x, hr[j * GN + i], z), nrm, c, pavedGround(x, z) ? 1.0f : 0.0f, std::min(d, 60.0f), 0);   // u = 1 where the shader paves town; v = metres to the road (backstreets end in paving before it)
+            t.add(V3(x, hr[j * GN + i], z), nrm, c, open ? 2.0f : paved ? 1.0f : 0.0f, std::min(d, 60.0f), 0);   // u: 1 town, 2 the open strip along the road; v = metres to the road
         }
 #ifdef FCF_XENOS_CULL
         buildTerrainCells(t);

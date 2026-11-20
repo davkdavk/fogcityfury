@@ -157,18 +157,28 @@ void main(){
       float yard = step(uKeyLot.x, vP.x)*step(vP.x, uKeyLot.z)*step(uKeyLot.y, vP.z)*step(vP.z, uKeyLot.w); road *= 1.0 - yard; walk = max(walk, yard);
       float clear = smoothstep(16.5, 17.5, vUV.y); road *= clear; walk = max(walk, 1.0 - clear);   // along the main road: a clean band of paving to its kerb; the backstreets end at a kerbstone before it
       vec3 cty = mix(mix(tar, kerb, 1.0 - road), pave, walk);
-      alb = mix(alb, cty*(1.0 - 0.30*uWet), vUV.x);
+      // Open strip from the kerb to the first buildings: grass verge, kerbstone and running-bond brick promenade.
+      float strip = clamp(vUV.x - 1.0, 0.0, 1.0);
+      if(strip > 0.001){
+        vec2 bq = vec2(vP.x/0.42 + 0.5*floor(vP.z/0.21), vP.z/0.21), bf = abs(fract(bq) - 0.5);
+        float mortar = smoothstep(0.40, 0.48, max(bf.x, bf.y))*fade;
+        vec3 brick = vec3(0.40,0.20,0.14)*(0.75 + 0.5*hash(floor(bq)))*(0.85 + 0.3*dt.r)*(1.0 - 0.55*mortar);
+        float verge = 1.0 - smoothstep(13.8, 14.0, vUV.y), kstone = smoothstep(13.8, 14.0, vUV.y)*(1.0 - smoothstep(14.4, 14.6, vUV.y));
+        vec3 prom = mix(brick, vec3(0.40,0.39,0.37)*(0.85 + 0.3*dt.r), kstone);
+        cty = mix(cty, mix(prom, alb, verge), strip); road *= 1.0 - strip;
+      }
+      alb = mix(alb, cty*(1.0 - 0.30*uWet), clamp(vUV.x, 0.0, 1.0));
       if(uWet > 0.001){                                                                               // rain collects in the hollows of the street
         float F = 0.04 + 0.96*pow(1.0 - max(dot(n, V), 0.0), 5.0), pud = smoothstep(0.50, 0.58, fbm(vP.xz*0.13 + 1.3))*road*step(0.2, uRain);
-        spec = mix(0.15, 0.6 + 0.8*pud, road)*uWet*vUV.x; gloss = mix(160.0, 600.0, pud);
-        vec3 Rw = reflect(-V, n); Rw.y = abs(Rw.y) + 0.02; refl += skyColor(normalize(Rw))*uWet*vUV.x*road*(0.03 + 0.25*F + 0.6*pud*F); alb *= 1.0 - 0.4*pud*vUV.x;
+        spec = mix(0.15, 0.6 + 0.8*pud, road)*uWet*clamp(vUV.x, 0.0, 1.0); gloss = mix(160.0, 600.0, pud);
+        vec3 Rw = reflect(-V, n); Rw.y = abs(Rw.y) + 0.02; refl += skyColor(normalize(Rw))*uWet*clamp(vUV.x, 0.0, 1.0)*road*(0.03 + 0.25*F + 0.6*pud*F); alb *= 1.0 - 0.4*pud*vUV.x;
       }
       if(uNight > 0.5){                                                                               // pools of light under the street lamps
         vec2 id = floor((vP.xz + 646.5)/27.0 + 0.5), lp = id*27.0 - 646.5 + 3.15, dl = vP.xz - lp;
         float gl = exp(-dot(dl, dl)/42.0)*(1.0 - mod(id.x + id.y, 2.0));
         vec2 ka = uKeySt.xy, kb = uKeySt.zw - ka; float kl = dot(kb, kb);                              // and the orange ones down the street to the warehouse
-        if(kl > 1.0){ vec2 kd = vP.xz - ka - kb*clamp(dot(vP.xz - ka, kb)/kl, -0.4, 1.0); gl += 0.0; emis += cty*vec3(1.0,0.55,0.2)*exp(-dot(kd, kd)/20.0)*2.2*vUV.x; }
-        emis += cty*vec3(0.85,0.92,1.0)*gl*4.0*vUV.x;
+        if(kl > 1.0){ vec2 kd = vP.xz - ka - kb*clamp(dot(vP.xz - ka, kb)/kl, -0.4, 1.0); gl += 0.0; emis += cty*vec3(1.0,0.55,0.2)*exp(-dot(kd, kd)/20.0)*2.2*clamp(vUV.x, 0.0, 1.0); }
+        emis += cty*vec3(0.85,0.92,1.0)*gl*4.0*clamp(vUV.x, 0.0, 1.0);
       }
     }
   } else if(m==1){
