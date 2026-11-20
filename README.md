@@ -77,6 +77,11 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.40
+
+- **The Warden**: a giant harbour mech idles by Sunset Causeway, then patrols beside the road on every track.
+- **Shadows draw each piece of ground once**, reducing duplicate work on Android and Xbox 360.
+
 ## What's new in 1.39
 
 - **Faster on Android**: phones and tablets draw the world in chunks, as the Xbox 360 does: nothing out of view, simpler ground in the distance, small props only up close. It looks the same.
