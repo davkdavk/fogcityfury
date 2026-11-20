@@ -77,6 +77,15 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.37
+
+- **Xbox 360 port**: the full game now runs on RGH/JTAG consoles, with cross-play against PC and Android.
+- **Controller button prompts**: menus show the matching gamepad buttons.
+- **Faster track selection**: previews build only for the track you stop on.
+- **New start-up logo**: H.J.B Enterprizez in spinning gold blocks.
+- **Network hardening**: malformed or impossible car-state packets are ignored.
+- **Online compatibility**: protocol is unchanged, so version 1.36 players can still join.
+
 ## What's new in 1.31
 
 - **West-coast funk soundtrack**: a new swung score with drums, a gliding bass, electric piano and a
