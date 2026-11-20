@@ -2,7 +2,7 @@
 #pragma once
 #include "base.h"
 
-static const float HALF = 768, CELL = 3, ROADW = 8.0f, GCELL = 48;   // world is 1536 m square; collider grid cells are 48 m
+static const float HALF = 768, CELL = 3, ROADW = 8.0f, GCELL = 48, BRANCH_W = 5.5f;   // BRANCH_W: half the alternate route's width   // world is 1536 m square; collider grid cells are 48 m
 static const int GN = 513, GCN = 32, NCP = 8, NKEYS = 5, NTRACKS = 4;
 
 struct Gauss { float x, z, a, s; };
@@ -31,6 +31,9 @@ struct TrackDef {
     const char* name; const char* sub;
     std::vector<float> ctrl; std::vector<Gauss> hills;
     float baseH, noiseAmp, landR, cityThr; V3 sun, sunCol, skyTop, skyHor; float fogDen; int seed; float night;
+    // An alternate route: { a, b, x1, z1, x2, z2, ... }. It leaves the loop at fraction a of its length and rejoins it at
+    // fraction b (a < b, both inside one checkpoint stretch, so no gate is skipped), through the points between. Empty: none.
+    std::vector<float> branch;
 };
 static std::vector<TrackDef> TRACKS;
 
@@ -51,6 +54,7 @@ static void initTracks() {
     b.baseH = 6.5f; b.noiseAmp = 2.2f; b.landR = 577; b.cityThr = 0.50f; b.night = 0;
     b.sun = norm(V3(-0.72f, 0.24f, 0.45f)); b.sunCol = V3(3.0f, 1.55f, 0.72f);
     b.skyTop = V3(0.10f, 0.13f, 0.42f); b.skyHor = V3(0.95f, 0.50f, 0.28f); b.fogDen = 0.0010f; b.seed = 11;
+    b.branch = { 0.8841f, 0.9622f, -425, -95, -431, -160 };   // the backstreet cut: inside the bend before the start, through town
     TRACKS.push_back(b);
     TrackDef c;
     c.name = "SUMMIT SWITCHBACKS"; c.sub = "MISTY MOUNTAIN PASS - LONG CLIMB";
@@ -78,6 +82,27 @@ static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
 struct World {
     int id = -1; const TrackDef* def = nullptr;
     std::vector<float> h, hr, rd; std::vector<TS> ts; int n = 0;
+    // the alternate route (TrackDef::branch): its centre line at 1 m (bts), where it leaves and rejoins the loop (main
+    // sample indices bA < bB), its length. A car on it counts as being on the loop at the matching point: bA + u * bScale.
+    std::vector<TS> bts; int bA = -1, bB = -1; float bLen = 0, bScale = 1;
+    bool hasBranch() const { return !bts.empty(); }
+    float branchS(float u) const { return bA + clampf(u, 0, bLen) * bScale; }
+    void atBranch(float u, float lat, V3& p, float& yaw) const {
+        int m = (int)bts.size(); float fu = clampf(u, 0, (float)(m - 1) - 0.001f); int i = (int)fu; float t = fu - i; const TS& a = bts[i], & b = bts[i + 1];
+        float tx = lerpf(a.tx, b.tx, t), tz = lerpf(a.tz, b.tz, t);
+        p = V3(lerpf(a.x, b.x, t) + tz * lat, lerpf(a.y, b.y, t), lerpf(a.z, b.z, t) - tx * lat); yaw = atan2f(tx, tz);
+    }
+    int nearestBranch(float x, float z, float& d2) const {
+        int b = -1; d2 = 1e18f; for (int i = 0; i < (int)bts.size(); i++) { float dx = bts[i].x - x, dz = bts[i].z - z, d = dx * dx + dz * dz; if (d < d2) { d2 = d; b = i; } }
+        return b;
+    }
+    // where a car at (x, y, z) is along the loop, in main samples (fractional): on the alternate route, the matching point
+    float loopPos(float x, float z, float y, int* onBranch = nullptr) const {
+        int i = nearest(x, z, y); if (onBranch) *onBranch = -1; if (!hasBranch()) return (float)i;
+        float dx = ts[i].x - x, dz = ts[i].z - z, dm = dx * dx + dz * dz, db; int j = nearestBranch(x, z, db);
+        if (j >= 0 && db < dm && db < (ROADW + 12) * (ROADW + 12)) { if (onBranch) *onBranch = j; return branchS((float)j); }
+        return (float)i;
+    }
     std::vector<Box> boxes; std::vector<Ramp> ramps; std::vector<V3> keys; std::vector<Recipe> recipes; std::vector<Excl> excl; std::vector<int> cross;   // cross: middle sample of each bridge
     std::vector<float> keyStreet;   // x0, z0, x1, z1 of the backstreet that leads to the warehouse (empty if it stands by the road)
     std::vector<int> grid[GCN * GCN];
@@ -511,6 +536,60 @@ struct World {
         }
     }
     void decorate();
+    // The alternate route's centre line: a Catmull-Rom from the loop at bA, through the def's points, back to the loop at
+    // bB, its end tangents taken from the loop 30 m either side so it leaves and joins it smoothly; at 1 m, its height the
+    // ground's, blended into the loop's at both ends.
+    void buildBranch() {
+        bts.clear(); bA = bB = -1; bLen = 0; bScale = 1;
+        const std::vector<float>& bd = def->branch; if (bd.size() < 2 || flat) return;
+        bA = (int)(bd[0] * n); bB = (int)(bd[1] * n); if (bA <= 0 || bB <= bA || bB >= n) { bA = bB = -1; return; }
+        std::vector<V3> cp; auto T = [&](int i) { i = ((i % n) + n) % n; return V3(ts[i].x, 0, ts[i].z); };
+        cp.push_back(T(bA - 30)); cp.push_back(T(bA)); for (size_t k = 2; k + 1 < bd.size(); k += 2) cp.push_back(V3(bd[k], 0, bd[k + 1])); cp.push_back(T(bB)); cp.push_back(T(bB + 30));
+        std::vector<V3> dense;
+        for (size_t i = 1; i + 2 < cp.size(); i++) { V3 p0 = cp[i - 1], p1 = cp[i], p2 = cp[i + 1], p3 = cp[i + 2];
+            for (int k = 0; k < 60; k++) { float t = k / 60.f, t2 = t * t, t3 = t2 * t; dense.push_back((p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5f); } }
+        dense.push_back(cp[cp.size() - 2]);
+        float L = 0; for (size_t i = 0; i + 1 < dense.size(); i++) L += len(dense[i + 1] - dense[i]);
+        int m = std::max(2, (int)L); float step = L / (m - 1), acc = 0; size_t di = 0; bts.resize(m);
+        for (int i = 0; i < m; i++) {   // resample at even spacing
+            float target = i * step;
+            while (di + 2 < dense.size() && acc + len(dense[di + 1] - dense[di]) < target) { acc += len(dense[di + 1] - dense[di]); di++; }
+            float sl = len(dense[di + 1] - dense[di]), t = sl > 0 ? clampf((target - acc) / sl, 0, 1) : 0; V3 p = dense[di] + (dense[di + 1] - dense[di]) * t;
+            bts[i].x = p.x; bts[i].z = p.z;
+        }
+        for (int i = 0; i < m; i++) { const TS& a = bts[std::max(0, i - 1)], & b = bts[std::min(m - 1, i + 1)]; V3 t = norm(V3(b.x - a.x, 0, b.z - a.z)); bts[i].tx = t.x; bts[i].tz = t.z; bts[i].y = std::max(H(bts[i].x, bts[i].z), 2.2f); }
+        for (int pass = 0; pass < 3; pass++) { std::vector<float> y(m); for (int i = 0; i < m; i++) { float s = 0; int c = 0; for (int k = -5; k <= 5; k++) { int q = i + k; if (q >= 0 && q < m) { s += bts[q].y; c++; } } y[i] = s / c; } for (int i = 0; i < m; i++) bts[i].y = y[i]; }
+        for (int i = 0; i < m; i++) {   // meet the loop's own height at both ends
+            float wa = 1 - smooth(0, 25, (float)i), wb = 1 - smooth(0, 25, (float)(m - 1 - i));
+            bts[i].y = lerpf(lerpf(bts[i].y, ts[bA].y, wa), ts[bB].y, wb);
+        }
+        for (int i = 0; i < m; i++) { const TS& a = bts[std::max(0, i - 6)], & b = bts[std::min(m - 1, i + 6)]; bts[i].curv = fabsf(wrapPi(atan2f(b.tx, b.tz) - atan2f(a.tx, a.tz))) / 12; }
+        bLen = (float)(m - 1); bScale = (bB - bA) / bLen;
+#ifdef FCF_XENOS_CULL
+        for (const TS& s : bts) for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) worldCells[worldCell(s.x + dx * 8.0f, s.z + dz * 8.0f)].road = true;
+#endif
+    }
+    // its road: narrower than the loop (a centre line and lane dashes, no edge lines), laid a hair under the loop's so
+    // that where the two overlap at the ends the loop's markings stay on top
+    void branchRibbon() {
+        int m = (int)bts.size(); if (m < 2) return; const float w = BRANCH_W + 0.7f; V3 kerb(0.5f, 0.5f, 0.5f), nrm(0, 1, 0);
+        for (int i = 0; i + 1 < m; i++) {
+            const TS& a = bts[i], & b = bts[i + 1];
+            V3 al(a.x + a.tz * w, a.y + 0.02f, a.z - a.tx * w), ar(a.x - a.tz * w, a.y + 0.02f, a.z + a.tx * w), bl(b.x + b.tz * w, b.y + 0.02f, b.z - b.tx * w), br(b.x - b.tz * w, b.y + 0.02f, b.z + b.tx * w);
+#ifdef FCF_XENOS_CULL
+            int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f);
+#endif
+            unsigned q = mb.add(ar, nrm, V3(1, 1, 1), -w, (float)i, 1); mb.add(al, nrm, V3(1, 1, 1), w, (float)i, 1); mb.add(bl, nrm, V3(1, 1, 1), w, (float)i + 1, 1); mb.add(br, nrm, V3(1, 1, 1), -w, (float)i + 1, 1);
+            mb.idx.insert(mb.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
+#ifdef FCF_XENOS_CULL
+            mb.triTags.push_back(oldTag); mb.triTags.push_back(oldTag);
+#endif
+            V3 dn(0, -0.9f, 0); mb.quad(al, bl, bl + dn + V3(b.tz, 0, -b.tx) * 0.4f, al + dn + V3(a.tz, 0, -a.tx) * 0.4f, kerb, 3); mb.quad(ar, br, br + dn - V3(b.tz, 0, -b.tx) * 0.4f, ar + dn - V3(a.tz, 0, -a.tx) * 0.4f, kerb, 3);
+#ifdef FCF_XENOS_CULL
+            mb.cellTag = oldTag;
+#endif
+        }
+    }
 
     void build(int id_) {
         id = id_; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB();
@@ -552,14 +631,16 @@ struct World {
             if (t >= 0 && t < 1 && u >= 0 && u < 1) cross.push_back(j);
         }
         for (int j : cross) for (int d = -BR_LW; d <= BR_LW; d++) { TS& s = ts[(j + d + n) % n]; s.y += BR_LIFT * (0.5f + 0.5f * cosf((float)M_PI * d / BR_LW)); if (abs(d) <= BR_SPAN) s.br = true; }
+        buildBranch();
         // --- stamp the road into the height field (bridge decks are not ground: they only count for "how far is the road") ---
         std::vector<float> by(GN * GN, 0), rdh(GN * GN, 999); const int R = (int)(76 / CELL);
-        for (int k = 0; k < n; k++) {
-            int ci = (int)((ts[k].x + HALF) / CELL), cj = (int)((ts[k].z + HALF) / CELL);
+        for (int k = 0; k < n + (int)bts.size(); k++) {   // the loop, then the alternate route
+            const TS& sk = k < n ? ts[k] : bts[k - n];
+            int ci = (int)((sk.x + HALF) / CELL), cj = (int)((sk.z + HALF) / CELL);
             for (int j = std::max(0, cj - R); j <= std::min(GN - 1, cj + R); j++) for (int i = std::max(0, ci - R); i <= std::min(GN - 1, ci + R); i++) {
-                float dx = -HALF + i * CELL - ts[k].x, dz = -HALF + j * CELL - ts[k].z, d = sqrtf(dx * dx + dz * dz);
+                float dx = -HALF + i * CELL - sk.x, dz = -HALF + j * CELL - sk.z, d = sqrtf(dx * dx + dz * dz);
                 if (d < rd[j * GN + i]) rd[j * GN + i] = d;
-                if (!ts[k].br && d < rdh[j * GN + i]) { rdh[j * GN + i] = d; by[j * GN + i] = ts[k].y; }
+                if (!sk.br && d < rdh[j * GN + i]) { rdh[j * GN + i] = d; by[j * GN + i] = sk.y; }
             }
         }
         for (int q = 0; q < GN * GN; q++) {
@@ -586,6 +667,7 @@ struct World {
             mb.cellTag = oldTag;
 #endif
         }
+        branchRibbon();
         for (int j : cross) bridge(j);
         for (int c = 0; c < NCP; c++) gate(c * n / NCP, c == 0);
         for (int k = 0; k < GRID_SLOTS; k++) {   // starting grid: a painted box for every slot, staggered left and right behind the line
