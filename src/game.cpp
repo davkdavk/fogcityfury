@@ -383,6 +383,10 @@ static void setupCars(bool race) {
     for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
 static void loadTrack(int t) { if (W.id != t) W.build(t); setupCars(false); }
+// Track select builds the track you stop on, not every one you scroll past: building a city takes a moment (seconds on
+// the 360), so each left/right only marks it, and it is built once the choice has rested a moment, or at once on start.
+static int pendingTrack = -1; static float pendingT = 0;
+static void flushPendingTrack() { if (pendingTrack >= 0) { int t = pendingTrack; pendingTrack = -1; loadTrack(t); } }
 static void startRace() {
     netRace = false; raceLaps = champOn ? CHAMP_LAPS[champRound] : selLaps; weather = selWeather; exploreMode = selMode == 1; rampage = selMode == 2 || champOn; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
@@ -734,6 +738,7 @@ static void finishRace(bool tu) {
 #include "champ.h"
 static void update(float dt) {
     T += dt; frameNo++;
+    if (pendingTrack >= 0 && (pendingT -= dt) <= 0) flushPendingTrack();
     netPump(dt, state == NETLOBBY); netReact();
     if (state == NETJOIN && !nc.on) srvPump(dt);
     if (nc.on && (netRace || state == NETLOBBY)) weather = nc.weather % NWX;   // online: the server picks
@@ -1589,12 +1594,12 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (k == SDLK_UP) { selRow = (selRow + 3) % 4; blip(); } if (k == SDLK_DOWN) { selRow = (selRow + 1) % 4; blip(); }
         if (k == SDLK_LEFT || k == SDLK_RIGHT) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
-            if (selRow == 0) { selTrack = (selTrack + d + NTRACKS) % NTRACKS; loadTrack(selTrack); selWeather = weatherOf[selTrack]; }
+            if (selRow == 0) { selTrack = (selTrack + d + NTRACKS) % NTRACKS; pendingTrack = selTrack; pendingT = 0.45f; selWeather = weatherOf[selTrack]; }
             else if (selRow == 1) { selWeather = (selWeather + d + NWX) % NWX; weatherOf[selTrack] = selWeather; writeSave(); }
             else if (selRow == 2) selMode = (selMode + d + NMODES) % NMODES;
             else if (selMode != 3) { selLaps = (selLaps - 1 + d + 9) % 9 + 1; saveCfg(); }
         }
-        if (k == SDLK_RETURN) { ok(); if (selMode == 3) champBegin(); else startRace(); } if (k == SDLK_ESCAPE) state = CARSEL; break;
+        if (k == SDLK_RETURN) { ok(); flushPendingTrack(); if (selMode == 3) champBegin(); else startRace(); } if (k == SDLK_ESCAPE) { flushPendingTrack(); state = CARSEL; } break;
     case RACE:
         if (k == SDLK_ESCAPE) { state = PAUSED; break; } if (introT > 0 && (k == SDLK_RETURN || k == SDLK_SPACE || bindHit(B_GAS, sc))) introT = 0;   // skip the fly-in
         if (bindHit(B_CAM, sc) && shdSpectate && showdownOn) { for (int k = 1; k <= NFIGHT; k++) { int i = (shdWatch + k) % NFIGHT; if (fighters[i].alive && (fighters[i].on || !fighters[shdWatch].on)) { shdWatch = i; camInit = false; break; } } }   // watching: on to the next fighter
