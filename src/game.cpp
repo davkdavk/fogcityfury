@@ -1095,7 +1095,9 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     auto drawSky = [&](bool behind) {
     if(!objectOnly && (DRAW_MASK & DM_SKY)) {
     traceDraw(behind ? "sky behind" : "sky");
-    if (behind) { gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(false); } else gfx::depthTest(false);
+    // A depth-disabled sky draw with writes enabled invalidates Xenos Hi-Z before the terrain prepass.
+    gfx::depthWrite(false);
+    if (behind) { gfx::blend(gfx::B_OFF); gfx::depthTest(true); } else gfx::depthTest(false);
     setCommon(pSky, VP, cam, hdr);
     pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); pSky.f2("uTan", 1 / P.m[0], 1 / P.m[5]);
     gfx::drawFull(); gfx::depthTest(true); gfx::depthWrite(true);
@@ -1548,7 +1550,7 @@ static void render(int fbw, int fbh) {
     pPost.f1("uRain", chase && !debugTop && state != CARSEL && state != TRACKSEL ? wx().rain : 0.0f); pPost.f1("uTime", T);
     pPost.f1("uVig", 0.45f + blur * 5); pPost.f1("uSat", chase && player.dead && state != TITLE ? 0.5f : 1.0f); gfx::drawFull(); gfx::depthTest(true);
     }
-    if (!hideUI && (DRAW_MASK & DM_UI)) { traceDraw("UI"); gfx::depthTest(false); gfx::blend(gfx::B_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); gfx::blend(gfx::B_OFF); gfx::depthTest(true); }
+    if (!hideUI && (DRAW_MASK & DM_UI)) { traceDraw("UI"); gfx::depthWrite(false); gfx::depthTest(false); gfx::blend(gfx::B_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); }
 }
 
 // ------------------------------------------------------------------ menus / input events

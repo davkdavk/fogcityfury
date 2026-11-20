@@ -507,6 +507,8 @@ static uint32_t lastFenceValue(){ return xs::lastFrameFence; }
 
 void presentFrame(uint32_t address,int width,int height){
     xs::resolveCurrent(0xFF000000);
+    xsdk_gpu_set_depth_clear(1.0f,0);
+    xsdk_gpu_set_resolve_clears(true,true);
     xsdk_gpu_resolve(address,(uint32_t)width,(uint32_t)height,0xFF000000);
     xs::lastFrameFence=xsdk_gpu_fence();
     xs::stream[xs::streamFrame].fence=xs::lastFrameFence;
