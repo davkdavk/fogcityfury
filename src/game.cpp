@@ -54,6 +54,9 @@ struct Car {
     // AI / race bookkeeping
     float stot = 0, lat = 0, latT = 0, speed = 0, aiTop = 60, progress = 0, finishT = -1; int lap = 0, nextCp = 0;
     bool brOn = false; float bu = 0, brBase = 0;   // a bot on the alternate route: metres along it, and the lap's start in stot
+    float shield = 0;                              // seconds of shield left (any car)
+    float latV = 0, wob = 0, wobV = 0;             // a bot knocked sideways: drift across the road (m/s), and a yaw wobble that springs back
+    int botAmmo = 0, botRLap = -99; float botFireCD = 0;   // a bot's rockets: how many, the lap it last took a crate, time till it may fire
     float hp = 100;   // shot damage on foot: a car with no hp left is wrecked
 };
 struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false, fire = false; };
@@ -136,7 +139,7 @@ static std::vector<float> marks; static bool marksDirty = false, markOn[2] = { f
 static gfx::Target sceneFBO = 0, resFBO = 0, blFBO[2] = {}; static gfx::Tex sceneCol = 0, sceneDep = 0, resTex = 0, blTex[2] = {}; static int postW = 0, postH = 0;
 static Prog pMark, pPost;
 // test instrumentation (see docs/TESTING.md)
-static struct Metrics { float maxBeta = 0, maxSlipF = 0, maxSlipR = 0, maxSpeed = 0, dist = 0, heading = 0, maxYawRate = 0, simT = 0, boostT = 0, minNitro = 1; int wrecks = 0, sinks = 0, camOffAxis = 0, bigAirs = 0, boosts = 0, rocketsFired = 0, rocketHits = 0, pickups = 0, resets = 0, aiBranch = 0; float maxWrongT = 0; float maxDeck = 0, maxGap = 0, offroadT = 0, gridDrift = 0; } tm;
+static struct Metrics { float maxBeta = 0, maxSlipF = 0, maxSlipR = 0, maxSpeed = 0, dist = 0, heading = 0, maxYawRate = 0, simT = 0, boostT = 0, minNitro = 1; int wrecks = 0, sinks = 0, camOffAxis = 0, bigAirs = 0, boosts = 0, rocketsFired = 0, rocketHits = 0, pickups = 0, resets = 0, aiBranch = 0, shields = 0, shieldSaves = 0, aiShields = 0, aiShieldSaves = 0, aiCrates = 0, aiRocketsFired = 0, aiRocketHits = 0, rocketsAtMe = 0, bumps = 0; float maxShove = 0, maxWob = 0; float maxWrongT = 0; float maxDeck = 0, maxGap = 0, offroadT = 0, gridDrift = 0; } tm;
 struct ScriptKey { float t; float steer, gas, brake; bool hb, nitro; };
 static std::vector<ScriptKey> script; static bool simMode = false;
 static std::vector<V3> waypoints; static size_t wpNext = 0; static float wpSpeed = 14;   // --waypoints: drive through a list of points
@@ -367,7 +370,8 @@ static void say(const char* s, V3 c = V3(1, 1, 1), float t = 2.2f) { snprintf(ms
 static const int NCRATES = 6, CRATE_ROCKETS = 2; static const float ROCKET_RANGE = 170, WRECK_R = 2.2f, WRECK_LIFE = 10, WRECK_FADE = 2.5f;   // a wreck lasts WRECK_LIFE seconds and fades over the last WRECK_FADE
 struct Wreck { V3 pos; float yaw, pitch, roll, age; int type; unsigned wheels; int si; float lat; };   // si, lat: where it lies along and across the road
 struct Debris { V3 p, v, rot, spin, sc; int kind; bool rest; float age = 0; };   // kind 0: a wheel, 1: a body panel
-struct Rocket { V3 p, v; float life; int target; };                          // target: 0..NAI-1 an opponent, 16+id another player, -1 none
+struct Rocket { V3 p, v; float life; int target; int owner = -1; };          // target: 0..NAI-1 an opponent, TGT_ME us, 16+id another player, -1 none. owner: -1 us, 0.. a bot
+static const int TGT_ME = 15;
 struct Crate { V3 p; float cd; };
 static std::vector<Wreck> wrecks; static std::vector<Debris> debris; static std::vector<Rocket> rockets; static std::vector<Crate> crates;
 static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
@@ -375,7 +379,18 @@ static bool cratesOn() { return rocketLap != player.lap; }
 static float goneOf(float age) { return clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); }   // 0 solid .. 1 faded away
 static float fireCD = 0, resetCD = 0, resetHint = 0, ammoFlash = 0; static V3 boltDir(0, 0.5f, 1), rainRel;
 static std::vector<float> fireAt, resetAt;                                   // --fire T / --reset T (tests)
-static Mesh boxMesh, rocketMesh, crateMesh;
+static Mesh boxMesh, rocketMesh, crateMesh, shieldMesh;
+// the shield: one pick-up halfway down a track's alternate route, there once a lap. It lasts SHIELD_TIME seconds and
+// takes the next thing that would blow the car up (a hard crash, or a rocket from another player) in its place
+static const float SHIELD_TIME = 15; static float shieldFx = 0, shieldPopT = 0;
+// two shields on the route. The first car through takes one, and it stays gone until that car has come round again
+// (a whole lap later), so on any lap one car at most gets each
+struct ShieldPU { V3 p; int holder; float at; };   // holder: -2 nobody yet, -1 us, 0.. a bot; at: the holder's race progress when it took it
+static ShieldPU shieldPU[2]; static int nShieldPU = 0;
+static int carLap(int who) { return who == -1 ? player.lap : (int)floorf(ai[who].stot / W.n); }
+static float carDist(int who) { return who == -1 ? player.progress : ai[who].stot; }
+static bool puHere(const ShieldPU& u) { return u.holder == -2 || carDist(u.holder) > u.at + W.n * 0.9f || (u.holder >= 0 && ai[u.holder].finishT >= 0); }
+static bool startShield = false; static int startBotAmmo = 0; static bool botGuns = true;   // --nobotguns: bots never fire (driving tests)   // --botrockets N: every bot starts with N (for tests)   // --shield: start every race with one up (for tests)
 static float introT = 0; static const float INTRO_LEN = 3.4f;   // race intro: the camera starts high above the grid and comes down behind the car; the countdown waits for it
 static V3 aiGrid[NAI]; static bool fullCountdown = false;   // where each opponent was put on the grid; --countdown keeps the real countdown with --state 3
 static void placeOnGrid(Car& c, float s, float lat) {
@@ -389,6 +404,8 @@ static void setupCars(bool race) {
     player.type = selCar; player.paint = selPaint; placeOnGrid(player, race ? gridS(NAI) : -6.0f, race ? gridLat(NAI) : 0);
     camInit = false; parts.clear(); marks.clear(); marksDirty = true; markOn[0] = markOn[1] = false;
     wrecks.clear(); debris.clear(); rockets.clear(); crates.clear(); ammo = startAmmo; lockTgt = -1; resetHint = 0; rocketLap = -1;
+    player.shield = startShield ? SHIELD_TIME : 0; shieldPopT = 0; for (auto& a : ai) { a.shield = 0; a.botAmmo = startBotAmmo; a.botRLap = -99; a.botFireCD = 3; }
+    nShieldPU = W.hasBranch() ? 2 : 0; for (int k = 0; k < nShieldPU; k++) { float yaw; W.atBranch(W.bLen * (k ? 0.68f : 0.32f), 0, shieldPU[k].p, yaw); shieldPU[k].p.y += 1.0f; shieldPU[k].holder = -2; shieldPU[k].at = 0; }
     for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
 static void loadTrack(int t) { if (W.id != t) W.build(t); setupCars(false); }
@@ -462,11 +479,18 @@ static bool dodge(int i, float myLat, float ahead, float& lat) {
     for (auto& w : wrecks) { float d = (float)((w.si - i + W.n) % W.n); if (w.age < WRECK_LIFE - 1.5f && d < best && fabsf(w.lat) < ROADW + 3 && fabsf(w.lat - myLat) < 3.6f) { best = d; lat = w.lat > 0 ? w.lat - 4.6f : w.lat + 4.6f; any = true; } }
     return any;
 }
+static void shieldPop(Car& c) {   // the shield breaks, taking the hit
+    c.shield = 0; bool me = &c == &player; float nk = me ? 1 : clampf(1 - len(c.pos - player.pos) / 150, 0, 1);
+    if (me) { shieldPopT = 1; tm.shieldSaves++; say("SHIELD SAVED YOU!", V3(0.4f, 0.85f, 1), 1.8f); rumble(0.7f, 250); shake = std::max(shake, 0.3f); } else tm.aiShieldSaves++;
+    if (nk > 0) { tone(880, 0.3f, 0.5f * nk, 2, -500); tone(1320, 0.2f, 0.35f * nk, 2, -700, 0.05f);
+        for (int i = 0; i < 40; i++) { float a = i * 2.39996f, e = 1 - 2 * (i + 0.5f) / 40, r = sqrtf(1 - e * e); V3 d(cosf(a) * r, e, sinf(a) * r);
+            spawn(c.pos + V3(0, 0.8f, 0) + d * 2.4f, c.vel + d * 9, 0.5f, 0.24f, 0, V3(0.6f, 2.4f, 4), 1, 1, 0); } }
+}
 static void explode(Car& c) {
     tm.wrecks++; c.dead = true; c.sunk = false; c.deadT = 1.7f; blast(c.pos + V3(0, 0.8f, 0), c.vel, 1); leaveWreck(c); c.vel = V3(); c.vf = 0; slowT = 0.5f;
 }
 static void remoteWreck(const Car& c) { if (len(c.pos - player.pos) < 400) { blast(c.pos + V3(0, 0.8f, 0), c.vel, nearK(c.pos)); leaveWreck(c); } }
-static void netHitMe() { if (state == RACE && !player.dead && countdown <= 0) { explode(player); say("ROCKET HIT!", V3(1, 0.4f, 0.2f), 2); } }
+static void netHitMe() { if (state == RACE && !player.dead && countdown <= 0 && player.shield > 0) { shieldPop(player); return; } if (state == RACE && !player.dead && countdown <= 0) { explode(player); say("ROCKET HIT!", V3(1, 0.4f, 0.2f), 2); } }
 static void stepWreckage(float dt, bool driving) {
     for (auto& w : wrecks) w.age += dt; for (auto& d : debris) d.age += dt;
     wrecks.erase(std::remove_if(wrecks.begin(), wrecks.end(), [](const Wreck& w) { return w.age >= WRECK_LIFE; }), wrecks.end());       // burnt out and gone
@@ -497,6 +521,7 @@ static void stepWreckage(float dt, bool driving) {
 // ---- rockets ----
 static Car* tgtCar(int t) {
     if (t >= 0 && t < NAI) return showAI() && state != TITLE ? &ai[t] : nullptr;
+    if (t == TGT_ME) return state != TITLE ? &player : nullptr;
     if (t >= 16 && t < 16 + net::MAXP) { Remote& r = nc.r[t - 16]; return netRace && r.present && r.racing ? &r.car : nullptr; }
     return nullptr;
 }
@@ -504,6 +529,7 @@ static Car* tgtCar(int t) {
 static int pickTarget() {
     V3 f(sinf(player.yaw), 0, cosf(player.yaw)); int best = -1; float bd = 1e9f;
     for (int t = 0; t < 16 + net::MAXP; t++) {
+        if (t == TGT_ME) continue;
         Car* c = tgtCar(t); if (!c || c->dead) continue; V3 d = c->pos - player.pos; float l = len(d); if (l > ROCKET_RANGE || l < 0.01f) continue;
         float score = l * (dot(d, f) / l > 0.3f ? 1.0f : 3.0f); if (score < bd) { bd = score; best = t; }
     }
@@ -516,10 +542,57 @@ static void fireRocket() {
     rockets.push_back({ player.pos + f * 2.3f + V3(0, 0.75f, 0), f * (std::max(player.vf, 0.0f) + 42) + V3(0, 1.5f, 0), 5.0f, pickTarget() });
     tone(420, 0.55f, 0.6f, 1, 3800); tone(110, 0.25f, 0.5f, 0, -50); shake = std::max(shake, 0.25f); rumble(0.6f, 200);
 }
-static void rocketHit(int t, V3 at) {
-    Car* c = tgtCar(t); if (!c) return; tm.rocketHits++; blast(c->pos + V3(0, 0.8f, 0), c->vel, nearK(at)); say("DIRECT HIT!", V3(1, 0.5f, 0.15f), 1.6f);
+static void rocketHit(int t, V3 at, int owner) {
+    Car* c = tgtCar(t); if (!c) return;
+    if (c->shield > 0) { shieldPop(*c); blast(at, V3(), nearK(at) * 0.5f); return; }   // a shield takes the rocket
+    if (owner == -1) { tm.rocketHits++; say("DIRECT HIT!", V3(1, 0.5f, 0.15f), 1.6f); } else tm.aiRocketHits++;
+    if (t == TGT_ME) { if (!player.dead) { explode(player); say("ROCKET HIT!", V3(1, 0.4f, 0.2f), 2); } return; }
+    blast(c->pos + V3(0, 0.8f, 0), c->vel, nearK(at));
     if (t < NAI) { leaveWreck(*c); c->dead = true; c->deadT = 3.0f; c->speed = 0; c->vel = V3(); }   // the opponent is out for three seconds
     else { nc.hitId = (uint8_t)(t - 16); nc.hitSeq++; netHitBot(t - 16); }                             // another player: their own game blows them up (a bot we drive: ours does)
+}
+static void grabShield(int who, Car& c) {   // drive through a shield that is there: it is ours, and gone for everyone else until our next lap
+    for (int k = 0; k < nShieldPU; k++) {
+        ShieldPU& u = shieldPU[k]; if (!puHere(u)) continue; V3 d = u.p - (c.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
+        u.holder = who; u.at = carDist(who); c.shield = SHIELD_TIME; float nk = who == -1 ? 1 : clampf(1 - len(c.pos - player.pos) / 150, 0, 1);
+        if (who == -1) { tm.shields++; say("SHIELD", V3(0.4f, 0.85f, 1), 1.8f); rumble(0.4f, 200); } else tm.aiShields++;
+        if (nk > 0) { tone(523, 0.12f, 0.45f * nk, 2); tone(784, 0.12f, 0.45f * nk, 2, 0, 0.09f); tone(1047, 0.25f, 0.45f * nk, 2, 0, 0.18f);
+            for (int i = 0; i < 24; i++) { float a = i * 2.39996f; spawn(u.p, V3(cosf(a) * 6, 3 + (i % 5), sinf(a) * 6), 0.6f, 0.22f, 0, V3(0.6f, 2.4f, 4), 1, 1, -3); } }
+        return;
+    }
+}
+static void shieldSparks(const Car& c, float dt, float& acc) {   // a ring of sparks circling the car; it flickers in its last three seconds
+    bool show = c.shield > 3 || fmodf(c.shield, 0.25f) < 0.15f;
+    static unsigned seq = 0;   // each spark a golden-angle step round from the last, so the shell is all round the car
+    for (acc += dt * 120; acc >= 1; acc -= 1) if (show) {
+        seq++; float a = seq * 2.39996f + T * 3, e = (((seq * 37) % 101) / 50.0f - 1) * 0.85f, r = sqrtf(1 - e * e);
+        if (parts.size() < 5200) parts.push_back({ c.pos + V3(cosf(a) * r * 2.4f, 0.8f + e * 1.6f, sinf(a) * r * 2.4f), c.vel, 0.12f, 0.12f, 0.2f, 0, V3(0.5f, 2.0f, 3.4f), 0.9f, 1, (seq % 97) / 97.0f, 0, 0 });   // (not spawn(): no draw from the race's random numbers, so a shield changes nothing else)
+    }
+}
+// bots: they pick up rocket crates (once a lap each, like us) and shields, and fire at a car close ahead of them, us included
+static void botWeapons(float dt) {
+    static float sparkAcc[NAI] = {};
+    for (int k = 0; k < NAI; k++) {
+        Car& c = ai[k]; if (c.dead || c.finishT >= 0) continue;
+        int lap = carLap(k);
+        // a bot bothers with a crate on about two laps in five, and takes one rocket from it (ten bots with two each was a war)
+        if (c.botRLap != lap) for (auto& cr : crates) { float dx = cr.p.x - c.pos.x, dz = cr.p.z - c.pos.z; if (dx * dx + dz * dz < 3.3f * 3.3f) {
+            c.botRLap = lap; if (((unsigned)(k * 7919 + lap * 104729 + c.paint * 31) * 2654435761u >> 16) % 5 < 2) { c.botAmmo = 1; tm.aiCrates++; } break; } }
+        grabShield(k, c);
+        if (c.shield > 0) { c.shield = std::max(0.0f, c.shield - dt); if (len(c.pos - player.pos) < 150) shieldSparks(c, dt, sparkAcc[k]); }
+        c.botFireCD = std::max(0.0f, c.botFireCD - dt);
+        if (c.botAmmo <= 0 || c.botFireCD > 0) continue;
+        V3 f(sinf(c.yaw), 0, cosf(c.yaw)); int best = -1; float bd = 110;
+        for (int t = 0; t <= NAI; t++) {   // t == NAI: us
+            Car* o = t == NAI ? (exploreMode || player.dead || me.on ? nullptr : &player) : t == k ? nullptr : &ai[t];
+            if (!o || o->dead) continue; V3 d = o->pos - c.pos; float l = len(d); if (l < 4 || l > bd || dot(d, f) < 0.85f * l) continue;
+            best = t == NAI ? TGT_ME : t; bd = l;
+        }
+        if (best < 0 || grng.f() > dt * 0.5f) continue;   // a moment's aim before it lets go
+        c.botAmmo--; c.botFireCD = 2.5f; tm.aiRocketsFired++; if (best == TGT_ME) { tm.rocketsAtMe++; say("INCOMING!", V3(1, 0.3f, 0.2f), 1.2f); }
+        Rocket r{ c.pos + f * 2.3f + V3(0, 0.75f, 0), f * (std::max(c.speed, 0.0f) + 42) + V3(0, 1.5f, 0), 5.0f, best }; r.owner = k; rockets.push_back(r);
+        float nk = clampf(1 - len(c.pos - player.pos) / 160, 0, 1); if (nk > 0) { tone(420, 0.55f, 0.5f * nk, 1, 3800); tone(110, 0.25f, 0.4f * nk, 0, -50); }
+    }
 }
 static void stepRockets(float dt) {
     fireCD = std::max(0.0f, fireCD - dt);
@@ -537,7 +610,7 @@ static void stepRockets(float dt) {
         if (getenv("FCF_TRACE")) fprintf(stderr, "rocket life %.2f p %.0f %.1f %.0f sp %.0f tgt %d dist %.1f ground %.1f\n", r.life, r.p.x, r.p.y, r.p.z, sp, r.target, c ? len(tp - r.p) : -1.0f, W.ground(r.p.x, r.p.z, r.p.y + 1.5f));
         spawn(r.p - dir * 0.6f, dir * -6 + V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1)), 0.12f, 0.22f, 0.5f, V3(6, 3.2f, 0.8f), 1, 1, 0);
         for (int k = 0; k < 2; k++) spawn(r.p - dir * (0.8f + k * 0.9f), V3(grng.r(-0.6f, 0.6f), grng.r(0.2f, 1.0f), grng.r(-0.6f, 0.6f)), grng.r(0.7f, 1.2f), 0.22f, 1.3f, V3(0.75f, 0.75f, 0.78f), 0.35f);
-        if (c && len(tp - r.p) < 2.9f) { rocketHit(r.target, r.p); done = true; }
+        if (c && len(tp - r.p) < 2.9f) { rocketHit(r.target, r.p, r.owner); done = true; }
         else {
             // it skims the ground like a cruise missile, so crests and dips do not stop it; walls and cliffs do
             V3 q = r.p, vv = r.v; float imp = 0, g = W.ground(r.p.x, r.p.z, r.p.y + 1.5f);
@@ -635,7 +708,13 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
         c.boost += clampf(-c.boost, -7 * dt, 0.0f); c.nitro = std::min(1.0f, c.nitro + dt / NITRO_REFILL); if (!in.nitro && c.nitro > NITRO_ARM) c.nitroLock = false; }
     c.yaw = wrapPi(c.yaw); c.vel.x = f.x * vf + sd.x * vs; c.vel.z = f.z * vf + sd.z * vs; c.vf = vf;
     V3 np = c.pos; np.x += c.vel.x * dt; np.z += c.vel.z * dt; if (!W.flat) { np.x = clampf(np.x, -HALF + 6, HALF - 6); np.z = clampf(np.z, -HALF + 6, HALF - 6); }
-    float impact = 0; W.collide(np, c.vel, 1.15f, impact);
+    // walls: three discs along the car (the old single disc let the nose and tail sink into walls). A knock off the
+    // middle turns the car a little, the way a clipped corner does
+    float impact = 0; { V3 f2(sinf(c.yaw), 0, cosf(c.yaw));
+        for (int k = 0; k < 3; k++) { float off = k == 0 ? 0 : k == 1 ? 1.35f : -1.3f; V3 q = np + f2 * off, q0 = q, v0 = c.vel;
+            if (W.collide(q, c.vel, k ? 0.95f : 1.15f, impact)) { np.x += q.x - q0.x; np.z += q.z - q0.z;
+                if (k) { V3 dv = c.vel - v0; c.yawRate += clampf((dv.x * f2.z - dv.z * f2.x) * off * 0.08f, -1.5f, 1.5f); } } } }
+    if (impact > EXPLODE_SPEED && c.shield > 0) { shieldPop(c); impact = 12; }   // the shield takes it: a hard knock instead
     if (impact > EXPLODE_SPEED) { c.pos = np; explode(c); return; }
     if (impact > 5) { c.yawRate *= 0.5f; caT = std::max(caT, std::min(1.0f, impact / 25)); rumble(impact / 30, 180); tone(110, 0.25f, std::min(1.0f, impact / 22), 1, 300); shake = std::max(shake, impact / 40); for (int i = 0; i < 6; i++) spawn(np + V3(0, 0.5f, 0), V3(grng.r(-4, 4), grng.r(2, 6), grng.r(-4, 4)), 0.35f, 0.12f, 0, V3(4, 2.5f, 0.6f), 1, 1, -6); }
     c.vel.y -= GRAV * dt; np.y = c.pos.y + c.vel.y * dt;
@@ -688,7 +767,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
 }
 
 static void stepAI(Car& c, float dt, bool go, float playerProg) {
-    int n = W.n; int i = (((int)floorf(c.stot)) % n + n) % n; float mc = 0;
+    float lat0 = c.lat; int n = W.n; int i = (((int)floorf(c.stot)) % n + n) % n; float mc = 0;
     if (c.brOn) { int m = (int)W.bts.size(); for (int k = 8; k < 80; k += 6) mc = std::max(mc, W.bts[std::min(m - 1, (int)c.bu + k)].curv); }
     else for (int k = 8; k < 80; k += 6) mc = std::max(mc, W.ts[(i + k) % n].curv);
     float tgt = std::min(c.aiTop * (0.55f + 0.45f * wx().grip), sqrtf(21.0f * wx().grip / std::max(mc, 1e-4f)));
@@ -716,15 +795,60 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
     float dl = 0; bool dg = go && !c.brOn && dodge(i, c.lat, 95, dl); if (dg) c.latT = dl;                  // opponents pull out round wrecks too
     if (c.brOn) c.latT = clampf(c.latT, -2.5f, 2.5f);                                                 // the backstreet is narrower
     c.lat += clampf(c.latT - c.lat, -(dg ? 6.0f : 2.5f) * dt, (dg ? 6.0f : 2.5f) * dt);
+    if (c.latV != 0) {   // knocked sideways: drift across, then steer back to its line
+        c.lat += c.latV * dt; c.latV *= expf(-3.5f * dt); if (fabsf(c.latV) < 0.2f) c.latV = 0; else c.latT = c.lat;
+        float lm = c.brOn ? 3.6f : ROADW - 1.2f; if (fabsf(c.lat) > lm) { c.lat = clampf(c.lat, -lm, lm); c.latV = 0; }
+    }
+    c.wobV += (-c.wob * 70 - c.wobV * 9) * dt; c.wob = clampf(c.wob + c.wobV * dt, -0.5f, 0.5f);
     V3 p, pa; float yaw, ya;
     if (c.brOn) { W.atBranch(c.bu, c.lat, p, yaw); W.atBranch(c.bu + 2.5f, c.lat, pa, ya); } else { W.at(c.stot, c.lat, p, yaw); W.at(c.stot + 2.5f, c.lat, pa, ya); }
     float y = p.y, yahead = pa.y; V3 old = c.pos; bool onBr = !c.brOn && W.ts[i].br;   // road height, not terrain height: the road may be on a bridge
-    c.pos = V3(p.x, y, p.z); c.vel = (c.pos - old) * (dt > 0 ? 1 / dt : 0); c.yaw = yaw; c.pitch += (atan2f(yahead - y, 2.5f) - c.pitch) * std::min(1.0f, 10 * dt);
+    c.pos = V3(p.x, y, p.z); c.vel = (c.pos - old) * (dt > 0 ? 1 / dt : 0); c.yaw = yaw + c.wob;
+    if (dt > 0) { float lr = clampf((c.lat - lat0) / dt, -12, 12); c.vel.x = sinf(yaw) * c.speed + cosf(yaw) * lr; c.vel.z = cosf(yaw) * c.speed - sinf(yaw) * lr; }   // (a shove's position fix is not speed)
+    c.pitch += (atan2f(yahead - y, 2.5f) - c.pitch) * std::min(1.0f, 10 * dt);
     V3 sd(cosf(yaw), 0, -sinf(yaw)); float hl = onBr ? 0 : W.H(p.x + sd.x, p.z + sd.z), hr = onBr ? 0 : W.H(p.x - sd.x, p.z - sd.z); c.roll += (atan2f(hl - hr, 2) - c.roll) * std::min(1.0f, 10 * dt);
     c.vf = c.speed; c.steer = clampf(wrapPi(ya - yaw) * 6, -1, 1); c.wheelRot += c.speed / SPECS[c.type].wr * dt; c.progress = c.stot;
     c.braking = tgt < c.speed - 2; c.lean += (clampf(c.steer * c.speed * 0.0022f, -0.1f, 0.1f) - c.lean) * std::min(1.0f, 6 * dt);
 }
 
+// ---- car against car: each car is two discs, nose and tail, so they meet end to end and side to side about where the bodies do
+static const float CAR_OFF = 1.15f, CAR_R = 1.05f;
+struct Contact { float nx, nz, pen; V3 at; };   // n: from b towards a
+static bool carContact(const Car& a, const Car& b, Contact& k) {
+    float dx = a.pos.x - b.pos.x, dz = a.pos.z - b.pos.z; if (dx * dx + dz * dz > 5.5f * 5.5f || fabsf(a.pos.y - b.pos.y) > 2) return false;
+    V3 fa(sinf(a.yaw), 0, cosf(a.yaw)), fb(sinf(b.yaw), 0, cosf(b.yaw)); k.pen = 0;
+    for (int i = -1; i <= 1; i += 2) for (int j = -1; j <= 1; j += 2) {
+        V3 pa = a.pos + fa * (i * CAR_OFF), pb = b.pos + fb * (j * CAR_OFF); float ex = pa.x - pb.x, ez = pa.z - pb.z, d = sqrtf(ex * ex + ez * ez), pen = 2 * CAR_R - d;
+        if (pen > k.pen) { k.pen = pen; if (d > 1e-3f) { k.nx = ex / d; k.nz = ez / d; } else { k.nx = dx; k.nz = dz; float l = sqrtf(dx * dx + dz * dz) + 1e-6f; k.nx /= l; k.nz /= l; } k.at = (pa + pb) * 0.5f; }
+    }
+    return k.pen > 0;
+}
+// our car takes `share` of the push and of the knock; returns the closing speed (m/s, <0 when they were closing)
+static float bumpPlayer(const Contact& k, V3 ov, float share) {
+    player.pos.x += k.nx * k.pen * share; player.pos.z += k.nz * k.pen * share;
+    float rv = (player.vel.x - ov.x) * k.nx + (player.vel.z - ov.z) * k.nz; if (rv >= 0) return rv;
+    float J = -rv * 1.3f * share; player.vel.x += k.nx * J; player.vel.z += k.nz * J;
+    V3 r = k.at - player.pos; player.yawRate += clampf((k.nx * r.z - k.nz * r.x) * J * 0.10f, -1.6f, 1.6f);   // a knock off-centre turns the car
+    if (rv < -2) { float s = std::min(1.0f, -rv / 14); tone(140, 0.2f, 0.25f + 0.3f * s, 1, 300); shake = std::max(shake, 0.12f + 0.2f * s); rumble(0.25f + 0.35f * s, 150);
+        for (int i = 0; i < 2 + (int)(s * 6); i++) spawn(k.at + V3(0, 0.6f, 0), player.vel * 0.5f + V3(grng.r(-3, 3), grng.r(1, 4), grng.r(-3, 3)), 0.25f, 0.06f, 0, V3(3, 2.2f, 1), 1, 1, -6); }
+    return rv;
+}
+// a bot shoved along n by `pen` metres and `J` m/s: it slides across the road, loses or gains a little speed, and wobbles
+static void bumpBot(Car& c, float nx, float nz, float pen, float J, V3 at) {
+    float yaw = c.yaw - c.wob; V3 f(sinf(yaw), 0, cosf(yaw)), rt(cosf(yaw), 0, -sinf(yaw));
+    float sl = (nx * rt.x + nz * rt.z), sf = (nx * f.x + nz * f.z);
+    c.lat += sl * pen; c.latT = c.lat; c.latV = clampf(c.latV + sl * J * 0.8f, -9, 9); c.speed = std::max(0.0f, c.speed + sf * J * 0.6f);
+    V3 r = at - c.pos; c.wobV = clampf(c.wobV + (nx * r.z - nz * r.x) * J * 0.5f, -6, 6);
+    tm.maxShove = std::max(tm.maxShove, fabsf(c.latV)); tm.maxWob = std::max(tm.maxWob, fabsf(c.wobV));
+}
+static void carContacts(bool racing) {   // bots against bots
+    for (int i = 0; i < NAI; i++) for (int j = i + 1; j < NAI; j++) {
+        Car& a = ai[i], & b = ai[j]; Contact k; if (a.dead || b.dead || !carContact(a, b, k)) continue;
+        float rv = (a.vel.x - b.vel.x) * k.nx + (a.vel.z - b.vel.z) * k.nz, J = rv < 0 ? -rv * 0.65f : 0;
+        if (!racing) J = 0;
+        bumpBot(a, k.nx, k.nz, k.pen * 0.5f, J, k.at); bumpBot(b, -k.nx, -k.nz, k.pen * 0.5f, J, k.at);
+    }
+}
 static Input autoInput(const Car& c) {
     Input in; int i = W.nearest(c.pos.x, c.pos.z, c.pos.y); float sp = sqrtf(c.vel.x * c.vel.x + c.vel.z * c.vel.z);
     float lat = 0; dodge(i, (c.pos.x - W.ts[i].x) * W.ts[i].tz - (c.pos.z - W.ts[i].z) * W.ts[i].tx, 30 + sp * 1.2f, lat);   // steer round wrecks
@@ -804,25 +928,21 @@ static void update(float dt) {
             stepPlayer(player, pin, h);
             if (netRace) for (auto& r : nc.r) {   // other players: push our own car out of theirs
                 if (!r.present || !r.racing || r.car.dead || player.dead) continue; const Car& a = r.car;
-                float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz);
-                if (d < 2.3f && d > 0.01f && fabsf(player.pos.y - a.pos.y) < 2) {
-                    float nx = dx / d, nz = dz / d, pen = 2.3f - d; player.pos.x += nx * pen; player.pos.z += nz * pen;
-                    float rv = (player.vel.x - a.vel.x) * nx + (player.vel.z - a.vel.z) * nz;
-                    if (rv < 0) { player.vel.x -= nx * rv * 0.6f; player.vel.z -= nz * rv * 0.6f; if (rv < -4) { tone(140, 0.2f, 0.5f, 1, 300); shake = std::max(shake, 0.3f); rumble(0.5f, 150); } }
-                }
+                Contact k; if (carContact(player, a, k)) bumpPlayer(k, a.vel, 1);   // their own game knocks them about
             }
             if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn) for (auto& a : ai) {   // the racers stop for the showdown
                 if (a.dead) { a.deadT -= h; if (a.deadT <= 0) { a.dead = false; a.stot += 8; a.lat = a.latT = a.lat > 0 ? a.lat - 4.5f : a.lat + 4.5f; } continue; }   // hit by a rocket: back on the road beside its wreck
                 stepAI(a, h, go, player.progress);
                 float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz); int ak = (int)(&a - ai); whooshCD[ak] -= h;
                 if (d < 7 && d > 2.3f && fabsf(player.vf - a.speed) > 9 && whooshCD[ak] <= 0 && state == RACE) { whooshCD[ak] = 2; tone(700, 0.35f, 0.22f, 1, 5000); }
-                if (d < 2.3f && d > 0.01f && fabsf(player.pos.y - a.pos.y) < 2 && !player.dead && state != RESULTS) {   // (after the flag the field passes through a finished car, not shoving it about)
-                    float nx = dx / d, nz = dz / d, pen = 2.3f - d; player.pos.x += nx * pen; player.pos.z += nz * pen;
-                    float rv = (player.vel.x - a.vel.x) * nx + (player.vel.z - a.vel.z) * nz;
-                    if (rv < 0) { player.vel.x -= nx * rv * 0.8f; player.vel.z -= nz * rv * 0.8f; a.speed = std::max(0.0f, a.speed + rv * 0.25f * ((a.vel.x * nx + a.vel.z * nz) > 0 ? -1 : 1)); if (rv < -4) { tone(140, 0.2f, 0.5f, 1, 300); shake = std::max(shake, 0.3f); } }
+                Contact k;
+                if (!player.dead && state != RESULTS && carContact(player, a, k)) {   // (after the flag the field passes through a finished car, not shoving it about)
+                    V3 av = a.vel; float rv = bumpPlayer(k, av, 0.5f);   // we and the bot share the push and the knock
+                    bumpBot(a, -k.nx, -k.nz, k.pen * 0.5f, rv < 0 ? -rv * 0.65f : 0, k.at); if (rv < -1) tm.bumps++;
                 }
             }
         }
+        if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn) carContacts(go && state != RESULTS);
         if (!go && in.gas > 0) player.wheelspin = true;   // rev on the line
         if (!go && showAI()) for (int k = 0; k < NAI; k++) tm.gridDrift = std::max(tm.gridDrift, hypotf(ai[k].pos.x - aiGrid[k].x, ai[k].pos.z - aiGrid[k].z));   // test metric: nobody creeps before the start
     }
@@ -860,9 +980,14 @@ static void update(float dt) {
             for (int i = 0; i < 24; i++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(-0.3f, 1), grng.r(-1, 1))); spawn(c.p, dd * grng.r(2, 8), grng.r(0.4f, 0.8f), 0.22f, 0, V3(4, 1.4f, 0.4f), 1, 1, -3); }
             break;
         }
+        if (!player.dead && !me.on && !showdownOn) grabShield(-1, player);
+        if (player.shield > 0 && !player.dead) { player.shield = std::max(0.0f, player.shield - dt); if (player.shield == 0) { say("SHIELD GONE", V3(0.5f, 0.6f, 0.7f), 1.2f); tone(600, 0.2f, 0.3f, 2, -300); } }
+        if (player.shield > 0 && !player.dead) shieldSparks(player, dt, shieldFx);
+        if (go && !showdownOn && !netRace && botGuns) botWeapons(dt);
         bool stuck = go && !me.on && !showdownOn && !player.dead && fabsf(player.vf) < 2.5f && (in.gas > 0.3f || in.brake > 0.3f), lost = go && !me.on && !showdownOn && !player.dead && !exploreMode && !rampage && (W.RD(player.pos.x, player.pos.z) > ROADW + 28 || wrongT > 3);
         resetHint = stuck || lost ? resetHint + dt : std::max(0.0f, resetHint - dt * 3);
     }
+    shieldPopT = std::max(0.0f, shieldPopT - dt * 2); if (state != RACE && state != PAUSED) player.shield = 0;
     resetCD = std::max(0.0f, resetCD - dt); ammoFlash = std::max(0.0f, ammoFlash - dt * 1.5f);
     lockTgt = state == RACE && ammo > 0 && !player.dead && !me.on ? pickTarget() : -1;
     netBotsFrame(dt);   // online, if the server has made us the host: the bots' cars
@@ -1063,6 +1188,7 @@ static void drawWreckage(Prog& p, bool lit) {
         p.m4("uModel", mul(translate(q), mul(rotY(T * 1.3f + k), scale(0.62f, 0.62f, 0.62f)))); crateMesh.draw();
         for (int e = -1; e <= 1; e += 2) { p.m4("uModel", mul(translate(q + V3(0, 1.05f, 0)), mul(rotY(T * 1.3f + k), mul(translate(V3(e * 0.32f, 0, 0)), mul(rotX(-0.5f), scale(1.5f, 1.5f, 1.5f)))))); rocketMesh.draw(); }
     }
+    if (state != TITLE && !showdownOn) for (int k = 0; k < nShieldPU; k++) if (puHere(shieldPU[k])) { p.m4("uModel", mul(translate(shieldPU[k].p + V3(0, 0.22f * sinf(T * 3 + k), 0)), mul(rotY(T * 2.2f + k), scale(0.8f, 0.8f, 0.8f)))); shieldMesh.draw(); }
 }
 #ifdef FCF_XENOS_CULL
 struct VisibleCell { int id, lod; float dist2; };
@@ -1481,6 +1607,11 @@ static void drawHUD() {
         float Hb = Hd - (touchOn ? 190.0f : 0.0f);   // with on-screen buttons along the bottom, the speedometer and the map move up out of their way
         float kmh = fabsf(player.vf) * 3.6f; char t[32]; bool arena = showdownOn && (me.on || shdSpectate);   // in the showdown the car's dials give way to the fighter's
         if (!footView() && !(shdSpectate && showdownOn)) {   // (on foot the dials are no use: the fighter's own panels take their place)
+        if (player.shield > 0 || shieldPopT > 0) {   // shield: time left, above the rockets
+            float nx = Wd - 300, ny = Hb - 282, nw = 280, nh = 38; V3 sc(0.4f, 0.85f, 1); bool on = player.shield > 0;
+            ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, on ? sc : V3(1, 1, 1), on ? "SHIELD" : "SAVED!");
+            if (on && (player.shield > 3 || fmodf(T, 0.25f) < 0.15f)) ui.rect(nx + 98, ny + 13, 170 * player.shield / SHIELD_TIME, 12, sc, 1);
+        }
         {   // rockets: two slots; the reticle marks the car a rocket would go for
             float nx = Wd - 300, ny = Hb - 238, nw = 280, nh = 38; V3 rc(1, 0.42f, 0.14f);
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, ammo > 0 ? rc : V3(0.5f, 0.5f, 0.55f), "ROCKETS");
@@ -1763,11 +1894,11 @@ static void printJSON(FILE* o) {
     int branchBlocked = 0;   // samples of the alternate route with a building or wall within its width (should be none)
     for (const TS& b : W.bts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { branchBlocked++; break; } }
     int onBrNow = -1; float loopNow = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &onBrNow);
-    fprintf(o, "{\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
+    fprintf(o, "{\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
         "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
         "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
         "\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
-        W.bLen, W.bA, W.bB, branchBlocked, tm.aiBranch, onBrNow, loopNow, tm.maxWrongT, W.id, player.type, weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id], (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft,
+        W.bLen, W.bA, W.bB, branchBlocked, tm.aiBranch, nShieldPU ? shieldPU[0].p.x : 0.0f, nShieldPU ? shieldPU[0].p.z : 0.0f, player.shield, tm.shields, tm.shieldSaves, (int)(nShieldPU > 0 && puHere(shieldPU[0])) + (int)(nShieldPU > 1 && puHere(shieldPU[1])), tm.aiShields, tm.aiShieldSaves, tm.aiCrates, tm.aiRocketsFired, tm.aiRocketHits, tm.rocketsAtMe, tm.bumps, tm.maxShove, tm.maxWob, onBrNow, loopNow, tm.maxWrongT, W.id, player.type, weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id], (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft,
         gibCount, (int)splats.size(), (int)shdOffRoad, showdownOn || shdResult ? flatDist(avatarPos(), shdSite) : -1.0f, shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount, netSlot, (int)nc.hosts, netBotsMost, (int)shdSpectate, shdWatch, (int)shdPhase, shdAlive(), shdRing, me.place, shdWinner, (int)shdResult, dropsThere(), fStr.c_str(), me.gun, me.ammo[me.gun], me.hp, me.armour, me.stamina, (int)(me.rollT > 0), me.target, me.shots, me.hits, footPickups, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp, (int)me.on, me.pos.x, me.pos.y, me.pos.z, me.yaw, footYaw, me.run, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir, tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis,
         tm.maxBeta, tm.maxSlipF, tm.maxSlipR, tm.maxSpeed, tm.maxYawRate, player.nitro, tm.minNitro, tm.boostT, tm.boosts, ammo, tm.rocketsFired, tm.rocketHits, tm.pickups, tm.resets, (int)wrecks.size(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y, wrecks.empty() ? 0.0f : wrecks.back().pos.z, (int)debris.size(), W.RD(player.pos.x, player.pos.z), tm.maxDeck, tm.maxGap, introT, tm.gridDrift, std::max(countdown, 0.0f), tm.offroadT, (int)W.cross.size(), tm.dist, tm.heading, tm.simT,
         vidAA, vidAF, (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(), (int)hdrOK, deskW > 100000 ? 0 : deskW, deskH > 100000 ? 0 : deskH, (int)nc.connected, nc.id, (int)nc.phase, (int)nc.count, nc.maxCount, (int)nc.myPlace, (int)nc.placeFull, (int)netRace, remoteMoved, nc.error, (int)champOn, champRound, (int)champDone, champTotal(), champPts[0], shdSite.x, shdSite.z, (int)shdPath.size(), (int)grngSeeded);
@@ -1877,7 +2008,7 @@ int main(int argc, char** argv) {
         else if (a == "--touch") { touchOn = touchMouse = true; } else if (a == "--touchhold") { touchOn = true; touchHoldLabels.push_back(argv[++i]); }
         else if (a == "--tap") { touchOn = true; const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) taps.push_back({ (float)atof(q), std::string(c + 1) }); }
         else if (a == "--ldr") forceLDR = true; else if (a == "--xsdk-passes") xsdkPasses = std::max(0, std::min(3, atoi(argv[++i])));
-        else if (a == "--rockets") startAmmo = atoi(argv[++i]); else if (a == "--faceai") faceAi = true; else if (a == "--sdnow") sdNow = true; else if (a == "--laps") selLaps = std::max(1, std::min(9, atoi(argv[++i]))); else if (a == "--keys") fakeKeys = atoi(argv[++i]); else if (a == "--sdsite") sdSite = (float)atof(argv[++i]); else if (a == "--sdplace") sdPlace = atoi(argv[++i]); else if (a == "--stick") { testStick = touchOn = true; sscanf(argv[++i], "%f,%f", &stickX, &stickY); } else if (a == "--footai") footAuto = true; else if (a == "--gun") forceGun = ((atoi(argv[++i]) % NGUNS) + NGUNS) % NGUNS; else if (a == "--fire") fireAt.push_back((float)atof(argv[++i])); else if (a == "--reset") resetAt.push_back((float)atof(argv[++i]));
+        else if (a == "--rockets") startAmmo = atoi(argv[++i]); else if (a == "--shield") startShield = true; else if (a == "--botrockets") startBotAmmo = atoi(argv[++i]); else if (a == "--nobotguns") botGuns = false; else if (a == "--faceai") faceAi = true; else if (a == "--sdnow") sdNow = true; else if (a == "--laps") selLaps = std::max(1, std::min(9, atoi(argv[++i]))); else if (a == "--keys") fakeKeys = atoi(argv[++i]); else if (a == "--sdsite") sdSite = (float)atof(argv[++i]); else if (a == "--sdplace") sdPlace = atoi(argv[++i]); else if (a == "--stick") { testStick = touchOn = true; sscanf(argv[++i], "%f,%f", &stickX, &stickY); } else if (a == "--footai") footAuto = true; else if (a == "--gun") forceGun = ((atoi(argv[++i]) % NGUNS) + NGUNS) % NGUNS; else if (a == "--fire") fireAt.push_back((float)atof(argv[++i])); else if (a == "--reset") resetAt.push_back((float)atof(argv[++i]));
         else if (a == "--script") { const char* p = argv[++i]; while (*p) { ScriptKey k = {}; int hb = 0, nos = 0, used = 0, u2 = 0; if (sscanf(p, "%f:%f,%f,%f,%d%n", &k.t, &k.steer, &k.gas, &k.brake, &hb, &used) < 5) break; k.hb = hb;
             if (p[used] == ',' && sscanf(p + used + 1, "%d%n", &nos, &u2) == 1) { k.nitro = nos; used += 1 + u2; }
             script.push_back(k); p += used; if (*p == ';') p++; } }
@@ -2046,6 +2177,9 @@ int main(int argc, char** argv) {
     { MB m; V3 g(0.16f, 0.30f, 0.14f), y(0.95f, 0.72f, 0.05f); m.box(0, 0, 1, 1, 0, -1, 1, g, 0, g, 0); m.box(0, 0, 1.04f, 0.16f, 0, -0.16f, 0.16f, y, 0, y, 0); m.box(0, 0, 0.16f, 1.04f, 0, -0.16f, 0.16f, y, 0, y, 0); crateMesh.upload(m); }
     { MB m; V3 w(0.85f, 0.85f, 0.88f), r(0.85f, 0.10f, 0.06f); m.box(0, 0, 0.085f, 0.42f, 0, -0.085f, 0.085f, w, 0, w, 0); m.box(0, 0.50f, 0.055f, 0.09f, 0, -0.055f, 0.055f, r, 0, r, 0);
       m.box(0, -0.36f, 0.22f, 0.08f, 0, -0.012f, 0.012f, r, 0, r, 0); m.box(0, -0.36f, 0.012f, 0.08f, 0, -0.22f, 0.22f, r, 0, r, 0); rocketMesh.upload(m); }
+    { MB m; V3 b(0.10f, 0.45f, 1.0f), w(0.92f, 0.95f, 1.0f);   // shield pick-up: an upright blue badge, edged and crossed in white, narrowing to a point
+      for (int k = 0; k < 6; k++) { float y0 = -0.9f + k * 0.3f, hw = k < 3 ? 0.25f + 0.22f * k : 0.75f; m.box(0, 0, hw + 0.06f, 0.11f, 0, y0, y0 + 0.3f, w, 0, w, 0); m.box(0, 0, hw, 0.15f, 0, y0 + (k ? 0 : 0.06f), y0 + 0.3f - (k == 5 ? 0.06f : 0), b, 0, b, 0); }
+      m.box(0, 0, 0.07f, 0.17f, 0, -0.7f, 0.82f, w, 0, w, 0); m.box(0, 0, 0.55f, 0.17f, 0, 0.25f, 0.4f, w, 0, w, 0); shieldMesh.upload(m); }
     startGame();
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: startGame complete");

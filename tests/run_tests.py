@@ -137,6 +137,45 @@ def alternate_route():
 
 
 @test
+def shield_on_the_alternate_route():
+    d = sim("--track", 1, "--state", 3, "--mode", 1, seconds=0.5)
+    check(d["shieldT"] == 0 and d["shields"] == 0 and d["shieldsUp"] == 2, "two shields wait on the backstreet, none on the car", (d["shieldT"], d["shields"], d["shieldsUp"]))
+    x, z = d["shieldX"], d["shieldZ"]
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", x, z, 3.14, seconds=3)
+    check(d["onBranch"] >= 0, "the shield sits on the backstreet", (x, z, d["onBranch"]))
+    check(d["shields"] == 1 and 10 < d["shieldT"] < 15 and d["shieldsUp"] == 1, "driving through one puts a shield up, and it is gone for everyone else", (d["shields"], d["shieldT"], d["shieldsUp"]))
+    t, k = find_key("courtyard")
+    d = keyrun(t, k, "--gas", "--shield", seconds=10)
+    check(d["wrecks"] == 0 and d["shieldSaves"] == 1 and d["shieldT"] == 0, "a flat-out crash breaks the shield instead of the car", (d["wrecks"], d["shieldSaves"], d["shieldT"]))
+    d = sim("--seed", 5, "--track", 1, "--state", 3, "--auto", seconds=330)
+    between(d["aiShields"] + d["shields"], 2, 12, "over three laps the bots take shields (each shield at most once a lap, and free again once its holder has finished)")
+
+
+@test
+def bots_fire_rockets():
+    # us just ahead of the grid, every bot holding one rocket (positions vary: who fires at whom is up to the bots)
+    spots = ((-455, -245), (-440, -262), (-445, -255))
+    bare = [sim("--seed", 5, "--track", 0, "--state", 3, "--botrockets", 1, "--pos", x, z, 2.463, seconds=12) for x, z in spots]
+    check(sum(d["rocketsAtMe"] for d in bare) >= 1 and sum(d["wrecks"] for d in bare) >= 1, "a bot with a rocket fires at us when we are just ahead", [(d["rocketsAtMe"], d["wrecks"]) for d in bare])
+    shd = [sim("--seed", 5, "--track", 0, "--state", 3, "--botrockets", 1, "--pos", x, z, 2.463, "--shield", seconds=12) for x, z in spots]
+    check(sum(d["rocketsAtMe"] for d in shd) >= 1 and all(d["shieldSaves"] == min(d["rocketsAtMe"], 1) and d["wrecks"] <= d["rocketsAtMe"] - d["shieldSaves"] for d in shd), "a shield takes the first rocket (only the first)", [(d["rocketsAtMe"], d["shieldSaves"], d["wrecks"]) for d in shd])
+    for t in range(NTRACKS):
+        d = sim("--seed", 5, "--track", t, "--state", 3, "--auto", seconds=330)
+        between(d["aiRocketsFired"], 3, 20, "track %d: bots pick up crates now and then and fire (not a war)" % t)
+        check(d["finished"] == 1, "track %d: the race still finishes" % t, d["finished"])
+
+
+@test
+def cars_bump_each_other():
+    # just after the start, run into the back of the bot ahead, then clip one from the side
+    d = sim("--seed", 5, "--track", 0, "--state", 3, "--nobotguns", "--pos", -501.1, -182.8, 2.698, "--speed", 25, seconds=2)
+    check(d["bumps"] >= 1 and d["wrecks"] == 0 and d["vf"] < 15, "a rear-end knocks our speed off, and is no wreck", (d["bumps"], d["wrecks"], d["vf"]))
+    between(d["maxWob"], 0.3, 6, "the bot we hit wobbles")
+    d = sim("--seed", 5, "--track", 0, "--state", 3, "--nobotguns", "--pos", -500.0, -186.0, 2.40, "--speed", 25, seconds=2)
+    check(d["bumps"] >= 1 and d["maxShove"] > 1 and d["wrecks"] == 0, "a hit from the side shoves the bot across the road", (d["bumps"], d["maxShove"], d["wrecks"]))
+
+
+@test
 def simulation_is_deterministic():
     a = sim("--track", 0, "--state", 3, "--auto", seconds=40)
     b = sim("--track", 0, "--state", 3, "--auto", seconds=40)
@@ -145,7 +184,7 @@ def simulation_is_deterministic():
 
 # ----------------------------------------------------------------------------- full races
 def _race(track, car):
-    d = sim("--track", track, "--car", car, "--state", 3, "--auto", seconds=330)
+    d = sim("--track", track, "--car", car, "--state", 3, "--auto", "--nobotguns", seconds=330)   # driving only: bots hold fire
     name = "track %d %s" % (track, CARS[car])
     check(d["finished"] == 1, "%s: autopilot finishes 3 laps" % name, (d["lap"], d["raceT"], d["timeUp"]))
     check(d["sinks"] == 0, "%s: never drives into the water" % name, d["sinks"])
@@ -647,7 +686,7 @@ def bridges_on_the_figure_eight_tracks():
         for b in d["bridges"]:
             between(b["deck"] - b["under"], 6.5, 8.5, "track %d: the deck clears the road underneath (m)" % t)
     for t in (0, 3):
-        d = sim("--track", t, "--state", 3, "--auto", seconds=110)
+        d = sim("--track", t, "--state", 3, "--auto", "--nobotguns", seconds=110)
         check(d["lap"] >= 2, "track %d: the autopilot laps it, over and under the bridge" % t, (d["lap"], d["raceT"]))
         between(d["maxDeck"], 6.5, 9.5, "track %d: the car was up on the deck (m above the ground)" % t)
         check(d["wrecks"] == 0 and d["sinks"] == 0, "track %d: nothing hit under or on the bridge" % t, (d["wrecks"], d["sinks"]))
@@ -691,8 +730,8 @@ def wreck_leaves_shell_and_parts_behind():
     key = dump(t)["keys"][k]
     check(math.hypot(d["wreckX"] - key["x"], d["wreckZ"] - key["z"]) < 40, "the shell is where the car died, not where it respawned", (d["wreckX"], d["wreckZ"]))
     check(d["dead"] == 0, "the car itself is back", d["dead"])
-    soon = sim("--track", 1, "--state", 3, "--auto", "--rockets", 1, "--fire", 3.0, seconds=11)
-    later = sim("--track", 1, "--state", 3, "--auto", "--rockets", 1, "--fire", 3.0, seconds=16)
+    soon = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", "--rockets", 1, "--fire", 3.0, seconds=11)
+    later = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", "--rockets", 1, "--fire", 3.0, seconds=16)
     check(soon["rocketHits"] == 1 and soon["wrecksLeft"] == 1, "a wreck is still there seven seconds after the hit", (soon["rocketHits"], soon["wrecksLeft"]))
     check(later["rocketHits"] == 1 and later["wrecksLeft"] == 0 and later["debris"] == 0, "after ten seconds the shell and its parts have faded away", (later["wrecksLeft"], later["debris"]))
 
@@ -1056,7 +1095,7 @@ def weather_changes_grip_and_braking():
 @test
 def weather_races_finish_on_every_track():
     for w, track in ((1, 1), (2, 3), (3, 0)):
-        d = sim("--track", track, "--car", 1, "--weather", w, "--state", 3, "--auto", seconds=330)
+        d = sim("--track", track, "--car", 1, "--weather", w, "--state", 3, "--auto", "--nobotguns", seconds=330)
         name = "track %d in %s" % (track, ("clear", "rain", "fog", "storm")[w])
         check(d["finished"] == 1, "%s: the race finishes" % name, (d["lap"], d["timeUp"]))
         check(d["sinks"] == 0 and d["wrecks"] <= 1, "%s: the bot keeps it on the road" % name, (d["sinks"], d["wrecks"]))
