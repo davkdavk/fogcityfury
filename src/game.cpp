@@ -1266,6 +1266,25 @@ static void drawWorldCells(bool terrain, bool props, V3 cam, int* terrainSubmitt
         }
     }
 }
+#ifdef FCF_CHUNKS
+// phones: the same visible cells, but runs of neighbouring cells (neighbours in the index buffer too) go as one draw.
+// Budget tablets' drivers pay heavily per draw; this keeps the count near the old whole-world draw's
+static void drawWorldMerged(bool terrain, bool props, V3 cam) {
+    static std::vector<VisibleCell> v; v = visibleWorldCells;
+    std::sort(v.begin(), v.end(), [](const VisibleCell& a, const VisibleCell& b) { return a.lod != b.lod ? a.lod < b.lod : a.id < b.id; });
+    auto run = [](gfx::Buf buf, int& first, int& count, const MeshRange& r) {   // extend the open run, or draw it and start another
+        if (!r.count) return; if (count && first + count == r.first) { count += r.count; return; }
+        if (count) gfx::drawMeshRange(buf, first, count); first = r.first; count = r.count;
+    };
+    if (terrain) { int f = 0, n = 0; for (auto& c : v) run(W.terrain.buf, f, n, W.worldCells[c.id].terrain[c.lod]); if (n) gfx::drawMeshRange(W.terrain.buf, f, n); }
+    if (props) {
+        std::sort(v.begin(), v.end(), [](const VisibleCell& a, const VisibleCell& b) { return a.id < b.id; });
+        int f = 0, n = 0; for (auto& c : v) run(W.props.buf, f, n, W.worldCells[c.id].props); if (n) gfx::drawMeshRange(W.props.buf, f, n);
+        f = n = 0; for (auto& c : v) { const WorldCell& w = W.worldCells[c.id]; if (cellDistance2(w.smallBounds, cam) <= 300.0f * 300.0f) run(W.smallProps.buf, f, n, w.small); }
+        if (n) gfx::drawMeshRange(W.smallProps.buf, f, n);
+    }
+}
+#endif
 #endif
 static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     M4 VP = mul(P, V); float hdr = 1;
@@ -1329,7 +1348,11 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         }
 #else
         setCommon(pWorld, VP, cam, hdr);
+#ifdef FCF_CHUNKS
+        drawWorldMerged((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam); (void)terrainIndices; (void)propIndices;
+#else
         drawWorldCells((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam, &terrainIndices, &propIndices);
+#endif
 #endif
 #ifdef FCF_GFX_XSDK   // the cull log (once a second): the 360 only
         static float nextCullLog = 0;
@@ -1795,11 +1818,8 @@ static void render(int fbw, int fbh) {
         gfx::offset(2.0f, 4.0f);
         pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident());
 #ifdef FCF_XENOS_CULL
-        // chunked: the terrain buffer holds every level of detail, so draw the finest of the cells under the shadow map only
-        for (int i = 0; i < NCELL; i++) {
-            const WorldCell& c = W.worldCells[i]; const CellBounds& b = c.bounds; if (!b.valid || b.x1 < focus.x - R - 60 || b.x0 > focus.x + R + 60 || b.z1 < focus.z - R - 60 || b.z0 > focus.z + R + 60) continue;
-            gfx::drawMeshRange(W.terrain.buf, c.terrain[0].first, c.terrain[0].count); gfx::drawMeshRange(W.props.buf, c.props.first, c.props.count); gfx::drawMeshRange(W.smallProps.buf, c.small.first, c.small.count);
-        }
+        // chunked: the terrain buffer holds every level of detail; its finest level is one block (World::terrainLod0)
+        gfx::drawMeshRange(W.terrain.buf, W.terrainLod0.first, W.terrainLod0.count); W.props.draw(); W.smallProps.draw();
 #else
         W.terrain.draw(); W.props.draw();
 #endif

@@ -108,7 +108,7 @@ struct World {
     std::vector<int> grid[GCN * GCN];
     Mesh terrain, props, water; gfx::Tex htex = 0; MB mb, smallMb; Rng rng; bool smallMode = false;
 #ifdef FCF_XENOS_CULL
-    Mesh smallProps; WorldCell worldCells[NCELL];
+    Mesh smallProps; WorldCell worldCells[NCELL]; MeshRange terrainLod0;   // terrainLod0: all the finest ground, one block
 #endif
     bool flat = false;   // test mode: an endless level tarmac plane (no walls, no water)
 
@@ -181,33 +181,39 @@ struct World {
             }
         }
     }
+    // index layout: every cell's finest ground first, then every cell's next level, and so on, so the whole finest
+    // ground is one block (terrainLod0) and neighbouring cells of one level are neighbours in the buffer too (a run of
+    // them is one draw)
     void buildTerrainCells(MB& t) {
-        for (int cz = 0; cz < WCELLS; cz++) for (int cx = 0; cx < WCELLS; cx++) {
-            int ci = cz * WCELLS + cx, x0 = cx * 32, z0 = cz * 32; WorldCell& c = worldCells[ci];
+        std::vector<unsigned> skirts((size_t)NCELL * 4 * 33);
+        for (int ci = 0; ci < NCELL; ci++) {
+            int cx = ci % WCELLS, cz = ci / WCELLS, x0 = cx * 32, z0 = cz * 32; WorldCell& c = worldCells[ci];
             for (int z = 0; z <= 32; z++) for (int x = 0; x <= 32; x++) c.bounds.include(t.v[(z0 + z) * GN + x0 + x]);
-            unsigned skirt[4][33];
-            auto bottom = [&](int e, int k, unsigned top) { Vtx v = t.v[top]; v.py -= 24.0f; c.bounds.include(v); t.v.push_back(v); skirt[e][k] = (unsigned)t.v.size() - 1; };
+            unsigned* skirt = &skirts[(size_t)ci * 4 * 33];
+            auto bottom = [&](int e, int k, unsigned top) { Vtx v = t.v[top]; v.py -= 24.0f; c.bounds.include(v); t.v.push_back(v); skirt[e * 33 + k] = (unsigned)t.v.size() - 1; };
             for (int k = 0; k <= 32; k++) {
                 bottom(0, k, z0 * GN + x0 + k); bottom(1, k, (z0 + 32) * GN + x0 + k);
                 bottom(2, k, (z0 + k) * GN + x0); bottom(3, k, (z0 + k) * GN + x0 + 32);
             }
-            for (int lod = 0; lod < 4; lod++) {
+        }
+        for (int lod = 0; lod < 4; lod++) {
+            if (lod == 0) terrainLod0.first = (int)t.idx.size();
+            for (int ci = 0; ci < NCELL; ci++) {
+                int cx = ci % WCELLS, cz = ci / WCELLS, x0 = cx * 32, z0 = cz * 32; WorldCell& c = worldCells[ci]; const unsigned* skirt = &skirts[(size_t)ci * 4 * 33];
                 int step = 1 << lod; MeshRange& r = c.terrain[lod]; r.first = (int)t.idx.size();
                 for (int z = 0; z < 32; z += step) for (int x = 0; x < 32; x += step) {
                     unsigned a = (z0 + z) * GN + x0 + x, b = a + step * GN, d = a + step, e = b + step;
                     t.idx.insert(t.idx.end(), { a, b, d, d, b, e });
                 }
-                auto edge = [&](int e) {
-                    for (int k = 0; k < 32; k += step) {
-                        unsigned a, b;
-                        if (e < 2) { int z = z0 + (e ? 32 : 0); a = z * GN + x0 + k; b = a + step; }
-                        else { int x = x0 + (e == 3 ? 32 : 0); a = (z0 + k) * GN + x; b = a + step * GN; }
-                        unsigned d = skirt[e][k], f = skirt[e][k + step]; t.idx.insert(t.idx.end(), { a, d, b, b, d, f });
-                    }
-                };
-                for (int e = 0; e < 4; e++) edge(e);
+                for (int e = 0; e < 4; e++) for (int k = 0; k < 32; k += step) {
+                    unsigned a, b;
+                    if (e < 2) { int z = z0 + (e ? 32 : 0); a = z * GN + x0 + k; b = a + step; }
+                    else { int x = x0 + (e == 3 ? 32 : 0); a = (z0 + k) * GN + x; b = a + step * GN; }
+                    unsigned d = skirt[e * 33 + k], f = skirt[e * 33 + k + step]; t.idx.insert(t.idx.end(), { a, d, b, b, d, f });
+                }
                 r.count = (int)t.idx.size() - r.first;
             }
+            if (lod == 0) terrainLod0.count = (int)t.idx.size() - terrainLod0.first;
         }
     }
 #endif
