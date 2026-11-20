@@ -180,12 +180,14 @@ def the_warden_walks_its_beat():
     for t in range(NTRACKS):
         a = sim("--track", t, "--state", 3, seconds=4)
         b = sim("--track", t, "--state", 3, seconds=20)
+        check(b["mechs"] == 2, "track %d: two Wardens" % t, b["mechs"])
         moved = math.hypot(b["mech"][0] - a["mech"][0], b["mech"][2] - a["mech"][2])
-        between(moved, 40, 75, "track %d: the Warden walks (m in 16 s)" % t)
-        check(30 < a["mechRoad"] < 50 and 30 < b["mechRoad"] < 50, "track %d: it keeps beside the road, off it" % t, (a["mechRoad"], b["mechRoad"]))
+        between(moved, 30, 75, "track %d: the first Warden walks (m in 16 s)" % t)
+        check(min(b["routeClear"]) >= 7, "track %d: both routes go round the buildings (m to the nearest)" % t, b["routeClear"])
+        check(b["mechFootErr"] < 0.05, "track %d: every foot on its spot on the ground (worst miss, m)" % t, b["mechFootErr"])
         check(b["mech"][1] >= -9.01 and b["stomps"] >= 6, "track %d: on the ground (or wading), its feet coming down" % t, (b["mech"][1], b["stomps"]))
     d = sim("--track", 1, "--state", 3, "--nomech", seconds=20)
-    check(d["stomps"] == 0, "--nomech: no Warden", d["stomps"])
+    check(d["stomps"] == 0 and d["mechs"] == 0, "--nomech: no Wardens", (d["stomps"], d["mechs"]))
 
 
 @test

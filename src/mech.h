@@ -161,7 +161,6 @@ static void buildTorso(MB& m) {
         rbox(m, c + V3(s * 2.25f, -1.6f, 0), V3(0.35f, 1.7f, 3.3f), 0, 0, ARM, 0, s * 0.12f);
         hazard(m, c + V3(s * 2.62f, -3.05f, 0), Z, Y, V3((float)s, 0, 0), 3.1f, 0.25f, 9, YEL, BLK);
         rivets(m, c + V3(-2.0f * s, 0.55f, -3.0f), c + V3(-2.0f * s, 0.55f, 3.0f), 8, 0.1f, STEEL);
-        if (s < 0) stencil(m, "07", c + V3(s * 2.62f, -0.4f, -1.4f), Z, Y, V3(-1, 0, 0), 0.24f, V3(0.9f, 0.88f, 0.82f));   // reads left to right from outside
         abox(m, c + V3(0, -0.2f, 3.45f), V3(1.8f, 0.3f, 0.12f), RUST, 0);
     }
     // wear: a few rust streaks
@@ -256,30 +255,45 @@ static void buildBarrels(MB& m) {   // six barrels round the y axis, from 0 down
     for (int r = 0; r < 3; r++) cyl(m, V3(0, -1.2f - r * 2.0f, 0), V3(0, -1.5f - r * 2.0f, 0), 1.08f, 1.08f, 16, STEEL, 0);
     cyl(m, V3(0, -5.7f, 0), V3(0, -6.0f, 0), 1.15f, 1.15f, 16, FRAME, 0, false);
 }
+static void buildNumber(MB& m, const char* num) {   // the unit number stencilled on the left pauldron (in torso space)
+    V3 c(-(SHOULDER.x + 0.2f), SHOULDER.y + 2.0f, SHOULDER.z);
+    stencil(m, num, c + V3(-2.62f, -0.4f, -1.4f), Z, Y, V3(-1, 0, 0), 0.24f, V3(0.9f, 0.88f, 0.82f));   // reads left to right from outside
+}
 static void buildBeacons(MB& m) {   // the mast-top lights (their own mesh so they can blink)
     cyl(m, V3(3.4f, 17.5f, -3.4f), V3(3.4f, 17.85f, -3.4f), 0.2f, 0.2f, 8, RED, 4);
     cyl(m, V3(-3.0f, 14.0f, -3.7f), V3(-3.0f, 14.3f, -3.7f), 0.17f, 0.17f, 8, RED, 4);
 }
 
 enum { P_PELVIS, P_TORSO, P_HEAD, P_THIGH, P_SHIN, P_META, P_FOOT, P_UPPER, P_CLAW, P_FINGER, P_CANNON, P_BARRELS, P_BEACONS, NPART };
-static Mesh part[NPART];
+static const int NUNIT = 2;
+static Mesh part[NPART], number[NUNIT];
+static const char* NUMBER[NUNIT] = { "07", "12" };
 static int tris = 0;
 static void build() {
     void (*fn[NPART])(MB&) = { buildPelvis, buildTorso, buildHead, buildThigh, buildShin, buildMeta, buildFoot, buildUpperArm, buildClawArm, buildFinger, buildCannon, buildBarrels, buildBeacons };
     tris = 0; for (int i = 0; i < NPART; i++) { MB m; fn[i](m); part[i].upload(m, "mech"); tris += (int)m.idx.size() / 3; }
+    for (int u = 0; u < NUNIT; u++) { MB m; buildNumber(m, NUMBER[u]); number[u].upload(m, "mechnum"); }
 }
 
-// ---- where it is and how it walks ----
-// It patrols beside the road, against the direction of the race (so you meet it head on), 40 m out on the side with
-// more dry land, wading where that is sea. 28 s walking, 12 s standing to look round; while it stands it turns its
-// head and body towards you. Everything is worked out from the clock, the same on every machine (no random numbers).
-static bool on = true, fixed = false;   // fixed (--mechat): stands where put, idling
-static V3 at; static float yaw = 0;
-static float s0 = 0, side = -1;         // where on the loop it starts, which side of the road
+// ---- where they are and how they walk ----
+// Two Wardens per track, half a lap apart, each patrolling round the loop against the race (so you meet them head on).
+// Each walks a route planned round the buildings (below): it never passes through one. 28 s walking, 12 s standing
+// to look round, the two out of step; while one stands it turns its head and body towards you. Everything is worked
+// out from the clock, the same on every machine (no random numbers).
+static bool on = true, fixed = false;   // fixed (--mechat): unit 0 stands where put, idling; unit 1 is not shown
 static const float HIP = -0.55f, KNEE = 1.30f, ANKLE = -1.05f;   // the stance
 static const float SPEED = 4.2f, STRIDE = 17.0f, CYCLE = 40.0f, WALK = 28.0f, SIDE_OFFSET = 40.0f;
-static float gait = 0, phase = 0, lookYaw = 0, lookPitch = 0;   // 0 standing .. 1 walking; step phase; where it looks (radians, relative)
-static const V3 PAINT(0.42f, 0.07f, 0.04f);   // the accent plates: oxide red
+struct Unit {
+    V3 at; float yaw = 0;
+    float s0 = 0, tOff = 0;                 // where on the loop it starts; how far its walk cycle is shifted (s)
+    float gait = 0, phase = 0, lookYaw = 0, lookPitch = 0;   // 0 standing .. 1 walking; step phase; where it looks (radians, relative)
+    V3 paint;                               // its accent plates
+    int route = 0;                          // which planned route (0: prefers the left of the road, 1: the right)
+    // worked out in update(), used by draw(): the pelvis height, and each foot's ankle point (world), toe tilt and lift
+    float pelY = 0; V3 ankle[2]; float slope[2] = {}, lift[2] = {}, meta[2] = {};
+};
+static Unit unit[NUNIT];
+static int count() { return !on ? 0 : fixed ? 1 : NUNIT; }
 // metres walked by time t: 2 s to get going, steady, 2 s to stop, then standing till the cycle ends
 static float walked(float t) {
     float n = floorf(t / CYCLE), c = t - n * CYCLE, w;
@@ -287,80 +301,199 @@ static float walked(float t) {
     return SPEED * (n * (WALK - 2) + w);
 }
 static float gaitAt(float t) { float c = fmodf(t, CYCLE); return c < WALK ? std::min(1.0f, std::min(c, WALK - c) / 2) : 0; }
-static V3 pathAt(float s) {   // a smoothed point on its patrol line (an average along the road, so tight bends don't kink it)
-    V3 acc(0, 0, 0); for (int k = -5; k <= 5; k++) { V3 q; float y; W.at(s + k * 5.0f, side * SIDE_OFFSET, q, y); acc = acc + q; } return acc * (1.0f / 11);
+
+// ---- the routes round the buildings ----
+// Planned once per track: every 6 m along the loop, how far out from the road it walks. A shortest-path search over
+// the choices -92..92 m weighs: never within 9 m of a building (it would walk through it), keeping off the road (it
+// may step across), deep water, staying near 40 m out on its preferred side, and turning gently (at most 4 m sideways
+// per 6 m, up to 12 m to slip down an alley). Two routes, one preferring each side, so the two Wardens are not on the same line.
+static const float DS = 6, R_CLEAR = 9, R_WANT = 15; static const int NC = 47;   // candidate offsets -92, -88 .. 92
+static std::vector<float> plan[2]; static int planFor = -1, planN = 0;
+static float candLat(int j) { return -92.0f + 4.0f * j; }
+static float boxDist(const Box& b, float x, float z) {
+    float dx = x - b.cx, dz = z - b.cz, lx = dx * b.ca - dz * b.sa, lz = dx * b.sa + dz * b.ca;
+    float ex = std::max(0.0f, fabsf(lx) - b.hx), ez = std::max(0.0f, fabsf(lz) - b.hz); return sqrtf(ex * ex + ez * ez);
 }
-static void setup() {   // pick the side with more dry land along the first few hundred metres it walks
-    s0 = W.n * 0.085f; int dry[2] = {};
-    for (int k = 0; k < 40; k++) for (int e = 0; e < 2; e++) { V3 q; float y; W.at(s0 - k * 15.0f, (e ? 1 : -1) * SIDE_OFFSET, q, y); if (W.H(q.x, q.z) > 0.5f) dry[e]++; }
-    side = dry[1] > dry[0] ? 1.0f : -1.0f;
+// the tall boxes (it steps over walls and kerbs), bucketed on a 32 m grid
+static const int BG = 48; static std::vector<int> bucket[BG * BG];
+static int bucketOf(float v) { return (int)clampf(floorf((v + HALF) / 32.0f), 0, BG - 1); }
+static void fillBuckets() {
+    for (auto& b : bucket) b.clear();
+    for (int i = 0; i < (int)W.boxes.size(); i++) {
+        const Box& b = W.boxes[i]; if (b.top - std::max(b.y0, W.H(b.cx, b.cz)) < 4) continue;
+        float r = sqrtf(b.hx * b.hx + b.hz * b.hz) + R_WANT + 1;
+        for (int z = bucketOf(b.cz - r); z <= bucketOf(b.cz + r); z++) for (int x = bucketOf(b.cx - r); x <= bucketOf(b.cx + r); x++) bucket[z * BG + x].push_back(i);
+    }
+}
+static float clearance(float x, float z) {   // to the nearest tall box (capped at R_WANT + 1)
+    float d = R_WANT + 1; for (int i : bucket[bucketOf(z) * BG + bucketOf(x)]) d = std::min(d, boxDist(W.boxes[i], x, z)); return d;
+}
+static float stepCost(float x, float z, float lat, float prefer) {
+    float c = (lat - prefer) * (lat - prefer) * 0.05f;
+    float cl = clearance(x, z); if (cl < R_CLEAR) c += 1e5f; else if (cl < R_WANT) c += (R_WANT - cl) * (R_WANT - cl) * 30;   // its shoulders are 11 m out: room to spare where there is room
+    if (W.RD(x, z) < ROADW + 6) c += 400;
+    float h = W.H(x, z); if (h < -9) c += 3000; else if (h < 0.5f) c += 20;
+    return c;
+}
+static void planRoute(int r, float prefer) {
+    std::vector<float>& out = plan[r]; out.assign(planN, prefer);
+    std::vector<float> cost((size_t)planN * NC); std::vector<signed char> from((size_t)planN * NC, 0);
+    for (int i = 0; i < planN; i++) for (int j = 0; j < NC; j++) { V3 q; float y; W.at(i * DS, candLat(j), q, y); cost[(size_t)i * NC + j] = stepCost(q.x, q.z, candLat(j), prefer); }
+    // where the loop closes: somewhere open on its preferred line (not just the start line, which can be in the middle
+    // of town), so the route is never forced through a block to get back to it
+    int jp = (int)roundf((prefer + 92.0f) / 4.0f), i0 = 0; float bestStart = 1e30f;
+    for (int i = 0; i < planN; i++) { float c = 0; for (int k = -8; k <= 8; k++) c += cost[(size_t)((i + k + planN) % planN) * NC + jp]; if (c < bestStart) { bestStart = c; i0 = i; } }
+    auto C = [&](int i, int j) { return cost[(size_t)((i0 + i) % planN) * NC + j]; };
+    int j0 = jp;
+    std::vector<float> acc(NC, 1e30f), nxt(NC); acc[j0] = C(0, j0);
+    for (int i = 1; i < planN; i++) {
+        for (int j = 0; j < NC; j++) { float best = 1e30f; int bk = 0;
+            for (int d = -3; d <= 3; d++) { int k = j + d; if (k < 0 || k >= NC) continue; float v = acc[k] + d * d * 2.0f + (abs(d) > 1 ? 30.0f * d * d : 0); if (v < best) { best = v; bk = d; } }   // up to 12 m across per 6 m: sharp turns only to slip down an alley
+            nxt[j] = best + C(i, j); from[(size_t)((i0 + i) % planN) * NC + j] = (signed char)bk; }
+        acc.swap(nxt);
+    }
+    int j = j0; float best = 1e30f; for (int k = std::max(0, j0 - 3); k <= std::min(NC - 1, j0 + 3); k++) if (acc[k] < best) { best = acc[k]; j = k; }   // and back to it
+    for (int i = planN - 1; i >= 0; i--) { int ii = (i0 + i) % planN; out[ii] = candLat(j); j += from[(size_t)ii * NC + j]; }   // (from: which neighbour it came from)
+}
+static float latAt(int r, float s) {
+    float u = fmodf(s, (float)W.n); if (u < 0) u += W.n; u /= DS; int i = (int)u; float f = u - i;
+    return plan[r][i % planN] * (1 - f) + plan[r][(i + 1) % planN] * f;
+}
+static V3 pathAt(int r, float s) {   // a point on its route, averaged a little along the road so bends don't kink it
+    V3 acc(0, 0, 0); for (int k = -2; k <= 2; k++) { V3 q; float y; float u = s + k * 2.0f; W.at(u, latAt(r, u), q, y); acc = acc + q; } return acc * (1.0f / 5);
+}
+// walking distance along a route (its own length, turns and alleys included) against the loop position s: a table
+// every 2 m of s, so a Warden keeps its pace however the route winds
+static std::vector<float> arcTab[2]; static float arcLen[2] = {};
+static void buildArc(int r) {
+    int n = (int)ceilf(W.n / 2.0f); arcTab[r].assign(n + 1, 0); V3 last = pathAt(r, 0);
+    for (int k = 1; k <= n; k++) { V3 p = pathAt(r, k * 2.0f); arcTab[r][k] = arcTab[r][k - 1] + sqrtf((p.x - last.x) * (p.x - last.x) + (p.z - last.z) * (p.z - last.z)); last = p; }
+    arcLen[r] = arcTab[r][n];
+}
+static float sOfArc(int r, float A) {   // the loop position at walking distance A (wrapping)
+    const std::vector<float>& t = arcTab[r]; float L = arcLen[r]; if (L <= 0) return A;
+    float laps = floorf(A / L), a = A - laps * L; int lo = 0, hi = (int)t.size() - 1;
+    while (hi - lo > 1) { int mid = (lo + hi) / 2; if (t[mid] <= a) lo = mid; else hi = mid; }
+    float f = t[hi] > t[lo] ? (a - t[lo]) / (t[hi] - t[lo]) : 0; return laps * W.n + (lo + f) * 2.0f * (W.n / (2.0f * (t.size() - 1)));
+}
+static float arcOfS(int r, float s) { const std::vector<float>& t = arcTab[r]; float u = s / 2.0f; int i = clampf((float)(int)u, 0, (float)t.size() - 2); return t[i] + (t[i + 1] - t[i]) * (u - i); }
+static void setup() {
+    if (planFor != W.id || !planN) { fillBuckets(); planN = (int)ceilf(W.n / DS); planRoute(0, -SIDE_OFFSET); planRoute(1, SIDE_OFFSET); buildArc(0); buildArc(1); planFor = W.id; }
+    static const V3 PAINTS[NUNIT] = { V3(0.42f, 0.07f, 0.04f), V3(0.05f, 0.20f, 0.30f) };   // oxide red; deep teal
+    for (int u = 0; u < NUNIT; u++) { Unit& m = unit[u]; m.s0 = arcOfS(u, W.n * (0.085f + 0.5f * u)); /* (s0: a walking distance along its route) */ m.tOff = u * 17.0f; m.paint = PAINTS[u]; m.route = u; m.lookYaw = m.lookPitch = 0; }
 }
 static float groundAt(float x, float z) { return std::max(W.H(x, z), -9.0f); }   // in the sea it wades on the shelf, the water to its thighs
-// footfalls: returns 0, or the side (-1, 1) of a foot that has just come down
-static int update(float t, V3 target) {
-    if (!on) return 0;
-    float g0 = gait, p0 = phase;
-    if (fixed) { gait = 0; } else {
-        float s = s0 - walked(t); V3 a = pathAt(s), b = pathAt(s - 3);
-        at = V3(a.x, groundAt(a.x, a.z), a.z); yaw = atan2f(b.x - a.x, b.z - a.z);
-        gait = gaitAt(t); phase = walked(t) / STRIDE * 6.2831853f;
-    }
-    // look at the target when it is near: the head always, the body a little while standing
-    V3 d = target - (at + V3(0, 26, 0)); float want = 0, wantP = 0, dist = sqrtf(d.x * d.x + d.z * d.z);
-    if (dist < 220) { want = wrapPi(atan2f(d.x, d.z) - yaw); want = clampf(want, -1.4f, 1.4f); wantP = clampf(atan2f(-d.y, dist), -0.2f, 0.5f); }
-    lookYaw += (want - lookYaw) * 0.04f; lookPitch += (wantP - lookPitch) * 0.04f;
-    if (fixed || gait < 0.3f) return 0;
-    for (int e = 0; e < 2; e++) {   // a foot lands when its phase passes pi/2 (see legs below)
-        float off = e ? 3.14159265f : 0; int k0 = (int)floorf((p0 + off - 1.5708f) / 6.2831853f), k1 = (int)floorf((phase + off - 1.5708f) / 6.2831853f);
-        if (k1 != k0 && g0 > 0.3f) return e ? 1 : -1;
-    }
-    return 0;
-}
-static float legExtent(float h, float k, float a) { return L_THIGH * cosf(h) + L_SHIN * cosf(h + k) + L_META * cosf(h + k + a) + FOOT_H; }
-static void legAngles(int s, float t, float& h, float& k, float& a) {   // s: -1 left, 1 right
-    float crouch = 0.04f * sinf(t * 0.8f) * (1 - gait);
-    float p = phase + (s > 0 ? 3.14159265f : 0), sw = sinf(p), lift = std::max(0.0f, cosf(p)); lift = lift * lift;
-    h = HIP - crouch - gait * (0.30f * sw + 0.10f * lift);   // swings forward while lifted
-    k = KNEE + crouch * 2 + gait * 0.55f * lift;            // the knee folds to lift the foot
-    a = ANKLE - crouch - gait * 0.25f * lift;
-}
-static M4 torsoOf(float t, M4& pel) {
-    float hL, kL, aL, hR, kR, aR; legAngles(-1, t, hL, kL, aL); legAngles(1, t, hR, kR, aR);
-    float breathe = sinf(t * 0.8f) * 0.12f * (1 - gait), sway = sinf(phase) * 0.045f * gait;
-    float y = std::max(legExtent(hL, kL, aL), legExtent(hR, kR, aR));   // the planted leg is the longer one
-    pel = mul(mul(translate(at), rotY(yaw)), mul(translate(V3(0, y - 0.15f + breathe * 0.5f, 0)), rotZ(sway)));
-    float twist = (1 - gait) * (sinf(t * 0.23f) * 0.12f + lookYaw * 0.45f) - sway * 2.5f;
-    return mul(pel, mul(translate(V3(0, 1.9f, 0)), mul(rotY(twist), rotX(0.14f + gait * 0.06f + breathe * 0.1f))));
-}
-static void draw(Prog& p, bool lit, float t) {
-    if (!on) return;
-    auto put = [&](const M4& M, int k, float glow = 0) { p.m4("uModel", M); if (lit) p.f1("uBrake", glow); part[k].draw(); };
-    if (lit) { p.v3("uPaint", PAINT); p.f1("uChrome", 0); p.f1("uBurnt", 0); p.f1("uGone", 0); }
-    M4 pel; M4 tor = torsoOf(t, pel);
-    put(pel, P_PELVIS);
-    for (int s = -1; s <= 1; s += 2) {   // legs: thigh forward, shin back, foot flat on the ground
-        float h, k, a; legAngles(s, t, h, k, a);
-        M4 hip = mul(pel, mul(translate(V3(s * (HIP_X + 1.35f) * 0.82f, 0, 0)), rotX(h))); put(hip, P_THIGH);
-        M4 kn = mul(hip, mul(translate(V3(0, -L_THIGH, 0)), rotX(k))); put(kn, P_SHIN);
-        M4 an = mul(kn, mul(translate(V3(0, -L_SHIN, 0)), rotX(a))); put(an, P_META);
-        M4 ft = mul(an, mul(translate(V3(0, -L_META, 0)), rotX(-(h + k + a)))); put(ft, P_FOOT);
-    }
-    put(tor, P_TORSO);
-    put(tor, P_BEACONS, fmodf(t, 1.4f) < 0.18f ? 2.0f : 0.0f);
-    float scan = (1 - gait) * sinf(t * 0.37f) * 0.35f * (fabsf(lookYaw) < 0.05f ? 1.0f : 0.3f) + lookYaw * 0.55f + sinf(t * 1.7f) * 0.03f;
-    put(mul(tor, mul(translate(NECK), mul(rotY(scan), rotX(0.18f + lookPitch + sinf(t * 0.5f) * 0.05f)))), P_HEAD, 0.75f + 0.25f * sinf(t * 9.0f) * sinf(t * 2.3f));
-    float armSw = sinf(phase) * 0.22f * gait;   // the arms swing against the legs
-    M4 shL = mul(tor, mul(translate(V3(-SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(-0.12f), rotX(-0.35f + armSw + sinf(t * 0.4f) * 0.06f))));
-    put(shL, P_UPPER);
-    M4 elL = mul(shL, mul(translate(V3(0, -L_UPPER, 0)), rotX(-0.95f))); put(elL, P_CLAW);
-    float open = 0.35f + 0.3f * (0.5f + 0.5f * sinf(t * 0.9f));
-    for (int f = 0; f < 3; f++) put(mul(elL, mul(translate(V3(0, -L_FORE - 0.4f, 0)), mul(rotY(f * 2.0944f + 0.5f), mul(translate(V3(0, 0, 0.85f)), rotX(open))))), P_FINGER);
-    M4 shR = mul(tor, mul(translate(V3(SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(0.1f), rotX(-0.25f - armSw * 0.6f + sinf(t * 0.33f + 1) * 0.05f))));
-    put(shR, P_UPPER);
-    M4 elR = mul(shR, mul(translate(V3(0, -L_UPPER, 0)), rotX(-1.25f))); put(elR, P_CANNON);
-    put(mul(elR, mul(translate(V3(0, -3.6f, 0)), rotY(t * 1.5f))), P_BARRELS);
-}
+// how close its route comes to a building, sampled every 3 m round the whole loop (for the tests: should be >= R_CLEAR)
+static float routeClearance(int r) { float d = 1e9f; for (float s = 0; s < W.n; s += 3) { V3 p = pathAt(r, s); d = std::min(d, clearance(p.x, p.z)); } return d; }
 static V3 xf(const M4& M, V3 q) { const float* m = M.m; return V3(m[0] * q.x + m[4] * q.y + m[8] * q.z + m[12], m[1] * q.x + m[5] * q.y + m[9] * q.z + m[13], m[2] * q.x + m[6] * q.y + m[10] * q.z + m[14]); }
-static V3 stackTop(int s, float t) { M4 pel; M4 tor = torsoOf(t, pel); return xf(tor, V3(s * 2.4f, 15.6f, -5.6f)); }
-static V3 footAt(int s) { return at + V3(cosf(yaw), 0, -sinf(yaw)) * (s * 4.9f) + V3(sinf(yaw), 0, cosf(yaw)) * 2.0f; }
+static float footError(const struct Unit& m);
+// ---- feet ----
+// Each foot is planted on the ground and stays put while the body walks over it, then swings to the next spot. With
+// d the metres walked, leg e (0 left, 1 right, half a stride apart) lands every STRIDE metres, a quarter stride ahead
+// of the body, beside the route; it is down for half the stride and in the air for the other half. All from d, so
+// the same on every machine. The legs are then bent to reach their feet (legIK), whatever the ground does.
+static const float HIP_W = (HIP_X + 1.35f) * 0.82f;   // hip joint, out from the middle
+static void frameAt(const Unit& m, float A, V3& p, V3& f) { V3 a = pathAt(m.route, sOfArc(m.route, A)), b = pathAt(m.route, sOfArc(m.route, A - 3)); p = a; f = norm(b - a); }   // A: walking distance along the route
+static V3 plantAt(const Unit& m, int e, float dLand) {   // where leg e puts its foot down when it lands at d = dLand
+    V3 p, f; frameAt(m, m.s0 - (dLand + STRIDE * 0.25f), p, f); V3 r(f.z, 0, -f.x);
+    p = p + r * ((e ? 1.0f : -1.0f) * HIP_W); p.y = groundAt(p.x, p.z); return p;
+}
+// footfalls: returns 0, or the side (-1, 1) of a foot that has just come down
+static int update(Unit& m, float t, V3 target) {
+    float tt = t + m.tOff, d = fixed ? 0 : walked(tt), d0 = m.phase * STRIDE / 6.2831853f;
+    if (fixed) m.gait = 0; else {
+        V3 a, f; frameAt(m, m.s0 - d, a, f); m.at = V3(a.x, groundAt(a.x, a.z), a.z); m.yaw = atan2f(f.x, f.z);
+        m.gait = gaitAt(tt); m.phase = d / STRIDE * 6.2831853f;
+    }
+    V3 fw(sinf(m.yaw), 0, cosf(m.yaw)), rt(cosf(m.yaw), 0, -sinf(m.yaw));
+    float gy[2]; int landed = 0;
+    for (int e = 0; e < 2; e++) {
+        V3 foot; float lift = 0;
+        if (fixed) { foot = m.at + rt * ((e ? 1.0f : -1.0f) * HIP_W) + fw * 1.0f; foot.y = groundAt(foot.x, foot.z); }
+        else {
+            float u = d / STRIDE + (e ? 0.5f : 0), n = floorf(u), fr = u - n, dLand = (n - (e ? 0.5f : 0)) * STRIDE;
+            V3 p0 = plantAt(m, e, dLand);
+            if (fr < 0.5f) foot = p0;   // planted
+            else {   // swinging to the next spot; the lift dies away as it slows to a stop, so a foot never hangs in the air
+                V3 p1 = plantAt(m, e, dLand + STRIDE); float q = (fr - 0.5f) * 2, sq = q * q * (3 - 2 * q);
+                foot = p0 + (p1 - p0) * sq; lift = sinf(q * 3.14159265f) * 2.6f * m.gait;
+            }
+            float u0 = d0 / STRIDE + (e ? 0.5f : 0); if (floorf(u) != floorf(u0) && m.gait > 0.3f && d > d0) landed = e ? 1 : -1;
+        }
+        float g1 = groundAt(foot.x + fw.x * 2, foot.z + fw.z * 2), g0 = groundAt(foot.x - fw.x * 2, foot.z - fw.z * 2);
+        m.slope[e] = atanf((g1 - g0) / 4) * (1 - std::min(1.0f, lift / 1.5f)); m.lift[e] = lift; gy[e] = foot.y;
+        m.ankle[e] = foot + V3(0, FOOT_H + lift, 0); m.meta[e] = (HIP + KNEE + ANKLE) - 0.35f * (lift / 2.6f);
+    }
+    // the hips ride at standing height over the two feet, a little lower while a foot is in the air, and never so high
+    // that a leg cannot reach
+    float stand = L_THIGH * cosf(HIP) + L_SHIN * cosf(HIP + KNEE) + L_META * cosf(HIP + KNEE + ANKLE) + FOOT_H;
+    float y = (gy[0] + gy[1]) * 0.5f + stand - 0.35f * m.gait * fabsf(sinf(m.phase));
+    m.pelY = std::min(y, std::min(gy[0], gy[1]) + stand + 2.0f);
+    for (int it = 0; it < 4; it++) { float err = footError(m); if (err < 0.02f) break; m.pelY -= err * 1.1f; }   // a long reach (a sharp turn, a dip): crouch till both feet are down
+    // look at the target when it is near: the head always, the body a little while standing
+    V3 dv = target - (m.at + V3(0, 26, 0)); float want = 0, wantP = 0, dist = sqrtf(dv.x * dv.x + dv.z * dv.z);
+    if (dist < 220) { want = wrapPi(atan2f(dv.x, dv.z) - m.yaw); want = clampf(want, -1.4f, 1.4f); wantP = clampf(atan2f(-dv.y, dist), -0.2f, 0.5f); }
+    m.lookYaw += (want - m.lookYaw) * 0.04f; m.lookPitch += (wantP - m.lookPitch) * 0.04f;
+    return landed;
+}
+// bend a leg to put its ankle at `ankle` (world). In the hip's frame: a sideways roll to swing the leg's plane onto
+// the foot, then thigh and shin by the law of cosines (knee behind, bird-like), the metatarsal at its own angle.
+// Angles as rotX takes them: a segment pointing down turned by th points along (0, -cos th, -sin th).
+static void legIK(const Unit& m, int e, float& roll, float& h, float& k, float& a) {
+    V3 hipW = V3(m.at.x, m.pelY, m.at.z) + V3(cosf(m.yaw), 0, -sinf(m.yaw)) * ((e ? 1.0f : -1.0f) * HIP_W);
+    V3 w = m.ankle[e] - hipW; float c = cosf(m.yaw), sn = sinf(m.yaw);
+    float lx = w.x * c - w.z * sn, lz = w.x * sn + w.z * c, ly = w.y;            // into the body's frame (undo the yaw)
+    roll = atan2f(lx, -ly); float down = -sqrtf(lx * lx + ly * ly);                // the leg's plane holds the foot
+    float tm = m.meta[e]; float ay = down + L_META * cosf(tm), az = lz + L_META * sinf(tm);   // where the ankle joint must be
+    float D = sqrtf(ay * ay + az * az); D = clampf(D, fabsf(L_THIGH - L_SHIN) + 0.5f, L_THIGH + L_SHIN - 0.05f);
+    float tD = atan2f(-az, -ay), al = acosf(clampf((L_THIGH * L_THIGH + D * D - L_SHIN * L_SHIN) / (2 * L_THIGH * D), -1, 1));
+    h = tD - al;                                                                  // thigh forward of the line to the ankle
+    float ky = -L_THIGH * cosf(h), kz = -L_THIGH * sinf(h);                       // the knee
+    float sh = atan2f(-(az - kz), -(ay - ky)); k = sh - h; a = tm - sh;
+}
+static M4 torsoOf(const Unit& m, float t, M4& pel) {
+    float breathe = sinf(t * 0.8f) * 0.12f * (1 - m.gait), sway = sinf(m.phase) * 0.045f * m.gait;
+    pel = mul(translate(V3(m.at.x, m.pelY + breathe * 0.5f, m.at.z)), rotY(m.yaw));   // (the legs hang from this; the sway is the torso's)
+    float twist = (1 - m.gait) * (sinf(t * 0.23f) * 0.12f + m.lookYaw * 0.45f) - sway * 2.5f;
+    return mul(pel, mul(translate(V3(0, 1.9f, 0)), mul(rotZ(sway), mul(rotY(twist), rotX(0.14f + m.gait * 0.06f + breathe * 0.1f)))));
+}
+static void draw(const Unit& m, int u, Prog& p, bool lit, float t0) {
+    float t = t0 + m.tOff;
+    auto put = [&](const M4& M, Mesh& mesh, float glow = 0) { p.m4("uModel", M); if (lit) p.f1("uBrake", glow); mesh.draw(); };
+    if (lit) { p.v3("uPaint", m.paint); p.f1("uChrome", 0); p.f1("uBurnt", 0); p.f1("uGone", 0); }
+    M4 pel; M4 tor = torsoOf(m, t, pel);
+    put(pel, part[P_PELVIS]);
+    M4 legRoot = mul(translate(V3(m.at.x, m.pelY, m.at.z)), rotY(m.yaw));   // the legs reach from the hips without the breathing bob
+    for (int e = 0; e < 2; e++) {   // legs: bent to reach their planted feet; each foot flat on the ground under it
+        int s = e ? 1 : -1; float roll, h, k, a; legIK(m, e, roll, h, k, a);
+        M4 hip = mul(legRoot, mul(translate(V3(s * HIP_W, 0, 0)), mul(rotZ(roll), rotX(h)))); put(hip, part[P_THIGH]);
+        M4 kn = mul(hip, mul(translate(V3(0, -L_THIGH, 0)), rotX(k))); put(kn, part[P_SHIN]);
+        M4 an = mul(kn, mul(translate(V3(0, -L_SHIN, 0)), rotX(a))); put(an, part[P_META]);
+        M4 ft = mul(an, mul(translate(V3(0, -L_META, 0)), mul(rotX(-(h + k + a)), mul(rotZ(-roll), rotX(-m.slope[e]))))); put(ft, part[P_FOOT]);
+    }
+    put(tor, part[P_TORSO]); put(tor, number[u]);
+    put(tor, part[P_BEACONS], fmodf(t, 1.4f) < 0.18f ? 2.0f : 0.0f);
+    float scan = (1 - m.gait) * sinf(t * 0.37f) * 0.35f * (fabsf(m.lookYaw) < 0.05f ? 1.0f : 0.3f) + m.lookYaw * 0.55f + sinf(t * 1.7f) * 0.03f;
+    put(mul(tor, mul(translate(NECK), mul(rotY(scan), rotX(0.18f + m.lookPitch + sinf(t * 0.5f) * 0.05f)))), part[P_HEAD], 0.75f + 0.25f * sinf(t * 9.0f) * sinf(t * 2.3f));
+    float armSw = sinf(m.phase) * 0.22f * m.gait;   // the arms swing against the legs
+    M4 shL = mul(tor, mul(translate(V3(-SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(-0.12f), rotX(-0.35f + armSw + sinf(t * 0.4f) * 0.06f))));
+    put(shL, part[P_UPPER]);
+    M4 elL = mul(shL, mul(translate(V3(0, -L_UPPER, 0)), rotX(-0.95f))); put(elL, part[P_CLAW]);
+    float open = 0.35f + 0.3f * (0.5f + 0.5f * sinf(t * 0.9f));
+    for (int f = 0; f < 3; f++) put(mul(elL, mul(translate(V3(0, -L_FORE - 0.4f, 0)), mul(rotY(f * 2.0944f + 0.5f), mul(translate(V3(0, 0, 0.85f)), rotX(open))))), part[P_FINGER]);
+    M4 shR = mul(tor, mul(translate(V3(SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(0.1f), rotX(-0.25f - armSw * 0.6f + sinf(t * 0.33f + 1) * 0.05f))));
+    put(shR, part[P_UPPER]);
+    M4 elR = mul(shR, mul(translate(V3(0, -L_UPPER, 0)), rotX(-1.25f))); put(elR, part[P_CANNON]);
+    put(mul(elR, mul(translate(V3(0, -3.6f, 0)), rotY(t * 1.5f))), part[P_BARRELS]);
+}
+static V3 stackTop(const Unit& m, int s, float t) { M4 pel; M4 tor = torsoOf(m, t + m.tOff, pel); return xf(tor, V3(s * 2.4f, 15.6f, -5.6f)); }
+// how far each ankle the legs actually reach is from where its foot should be (m): for the tests (0 when every foot is on its spot)
+static float footError(const Unit& m) {
+    float worst = 0; M4 legRoot = mul(translate(V3(m.at.x, m.pelY, m.at.z)), rotY(m.yaw));
+    for (int e = 0; e < 2; e++) { float roll, h, k, a; legIK(m, e, roll, h, k, a);
+        M4 an = mul(mul(mul(legRoot, mul(translate(V3((e ? 1.0f : -1.0f) * HIP_W, 0, 0)), mul(rotZ(roll), rotX(h)))), mul(translate(V3(0, -L_THIGH, 0)), rotX(k))), mul(translate(V3(0, -L_SHIN, 0)), rotX(a)));
+        V3 got = xf(an, V3(0, -L_META, 0)); worst = std::max(worst, len(got - m.ankle[e])); }
+    return worst;
+}
+static V3 footAt(const Unit& m, int s) { return m.ankle[s > 0 ? 1 : 0] - V3(0, FOOT_H + m.lift[s > 0 ? 1 : 0], 0); }
 }   // namespace mech
