@@ -75,7 +75,7 @@ static Car player, ai[NAI];
 static Mesh carMesh[NCARS], wheelMesh, keyMesh;
 static Prog pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
 #ifdef FCF_XENOS_LEAN
-static Prog pGround, pRoad, pWall, pMisc;   // the 360's own world shaders, one per kind of surface (xenon/lean_shaders.py)
+static Prog pGround, pRoad, pRoadWet, pWall, pMisc;   // the 360's own world shaders, one per kind of surface (xenon/lean_shaders.py)
 #endif
 static UI ui;
 static gfx::Target shadowFBO = 0, cubeFBO = 0; static gfx::Tex shadowTex = 0, cubeTex = 0, cubeDepth = 0; static gfx::Buf partBuf = 0;   // shadow map, reflection cube, particles (and anything else drawn as L_PART triangles)
@@ -1079,13 +1079,15 @@ static void selectWorldCells(const M4& VP, V3 cam) {
     }
     std::sort(visibleWorldCells.begin(), visibleWorldCells.end(), [](const VisibleCell& a, const VisibleCell& b) { return a.dist2 < b.dist2; });
 }
-static void drawWorldCells(bool terrain, bool props, V3 cam, int* terrainSubmitted = nullptr, int* propsSubmitted = nullptr) {
+// cls: -1 the whole props of each cell, else one material class of them (WorldCell::propsBy)
+static void drawWorldCells(bool terrain, bool props, V3 cam, int* terrainSubmitted = nullptr, int* propsSubmitted = nullptr, int cls = -1) {
     for (const VisibleCell& v : visibleWorldCells) {
         const WorldCell& c = W.worldCells[v.id];
         if (terrain) { const MeshRange& r = c.terrain[v.lod]; if (r.count) { gfx::drawMeshRange(W.terrain.buf, r.first, r.count); if (terrainSubmitted) *terrainSubmitted += r.count; } }
         if (props) {
-            const MeshRange& r = c.props; if (r.count) { gfx::drawMeshRange(W.props.buf, r.first, r.count); if (propsSubmitted) *propsSubmitted += r.count; }
-            if (c.small.count && cellDistance2(c.smallBounds, cam) <= 300.0f * 300.0f) { gfx::drawMeshRange(W.smallProps.buf, c.small.first, c.small.count); if (propsSubmitted) *propsSubmitted += c.small.count; }
+            const MeshRange& r = cls < 0 ? c.props : c.propsBy[cls]; if (r.count) { gfx::drawMeshRange(W.props.buf, r.first, r.count); if (propsSubmitted) *propsSubmitted += r.count; }
+            const MeshRange& sm = cls < 0 ? c.small : c.smallBy[cls];
+            if (sm.count && cellDistance2(c.smallBounds, cam) <= 300.0f * 300.0f) { gfx::drawMeshRange(W.smallProps.buf, sm.first, sm.count); if (propsSubmitted) *propsSubmitted += sm.count; }
         }
     }
 }
@@ -1145,7 +1147,11 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         int terrainIndices = 0, propIndices = 0;
 #ifdef FCF_XENOS_LEAN
         if (DRAW_MASK & DM_TERRAIN) { setCommon(pGround, VP, cam, hdr); drawWorldCells(true, false, cam, &terrainIndices, nullptr); }
-        if (DRAW_MASK & DM_PROPS) { setCommon(pWorld, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices); }
+        if (DRAW_MASK & DM_PROPS) {   // a program per material class: each pixel pays only for its own material (pWorld paid for all three)
+            setCommon(wx().wet > 0.01f ? pRoadWet : pRoad, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices, 0);
+            setCommon(pWall, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices, 1);
+            setCommon(pMisc, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices, 2);
+        }
 #else
         setCommon(pWorld, VP, cam, hdr);
         drawWorldCells((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam, &terrainIndices, &propIndices);
@@ -1943,6 +1949,7 @@ int main(int argc, char** argv) {
 #ifdef FCF_XENOS_LEAN
     FCF_MAKE_PROG(pGround, "ground", VS_MESH, FS_COMMON, FS_WORLD);
     FCF_MAKE_PROG(pRoad, "road", VS_MESH, FS_COMMON, FS_WORLD);
+    FCF_MAKE_PROG(pRoadWet, "roadwet", VS_MESH, FS_COMMON, FS_WORLD);
     FCF_MAKE_PROG(pWall, "wall", VS_MESH, FS_COMMON, FS_WORLD);
     FCF_MAKE_PROG(pMisc, "misc", VS_MESH, FS_COMMON, FS_WORLD);
 #endif

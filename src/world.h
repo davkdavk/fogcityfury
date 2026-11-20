@@ -23,7 +23,9 @@ struct CellBounds {
     bool valid = false;
     void include(const Vtx& v) { x0 = std::min(x0, v.px); y0 = std::min(y0, v.py); z0 = std::min(z0, v.pz); x1 = std::max(x1, v.px); y1 = std::max(y1, v.py); z1 = std::max(z1, v.pz); valid = true; }
 };
-struct WorldCell { CellBounds bounds, smallBounds; MeshRange terrain[4], props, small; bool road = false; };
+// props and small: the cell's triangles of each mesh; propsBy and smallBy split the same triangles by material class,
+// laid out one after another inside them: 0 road (vMat < 1.5), 1 building wall (vMat 2), 2 everything else.
+struct WorldCell { CellBounds bounds, smallBounds; MeshRange terrain[4], props, small, propsBy[3], smallBy[3]; bool road = false; };
 #endif
 struct TrackDef {
     const char* name; const char* sub;
@@ -143,9 +145,15 @@ struct World {
             CellBounds& bounds = small ? worldCells[cellId].smallBounds : worldCells[cellId].bounds; bounds.include(a); bounds.include(b); bounds.include(c);
         }
         src.idx.clear();
+        auto cls = [&](unsigned ia) { float m = src.v[ia].mat; return m < 1.5f ? 0 : m < 2.5f ? 1 : 2; };
         for (int i = 0; i < NCELL; i++) {
             MeshRange& r = small ? worldCells[i].small : worldCells[i].props; r.first = (int)src.idx.size(); r.count = (int)bins[i].size();
-            src.idx.insert(src.idx.end(), bins[i].begin(), bins[i].end());
+            MeshRange* by = small ? worldCells[i].smallBy : worldCells[i].propsBy;
+            for (int k = 0; k < 3; k++) {   // the same triangles, a material class at a time
+                by[k].first = (int)src.idx.size();
+                for (size_t t = 0; t + 2 < bins[i].size(); t += 3) if (cls(bins[i][t]) == k) src.idx.insert(src.idx.end(), { bins[i][t], bins[i][t + 1], bins[i][t + 2] });
+                by[k].count = (int)src.idx.size() - by[k].first;
+            }
         }
     }
     void buildTerrainCells(MB& t) {

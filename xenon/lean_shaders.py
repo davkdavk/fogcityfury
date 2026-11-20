@@ -109,8 +109,31 @@ _MISC = '''  { vec2 c = floor(vUV*1.4286);                                  // p
     if(vMat > 4.5) alb = mix(vec3(0.95,0.72,0.02), vec3(0.04), step(0.5, fract(vUV.x*3.0 + vUV.y*6.0)));
     if(vMat > 5.5) glow = vC*3.0; }
 '''
+# Rain on the road (the "roadwet" program, drawn instead of "road" when the weather is wet): puddles in the hollows,
+# raindrop rings on them, and the sky reflected through a bumped, Fresnel-weighted surface, after the PC road shader
+# (shaders.h, FS_WORLD material 1) but on the noise texture instead of hash noise, and one ring layer instead of two.
+_ROAD_WET = '''  {
+    float u = abs(vUV.x);
+    vec3 V = normalize(uCamPos - vP);
+    // standing water where the slow noise is high; more of it the harder it rains; none on the kerbs
+    float pud = clamp((texture(uNoise, vP.xz*0.0101 + 0.37).g - 0.55 + 0.15*uRain)*10.0, 0.0, 1.0)*step(0.2, uRain)*step(u, 8.0);
+    // raindrop rings: one a 70 cm cell, its place and timing from the noise texture's white noise
+    vec2 q = vP.xz*1.43, f = fract(q) - 0.5;
+    vec2 h = texture(uNoise, (floor(q) + 0.5)*0.00390625).br;
+    vec2 d = f - (h - 0.5)*0.5; float r = max(length(d), 0.001), t = fract(uTime*(0.8 + 0.7*h.y) + h.x), x = r - t*0.42;
+    float ring = (abs(fract(x*8.28) - 0.5)*4.0 - 1.0)*clamp(1.0 - abs(x)*14.3, 0.0, 1.0)*(1.0 - t);   // a ripple's crest and trough
+    vec2 bump = d*(ring*0.42*pud*min(uRain, 1.3)*vFx.y/r);
+    vec3 nb = vec3(bump.x, 1.0, bump.y);                                         // a slight tilt: no need to normalise
+    float dn = dot(nb, V), ry = abs(2.0*dn - V.y) + 0.02;                    // the reflected ray's height: reflect(-V, nb).y with nb.y = 1
+    float c5 = 1.0 - max(dn, 0.0), c2 = c5*c5, F = 0.04 + 0.96*c2*c2*c5;
+    vec3 sky = mix(uSkyHor, uSkyTop, clamp(ry*1.5, 0.0, 1.0));
+    alb *= 1.0 - (0.40 + 0.28*pud)*uWet;
+    glow = sky*uWet*mix(0.03 + 0.30*F, 0.06 + 0.80*F, pud); }
+'''
 GROUND = _HEAD + _GROUND + _TAIL
 ROAD = _HEAD + _ROAD + _TAIL
+ROAD_WET = (_HEAD.replace('uniform vec3 uSkyHor;', 'uniform vec3 uSkyHor, uSkyTop, uCamPos; uniform float uRain, uTime;')
+            + _ROAD + _ROAD_WET + _TAIL)
 WALL = _HEAD + _WALL + _TAIL
 MISC = _HEAD + _MISC + _TAIL
 WORLD = (_HEAD + '  vec3 base = alb, g0 = glow;\n' + _ROAD + '  vec3 aRoad = alb, lRoad = lit; alb = base; lit = vL;\n' + _WALL
@@ -209,7 +232,7 @@ void main(){
 }
 '''
 
-LEAN_VS = {n: (WORLD_VS, WORLD_LOC) for n in ('world', 'ground', 'road', 'wall', 'misc')}
+LEAN_VS = {n: (WORLD_VS, WORLD_LOC) for n in ('world', 'ground', 'road', 'roadwet', 'wall', 'misc')}
 LEAN_VS['sky'] = (SKY_VS, {'vNdc': 0})
 # The depth pre-pass must place every vertex exactly where the colour pass does, or the colour pass's depth test
 # (less-or-equal, depth writes off) fails on the ground and the road and leaves them black. So it runs the colour
@@ -219,7 +242,7 @@ DEPTH = '''#version 330 core
 out vec4 oCol;
 void main(){ oCol = vec4(1.0); }
 '''
-LEAN_EXTRA = ('ground', 'road', 'wall', 'misc')   # programs only the lean build has
+LEAN_EXTRA = ('ground', 'road', 'roadwet', 'wall', 'misc')   # programs only the lean build has
 # Text: the font texture holds, for the 5x7 pixel font, the signed distance to each glyph's edge in font pixels
 # (base.h, UI::init under FCF_XENOS_LEAN), sampled linearly. Each font pixel comes out as a square with a smooth
 # one-screen-pixel edge at any text size, where point sampling at sizes like 1.8 or 3.2 gave pixels of uneven widths.
@@ -236,7 +259,7 @@ void main(){
 }
 '''
 
-LEAN = {'ui': UI, 'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING}
+LEAN = {'ui': UI, 'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'roadwet': ROAD_WET, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING}
 
 # Diagnostic (FCF_LEAN_DEBUG=mat): every world surface in one flat colour per material, so a picture shows which
 # geometry is where. Road (vMat 1) red, walls (2) green, the rest of the props (3-6) blue, terrain yellow. Anything
@@ -248,7 +271,7 @@ in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx;
 out vec4 oCol;
 void main(){ oCol = vec4(vMat < 0.5 ? vec3(1.0, 1.0, 0.0) : vMat < 1.5 ? vec3(1.0, 0.0, 0.0) : vMat < 2.5 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.3, 1.0), 1.0); }
 '''
-    for _n in ('world', 'road', 'wall', 'misc'): LEAN[_n] = _DBG
+    for _n in ('world', 'road', 'roadwet', 'wall', 'misc'): LEAN[_n] = _DBG
     LEAN['ground'] = '''#version 330 core
 in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx;
 out vec4 oCol;
