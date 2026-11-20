@@ -31,7 +31,7 @@
 
 namespace net {
 const uint32_t MAGIC = 0x59464346;   // bytes "FCFY"
-const uint16_t PROTO = 6;            // bump when any struct below changes, or a flag bit gains a meaning
+const uint16_t PROTO = 7;            // bump when any struct below changes, or a flag bit gains a meaning
 const int MAXP = 10, DEFPORT = 27015, NAMELEN = 16, TRACKS = 4, CARS = 4, PAINTS = 8;
 const int BOTS = 4;   // computer-driven cars the server adds to a race, at most. The server has no map: one player's game (the host) drives them
 const int SD_FIGHT = 5, SD_DROPS = 12, SD_SLOW_KIND = 5;   // the showdown: fighters (the podium), pick-ups at most, the kind of pick-up (the grenade launcher) that takes three times as long to come back

@@ -116,6 +116,27 @@ def world_dump_has_secrets():
 
 
 @test
+def alternate_route():
+    for t in range(NTRACKS):
+        d = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.5)
+        if t != 1:
+            check(d["branchLen"] == 0, "track %d has no alternate route yet" % t, d["branchLen"])
+            continue
+        check(150 < d["branchLen"] < 260 and d["branchB"] - d["branchA"] > d["branchLen"], "Sunset Causeway's backstreet is a shortcut", (d["branchLen"], d["branchA"], d["branchB"]))
+        check(d["branchBlocked"] == 0, "no building stands on it", d["branchBlocked"])
+    # driving down it: on the route, counted as the matching stretch of the loop, never 'wrong way'
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", -428, -120, 3.14, "--speed", 25, seconds=2.5)
+    check(d["onBranch"] >= 0 and d["branchA"] < d["loopPos"] < d["branchB"], "a car on the backstreet is placed between the fork and the rejoin", (d["onBranch"], d["loopPos"]))
+    check(d["maxWrongT"] == 0 and d["dead"] == 0 and d["roadDist"] < 6.5, "driving down it is the right way and stays on the road", (d["maxWrongT"], d["dead"], d["roadDist"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", -428, -120, 0, "--speed", 25, seconds=2.5)
+    check(d["maxWrongT"] > 1, "driving up it is the wrong way", d["maxWrongT"])
+    # bots take it on some laps and still finish
+    d = sim("--track", 1, "--state", 3, "--auto", seconds=200)
+    between(d["aiBranch"], 4, 30, "bot trips down the backstreet over three laps")
+    check(d["lap"] >= 3, "the race still runs to the end", d["lap"])
+
+
+@test
 def simulation_is_deterministic():
     a = sim("--track", 0, "--state", 3, "--auto", seconds=40)
     b = sim("--track", 0, "--state", 3, "--auto", seconds=40)
@@ -326,7 +347,7 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 6
+NET_MAGIC, NET_PROTO = 0x59464346, 7
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
 C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
