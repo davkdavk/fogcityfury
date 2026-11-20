@@ -277,7 +277,7 @@ static bool on = true, fixed = false;   // fixed (--mechat): stands where put, i
 static V3 at; static float yaw = 0;
 static float s0 = 0, side = -1;         // where on the loop it starts, which side of the road
 static const float HIP = -0.55f, KNEE = 1.30f, ANKLE = -1.05f;   // the stance
-static const float SPEED = 4.2f, STRIDE = 17.0f, CYCLE = 40.0f, WALK = 28.0f, OUT = 40.0f;
+static const float SPEED = 4.2f, STRIDE = 17.0f, CYCLE = 40.0f, WALK = 28.0f, SIDE_OFFSET = 40.0f;
 static float gait = 0, phase = 0, lookYaw = 0, lookPitch = 0;   // 0 standing .. 1 walking; step phase; where it looks (radians, relative)
 static const V3 PAINT(0.42f, 0.07f, 0.04f);   // the accent plates: oxide red
 // metres walked by time t: 2 s to get going, steady, 2 s to stop, then standing till the cycle ends
@@ -288,11 +288,11 @@ static float walked(float t) {
 }
 static float gaitAt(float t) { float c = fmodf(t, CYCLE); return c < WALK ? std::min(1.0f, std::min(c, WALK - c) / 2) : 0; }
 static V3 pathAt(float s) {   // a smoothed point on its patrol line (an average along the road, so tight bends don't kink it)
-    V3 acc(0, 0, 0); for (int k = -5; k <= 5; k++) { V3 q; float y; W.at(s + k * 5.0f, side * OUT, q, y); acc = acc + q; } return acc * (1.0f / 11);
+    V3 acc(0, 0, 0); for (int k = -5; k <= 5; k++) { V3 q; float y; W.at(s + k * 5.0f, side * SIDE_OFFSET, q, y); acc = acc + q; } return acc * (1.0f / 11);
 }
 static void setup() {   // pick the side with more dry land along the first few hundred metres it walks
     s0 = W.n * 0.085f; int dry[2] = {};
-    for (int k = 0; k < 40; k++) for (int e = 0; e < 2; e++) { V3 q; float y; W.at(s0 - k * 15.0f, (e ? 1 : -1) * OUT, q, y); if (W.H(q.x, q.z) > 0.5f) dry[e]++; }
+    for (int k = 0; k < 40; k++) for (int e = 0; e < 2; e++) { V3 q; float y; W.at(s0 - k * 15.0f, (e ? 1 : -1) * SIDE_OFFSET, q, y); if (W.H(q.x, q.z) > 0.5f) dry[e]++; }
     side = dry[1] > dry[0] ? 1.0f : -1.0f;
 }
 static float groundAt(float x, float z) { return std::max(W.H(x, z), -9.0f); }   // in the sea it wades on the shelf, the water to its thighs
