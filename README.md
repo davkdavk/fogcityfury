@@ -77,6 +77,10 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.41
+
+- Two Wardens on every track, walking round the buildings with their feet on the ground.
+
 ## What's new in 1.40
 
 - **The Warden**: a giant harbour mech idles by Sunset Causeway, then patrols beside the road on every track.
