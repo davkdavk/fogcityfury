@@ -1932,7 +1932,8 @@ int main(int argc, char** argv) {
     uint64_t last = plat::ticks();
 #ifdef FCF_GFX_XSDK
     uint64_t lastRuntimeLog = last;
-    uint64_t runtimeFrames = 0, runtimeSlowFrames = 0, runtimeUpdateTicks = 0, runtimeDrawTicks = 0;
+    uint64_t runtimeFrames = 0, runtimeSlowFrames = 0, runtimeUpdateTicks = 0, runtimeDrawTicks = 0, runtimeBeginTicks = 0, runtimeEndTicks = 0, runtimeMaxFrame = 0, runtimeMaxUpdate = 0, runtimeMaxDraw = 0;
+    uint64_t lastFrameDone = 0;
     bool runtimeLogging = false;
 #endif
     while (!quit) {
@@ -1978,37 +1979,47 @@ int main(int argc, char** argv) {
         update(dt); int fw, fh;
 #ifdef FCF_GFX_XSDK
         uint64_t updateTicks = plat::ticks() - updateBegin;
-        uint64_t drawBegin = plat::ticks();
+        uint64_t drawBegin = plat::ticks(), drawRenderTicks = 0;
 #endif
 #ifdef FCF_GFX_XSDK
         uint64_t bootElapsed = now - bootLoopStart, bootSecond = (uint64_t)plat::tickFreq();
         if (bootElapsed < bootSecond * 5) bootColorFrame(((bootElapsed / bootSecond) & 1) ? 0xFF000000 : 0xFFFFFFFF);
-        else { plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display); }
+        else {
+            // Three spans: beginFrame waits for the GPU to free the frame's stream memory, render is CPU work building
+            // and sending draws, endFrame waits for the present (vsync) and resolves.
+            uint64_t t0 = plat::ticks(); plat::beginFrame(display, fw, fh); uint64_t t1 = plat::ticks();
+            if (fw > 0 && fh > 0) render(fw, fh);
+            uint64_t t2 = plat::ticks(); plat::endFrame(display); uint64_t t3 = plat::ticks();
+            runtimeBeginTicks += t1 - t0; runtimeEndTicks += t3 - t2; drawRenderTicks = t2 - t1;
+        }
 #else
         plat::beginFrame(display, fw, fh); if (fw > 0 && fh > 0) render(fw, fh); plat::endFrame(display);
 #endif
 #ifdef FCF_GFX_XSDK
-        uint64_t drawTicks = plat::ticks() - drawBegin, frameDone = plat::ticks();
+        uint64_t frameDone = plat::ticks(); (void)drawBegin;
         double tickFrequency = plat::tickFreq();
         if (display.frameCount >= 3) {
             if (!runtimeLogging) { runtimeLogging = true; lastRuntimeLog = frameDone; }
-            runtimeFrames++; runtimeUpdateTicks += updateTicks; runtimeDrawTicks += drawTicks;
-            if (frameDone - now > (uint64_t)(tickFrequency / 30.0)) runtimeSlowFrames++;
+            // A frame is slow when it took longer than one 60 Hz refresh (with a little slack), measured end to end.
+            uint64_t frameTicks = lastFrameDone ? frameDone - lastFrameDone : 0;
+            runtimeFrames++; runtimeUpdateTicks += updateTicks; runtimeDrawTicks += drawRenderTicks;
+            runtimeMaxFrame = std::max(runtimeMaxFrame, frameTicks); runtimeMaxUpdate = std::max(runtimeMaxUpdate, updateTicks); runtimeMaxDraw = std::max(runtimeMaxDraw, drawRenderTicks);
+            if (frameTicks > (uint64_t)(tickFrequency * 0.0175)) runtimeSlowFrames++;
         }
         if (runtimeLogging && frameDone - lastRuntimeLog >= (uint64_t)tickFrequency) {
             double elapsed = (frameDone - lastRuntimeLog) / tickFrequency;
-            uint64_t waitBegin = plat::ticks();
-            NTSTATUS fence = gfx::waitLastFence(1000);
-            double gpuWaitMs = (plat::ticks() - waitBegin) * 1000.0 / tickFrequency;
-            xsdk_log_write("runtime: fps=%.1f frames=%u slow_frames=%u cpu_update=%.2fms draw_submit=%.2fms gpu_wait=%.2fms present_begin=0x%08X fence=%u wait_status=0x%08X fence_complete=%u",
-                runtimeFrames / elapsed,(unsigned)runtimeFrames,(unsigned)runtimeSlowFrames,
-                runtimeFrames ? runtimeUpdateTicks * 1000.0 / tickFrequency / runtimeFrames : 0.0,
-                runtimeFrames ? runtimeDrawTicks * 1000.0 / tickFrequency / runtimeFrames : 0.0,
-                gpuWaitMs,(unsigned)display.beginStatus,(unsigned)gfx::lastFenceValue(),
-                (unsigned)fence,(unsigned)NT_SUCCESS(fence));
+            // Averages per frame (ms) and the worst frame of the second. update and render are CPU time on the game
+            // thread; gpu_wait is beginFrame waiting for the GPU, vsync_wait is endFrame waiting for the present.
+            // CPU-bound: update+render near 16.7 with small waits. GPU-bound: gpu_wait large.
+            double ms = 1000.0 / tickFrequency, n = runtimeFrames ? (double)runtimeFrames : 1.0;
+            xsdk_log_write("perf: fps=%.1f slow=%u/%u update=%.2f(max %.2f) render=%.2f(max %.2f) gpu_wait=%.2f vsync_wait=%.2f worst_frame=%.2f state=%d",
+                runtimeFrames / elapsed,(unsigned)runtimeSlowFrames,(unsigned)runtimeFrames,
+                runtimeUpdateTicks * ms / n, runtimeMaxUpdate * ms, runtimeDrawTicks * ms / n, runtimeMaxDraw * ms,
+                runtimeBeginTicks * ms / n, runtimeEndTicks * ms / n, runtimeMaxFrame * ms, (int)state);
             if (adev) { XsdkAudioStats a; xsdk_audio_stats(&a); xsdk_log_write("audio: played=%u silent=%u",(unsigned)a.played,(unsigned)a.silent); }
-            lastRuntimeLog = plat::ticks(); runtimeFrames = runtimeSlowFrames = runtimeUpdateTicks = runtimeDrawTicks = 0;
+            lastRuntimeLog = plat::ticks(); runtimeFrames = runtimeSlowFrames = runtimeUpdateTicks = runtimeDrawTicks = runtimeBeginTicks = runtimeEndTicks = runtimeMaxFrame = runtimeMaxUpdate = runtimeMaxDraw = 0;
         }
+        lastFrameDone = frameDone;
         static int bootFrames = 0;
         if (bootFrames < 3) xsdk_log_write("boot: frame %d complete", ++bootFrames);
 #endif
