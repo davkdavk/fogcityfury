@@ -88,7 +88,7 @@ _TAIL = '''  oCol = vec4(tone(mix(uSkyHor, alb*lit + glow, vFx.x)), 1.0);
 '''
 _GROUND = '''  alb *= (0.72 + 0.56*nz)*(0.8 + 0.4*det);                    // grass, sand, rock; in town, paving with a backstreet every 27 m
   vec2 a = abs(mod(vP.xz + 660.0, 27.0) - 13.5);
-  vec3 cty = mix(vec3(0.27,0.262,0.25), vec3(0.078,0.078,0.088), clamp((3.7 - min(a.x, a.y))*4.0, 0.0, 1.0))*(0.6 + 0.8*det);
+  vec3 cty = mix(vec3(0.27,0.262,0.25), vec3(0.078,0.078,0.088), clamp((3.7 - min(a.x, a.y))*4.0, 0.0, 1.0)*clamp(vUV.y - 16.5, 0.0, 1.0))*(0.6 + 0.8*det);   // vUV.y: metres to the main road; paving to its kerb
   alb = mix(alb, cty, vUV.x);
 '''
 _ROAD = '''  { float u = abs(vUV.x);                                        // tarmac, centre line, lane dashes, edge line, red and white kerbs

@@ -456,6 +456,9 @@ struct World {
     bool inKeyLot(float x, float z) const { return keyLot.size() == 4 && x >= keyLot[0] && x <= keyLot[2] && z >= keyLot[1] && z <= keyLot[3]; }
     static float alleyLine(int k) { return GRID0 + GRID * (k + 0.5f); }        // centre line number k (the same in x and z)
     static float alleyDist(float v) { float c = fmodf(v - GRID0, GRID); if (c < 0) c += GRID; return fabsf(c - GRID * 0.5f); }   // distance from v to the nearest centre line
+    // where the terrain shader paves town: right up to the main road's kerb (cityGround's backstreets stop short of it,
+    // in the shader: see vUV.y on the terrain)
+    bool pavedGround(float x, float z) const { return city(x, z) && RD(x, z) > ROADW + 0.4f && H(x, z) > 1.5f && !excluded(x, z, 4); }
     bool cityGround(float x, float z) const { return city(x, z) && RD(x, z) > ROADW + 8 && H(x, z) > 1.5f && !excluded(x, z, 4); }   // where the terrain shader paves blocks and backstreets
     // the warehouse with the fifth key: door at local (0,0) facing -Z, th = the heading you drive in on. Its roller door is up.
     void warehouse(float cx, float cz, float th, float floorY, V3 from) {
@@ -766,7 +769,7 @@ struct World {
             float rk = smooth(0.10f, 0.22f, slope) * (1 - sw); c = c * (1 - rk) + V3(0.36f, 0.33f, 0.30f) * rk;
             float sn = 1 - smooth(0.8f, 2.0f, hh); c = c * (1 - sn) + V3(0.52f, 0.45f, 0.31f) * sn;
             if (hh < 0) c = c * clampf(1 + hh * 0.12f, 0.35f, 1);
-            t.add(V3(x, hr[j * GN + i], z), nrm, c, cityGround(x, z) ? 1.0f : 0.0f, 0, 0);   // u = 1 where the shader paves city blocks and alleys
+            t.add(V3(x, hr[j * GN + i], z), nrm, c, pavedGround(x, z) ? 1.0f : 0.0f, std::min(d, 60.0f), 0);   // u = 1 where the shader paves town; v = metres to the road (backstreets end in paving before it)
         }
 #ifdef FCF_XENOS_CULL
         buildTerrainCells(t);

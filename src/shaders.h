@@ -155,6 +155,7 @@ void main(){
       vec3 pave = vec3(0.27,0.262,0.25)*(0.80 + 0.4*n2)*(1.0 - 0.4*joint)*(1.0 - 0.25*smoothstep(0.55, 0.7, fbm(vP.xz*0.31)));
       float road = 1.0 - smoothstep(3.5 - aw, 3.5 + aw, al), walk = smoothstep(3.9 - aw, 3.9 + aw, al);
       float yard = step(uKeyLot.x, vP.x)*step(vP.x, uKeyLot.z)*step(uKeyLot.y, vP.z)*step(vP.z, uKeyLot.w); road *= 1.0 - yard; walk = max(walk, yard);
+      float clear = smoothstep(16.5, 17.5, vUV.y); road *= clear; walk = max(walk, 1.0 - clear);   // along the main road: a clean band of paving to its kerb; the backstreets end at a kerbstone before it
       vec3 cty = mix(mix(tar, kerb, 1.0 - road), pave, walk);
       alb = mix(alb, cty*(1.0 - 0.30*uWet), vUV.x);
       if(uWet > 0.001){                                                                               // rain collects in the hollows of the street
