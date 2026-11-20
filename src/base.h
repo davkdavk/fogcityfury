@@ -134,10 +134,15 @@ struct MB {
         float lx[4] = { -hx, hx, hx, -hx }, lz[4] = { -hz, -hz, hz, hz }; V3 p[4];
         for (int i = 0; i < 4; i++) p[i] = V3(cx + ca * lx[i] + sa * lz[i], 0, cz - sa * lx[i] + ca * lz[i]);
         float u = uOff;
+        // windowed walls (mat 2): the shader puts a window every 3.4 m across and a floor every 3.3 m up. Each face is
+        // given a whole number of both, stretched a little to fit, so windows sit square on the wall: none cut by a
+        // corner or by the roof line. (The offset between buildings moves in whole windows, to vary which are lit.)
+        bool fit = wallMat > 1.5f && wallMat < 2.5f; float vs = 1;
+        if (fit) { float hgt = y1 - vRef; if (hgt > 1) vs = std::max(1.0f, roundf(hgt / 3.3f)) * 3.3f / hgt; u = floorf(uOff / 3.4f) * 3.4f; }
         for (int i = 0; i < 4; i++) {
-            V3 a = p[i], b = p[(i + 1) % 4]; float L = len(b - a);
-            quad(V3(b.x, y0, b.z), V3(a.x, y0, a.z), V3(a.x, y1, a.z), V3(b.x, y1, b.z), wallCol, wallMat, u + L, y0 - vRef, u, y1 - vRef);
-            u += L;
+            V3 a = p[i], b = p[(i + 1) % 4]; float L = len(b - a), du = fit ? std::max(1.0f, roundf(L / 3.4f)) * 3.4f : L;
+            quad(V3(b.x, y0, b.z), V3(a.x, y0, a.z), V3(a.x, y1, a.z), V3(b.x, y1, b.z), wallCol, wallMat, u + du, (y0 - vRef) * vs, u, (y1 - vRef) * vs);
+            u += du;
         }
         quad(V3(p[0].x, y1, p[0].z), V3(p[3].x, y1, p[3].z), V3(p[2].x, y1, p[2].z), V3(p[1].x, y1, p[1].z), roofCol, roofMat, 0, 0, 2 * hx, 2 * hz);
         quad(V3(p[0].x, y0, p[0].z), V3(p[1].x, y0, p[1].z), V3(p[2].x, y0, p[2].z), V3(p[3].x, y0, p[3].z), wallCol, roofMat);
