@@ -1793,6 +1793,7 @@ int main(int argc, char** argv) {
 #endif
     if (!plat::openDisplay(display, "Fog City Fury", w, h, windowed, useGles, winMsaa)) { fprintf(stderr, "Could not open the display: %s\n", plat::displayError()); return 1; }
 #ifdef FCF_GFX_XSDK
+    xsdk_log_write("boot: game thread hardware_thread=%u", (unsigned)xsdk_thread_hardware_thread());
     xsdk_log_write("boot: openDisplay complete (%d x %d)", display.width, display.height);
     bootColor(0xFFFF0000);   // red: openDisplay returned
 #endif

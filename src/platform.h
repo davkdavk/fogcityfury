@@ -12,6 +12,7 @@
 #include "xsdk/kernel.h"
 #include "xsdk/audio.h"
 #include "xsdk/log.h"
+#include "xsdk/thread.h"
 #include <pthread.h>
 #include <atomic>
 #include <cstring>
@@ -196,11 +197,15 @@ struct XAudioDevice {
     pthread_t thread = {};
     pthread_mutex_t mutex = {};
     std::atomic<bool> stop{false}, paused{true};
+    std::atomic<bool> placed{false};
     bool mutexReady = false, threadReady = false, opened = false;
 };
 static XAudioDevice xaudio;
 inline void* audioFeed(void* arg) {
     XAudioDevice* d = (XAudioDevice*)arg; float stereo[XSDK_AUDIO_FRAME_SAMPLES * 2];
+    while (!d->stop.load() && !d->placed.load()) xsdk_thread_sleep(1);
+    if (d->stop.load()) return nullptr;
+    xsdk_log_write("audio: thread hardware_thread=%u", (unsigned)xsdk_thread_hardware_thread());
     for (;;) {
         if (d->stop.load()) break;
         float* frame = nullptr; NTSTATUS status = xsdk_audio_next_frame(100, &frame);
@@ -231,11 +236,17 @@ inline uint32_t audioOpen(AudioCB cb, bool& ok) {
     NTSTATUS status = xsdk_audio_open(XSDK_AUDIO_FRAMES_AHEAD_DEFAULT);
     if (!NT_SUCCESS(status)) { xsdk_log_write("audio: xsdk_audio_open failed: 0x%08X", (unsigned)status); return 0; }
     if (pthread_mutex_init(&xaudio.mutex, nullptr) != 0) { xsdk_audio_close(); return 0; }
-    xaudio.mutexReady = true; xaudio.cb = cb; xaudio.stop.store(false); xaudio.paused.store(true);
+    xaudio.mutexReady = true; xaudio.cb = cb; xaudio.stop.store(false); xaudio.paused.store(true); xaudio.placed.store(false);
     if (pthread_create(&xaudio.thread, nullptr, audioFeed, &xaudio) != 0) {
         xaudio.stop.store(true); xsdk_audio_close(); pthread_mutex_destroy(&xaudio.mutex); xaudio.mutexReady = false; xaudio.cb = nullptr; return 0;
     }
-    xaudio.threadReady = true; xaudio.opened = true; ok = true; return 1;
+    xaudio.threadReady = true;
+    status = xsdk_thread_place(xsdk_pthread_handle(xaudio.thread), 4);
+    if (!NT_SUCCESS(status)) {
+        xaudio.stop.store(true); xaudio.placed.store(true); xsdk_audio_close(); pthread_join(xaudio.thread, nullptr);
+        pthread_mutex_destroy(&xaudio.mutex); xaudio.threadReady = xaudio.mutexReady = false; xaudio.cb = nullptr; return 0;
+    }
+    xaudio.placed.store(true); xaudio.opened = true; ok = true; return 1;
 }
 inline void audioPause(uint32_t dev, bool paused) { if (dev == 1 && xaudio.opened) xaudio.paused.store(paused); }
 inline void audioLock(uint32_t dev) { if (dev == 1 && xaudio.mutexReady) pthread_mutex_lock(&xaudio.mutex); }
