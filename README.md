@@ -77,6 +77,15 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.38
+
+- **Sunset Causeway shortcut**: a backstreet route through town gives racers and bots another way to the finish.
+- **Shields**: a shield pick-up protects a car from one hit.
+- **Bot rockets and car bumps**: opponents can fire rockets and cars now jostle instead of passing through each other.
+- **Xbox 360 port**: the full game runs on RGH/JTAG consoles, with cross-play against PC and Android.
+- **Controller button prompts**, a faster track select, and a new H.J.B Enterprizez start-up logo.
+- **Network hardening and protocol 7**: malformed packets are ignored; all clients and servers must use the matching protocol.
+
 ## What's new in 1.37
 
 - **Xbox 360 port**: the full game now runs on RGH/JTAG consoles, with cross-play against PC and Android.
