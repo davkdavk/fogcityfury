@@ -1806,7 +1806,12 @@ static bool bootColorFrame(uint32_t argb) {
     xsdk_present_end();
     return true;
 }
+// Start-up colour stages (red ... white, half a second each) and the five black/white seconds after them show how far a
+// hanging boot got. They are for debugging only: build with -DFCF_XSDK_BOOT_COLORS to see them.
 static void bootColor(uint32_t argb) {
+#ifndef FCF_XSDK_BOOT_COLORS
+    (void)argb; return;
+#endif
     uint64_t until = plat::ticks() + (uint64_t)(plat::tickFreq() * 0.5);
     do { if (!bootColorFrame(argb)) return; } while (plat::ticks() < until);
 }
@@ -2080,8 +2085,13 @@ int main(int argc, char** argv) {
 #endif
 #ifdef FCF_GFX_XSDK
         uint64_t bootElapsed = now - bootLoopStart, bootSecond = (uint64_t)plat::tickFreq();
+#ifdef FCF_XSDK_BOOT_COLORS
         if (bootElapsed < bootSecond * 5) bootColorFrame(((bootElapsed / bootSecond) & 1) ? 0xFF000000 : 0xFFFFFFFF);
-        else {
+        else
+#else
+        (void)bootElapsed; (void)bootSecond;
+#endif
+        {
             // Three spans: beginFrame waits for the GPU to free the frame's stream memory, render is CPU work building
             // and sending draws, endFrame waits for the present (vsync) and resolves.
             uint64_t t0 = plat::ticks(); plat::beginFrame(display, fw, fh); uint64_t t1 = plat::ticks();
