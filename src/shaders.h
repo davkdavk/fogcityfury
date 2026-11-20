@@ -281,6 +281,9 @@ void main(){
 )";
 
 static const char* FS_WATER = R"(
+#ifndef FCF_WATER_TEST
+#define FCF_WATER_TEST 0
+#endif
 in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
 uniform sampler2D uHeight;
 float wh(vec2 p){ float t = uTime;
