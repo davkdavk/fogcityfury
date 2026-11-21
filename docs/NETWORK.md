@@ -88,7 +88,7 @@ An online race cannot be paused: Esc opens a menu while the car coasts.
 ## Wire format
 
 UDP datagrams. Integers little-endian, floats IEEE-754 single, structs packed with no padding.
-Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 6) in `net.h` must be bumped
+Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 8) in `net.h` must be bumped
 whenever a struct changes or a flag bit gains a meaning; a client with a different version gets `S_REJECT` reason 2.
 
 Every packet starts with an 8-byte header:
@@ -96,7 +96,7 @@ Every packet starts with an 8-byte header:
 | Offset | Type | Field |
 |---|---|---|
 | 0 | u32 | magic `0x59464346` (bytes `FCFY`) |
-| 4 | u16 | protocol version (2) |
+| 4 | u16 | protocol version (8) |
 | 6 | u8 | packet type |
 | 7 | u8 | sender's player id, `0xFF` if none yet or from the server |
 
