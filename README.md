@@ -77,6 +77,10 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.46
+
+- Two shortcuts on every track; Wardens shoot down UFOs that land as solid wrecks (road wrecks obstruct traffic) and plant giant flowers; Warden feet are solid; showdown bots no longer run at unreachable rings; the showdown has its own song. Xbox 360 now ships the verified lean XEX.
+
 ## What's new in 1.45
 
 - A G-funk song for each track and the showdown; the Xbox 360 release now uses the verified lean XEX (previous downloads were plain builds).
