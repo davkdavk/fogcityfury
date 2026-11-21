@@ -265,9 +265,9 @@ static void buildBeacons(MB& m) {   // the mast-top lights (their own mesh so th
 }
 
 enum { P_PELVIS, P_TORSO, P_HEAD, P_THIGH, P_SHIN, P_META, P_FOOT, P_UPPER, P_CLAW, P_FINGER, P_CANNON, P_BARRELS, P_BEACONS, NPART };
-static const int NUNIT = 2;
+static const int NUNIT = 4;   // (the most a track can have: TrackDef::wardens says how many it does)
 static Mesh part[NPART], number[NUNIT];
-static const char* NUMBER[NUNIT] = { "07", "12" };
+static const char* NUMBER[NUNIT] = { "07", "12", "23", "31" };
 static int tris = 0;
 static void build() {
     void (*fn[NPART])(MB&) = { buildPelvis, buildTorso, buildHead, buildThigh, buildShin, buildMeta, buildFoot, buildUpperArm, buildClawArm, buildFinger, buildCannon, buildBarrels, buildBeacons };
@@ -294,7 +294,7 @@ struct Unit {
     float pelY = 0; V3 ankle[2], land[2]; float slope[2] = {}, lift[2] = {}, meta[2] = {};   // land: where each foot is down, or is about to come down
 };
 static Unit unit[NUNIT];
-static int count() { return !on ? 0 : fixed ? 1 : NUNIT; }
+static int count() { return !on ? 0 : fixed ? 1 : W.def ? std::max(0, std::min(NUNIT, W.def->wardens)) : 2; }
 // metres walked by time t: 2 s to get going, steady, 2 s to stop, then standing till the cycle ends
 static float walked(float t) {
     float n = floorf(t / CYCLE), c = t - n * CYCLE, w;
@@ -379,9 +379,9 @@ static float sOfArc(int r, float A) {   // the loop position at walking distance
 }
 static float arcOfS(int r, float s) { const std::vector<float>& t = arcTab[r]; float u = s / 2.0f; int i = clampf((float)(int)u, 0, (float)t.size() - 2); return t[i] + (t[i + 1] - t[i]) * (u - i); }
 static void setup() {
-    if (planFor != W.id || !planN) { fillBuckets(); planN = (int)ceilf(W.n / DS); planRoute(0, -SIDE_OFFSET); planRoute(1, SIDE_OFFSET); buildArc(0); buildArc(1); planFor = W.id; }
-    static const V3 PAINTS[NUNIT] = { V3(0.42f, 0.07f, 0.04f), V3(0.05f, 0.20f, 0.30f) };   // oxide red; deep teal
-    for (int u = 0; u < NUNIT; u++) { Unit& m = unit[u]; m.s0 = arcOfS(u, W.n * (0.085f + 0.5f * u)); /* (s0: a walking distance along its route) */ m.tOff = u * 17.0f; m.paint = PAINTS[u]; m.route = u; m.lookYaw = m.lookPitch = 0; }
+    if (planFor != W.gen || !planN) { fillBuckets(); planN = (int)ceilf(W.n / DS); planRoute(0, -SIDE_OFFSET); planRoute(1, SIDE_OFFSET); buildArc(0); buildArc(1); planFor = W.gen; }
+    static const V3 PAINTS[NUNIT] = { V3(0.42f, 0.07f, 0.04f), V3(0.05f, 0.20f, 0.30f), V3(0.36f, 0.30f, 0.05f), V3(0.20f, 0.22f, 0.26f) };   // oxide red; deep teal; ochre; gunmetal
+    for (int u = 0; u < NUNIT; u++) { Unit& m = unit[u]; int r = u % 2; m.s0 = arcOfS(r, W.n * (0.085f + 0.5f * r + 0.25f * (u / 2))); /* (s0: a walking distance along its route; the third and fourth share the two routes, a quarter of a lap on) */ m.tOff = u * 17.0f; m.paint = PAINTS[u]; m.route = r; m.lookYaw = m.lookPitch = 0; }
 }
 static float groundAt(float x, float z) { return std::max(W.H(x, z), -9.0f); }   // in the sea it wades on the shelf, the water to its thighs
 // how close its route comes to a building, sampled every 3 m round the whole loop (for the tests: should be >= R_CLEAR)

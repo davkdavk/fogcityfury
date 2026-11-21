@@ -360,3 +360,10 @@ Built to the same rules as the racer (one simulation, procedural meshes, headles
 - The track screen has a LAPS row (1-9, saved in the config) for offline races; online the server's `--laps` decides.
 - Test hooks: `--sdnow`, `--sdplace N`, `--sdsite U` (ring on the road, that far round the lap; without it the ring goes off-road and `--auto` drives there as the bots do), `--keys N` (as if N keys were found), `--footai` (your fighter is driven by `botThink`), `--auto`, `--faceai`, `--gun N`, `--laps N`. Report fields include `onFoot`, `shdPhase`, `prepAt`, `shdRing`, `shdOffRoad`, `siteDist`, `drops`, `dropsBack`, `splats`, `gibs`, `netShd`, `netSlot`, and `fighters` (on, alive, hp, gun, kills, place for each).
 - Not verified: feel and balance (only bots have played it), the online showdown with real latency or more than one real game client, and touch controls on a device.
+
+## Track editor and track files
+
+Read `docs/EDITOR.md` before touching `src/editor.h`, `src/trackfile.h`, the track list or anything
+cached per track. Short version: custom tracks are `TrackDef`s appended to `TRACKS` (never more than
+`MAXT`); per-track caches go by `W.gen`, not `W.id`; saves, the network and the championship only know
+the `NTRACKS` built-in tracks; the editor is compiled out of the Xbox 360 build.

@@ -22,7 +22,8 @@ RENDER = "--render" in sys.argv
 WINDOWS = "--windows" in sys.argv
 FILTERS = [a for a in sys.argv[1:] if not a.startswith("-")]
 CARS = ["stallion", "katana", "bruiser"]
-NTRACKS = 6
+NTRACKS = 7
+NTRACKS_KEYS = 6   # (Twin Isles, the seventh, has no hidden keys)
 PI = "3.1416"
 
 results = []          # (name, status, detail)
@@ -96,7 +97,7 @@ def boot_reports_valid_state():
 @test
 def world_dump_has_secrets():
     kinds = set()
-    for t in range(NTRACKS):
+    for t in range(NTRACKS_KEYS):
         d = dump(t)
         check(len(d["keys"]) == 5, "track %d has 5 keys" % t, len(d["keys"]))
         check([k["kind"] for k in d["keys"]].count("garage") == 1, "track %d has one key inside a building" % t, [k["kind"] for k in d["keys"]])
@@ -122,7 +123,7 @@ def alternate_route():
     for t in range(NTRACKS):
         d = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.5)
         sc = [[float(v) for v in s.split(",")] for s in d["shortcuts"].split(";") if s]
-        check(len(sc) == 2, "track %d has two shortcuts" % t, d["shortcuts"])
+        check(len(sc) == (3 if t == 6 else 2), "track %d has %s shortcuts" % (t, "three" if t == 6 else "two"), d["shortcuts"])
         ta, tb = d["tunnel"][0], d["tunnel"][1]
         for a, b, L, blocked in sc:
             if ta >= 0 and a < ta and b > tb:   # the way over the water instead of under it: an alternative, not a shortcut
@@ -130,7 +131,7 @@ def alternate_route():
                 continue
             check(150 < L < b - a, "track %d: a shortcut is shorter than the road it cuts (%d m against %d)" % (t, L, b - a), (a, b, L))
             check(blocked == 0, "track %d: no building stands on a shortcut" % t, blocked)
-        check(sc[0][1] + 40 < sc[1][0] or sc[1][1] + 40 < sc[0][0], "track %d: the two are on different parts of the lap" % t, sc)
+        check(all(p[1] + 30 < q[0] or q[1] + 30 < p[0] for i, p in enumerate(sc) for q in sc[i + 1:]), "track %d: they are on different parts of the lap" % t, sc)
     # driving down it: on the route, counted as the matching stretch of the loop, never 'wrong way'
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", -428, -120, 3.14, "--speed", 25, seconds=2.5)
     check(d["onBranch"] >= 0 and d["branchA"] < d["loopPos"] < d["branchB"], "a car on the backstreet is placed between the fork and the rejoin", (d["onBranch"], d["loopPos"]))
@@ -167,7 +168,7 @@ def bots_fire_rockets():
     shd = [sim("--seed", 5, "--track", 0, "--state", 3, "--botrockets", 1, "--pos", x, z, 2.463, "--shield", seconds=12) for x, z in spots]
     check(sum(d["rocketsAtMe"] for d in shd) >= 1 and all(d["shieldSaves"] == min(d["rocketsAtMe"], 1) and d["wrecks"] <= d["rocketsAtMe"] - d["shieldSaves"] for d in shd), "a shield takes the first rocket (only the first)", [(d["rocketsAtMe"], d["shieldSaves"], d["wrecks"]) for d in shd])
     for t in range(NTRACKS):
-        d = sim("--seed", 5, "--track", t, "--state", 3, "--auto", seconds=330)
+        d = sim("--seed", 5, "--track", t, "--state", 3, "--auto", *(["--laps", 2] if t == 6 else []), seconds=330)   # (Twin Isles races twice the laps: two picked, four raced)
         between(d["aiRocketsFired"], 3, 20, "track %d: bots pick up crates now and then and fire (not a war)" % t)
         check(d["finished"] == 1, "track %d: the race still finishes" % t, d["finished"])
 
@@ -187,7 +188,7 @@ def the_warden_walks_its_beat():
     for t in range(NTRACKS):
         a = sim("--track", t, "--state", 3, seconds=4)
         b = sim("--track", t, "--state", 3, seconds=20)
-        check(b["mechs"] == 2, "track %d: two Wardens" % t, b["mechs"])
+        check(b["mechs"] == (4 if t == 6 else 2), "track %d: %s Wardens" % (t, "four" if t == 6 else "two"), b["mechs"])
         moved = math.hypot(b["mech"][0] - a["mech"][0], b["mech"][2] - a["mech"][2])
         between(moved, 30, 75, "track %d: the first Warden walks (m in 16 s)" % t)
         check(min(b["routeClear"]) >= 7, "track %d: both routes go round the buildings (m to the nearest)" % t, b["routeClear"])
@@ -408,7 +409,7 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 8
+NET_MAGIC, NET_PROTO = 0x59464346, 9
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
 C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
@@ -701,7 +702,7 @@ def net_client_gives_up_when_there_is_no_server():
 # ----------------------------------------------------------------------------- bridges, rockets, wreckage, reset
 @test
 def bridges_on_the_figure_eight_tracks():
-    want = {0: 1, 1: 0, 2: 0, 3: 2}
+    want = {0: 1, 1: 0, 2: 0, 3: 2, 4: 0, 5: 0, 6: 0}
     for t in range(NTRACKS):
         d = dump(t)
         check(len(d["bridges"]) == want[t], "track %d has %d bridge(s)" % (t, want[t]), len(d["bridges"]))
@@ -1479,6 +1480,101 @@ def the_undersea_tunnels():
     for t in range(4):
         d = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.5)
         check(d["tunnel"][0] == -1, "track %d has no tunnel" % t, d["tunnel"])
+
+
+@test
+def twin_isles_the_endurance_track():
+    """Track 7: two islands, two undersea tunnels, three shortcuts (one a causeway between the islands), four Wardens,
+    and twice the laps picked."""
+    d = sim("--track", 6, "--state", 3, "--mode", 1, seconds=0.5)
+    check(d["tunnels"] == 2, "two undersea tunnels", d["tunnels"])
+    ta, tb, ga, gb = d["tunnel"]
+    check(0 < ta < ga < gb < tb, "the first has a glass-roofed stretch", d["tunnel"])
+    check(d["tubeDirt"] == 0, "no ground pokes into either tube", d["tubeDirt"])
+    check(d["shortcuts"].count(";") == 2, "three shortcuts", d["shortcuts"])
+    check(d["mechs"] == 4, "four Wardens", d["mechs"])
+    r = sim("--track", 6, "--state", 3, "--auto", "--nobotguns", seconds=520)
+    check(r["raceLaps"] == 6, "an endurance race: three laps picked, six raced", r["raceLaps"])
+    check(r["finished"] == 1 and r["sinks"] == 0 and r["wrecks"] == 0, "six laps: it finishes, nobody sinks, nothing hit", (r["finished"], r["sinks"], r["wrecks"]))
+    check(r["aiBranch"] >= 10, "the bots use the shortcuts and the causeway", r["aiBranch"])
+    r = sim("--track", 6, "--state", 3, "--auto", "--nobotguns", "--weather", 3, "--laps", 1, seconds=200)
+    check(r["finished"] == 1, "two laps in a storm finish in time (stuck behind a UFO wreck, the car comes back past it)", (r["finished"], r["timeLeft"]))
+
+
+@test
+def track_files_round_trip():
+    """--exporttracks writes the six built-in tracks as .fcft files; loading one back builds the same road."""
+    tmp = tempfile.mkdtemp()
+    try:
+        subprocess.run([BIN, "--exporttracks", tmp], check=True, timeout=30)
+        for t in range(NTRACKS):
+            a = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.3)
+            b = sim("--trackfile", os.path.join(tmp, "builtin-%d.fcft" % (t + 1)), "--state", 3, "--mode", 1, seconds=0.3)
+            check(b["track"] == NTRACKS, "the file loads as a custom track, after the built-in ones", b["track"])
+            check(a["trackLen"] == b["trackLen"] and a["tunnel"] == b["tunnel"] and a["shortcuts"] == b["shortcuts"], "track %d: same lap, tunnel and shortcuts from its file" % t, (a["trackLen"], b["trackLen"]))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
+def track_files_cannot_crash_the_game():
+    """Hand-made files: nonsense numbers, too few points, a tunnel across the start line. Each is clamped or refused."""
+    tmp = tempfile.mkdtemp()
+    try:
+        bad = os.path.join(tmp, "bad.fcft")
+        open(bad, "w").write("fcft 1\nroad 0 0 1e30 nan 5 5 -9999 3 100 100 100 105 -300 -300 300 -300 300 300 -300 300\nhill nan nan nan nan\ntunnel 0.9 0.1\nbranch 0.5 0.5\nbranch 0.1 0.9\nsky top x y z\nrubbish 1 2 3\n")
+        d = sim("--trackfile", bad, "--state", 3, "--auto", seconds=3)
+        check(d["trackLen"] > 800, "a file full of nonsense still builds a track", d["trackLen"])
+        few = os.path.join(tmp, "few.fcft")
+        open(few, "w").write("fcft 1\nroad 0 0 100 100\n")
+        p = subprocess.run([BIN, "--sim", "--seconds", "1", "--trackfile", few], capture_output=True, text=True, timeout=30)
+        check(p.returncode != 0, "a file with no usable road is refused", p.returncode)
+        import random
+        for k in range(8):
+            r = random.Random(k); n = r.randint(4, 14); R = r.uniform(240, 500)
+            pts = [(R * r.uniform(0.3, 1.25) * math.cos(2 * math.pi * i / n), R * r.uniform(0.3, 1.25) * math.sin(2 * math.pi * i / n)) for i in range(n)]
+            L = ["fcft 1", "name FUZZ %d" % k, "seed %d" % r.randint(0, 9000), "road " + " ".join("%.0f %.0f" % q for q in pts)]
+            L += ["hill %.0f %.0f %.0f %.0f" % (r.uniform(-600, 600), r.uniform(-600, 600), r.uniform(-70, 90), r.uniform(20, 260)) for _ in range(r.randint(0, 8))]
+            a = r.uniform(0, 0.9); L.append("tunnel %.3f %.3f depth %.0f" % (a, a + r.uniform(0.02, 0.6), r.uniform(5, 40)))
+            a = r.uniform(0, 0.9); L.append("branch %.3f %.3f" % (a, a + r.uniform(0, 0.5)))
+            f = os.path.join(tmp, "fuzz%d.fcft" % k); open(f, "w").write("\n".join(L) + "\n")
+            d = sim("--trackfile", f, "--state", 3, "--auto", seconds=3)
+            check(d["trackLen"] > 400, "random track %d builds and runs" % k, d["trackLen"])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
+def the_editor_makes_a_track_you_can_race():
+    """The editor, driven by its test script: a new track, a point moved, a point added, a lagoon dug, a tunnel under
+    it, a shortcut. It saves the track as a file; the file loads; a race on it finishes, through the tunnel."""
+    tmp = tempfile.mkdtemp()
+    try:
+        script = ("down -380 -60;move -420 -20;up;down 150 -345;move 160 -400;up;tool 1;down 420 -40;up;" + "key minus;" * 24 + "key rb;key rb;key rb;wait;"
+                  "tool 2;down 330 -230;up;down 300 240;up;wait;tool 3;down -150 320;up;down -330 -265;up;down 0 362;up;down -330 110;up;wait")
+        d = sim("--state", 2, "--tracksdir", tmp, "--ednew", "--edscript", script, seconds=1)
+        check(d["track"] == NTRACKS, "the new track is added after the built-in ones", d["track"])
+        ta, tb, ga, gb = d["tunnel"]
+        check(0 < ta < ga < gb < tb, "its tunnel runs under the lagoon that was dug, glass in the middle", d["tunnel"])
+        check(d["tubeDirt"] == 0, "no ground pokes into the tube", d["tubeDirt"])
+        check(d["shortcuts"].count(";") == 0 and d["branchLen"] > 100, "one shortcut (the one across the start line was refused)", d["shortcuts"])
+        f = os.path.join(tmp, "my-track.fcft")
+        check(os.path.exists(f), "the track was saved as my-track.fcft")
+        text = open(f).read()
+        check("road" in text and "tunnel" in text and "branch" in text and text.count("hill") == 4, "the file has the road, four hills, the tunnel and the shortcut")
+        u = sim("--state", 2, "--tracksdir", tmp, "--track", 0, "--edit", "--edscript", "down -460 -240;move -300 -200;up;wait;key z;wait", seconds=1)
+        a = sim("--track", 0, "--state", 3, "--mode", 1, seconds=0.3)
+        check(u["track"] == NTRACKS + 1 and u["trackLen"] == a["trackLen"], "editing a built-in track edits a copy; undo puts the moved point back", (u["track"], u["trackLen"], a["trackLen"]))
+        b = sim("--track", 0, "--state", 3, "--mode", 1, seconds=0.3)
+        check(b["trackLen"] == a["trackLen"], "the built-in track itself is untouched")
+        r = sim("--trackfile", f, "--state", 3, "--auto", "--nobotguns", seconds=260)
+        check(r["finished"] == 1 and r["sinks"] == 0 and r["wrecks"] == 0, "a three-lap race on it finishes: nobody sinks, nothing to hit", (r["finished"], r["sinks"], r["wrecks"]))
+        r = sim("--trackfile", f, "--state", 3, "--auto", "--mode", 2, seconds=330)
+        check(r["finished"] == 1, "a rampage race on it finishes too", r["finished"])
+        t = sim("--trackfile", f, "--state", 2, "--edit", "--edscript", "key enter", "--auto", seconds=40)
+        check(t["state"] == 3 and t["maxSpeed"] > 20, "Enter in the editor starts a test drive", (t["state"], round(t["maxSpeed"])))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 @test

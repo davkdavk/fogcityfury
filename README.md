@@ -5,6 +5,10 @@ San Francisco arcade racers: steep streets, big air, exploding wrecks,
 shortcuts and hidden keys. Original code, names, tracks and cars; no assets
 (everything is generated at start-up).
 
+**New in 1.5: build your own tracks.** A track editor is built into the game: draw the road, shape
+hills and lagoons, lay undersea tunnels and shortcuts, then drive it straight away. Plus **Twin Isles**,
+an endurance track across two islands. Runs on Linux, Windows, Android and the Xbox 360.
+
 C++17, SDL2, OpenGL 3.3 core, GLSL 3.30.
 
 ## Build and run
@@ -76,6 +80,21 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
+
+## What's new in 1.5
+
+- **Track editor (PC).** Build your own tracks in the game: on the track screen press **F4** to edit the
+  track shown (built-in tracks are copied, never changed) or **F6** to start from scratch. Drag the road,
+  raise hills and dig lagoons, lay undersea tunnels and shortcuts, pick the sky, weather and song, then
+  press **Enter** to drive it and **F4** to jump back. Tracks save as small text files (`.fcft`) you can
+  share. See `docs/EDITOR.md`.
+- **Twin Isles**, a new endurance track: two islands joined by two glass-roofed undersea tunnels and a
+  causeway, two hill shortcuts, four Wardens, and its own G-funk tune. Races run twice the laps you pick.
+- The undersea tunnels are dry inside, the camera stays inside the tube against the wall, and the
+  glass-section road edges match the tunnel's tint. Fish keep to deep water; UFO wrecks never land in a tunnel.
+- Bots and the autopilot slow down and steer round Warden feet and falling UFOs; reset puts you on a
+  clear lane past anything blocking the road.
+- Online play needs everyone on 1.5 (new track list).
 
 ## What's new in 1.47
 
@@ -171,6 +190,16 @@ in the options.
 - **Cleaner touch controls** on Android: buttons are frameless and see-through, and light up while held.
 - **Build and release fixes**: the Windows and ARM64 server builds are now verified on every release,
   and the Android APK ships with the release when it builds.
+
+## Track editor
+
+Make your own tracks (PC, mouse and keyboard). On the track screen press **F4** to edit the track
+shown (built-in tracks are copied, never changed) or **F6** to start a new one. Drag the road's
+points, add hills and lagoons, put in an undersea tunnel and shortcuts, pick the sky, weather and
+song, then press **Enter** to drive it and **F4** to come back. Tracks are saved as small text files
+(`.fcft`) in `~/.fogcityfury/tracks/` (Windows: `%APPDATA%\fogcityfury\tracks\`) and show up in the
+track list. Custom tracks are offline only and have no hidden keys. Details and the file format:
+`docs/EDITOR.md`.
 
 ## What's in it
 

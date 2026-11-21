@@ -51,7 +51,7 @@ static const Landing& landing(int u, int j, int g) {
     }
     if (!done) {   // on the road, a little way along from where it was hit
         int i = W.nearest(p0.x, p0.z); float s = i + (R01(u, j, g, 30) < 0.5f ? -1.0f : 1.0f) * (30 + 110 * R01(u, j, g, 31)), lat = (R01(u, j, g, 32) * 2 - 1) * 5.0f, ry;
-        if (W.hasTunnel()) { int si = ((int)s % W.n + W.n) % W.n; if (si >= W.tunA - 30 && si <= W.tunB + 30) s = (si - W.tunA < W.tunB - si) ? W.tunA - 40.0f - 60 * R01(u, j, g, 33) : W.tunB + 40.0f + 60 * R01(u, j, g, 33); }   // never in (or on) a tunnel
+        for (const World::Tun& tn : W.tuns) { int si = ((int)s % W.n + W.n) % W.n; if (si >= tn.a - 30 && si <= tn.b + 30) s = (si - tn.a < tn.b - si) ? tn.a - 40.0f - 60 * R01(u, j, g, 33) : tn.b + 40.0f + 60 * R01(u, j, g, 33); }   // never in (or on) a tunnel
         W.at(s, lat, L.p, ry); L.p.y = W.ground(L.p.x, L.p.z, L.p.y + 1.0f);
     }
     L.road = W.RD(L.p.x, L.p.z) < ROADW + 5;
@@ -93,10 +93,10 @@ static float camNear(V3 p) { return clampf(1 - len(p - camPos) / 320.0f, 0, 1); 
 static void clear() { ufos.clear(); wrecks.clear(); flowers.clear(); obs.clear(); W.discs.clear(); lastT = -1; downed = 0; }
 
 static void step(float t, float dt) {
-    if (cacheTrack != W.id || t < lastT - 0.5f) {   // a new track, or the clock went back (a new race): start over
+    if (cacheTrack != W.gen || t < lastT - 0.5f) {   // a new track, or the clock went back (a new race): start over
         for (auto& a : landCache) for (auto& b : a) for (auto& c : b) c.g = -1;
         for (auto& a : seedCache) for (auto& c : a) c.k = -1;
-        cacheTrack = W.id; lastT = -1;
+        cacheTrack = W.gen; lastT = -1;
     }
     float t0 = lastT < 0 ? t : lastT; lastT = t;
     auto passed = [&](float e) { return e > t0 && e <= t; };

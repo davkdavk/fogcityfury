@@ -88,7 +88,7 @@ static void spawn(V3 p, V3 v, float life, float size, float grow, V3 col, float 
 #include "audio.h"
 
 // ------------------------------------------------------------------ game state
-enum State { TITLE, CARSEL, TRACKSEL, RACE, PAUSED, RESULTS, NETJOIN, NETLOBBY, OPTS };   // OPTS: the options screens (controls, video)
+enum State { TITLE, CARSEL, TRACKSEL, RACE, PAUSED, RESULTS, NETJOIN, NETLOBBY, OPTS, EDIT };   // OPTS: the options screens (controls, video)
 static State state = TITLE;
 static World W;
 static Car player, ai[NAI];
@@ -114,7 +114,7 @@ static M4 lightVP;
 static float T = 0, raceT = 0, countdown = 0, timeLeft = 0, lapStart = 0, bestLapRace = 0, lastLap = 0, msgT = 0, wrongT = 0, shake = 0, resultsT = 0;
 static char msg[96] = ""; static V3 msgCol(1, 1, 1);
 static int selLaps = LAPS;   // laps for an offline race (1..9), chosen on the track screen
-static int selWeather = W_CLEAR, selRow = 0, weatherOf[NTRACKS] = {};
+static int selWeather = W_CLEAR, selRow = 0, weatherOf[MAXT] = {};
 static int selCar = 0, selPaint = 0, selTrack = 0, selMode = 0, camMode = 0, aiFinished = 0, finalPlace = 0, place = 1, gear = 1, cubeFace = 0, frameNo = 0;
 static bool noSave = false; static float maxAir = 0; static int gasOnly = 0;
 #ifdef FCF_GFX_XSDK
@@ -123,13 +123,14 @@ static int xsdkPasses = 0;   // debug bring-up: 0 direct, 1 post, 2 shadows, 3 r
 static int xsdkPasses = 3;
 #endif
 static const int NMODES = 4;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races)
+static std::string cliTrackFile, cliEdScript; static bool cliEdit = false, cliEdNew = false; static int cliEdTool = 0;   // --trackfile, --edit, --edtool
 static bool champOn = false, champDone = false, cliChamp = false; static int champRound = 0; static int champPts[NAI + 1];   // championship: running, all four rounds done, round 0-3, points (0: you, 1 + k: ai[k])
 static const int CHAMP_TRACK[4] = { 0, 1, 2, 3 }, CHAMP_LAPS[4] = { 1, 2, 2, 3 }, CHAMP_PTS[10] = { 25, 18, 15, 12, 10, 8, 6, 4, 2, 1 };
 static bool rampage = false, showdownOn = false;
 #include "fighter.h"
 static bool exploreMode = false, timeUp = false, chromeUnlocked = false, quit = false, debugTop = false, autoDrive = false, hideUI = false;
 static float rpm = 0, camYaw = 0, topH = 900; static V3 camPos, camTgt; static bool camInit = false, fixedCam = false;
-static unsigned keysGot[NTRACKS] = {}; static float bestLap[NTRACKS] = {};
+static unsigned keysGot[MAXT] = {}; static float bestLap[MAXT] = {};
 static plat::Pad* pad = nullptr;
 static bool netRace = false; static int raceLaps = LAPS; static M4 lastVP;   // online race in progress; laps this race; last view-projection (name tags)
 static void champRaceEnd(); static void champShowdownEnd(); static void champBegin(); static void champAdvance(bool quit); static void champBar(); static void champDraw();
@@ -183,6 +184,19 @@ extern "C" { __declspec(dllexport) unsigned long NvOptimusEnablement = 1; __decl
 #else
 static std::string savePath() { const char* h = getenv("HOME"); return std::string(h ? h : ".") + "/.fogcityfury.sav"; }
 #endif
+// ---- custom tracks: .fcft files (trackfile.h) in a folder next to the save file ----
+#include "trackfile.h"
+static std::string tracksDirOverride;
+static std::string tracksDir() {
+    if (!tracksDirOverride.empty()) return tracksDirOverride;
+#ifdef __ANDROID__
+    const char* h = plat::internalStorage(); return std::string(h ? h : ".") + "/tracks";
+#elif defined(_WIN32)
+    const char* h = getenv("APPDATA"); if (!h) h = getenv("USERPROFILE"); std::string d = std::string(h ? h : ".") + "\\fogcityfury"; trackMkdir(d); return d + "\\tracks";
+#else
+    const char* h = getenv("HOME"); std::string d = std::string(h ? h : ".") + "/.fogcityfury"; trackMkdir(d); return d + "/tracks";
+#endif
+}
 // ---- server list: the online screen shows these, asks each what it is running, and joins the one picked ----
 struct DnsJob { std::string host; sockaddr_in addr; plat::Atomic done; };     // done: 0 looking up, 1 found, 2 not found
 struct ServerEntry {
@@ -280,6 +294,7 @@ static void touchLayout() {
     auto side = [&](int row, const char* l, SDL_Keycode k) { key(l, W - 116, 128 + row * 72.0f, 104, 66, k); };
     float bx = W - 150, by = H - 100;   // bottom right: the main button, others to its left
     switch (state) {
+    case EDIT: break;   // (the editor is mouse and keyboard)
     case RACE:
         if (me.on) {   // on foot: the left thumb gets a stick wherever it lands (see touchDown); the right thumb gets the gun
             hold("FIRE", W - 190, H - 190, 170, 170, B_FIRE); hold("ROLL", W - 335, H - 190, 135, 82, B_HB); hold("RUN", W - 335, H - 100, 135, 82, B_NITRO);
@@ -432,11 +447,13 @@ static void setupCars(bool race) {
 static void loadTrack(int t) { if (W.id != t) W.build(t); setupCars(false); }
 // Track select builds the track you stop on, not every one you scroll past: building a city takes a moment (seconds on
 // the 360), so each left/right only marks it, and it is built once the choice has rested a moment, or at once on start.
-static const int TRACK_SONG[NTRACKS] = { 1, 2, 3, 4, 6, 7 };   // which song goes with each track (mus::SONGS)
+static const int TRACK_SONG[NTRACKS] = { 1, 2, 3, 4, 6, 7, 8 };
+static int trackSong(int t) { t = ((t % (int)TRACKS.size()) + (int)TRACKS.size()) % (int)TRACKS.size(); return TRACKS[t].song > 0 ? TRACKS[t].song : TRACK_SONG[t % NTRACKS]; }   // (a custom track can name its own)
+static const int TRACK_SONG_KEEP_ = 0;   // which song goes with each track (mus::SONGS)
 static int pendingTrack = -1; static float pendingT = 0;
 static void flushPendingTrack() { if (pendingTrack >= 0) { int t = pendingTrack; pendingTrack = -1; loadTrack(t); } }
 static void startRace() {
-    netRace = false; raceLaps = champOn ? CHAMP_LAPS[champRound] : selLaps; weather = selWeather; exploreMode = selMode == 1; rampage = selMode == 2 || champOn; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
+    netRace = false; raceLaps = champOn ? CHAMP_LAPS[champRound] : selLaps * std::max(1, W.def->lapMul); weather = selWeather; exploreMode = selMode == 1; rampage = selMode == 2 || champOn; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
     if (exploreMode) say("FREE ROAM - FIND THE KEYS", V3(1, 0.85f, 0.3f), 3.5f);
     if (champOn) { char cb[64]; snprintf(cb, sizeof cb, "CHAMPIONSHIP  -  ROUND %d OF 4", champRound + 1); say(cb, V3(1, 0.85f, 0.2f), 3.5f); }
@@ -666,6 +683,8 @@ static void respawn(Car& c) {
     int i = W.nearest(c.pos.x, c.pos.z, c.pos.y); const TS& s = onBr >= 0 ? W.brs[whichBr].ts[onBr] : W.ts[i]; c.pos = V3(s.x, s.y + 0.2f, s.z);
     // never respawn on top of a wreck: move across the road, to the side traffic does not use to pass it (see dodge)
     for (auto& w : wrecks) { float dx = w.pos.x - s.x, dz = w.pos.z - s.z; if (dx * dx + dz * dz < 4.5f * 4.5f) { float l = w.lat > 0 ? w.lat + 4.6f : w.lat - 4.6f; if (fabsf(l) > ROADW - 1.5f) l = w.lat > 0 ? w.lat - 4.6f : w.lat + 4.6f; c.pos.x += s.tz * l; c.pos.z -= s.tx * l; break; } }
+    // nor right behind something on the road (a Warden's foot, a UFO's wreck): onto a lane past it
+    if (onBr < 0) { float l = 0; if (dodge(i, 0, 28, l)) { V3 p; float yw; W.at((float)i, l, p, yw); c.pos = V3(p.x, std::max(p.y, W.H(p.x, p.z)) + 0.2f, p.z); } }
     c.yaw = atan2f(s.tx, s.tz); c.vel = V3(); c.dead = false; c.hp = 100; c.pitch = c.roll = c.yawRate = 0; c.grounded = true; camInit = false;
 }
 
@@ -928,6 +947,10 @@ static void finishRace(bool tu) {
 #include "showdown.h"
 #include "netshd.h"
 #include "champ.h"
+#ifndef FCF_GFX_XSDK
+#define FCF_EDITOR 1
+#include "editor.h"
+#endif
 static void update(float dt) {
     T += dt; frameNo++;
     if (logoT >= 0) { float t0 = logoT; logoT += dt; logoSounds(t0, logoT); if (logoT >= LOGO_LEN) logoT = -1; }
@@ -936,10 +959,13 @@ static void update(float dt) {
     if (state == NETJOIN && !nc.on) srvPump(dt);
     if (nc.on && (netRace || state == NETLOBBY)) weather = nc.weather % NWX;   // online: the server picks
     else if (state == TRACKSEL || state == CARSEL) weather = selWeather;
-    else if (state == TITLE) weather = W_CLEAR;
+    else if (state == TITLE || state == EDIT) weather = W_CLEAR;
+#ifdef FCF_EDITOR
+    if (state == EDIT) ed::update(dt);
+#endif
     bool driving = state == RACE || state == RESULTS || state == TITLE || (netRace && state == PAUSED);
     snd.musicDuck = state == PAUSED ? 0.35f : (state == RACE || state == RESULTS ? 0.85f : 1.0f);
-    mus::want = (state == TITLE || state == CARSEL || state == OPTS || state == NETJOIN || state == NETLOBBY) ? 0 : showdownOn ? 5 : TRACK_SONG[(state == TRACKSEL ? selTrack : ((W.id % NTRACKS) + NTRACKS) % NTRACKS)];   // each track has its own song, the showdown too; the menus keep the title song
+    mus::want = (state == TITLE || state == CARSEL || state == OPTS || state == NETJOIN || state == NETLOBBY) ? 0 : showdownOn ? 5 : trackSong(state == TRACKSEL ? selTrack : W.id);   // each track has its own song, the showdown too; the menus keep the title song
     if ((state == PAUSED && !netRace) || (state == OPTS && optReturn == PAUSED)) return;   // an online race cannot be paused: the car coasts while the menu is up
     Input in; bool go = true;
     if (state == RACE && introT > 0) introT = std::max(0.0f, introT - dt);
@@ -1239,7 +1265,9 @@ static bool showAI() { State st = viewState(); return nc.on ? false : (st == RAC
 // Three shoals and a shark, swimming up and down the glass stretch at their own paces, a little way out from it. Each
 // shoal is one mesh (its fish set out in a loose cluster), so a shoal is one draw; they are drawn only near the glass.
 static Mesh shoalMesh[3], sharkMesh;
-static V3 glassMid() { if (W.glassA < 0) return V3(1e9f, 0, 1e9f); const TS& t = W.ts[(W.glassA + W.glassB) / 2]; return V3(t.x, t.y, t.z); }
+static V3 glassMid() {   // the middle of the nearest tunnel's glass (and that tunnel becomes the one in use: the fish swim along it)
+    float best = 1e18f; int bk = -1; for (int k = 0; k < (int)W.tuns.size(); k++) { if (W.tuns[k].ga < 0) continue; const TS& t = W.ts[(W.tuns[k].ga + W.tuns[k].gb) / 2]; float d = len(camPos - V3(t.x, t.y, t.z)); if (d < best) { best = d; bk = k; } }
+    if (bk < 0) return V3(1e9f, 0, 1e9f); W.useTun(bk); const TS& t = W.ts[(W.glassA + W.glassB) / 2]; return V3(t.x, t.y, t.z); }
 static void buildFish() {
     using namespace mech; const V3 WHITE(1, 1, 1), EYE(0.02f, 0.02f, 0.02f);
     auto fish = [&](MB& m, V3 at, float s, V3 belly) {   // nose along +z; the back in the paint colour, a pale belly
@@ -1259,7 +1287,7 @@ static void buildFish() {
         sharkMesh.upload(m, "fish"); }
 }
 static void drawFish(Prog& p) {
-    if (W.glassA < 0 || len(camPos - glassMid()) > 260) return;
+    if (len(camPos - glassMid()) > 260 || W.glassA < 0) return;
     static const V3 COL[3] = { V3(0.20f, 0.45f, 0.75f), V3(0.95f, 0.50f, 0.10f), V3(0.75f, 0.78f, 0.82f) };
     // only along the deep part (the road 12 m or more under the sea): near the shores the water is too shallow for them
     int fa = W.glassA, fb = W.glassB; while (fa < fb && W.ts[fa].y > -12) fa++; while (fb > fa && W.ts[fb].y > -12) fb--; if (fb - fa < 30) return;
@@ -1750,6 +1778,10 @@ static void drawHUD() {
         for (int i = 0; i < 4; i++) { ui.text(84, 542 + i * 30, 2.5f, white, sn[i]); for (int k = 0; k < 10; k++) ui.rect(250 + k * 26, 541 + i * 30, 22, 17, k < S.stat[i] ? org : V3(0.25f, 0.25f, 0.3f), k < S.stat[i] ? 1 : 0.6f); }
         ui.text(Wd / 2, 620, 3, white, "<  >  CAR", 1); snprintf(b, sizeof b, "UP / DOWN  PAINT: %s", PAINT_NAMES[selPaint]); ui.text(Wd / 2, 652, 3, PAINTS[selPaint] * 0.7f + V3(0.3f, 0.3f, 0.3f), b, 1);
         if (!touchOn) ui.text(Wd - 60, 660, 3, white, P("ENTER: OK", "{A} OK   {B} BACK"), 2);
+#ifdef FCF_EDITOR
+    } else if (state == EDIT) {
+        ed::draw(Wd);
+#endif
     } else if (state == TRACKSEL) {
         ui.text(Wd / 2, 36, 6, yel, "CHOOSE YOUR TRACK", 1, 1, 0.12f);
         panel(60, 396, 620, 280);
@@ -1757,9 +1789,13 @@ static void drawHUD() {
         for (int r = 0; r < 4; r++) if (r == selRow) { ui.text(66, ry[r] + (r == 0 ? 10 : 0), r == 0 ? 4.0f : 2.8f, yel, ">"); }
         snprintf(b, sizeof b, "%s %s %s", selRow == 0 ? "<" : " ", W.def->name, selRow == 0 ? ">" : " "); ui.text(96, ry[0], 5, white, b);
         ui.text(96, ry[0] + 46, 2.5f, V3(0.75f, 0.8f, 0.9f), W.def->sub);
-        snprintf(b, sizeof b, "LENGTH %.2f KM", W.n / 1000.f); ui.text(96, ry[0] + 78, 2.5f, white, b);
-        char t[32]; if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST LAP %s", t); ui.text(96, ry[0] + 106, 2.5f, white, b);
-        ui.text(96, ry[0] + 138, 2.5f, yel, "HIDDEN KEYS"); for (int k = 0; k < NKEYS; k++) keyIcon(262 + k * 46, ry[0] + 136, 4, (keysGot[W.id] >> k & 1) ? yel : V3(0.3f, 0.3f, 0.35f), 1);
+        snprintf(b, sizeof b, "LENGTH %.2f KM", W.n / 1000.f); ui.text(96, ry[0] + 72, 2.5f, white, b);
+        char t[32]; if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST LAP %s", t); ui.text(96, ry[0] + 96, 2.5f, white, b);
+#ifdef FCF_EDITOR
+        panel(Wd - 700, 358, 640, 30, 0.5f);
+        ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), W.id >= NTRACKS ? "F4 EDIT THIS TRACK    F6 NEW TRACK" : "F4 EDIT A COPY OF THIS TRACK    F6 NEW TRACK", 2);
+#endif
+        if (W.def->deco >= 0) ui.text(96, ry[0] + 120, 2.5f, yel, "HIDDEN KEYS"); else ui.text(96, ry[0] + 120, 2.5f, V3(0.4f, 1, 0.6f), W.id >= NTRACKS ? "YOUR OWN TRACK" : "NO HIDDEN KEYS - JUST RACE"); for (int k = 0; k < NKEYS && W.def->deco >= 0; k++) keyIcon(262 + k * 46, ry[0] + 118, 4, (keysGot[W.id] >> k & 1) ? yel : V3(0.3f, 0.3f, 0.35f), 1);
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
         snprintf(b, sizeof b, "WEATHER  %s %-7s %s  %s", selRow == 1 ? "<" : " ", WX[selWeather].name, selRow == 1 ? ">" : " ", WX[selWeather].sub);
         ui.text(96, ry[1], 2.8f, wcol[selWeather], b);
@@ -1767,7 +1803,7 @@ static void drawHUD() {
         snprintf(b, sizeof b, "MODE     %s %-7s %s  %s", selRow == 2 ? "<" : " ", MODE_NAME[selMode], selRow == 2 ? ">" : " ", MODE_BLURB[selMode]);
         ui.text(96, ry[2], 2.8f, selMode ? V3(0.4f, 1, 0.6f) : org, b);
         if (selMode == 3) ui.text(96, ry[3], 2.8f, V3(0.45f, 0.47f, 0.52f), "LAPS     1 / 2 / 2 / 3, SET BY THE CHAMPIONSHIP");
-        else { snprintf(b, sizeof b, "LAPS     %s %d %s", selRow == 3 ? "<" : " ", selLaps, selRow == 3 ? ">" : " "); ui.text(96, ry[3], 2.8f, selMode == 1 ? V3(0.45f, 0.47f, 0.52f) : white, b); }
+        else { snprintf(b, sizeof b, "LAPS     %s %d %s%s", selRow == 3 ? "<" : " ", selLaps * std::max(1, W.def->lapMul), selRow == 3 ? ">" : " ", W.def->lapMul > 1 ? "  ENDURANCE" : ""); ui.text(96, ry[3], 2.8f, selMode == 1 ? V3(0.45f, 0.47f, 0.52f) : white, b); }
         panel(Wd - 400, 396, 340, 280); drawMap(Wd - 230, 536, 0.14f, false);
         if (!touchOn) ui.text(Wd - 60, 692, 2.5f, white, P("UP / DOWN: PICK ROW   LEFT / RIGHT: CHANGE   ENTER: START   ESC: BACK", "{DPAD} PICK ROW AND CHANGE   {A} START   {B} BACK"), 2);
     } else {
@@ -1826,7 +1862,7 @@ static void drawHUD() {
         } else { panel(20, 20, 230, 50); ui.text(36, 36, 3, V3(0.4f, 1, 0.6f), "FREE ROAM"); }
         panel(Wd - 300, 20, 280, 86); fmtTime(t, player.lap > 0 ? raceT - lapStart : 0); snprintf(b, sizeof b, "LAP  %s", t); ui.text(Wd - 284, 34, 3, white, b);
         if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST %s", t); ui.text(Wd - 284, 58, 3, yel, b);
-        for (int k = 0; k < NKEYS; k++) keyIcon(Wd - 284 + k * 44, 84, 3.6f, (keysGot[W.id] >> k & 1) ? yel : V3(0.35f, 0.35f, 0.4f), (keysGot[W.id] >> k & 1) ? 1 : 0.7f);
+        for (int k = 0; k < NKEYS && W.def->deco >= 0; k++) keyIcon(Wd - 284 + k * 44, 84, 3.6f, (keysGot[W.id] >> k & 1) ? yel : V3(0.35f, 0.35f, 0.4f), (keysGot[W.id] >> k & 1) ? 1 : 0.7f);
         }
         drawFootHUD(Hb); drawShdDriveHUD();
         if (state == RACE && introT > 0) { float a = clampf(introT * 2, 0, 1) * clampf((INTRO_LEN - introT) * 3, 0, 1); ui.text(Wd / 2, 150, 8, yel, W.def->name, 1, a, 0.12f); ui.text(Wd / 2, 232, 3, white, WX[weather].name, 1, a); }
@@ -1988,7 +2024,10 @@ static void render(int fbw, int fbh) {
 static void onKey(SDL_Keycode k, int sc = 0) {
     auto blip = [] { tone(700, 0.08f, 0.3f, 2); }; auto ok = [] { tone(520, 0.12f, 0.4f, 2); tone(1040, 0.2f, 0.4f, 2, 0, 0.08f); };
     int np = chromeUnlocked ? NPAINT : NPAINT - 1;
-    if (k == SDLK_m && state != NETJOIN && !(state == RACE && (bindHit(B_CAM, sc) || bindHit(B_RESET, sc) || bindHit(B_FIRE, sc)))) { snd.musicOn = !snd.musicOn; return; }
+#ifdef FCF_EDITOR
+    if (ed::testing && !netRace) { if (k == SDLK_F4 && (state == RACE || state == PAUSED || state == RESULTS)) { ed::resume(); return; } if (state != RACE && state != PAUSED && state != RESULTS) ed::testing = false; }
+#endif
+    if (k == SDLK_m && state != NETJOIN && state != EDIT && !(state == RACE && (bindHit(B_CAM, sc) || bindHit(B_RESET, sc) || bindHit(B_FIRE, sc)))) { snd.musicOn = !snd.musicOn; return; }
     switch (state) {
     case OPTS: {
         int rows = optPage == 0 ? NBIND : NVIDROWS;
@@ -2020,11 +2059,14 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (k == SDLK_UP) { selRow = (selRow + 3) % 4; blip(); } if (k == SDLK_DOWN) { selRow = (selRow + 1) % 4; blip(); }
         if (k == SDLK_LEFT || k == SDLK_RIGHT) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
-            if (selRow == 0) { selTrack = (selTrack + d + NTRACKS) % NTRACKS; pendingTrack = selTrack; pendingT = 0.45f; selWeather = weatherOf[selTrack]; }
+            if (selRow == 0) { selTrack = (selTrack + d + (int)TRACKS.size()) % (int)TRACKS.size(); pendingTrack = selTrack; pendingT = 0.45f; selWeather = weatherOf[selTrack]; }
             else if (selRow == 1) { selWeather = (selWeather + d + NWX) % NWX; weatherOf[selTrack] = selWeather; writeSave(); }
             else if (selRow == 2) selMode = (selMode + d + NMODES) % NMODES;
             else if (selMode != 3) { selLaps = (selLaps - 1 + d + 9) % 9 + 1; saveCfg(); }
         }
+#ifdef FCF_EDITOR
+        if (k == SDLK_F4 || k == SDLK_F6) { ok(); flushPendingTrack(); ed::open(k == SDLK_F6 ? -1 : selTrack); break; }
+#endif
         if (k == SDLK_RETURN) { ok(); flushPendingTrack(); if (selMode == 3) champBegin(); else startRace(); } if (k == SDLK_ESCAPE) { flushPendingTrack(); state = CARSEL; } break;
     case RACE:
         if (k == SDLK_ESCAPE) { state = PAUSED; break; } if (introT > 0 && (k == SDLK_RETURN || k == SDLK_SPACE || bindHit(B_GAS, sc))) introT = 0;   // skip the fly-in
@@ -2034,6 +2076,9 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (bindHit(B_EXIT, sc)) footToggle();
         if (bindHit(B_WEAPON, sc)) cycleGun();
         if (bindHit(B_RESET, sc)) doReset(); if (bindHit(B_FIRE, sc) && !me.on) fireRocket(); break;
+#ifdef FCF_EDITOR
+    case EDIT: ed::key(k); break;
+#endif
     case PAUSED: if (k == SDLK_ESCAPE || k == SDLK_RETURN) state = RACE; if (bindHit(B_RESET, sc)) { state = RACE; doReset(); } if (k == SDLK_q) { writeSave(); if (netRace) netLeave(""); else { champOn = champDone = false; state = TRACKSEL; setupCars(false); } } break;
     case RESULTS: if (netRace) { if (k == SDLK_ESCAPE) netLeave(""); } else if ((k == SDLK_RETURN || k == SDLK_ESCAPE) && resultsT > 1) { if (champOn) champAdvance(k == SDLK_ESCAPE); else { state = TRACKSEL; setupCars(false); } } break;
     case NETJOIN:
@@ -2065,7 +2110,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
 // must stay under the arch everywhere
 static int tubeDirt() {
     int bad = 0; if (!W.hasTunnel()) return 0;
-    for (int i = W.tunA; i <= W.tunB; i++) { const TS& t = W.ts[i]; bool b = false;
+    for (int i = 0; i < W.n; i++) { if (!W.inTun(i)) continue; const TS& t = W.ts[i]; bool b = false;
         for (float x = -TUBE_W + 0.2f; x <= TUBE_W - 0.2f; x += 0.6f) {
             float c = clampf(x / TUBE_W, -1, 1), arch = TUBE_SILL + (TUBE_TOP - TUBE_SILL) * sqrtf(1 - c * c);
             V3 q(t.x + t.tz * x, 0, t.z - t.tx * x); if (W.sampleTri(W.hr, q.x, q.z) > t.y + std::min(arch, 1.2f) - 0.05f) b = true; }
@@ -2086,7 +2131,7 @@ static void printJSON(FILE* o) {
       fprintf(o, "{\"fpos\":\"%s\",\"site\":[%.1f,%.1f,%.1f],", fp.c_str(), shdSite.x, shdSite.y, shdSite.z); }
     { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
-      fprintf(o, "\"shortcuts\":\"%s\",\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
+      fprintf(o, "\"shortcuts\":\"%s\",\"tunnels\":%d,\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), (int)W.tuns.size(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
     fprintf(o, "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
         "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
@@ -2237,6 +2282,10 @@ int main(int argc, char** argv) {
         else if (a == "--seed") { grng.s = (uint32_t)atoi(argv[++i]) * 2654435761u + 1u; grngSeeded = true; } else if (a == "--champ") cliChamp = true; else if (a == "--branchscan") { initTracks(); branchScan(atoi(argv[++i])); return 0; } else if (a == "--sim") sim = simMode = noSave = true; else if (a == "--seconds") skip = (int)(F(1) * 60), i++; else if (a == "--flat") W.flat = true; else if (a == "--dump") dump = true;
         else if (a == "--connect") { snprintf(nc.host, sizeof nc.host, "%s", argv[++i]); netWanted = true; } else if (a == "--name") { snprintf(nc.name, sizeof nc.name, "%.16s", argv[++i]); for (char* c = nc.name; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--ready") nc.autoReady = true;
+        else if (a == "--tracksdir") tracksDirOverride = argv[++i];                        // where custom tracks (.fcft) are kept
+        else if (a == "--trackfile") cliTrackFile = argv[++i];                             // load this custom track and pick it
+        else if (a == "--exporttracks") { initTracks(); std::string dir = argv[++i]; trackMkdir(dir); for (int t = 0; t < NTRACKS; t++) { TrackDef d = TRACKS[t]; d.nameS = d.name; d.subS = d.sub; d.song = TRACK_SONG[t]; char num[8]; snprintf(num, sizeof num, "%d", t + 1); std::string f = dir + "/builtin-" + num + ".fcft"; if (!trackSave(d, f.c_str())) { fprintf(stderr, "cannot write %s\n", f.c_str()); return 1; } } return 0; }
+        else if (a == "--edit") cliEdit = true; else if (a == "--ednew") cliEdit = cliEdNew = true; else if (a == "--edscript") { cliEdit = true; cliEdScript = argv[++i]; } else if (a == "--edtool") cliEdTool = atoi(argv[++i]);
         else if (a == "--keyrun") keyrun = atoi(argv[++i]);
         else if (a == "--speed") { speedSet = true; speed0 = F(1); i++; }
         else if (a == "--waypoints") { const char* p = argv[++i]; float x, z; int used; while (sscanf(p, "%f,%f%n", &x, &z, &used) == 2) { waypoints.push_back(V3(x, 0, z)); p += used; if (*p == ';') p++; } }
@@ -2268,9 +2317,21 @@ int main(int argc, char** argv) {
     if (cliAA >= 0) vidAA = nearestOpt(AA_OPT, 4, cliAA); if (cliAF >= 0) vidAF = nearestOpt(AF_OPT, 5, cliAF); if (fullSet) vidFull = true; if (!sizeSet) { w = vidW; h = vidH; } windowed = !vidFull;
     auto startGame = [&] {
         initTracks(); loadSave(); chromeUnlocked = allKeys();
+        if ((int)TRACKS.size() == NTRACKS) {   // custom tracks: the folder's, then one named on the command line
+            if (!noSave || !tracksDirOverride.empty()) { std::string dir = tracksDir(); trackMkdir(dir); tracksLoadDir(dir);
+#ifdef FCF_EDITOR
+                ed::dir = dir;
+#endif
+            }
+            if (!cliTrackFile.empty()) { TrackDef d; if (trackLoad(cliTrackFile.c_str(), d, TRACKS[0])) { int t = trackAdd(d); if (t >= 0) selTrack = t; } else { fprintf(stderr, "cannot read track file %s\n", cliTrackFile.c_str()); exit(1); } }
+            for (int t = NTRACKS; t < (int)TRACKS.size(); t++) weatherOf[t] = TRACKS[t].wx;
+        }
         W.build(selTrack); setupCars(true);
         if (startState == 8) { state = OPTS; optReturn = TITLE; }
         if (startState == 1) { state = CARSEL; setupCars(false); } if (startState == 2) { state = TRACKSEL; setupCars(false); } if (startState == 3) { if (cliChamp) champBegin(); else startRace(); if (!fullCountdown) { countdown = 0.01f; introT = 0; } }
+#ifdef FCF_EDITOR
+        if (cliEdit) { ed::open(cliEdNew ? -1 : selTrack); if (state == EDIT && !cliEdScript.empty()) ed::script(cliEdScript.c_str()); ed::tool = ((cliEdTool % ed::NTOOL) + ed::NTOOL) % ed::NTOOL; ed::noteT = 0; }   // --edit: straight into the editor (for screenshots)
+#endif
         if (keyrun >= 0 && keyrun < (int)W.recipes.size()) {   // drive the scripted route to hidden key number `keyrun`
             const Recipe& r = W.recipes[keyrun]; posSet = true; px = r.x; pz = r.z; pyaw = r.yaw;
             if (!gasOnly) { waypoints = r.wps; wpSpeed = r.speed; }
@@ -2478,6 +2539,16 @@ int main(int argc, char** argv) {
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break; case SDL_CONTROLLER_BUTTON_DPAD_UP: if (state == RACE && me.on) cycleGun(); else onKey(SDLK_UP); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: if (state == RACE) footToggle(); else onKey(SDLK_DOWN); break; }
             }
+#ifdef FCF_EDITOR
+            if (state == EDIT && !touchMouse) {   // the editor: the mouse works on the map
+                if (e.type == plat::EV_TEXT) ed::text(e.text);
+                if (e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP || e.type == plat::EV_MOUSE_MOVE) {
+                    int ww = 1, wh = 1; plat::windowSize(plat::window(display), ww, wh); float mx = e.x * uiW / ww, my = e.y * 720.0f / wh;
+                    ed::mouseMove(mx, my); if (e.type == plat::EV_MOUSE_DOWN) ed::mouseDown(e.button); else if (e.type == plat::EV_MOUSE_UP) ed::mouseUp();
+                }
+                if (e.type == plat::EV_MOUSE_WHEEL) ed::zoom(e.yrel);
+            }
+#endif
             if (e.type == plat::EV_PAD_ADDED && !pad) pad = plat::padOpen(e.padIndex);
             if (e.type == plat::EV_FINGER_DOWN) touchDown((SDL_FingerID)e.fingerId, e.x * uiW, e.y * 720);
             if (e.type == plat::EV_FINGER_MOVE) touchMove((SDL_FingerID)e.fingerId, e.x * uiW, e.y * 720);

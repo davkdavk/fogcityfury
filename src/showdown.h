@@ -580,7 +580,7 @@ static void drawShowdownResults() {
     fmtTime(t, raceT); if (shdSpectate) snprintf(b, sizeof b, "YOUR RACE  %dTH  %s", shdRacePlace, t); else snprintf(b, sizeof b, "RACE  %s  %s", ORD[(int)clampf((float)shdRacePlace, 1, NFIGHT)], t); ui.text(Wd / 2, 448, 3.2f, white, b, 1);
     if (shdSpectate) ui.text(Wd / 2, 486, 2.6f, dim, "FINISH IN THE TOP FIVE TO FIGHT", 1);
     else { snprintf(b, sizeof b, "SHOTS %d   HITS %d   ACCURACY %d%%", me.shots, me.hits, me.shots ? std::min(100, me.hits * 100 / me.shots) : 0); ui.text(Wd / 2, 486, 2.6f, dim, b, 1); }
-    snprintf(b, sizeof b, "KEYS FOUND  %d/%d", totalKeys(), NKEYS * NTRACKS); ui.text(Wd / 2, 516, 2.6f, yel, b, 1);
+    snprintf(b, sizeof b, "KEYS FOUND  %d/%d", totalKeys(), NKEYS * NTRACKS_KEYS); ui.text(Wd / 2, 516, 2.6f, yel, b, 1);
     for (int g = G_PISTOL; g < NGUNS; g++) if (!gunUnlocked(g)) { int need = GUNS[g].keys - totalKeys(); snprintf(b, sizeof b, "%d MORE KEY%s AND THE %s IS YOURS TO USE", need, need == 1 ? "" : "S", GUNS[g].name); ui.text(Wd / 2, 544, 2.2f, dim, b, 1); break; }
     if (!touchOn && fmodf(T, 1.0f) < 0.65f) ui.text(Wd / 2, 584, 3.2f, white, "PRESS ENTER", 1);
 }

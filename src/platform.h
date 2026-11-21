@@ -328,7 +328,7 @@ inline const char* internalStorage() { return SDL_AndroidGetInternalStoragePath(
 enum EvType : uint8_t {
     EV_QUIT, EV_KEY_DOWN, EV_KEY_UP, EV_TEXT, EV_PAD_DOWN, EV_PAD_UP, EV_PAD_ADDED,
     EV_FINGER_DOWN, EV_FINGER_MOVE, EV_FINGER_UP,
-    EV_MOUSE_DOWN, EV_MOUSE_UP, EV_MOUSE_MOVE,
+    EV_MOUSE_DOWN, EV_MOUSE_UP, EV_MOUSE_MOVE, EV_MOUSE_WHEEL,
     EV_BG_ENTER, EV_FG_ENTER, EV_WINDOW_RESIZED
 };
 struct Event {
@@ -370,6 +370,7 @@ inline bool pollEvents(std::vector<Event>& out) {
             v.fingerId = e.tfinger.fingerId; v.x = e.tfinger.x; v.y = e.tfinger.y; break;
         case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP:
             v.type = e.type == SDL_MOUSEBUTTONDOWN ? EV_MOUSE_DOWN : EV_MOUSE_UP; v.button = e.button.button; v.x = (float)e.button.x; v.y = (float)e.button.y; v.which = e.button.which; break;
+        case SDL_MOUSEWHEEL: v.type = EV_MOUSE_WHEEL; v.yrel = (float)e.wheel.y; v.which = e.wheel.which; break;   // (the editor zooms with it)
         case SDL_MOUSEMOTION:
             v.type = EV_MOUSE_MOVE; v.x = (float)e.motion.x; v.y = (float)e.motion.y; v.xrel = (float)e.motion.xrel; v.yrel = (float)e.motion.yrel; v.which = e.motion.which; break;
         case SDL_APP_WILLENTERBACKGROUND: v.type = EV_BG_ENTER; break;

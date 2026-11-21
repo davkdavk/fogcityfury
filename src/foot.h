@@ -33,7 +33,7 @@ static void gunSound(int g, V3 at) {
     else { sfx(at, 700, 0.5f, 0.5f, 1, 1500); sfx(at, 120, 0.25f, 0.5f, 0, -50); }
 }
 static int fakeKeys = -1;                                                    // --keys N (tests): as if that many keys had been found
-static int totalKeys() { if (fakeKeys >= 0) return fakeKeys; int n = 0; for (int t = 0; t < NTRACKS; t++) n += keyCount(t); return n; }
+static int totalKeys() { if (fakeKeys >= 0) return fakeKeys; int n = 0; for (int t = 0; t < NTRACKS_KEYS; t++) n += keyCount(t); return n; }
 static bool gunUnlocked(int g) { return totalKeys() >= GUNS[g].keys; }
 static int gunsUnlocked() { int n = 0; for (int g = 0; g < NGUNS; g++) if (gunUnlocked(g)) n++; return n; }
 static V3 avatarPos() { return me.on ? me.pos : player.pos; }                // you, wherever you are: on foot or in the car

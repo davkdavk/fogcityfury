@@ -125,6 +125,11 @@ Environment `FCF_TRACE=1` prints a line to stderr every 0.1 s of simulated time:
 sideslip, front/rear slip ratios, yaw rate, grounded, steering, air time. This is the tool for
 "where on the lap does it go wrong".
 
+Track files and the editor (see `docs/EDITOR.md`): `--trackfile FILE` loads a custom track and picks it,
+`--tracksdir DIR` sets the folder custom tracks are kept in, `--exporttracks DIR` writes the built-in
+tracks as files and exits, `--edit` / `--ednew` open the editor on the picked track / a new one,
+`--edtool N` picks its tool, `--edscript "..."` works its mouse and keys (`ed::script`).
+
 ## The JSON report
 
 One line on stdout from `--sim` and `--shot`.

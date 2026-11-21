@@ -3,8 +3,9 @@
 #include "base.h"
 
 static const float HALF = 768, CELL = 3, ROADW = 8.0f, GCELL = 48, BRANCH_W = 5.5f;   // BRANCH_W: half the alternate route's width   // world is 1536 m square; collider grid cells are 48 m
-static const int GN = 513, GCN = 32, NCP = 8, NKEYS = 5, NTRACKS = 6, NTRACKS_ORIG = 4;   // NTRACKS_ORIG: the first four (chrome is for their keys)
+static const int GN = 513, GCN = 32, NCP = 8, NKEYS = 5, NTRACKS = 7, NTRACKS_ORIG = 4, NTRACKS_KEYS = 6;   // NTRACKS_KEYS: the tracks with hidden keys (the endurance track has none)   // NTRACKS_ORIG: the first four (chrome is for their keys)
 
+#include <string>
 struct Gauss { float x, z, a, s; };
 struct TS { float x, z, y, tx, tz, curv; bool br = false, tun = false; };   // br: this sample is on a bridge deck, not on the ground; tun: inside the undersea tunnel
 struct Box { float cx, cz, hx, hz, ca, sa, y0, top; };
@@ -39,11 +40,20 @@ struct TrackDef {
     // An undersea tunnel: { a, b, depth, g0, g1 }. Between fractions a and b of the loop the road dives to `depth` (m,
     // below the sea) and comes back up; wherever it is below 0.8 m it runs in a tube, glass-roofed between g0 and g1.
     std::vector<float> tunnel;
+    // Custom tracks (made in the editor, loaded from .fcft files: see trackfile.h). deco: which built-in track's set of
+    // hidden keys it has (-1: none). song: its tune (-1: the built-in one for its place in the list). wx: its usual weather.
+    int deco = -1, song = -1, wx = 0; std::string nameS, subS, file;
+    // islands: {x, z, radius} each. Empty: one island of radius landR round the middle. tunnel: five numbers for each
+    // tunnel (a track can have several). wardens: how many walk the track (0 to 4).
+    std::vector<float> islands; int wardens = 2;
+    int lapMul = 1;   // an endurance track races this many times the laps picked
 };
+static const int MAXCUSTOM = 40, MAXT = NTRACKS + MAXCUSTOM;   // (the list never grows past MAXT, so a TrackDef never moves once made)
 static std::vector<TrackDef> TRACKS;
 
 static void initTracks() {
     if (!TRACKS.empty()) return;
+    TRACKS.reserve(MAXT);
     TrackDef a;
     a.name = "HILLTOP HEIGHTS"; a.sub = "FIGURE 8 - STEEP STREETS, ONE BRIDGE";
     a.branches = { { 0.7516f, 0.964f }, { 0.4582f, 0.6063f } };   // two shortcuts, shaped by World::branchCurve (found with --branchscan)
@@ -100,6 +110,23 @@ static void initTracks() {
     f.sun = norm(V3(-0.25f, 0.80f, 0.40f)); f.sunCol = V3(2.9f, 2.6f, 2.1f);
     f.skyTop = V3(0.02f, 0.30f, 0.62f); f.skyHor = V3(0.50f, 0.75f, 0.85f); f.fogDen = 0.0007f; f.seed = 71;
     TRACKS.push_back(f);
+    TrackDef g;   // two islands; two undersea tunnels and a causeway between them; four Wardens
+    g.name = "TWIN ISLES"; g.sub = "ENDURANCE - TWO ISLANDS, TWO TUNNELS";
+    // (made by a script: each island's road is a rounded triangle; the two straights between them run under the channel.
+    //  The SE island's points are mirrored through the middle for the NW one)
+    g.ctrl = { 540,175, 560,320, 520,470, 400,560, 270,560, 180,470, 120,346, -35,191, -191,35, -346,-120, -540,-175, -560,-320, -520,-470, -400,-560, -270,-560, -180,-470, -120,-346, 35,-191, 191,-35, 346,120 };
+    g.islands = { -330, -330, 320,  330, 330, 320 };
+    g.hills = { {-400,-400,14,110}, {400,400,12,110} };
+    g.tunnel = { 0.2494f, 0.4408f, -19, 0.2877f, 0.4025f,     // B: north-west under the channel
+                 0.7494f, 0.9408f, -19, 0.7877f, 0.9025f };   // A: south-east under the channel, to the finish
+    g.branches = { { 0.0232f, 0.1903f, 390, 385 },                                                        // across the SE island, over its hill
+                   { 0.2285f, 0.5000f, 200, 320, 100, 100, 0, 0, -100, -100, -250, -200 },             // the causeway between the islands (the other way to tunnel B)
+                   { 0.5232f, 0.6903f, -390, -385 } };                                                  // across the NW island, over its hill
+    g.baseH = 8; g.noiseAmp = 2.2f; g.landR = 600; g.cityThr = 0.48f; g.night = 0; g.wardens = 4; g.lapMul = 2;
+    g.sun = norm(V3(-0.35f, 0.55f, -0.45f)); g.sunCol = V3(2.7f, 2.2f, 1.7f);
+    g.skyTop = V3(0.10f, 0.20f, 0.52f); g.skyHor = V3(0.62f, 0.58f, 0.62f); g.fogDen = 0.0007f; g.seed = 83;
+    TRACKS.push_back(g);
+    for (int i = 0; i < NTRACKS_KEYS; i++) TRACKS[i].deco = i;
 }
 
 static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
@@ -108,7 +135,7 @@ static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
 }
 
 struct World {
-    int id = -1; const TrackDef* def = nullptr;
+    int id = -1, gen = 0; const TrackDef* def = nullptr;   // gen: counts builds (the editor rebuilds the same track: anything cached per track goes by this)
     std::vector<float> h, hr, rd; std::vector<TS> ts; int n = 0;
     struct Branch {
         std::vector<TS> ts; int a = -1, b = -1; float len = 0, scale = 1;
@@ -130,8 +157,13 @@ struct World {
     // the undersea tunnel: the stretch of loop samples that run in the tube (tunA..tunB), its glass-roofed part, the
     // ground cells inside it (dry: the sea is not there), and the glass itself (triangles in the particle layout, 11 floats
     // a vertex: position, metres along and up the glass, colour, depth below the sea, 0) for the glass program
+    // A track can have several: tuns lists them all, and tunA..glassB are the one in use (useTun: the first, except
+    // while each is built in turn, and the one nearest the camera when the fish are drawn)
     int tunA = -1, tunB = -1, glassA = -1, glassB = -1; std::vector<uint8_t> dryMask; std::vector<float> glassV;
-    bool hasTunnel() const { return tunA >= 0; }
+    struct Tun { int a, b, ga, gb; }; std::vector<Tun> tuns;
+    bool hasTunnel() const { return !tuns.empty(); }
+    void useTun(int k) { if (k < 0 || k >= (int)tuns.size()) { tunA = tunB = glassA = glassB = -1; return; } tunA = tuns[k].a; tunB = tuns[k].b; glassA = tuns[k].ga; glassB = tuns[k].gb; }
+    bool inTun(int i, int margin = 0) const { for (const Tun& t : tuns) if (i >= t.a - margin && i <= t.b + margin) return true; return false; }
     bool dry(float x, float z) const { if (dryMask.empty()) return false; int i = (int)clampf(roundf((x + HALF) / CELL), 0, GN - 1), j = (int)clampf(roundf((z + HALF) / CELL), 0, GN - 1); return dryMask[j * GN + i] != 0; }
     // the ground's height for "is this the sea?": inside the tunnel it is dry whatever the height
     float HW(float x, float z) const { return dry(x, z) ? 50.0f : H(x, z); }
@@ -158,7 +190,12 @@ struct World {
         const TrackDef& d = *def;
         float hh = d.baseH + (fbm(x * 0.006f + d.seed * 13.7f, z * 0.006f, 4) - 0.47f) * 2 * d.noiseAmp;
         for (auto& g : d.hills) hh += g.a * expf(-((x - g.x) * (x - g.x) + (z - g.z) * (z - g.z)) / (2 * g.s * g.s));
-        float r = sqrtf(x * x + z * z) + (fbm(x * 0.012f + 5, z * 0.012f + 9, 3) - 0.5f) * 60;
+        float wob = (fbm(x * 0.012f + 5, z * 0.012f + 9, 3) - 0.5f) * 60;
+        if (d.islands.size() >= 3) {   // several islands: how far past the nearest one's shore
+            float e = 1e9f; for (size_t k = 0; k + 2 < d.islands.size(); k += 3) e = std::min(e, sqrtf((x - d.islands[k]) * (x - d.islands[k]) + (z - d.islands[k + 1]) * (z - d.islands[k + 1])) - d.islands[k + 2]);
+            hh -= smooth(0, 110, e + wob) * 45; return hh;
+        }
+        float r = sqrtf(x * x + z * z) + wob;
         hh -= smooth(d.landR, d.landR + 110, r) * 45; return hh;
     }
     float sampleGrid(const std::vector<float>& a, float x, float z) const {
@@ -602,24 +639,28 @@ struct World {
     // the road's profile: between a and b it eases down to the depth and back up (a cosine ease over the first and last
     // 36%: no steeper than about 12%), then every sample below 0.8 m is in the tube
     void applyTunnel() {
-        tunA = tunB = glassA = glassB = -1; glassV.clear(); for (TS& t : ts) t.tun = false;
-        const std::vector<float>& td = def->tunnel; if (td.size() < 5 || flat) return;
-        int a = (int)(td[0] * n), b = (int)(td[1] * n); if (a <= 0 || b <= a || b >= n) return;
-        for (int i = a; i <= b; i++) { float u = (float)(i - a) / (b - a), w = smooth(0, 0.36f, u) * (1 - smooth(0.64f, 1, u)); ts[i].y = lerpf(ts[i].y, td[2], w); }
-        for (int i = a; i <= b; i++) if (ts[i].y < 0.8f) { if (tunA < 0) tunA = i; tunB = i; ts[i].tun = true; }
-        if (tunA < 0) return;
-        // the glass: everywhere the sea is outside it, from the shoreline to the shoreline (the natural ground under the tube
-        // below the sea). Near the shores the arch stands up out of the water, and the glass shows the waterline climbing it
-        // as you go under. Under land it is concrete. td[3], td[4] are kept for the record but no longer limit it
-        glassA = glassB = -1;
-        for (int i = tunA; i <= tunB; i++) if (baseHeight(ts[i].x, ts[i].z) < -0.5f) { if (glassA < 0) glassA = i; glassB = i; }
-        if (glassB - glassA < 40) glassA = glassB = -1;
+        tuns.clear(); useTun(-1); glassV.clear(); for (TS& t : ts) t.tun = false;
+        const std::vector<float>& tdAll = def->tunnel; if (tdAll.size() < 5 || flat) return;
+        for (size_t q = 0; q + 4 < tdAll.size(); q += 5) {
+            const float* td = &tdAll[q]; tunA = tunB = glassA = glassB = -1;
+            int a = (int)(td[0] * n), b = (int)(td[1] * n); if (a <= 0 || b <= a || b >= n || inTun(a, 40) || inTun(b, 40)) continue;
+            for (int i = a; i <= b; i++) { float u = (float)(i - a) / (b - a), w = smooth(0, 0.36f, u) * (1 - smooth(0.64f, 1, u)); ts[i].y = lerpf(ts[i].y, td[2], w); }
+            for (int i = a; i <= b; i++) if (ts[i].y < 0.8f) { if (tunA < 0) tunA = i; tunB = i; ts[i].tun = true; }
+            if (tunA < 0) continue;
+            // the glass: everywhere the sea is outside it, from the shoreline to the shoreline (the natural ground under the tube
+            // below the sea). Near the shores the arch stands up out of the water, and the glass shows the waterline climbing it
+            // as you go under. Under land it is concrete. td[3], td[4] are kept for the record but no longer limit it
+            for (int i = tunA; i <= tunB; i++) if (baseHeight(ts[i].x, ts[i].z) < -0.5f) { if (glassA < 0) glassA = i; glassB = i; }
+            if (glassB - glassA < 40) glassA = glassB = -1;
+            tuns.push_back({ tunA, tunB, glassA, glassB });
+        }
+        useTun(0);
     }
     // the tube: round. A low concrete wall each side (the sill), then one arch (half an ellipse) over the road, concrete
     // with strip lights, or in the glass stretch all glass (its window joins are drawn by the glass shader). Inside and outside faces; portals
     // with a headwall round each mouth. Its walls are solid (boxes every 8 m)
-    void buildTube() {
-        if (!hasTunnel()) return;
+    void buildTube() { for (int k = 0; k < (int)tuns.size(); k++) { useTun(k); buildOneTube(); } useTun(0); }
+    void buildOneTube() {
         const V3 CIN(0.60f, 0.59f, 0.57f), COUT(0.40f, 0.42f, 0.43f), LAMP(1.0f, 0.92f, 0.75f);
         auto P = [&](const TS& t, float x, float y) { return V3(t.x + t.tz * x, t.y + y, t.z - t.tx * x); };
         auto arc = [&](int k, float grow, float& x, float& y) { float th = 3.14159265f * k / TUBE_ARC; x = (TUBE_W + grow) * cosf(th); y = TUBE_SILL + (TUBE_TOP - TUBE_SILL + grow) * sinf(th); };
@@ -676,7 +717,8 @@ struct World {
     // There the sheet is laid in 1.5 m squares and the squares over the tube's inside are left out; the roof covers them.
     void seaSurface(MB& w) {
         std::vector<float> rx0, rx1, rz0, rz1; std::vector<std::pair<int, int>> runs;
-        if (hasTunnel()) { int s = -1; for (int i = tunA; i <= tunB + 1; i++) { bool in = i <= tunB && ts[i].y > -(TUBE_TOP + TUBE_TH + 0.3f); if (in && s < 0) s = i; if (!in && s >= 0) { runs.push_back({ s, i - 1 }); s = -1; } } }
+        std::vector<Tun> runTun;   // (the tunnel each run belongs to)
+        for (const Tun& tn : tuns) { int s = -1; for (int i = tn.a; i <= tn.b + 1; i++) { bool in = i <= tn.b && ts[i].y > -(TUBE_TOP + TUBE_TH + 0.3f); if (in && s < 0) s = i; if (!in && s >= 0) { runs.push_back({ s, i - 1 }); runTun.push_back(tn); s = -1; } } }
         for (auto& r : runs) { float a0 = 1e9f, a1 = -1e9f, b0 = 1e9f, b1 = -1e9f; for (int i = r.first; i <= r.second; i++) { a0 = std::min(a0, ts[i].x); a1 = std::max(a1, ts[i].x); b0 = std::min(b0, ts[i].z); b1 = std::max(b1, ts[i].z); }
             const float M = TUBE_W + 3; rx0.push_back(floorf((a0 - M) / 1.5f) * 1.5f); rx1.push_back(ceilf((a1 + M) / 1.5f) * 1.5f); rz0.push_back(floorf((b0 - M) / 1.5f) * 1.5f); rz1.push_back(ceilf((b1 + M) / 1.5f) * 1.5f); }
         // the rest of the sheet, in rectangles round the patches
@@ -689,7 +731,7 @@ struct World {
         }
         for (size_t k = 0; k < runs.size(); k++) for (float x = rx0[k]; x < rx1[k] - 0.01f; x += 1.5f) for (float z = rz0[k]; z < rz1[k] - 0.01f; z += 1.5f) {
             float cx = x + 0.75f, cz = z + 0.75f, bd = 1e18f; int bi = runs[k].first;   // over the tube's inside? (nearest sample of the run, and the patch's own overlap)
-            for (int i = std::max(tunA, runs[k].first - 20); i <= std::min(tunB, runs[k].second + 20); i++) { float dx = ts[i].x - cx, dz = ts[i].z - cz, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
+            for (int i = std::max(runTun[k].a, runs[k].first - 20); i <= std::min(runTun[k].b, runs[k].second + 20); i++) { float dx = ts[i].x - cx, dz = ts[i].z - cz, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
             bool inside = false; for (size_t q = 0; q < rx0.size(); q++) if (q < k && cx > rx0[q] && cx < rx1[q] && cz > rz0[q] && cz < rz1[q]) inside = true;   // (overlapping patches: laid once)
             if (inside) continue;
             // the edge: the tube's inside at the waterline (half an ellipse above the sills), clipped exactly so the sea meets
@@ -789,7 +831,7 @@ struct World {
     }
 
     void build(int id_) {
-        id = id_; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB();
+        id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB();
         boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
 #ifdef FCF_XENOS_CULL
         for (auto& c : worldCells) c = WorldCell();
@@ -829,6 +871,8 @@ struct World {
         }
         for (int j : cross) for (int d = -BR_LW; d <= BR_LW; d++) { TS& s = ts[(j + d + n) % n]; s.y += BR_LIFT * (0.5f + 0.5f * cosf((float)M_PI * d / BR_LW)); if (abs(d) <= BR_SPAN) s.br = true; }
         applyTunnel();
+        if (!def->islands.empty())   // islands: no buildings over the tunnels' land ends (the Wardens walk over them, along the road's line)
+            for (const Tun& tn : tuns) for (int i = tn.a; i <= tn.b; i += 8) addExcl(ts[i].x, ts[i].z, 40);
         buildBranches();
         // --- stamp the road into the height field (bridge decks are not ground: they only count for "how far is the road") ---
         std::vector<float> by(GN * GN, 0), rdh(GN * GN, 999); const int R = (int)(76 / CELL);
@@ -990,6 +1034,8 @@ struct World {
 
 // Where the five keys of each track live. Order matters: key k is bit k in the save file.
 void World::decorate() {
+    const int id = def->deco;
+    if (id < 0) return;   // a custom track: no hidden keys (the places they stand in belong to the built-in layouts)
     if (id == 0) {
         courtyard(0, 290, 0, false);                           // between the two loops, gate facing the crossing
         rooftop(-512, 95, -1, 1);
