@@ -77,6 +77,10 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.47
+
+- Harbour Deep and Lagoon Loop bring undersea glass-roof tunnels, dry roads below sea level, surface causeways and new music.
+
 ## What's new in 1.46
 
 - Two shortcuts on every track; Wardens shoot down UFOs that land as solid wrecks (road wrecks obstruct traffic) and plant giant flowers; Warden feet are solid; showdown bots no longer run at unreachable rings; the showdown has its own song. Xbox 360 now ships the verified lean XEX.
