@@ -53,6 +53,7 @@ static bool canTake(const Fighter& f, const Drop& d) { return d.back <= 0 && (d.
 // straight clear run in from the road (which is how the bots get there). If nowhere like that turns up, or a place on the
 // road is asked for (u: how far round the lap, 0..1), it is a stretch of road, never on a bridge.
 static V3 shdExitP; static bool shdOffRoad = false;
+static int shdRingDeaths = 0;   // (tests) computer fighters the ring burned to death
 static std::vector<V3> shdPath; static V3 shdLastSite; static bool shdHaveLast = false, grngSeeded = false;   // shdPath: the backstreets a bot off the road takes to the ring; shdLastSite: last race's ring (the next goes elsewhere)
 static bool shdClear(V3 p) { float h = W.H(p.x, p.z); return h > 0.3f && fabsf(p.x) < HALF - 60 && fabsf(p.z) < HALF - 60 && !solidAt(V3(p.x, h + 1.0f, p.z), false); }
 static float alleyNear(float v) { return World::alleyLine((int)lroundf((v - World::GRID0) / World::GRID - 0.5f)); }   // the backstreet nearest v (the same grid both ways)
@@ -112,6 +113,61 @@ static void shdPickSiteAny(float u) {   // u < 0: anywhere
     shdLogSite("road fallback");
 #endif
 }
+// ---- the way into the ring on foot ----
+// A runner is stopped by walls, deep water and steps over 0.8 m, so "run at the middle" strands a bot behind a building,
+// across water or under a ledge until the ring burns it out. The ring's walking map: 2 m cells round the site, each holding
+// how many steps it is to the middle going round whatever blocks a runner. Built once per ring (same on every machine).
+static const int FF_N = 128; static const float FF_CELL = 2.0f;   // 256 m square centred on the site
+static std::vector<uint16_t> ffDist; static V3 ffSite(1e9f, 0, 1e9f);
+static inline bool ffCellOf(V3 p, int& i, int& j) { i = (int)floorf((p.x - ffSite.x) / FF_CELL) + FF_N / 2; j = (int)floorf((p.z - ffSite.z) / FF_CELL) + FF_N / 2; return i >= 0 && j >= 0 && i < FF_N && j < FF_N; }
+static inline V3 ffCentre(int i, int j) { return V3(ffSite.x + (i - FF_N / 2 + 0.5f) * FF_CELL, 0, ffSite.z + (j - FF_N / 2 + 0.5f) * FF_CELL); }
+static void shdBuildField() {
+    ffSite = shdSite; const int N = FF_N * FF_N; ffDist.assign(N, 0xFFFF);
+    std::vector<float> g(N); std::vector<uint8_t> ok(N);
+    for (int j = 0; j < FF_N; j++) for (int i = 0; i < FF_N; i++) {
+        V3 c = ffCentre(i, j); float h = W.H(c.x, c.z), y = W.ground(c.x, c.z, std::max(h, 0.0f) + 0.6f); int k = j * FF_N + i;
+        g[k] = y; ok[k] = h >= -1.0f && !solidAt(V3(c.x, y + 1.0f, c.z), false) && !solidAt(V3(c.x, y + 0.5f, c.z), false);
+    }
+    std::vector<int> q; q.reserve(N);
+    for (int j = 0; j < FF_N; j++) for (int i = 0; i < FF_N; i++) { int k = j * FF_N + i; if (ok[k] && flatDist(ffCentre(i, j), shdSite) < 5.0f) { ffDist[k] = 0; q.push_back(k); } }
+    static const int DI[8] = { 1, -1, 0, 0, 1, 1, -1, -1 }, DJ[8] = { 0, 0, 1, -1, 1, -1, 1, -1 };
+    for (size_t h = 0; h < q.size(); h++) {   // outward from the middle: n joins if a runner can go from n into c
+        int c = q[h], ci = c % FF_N, cj = c / FF_N;
+        for (int d = 0; d < 8; d++) {
+            int ni = ci + DI[d], nj = cj + DJ[d]; if (ni < 0 || nj < 0 || ni >= FF_N || nj >= FF_N) continue; int n = nj * FF_N + ni;
+            if (!ok[n] || ffDist[n] != 0xFFFF || g[c] - g[n] > 0.75f * (d < 4 ? 1.0f : 1.41f)) continue;
+            if (d >= 4 && (!ok[cj * FF_N + ni] || !ok[nj * FF_N + ci])) continue;   // no cutting a corner past a wall
+            V3 m = (ffCentre(ci, cj) + ffCentre(ni, nj)) * 0.5f; float my = std::max(g[c], g[n]);
+            if (solidAt(V3(m.x, my + 1.0f, m.z), false)) continue;   // a thin wall between two clear cells
+            ffDist[n] = (uint16_t)(ffDist[c] + 1); q.push_back(n);
+        }
+    }
+}
+// which way to run to get into the ring from p (false: p has no way in, or is off the map)
+static bool ffWay(V3 p, V3& dir) {
+    if (flatDist(ffSite, shdSite) > 0.5f) shdBuildField();
+    int i, j; if (!ffCellOf(p, i, j)) return false; uint16_t here = ffDist[j * FF_N + i]; if (here == 0xFFFF) return false;
+    V3 goal = shdSite;
+    if (here > 0) {   // look two cells out for the nearest-to-the-middle cell, so the way runs smooth instead of in grid steps
+        uint16_t best = here; int bi = i, bj = j;
+        for (int dj = -2; dj <= 2; dj++) for (int di = -2; di <= 2; di++) {
+            int ni = i + di, nj = j + dj; if ((!di && !dj) || ni < 0 || nj < 0 || ni >= FF_N || nj >= FF_N) continue;
+            uint16_t v = ffDist[nj * FF_N + ni]; if (v >= best) continue;
+            if ((abs(di) == 2 || abs(dj) == 2)) {   // a two-cell jump must go through a cell that's also on the way
+                int mi = i + (di > 0) - (di < 0), mj = j + (dj > 0) - (dj < 0); if (ffDist[mj * FF_N + mi] >= here) continue;
+            }
+            best = v; bi = ni; bj = nj;
+        }
+        goal = ffCentre(bi, bj);
+    }
+    V3 d(goal.x - p.x, 0, goal.z - p.z); float L = len(d); if (L < 0.05f) return false; dir = d * (1 / L); return true;
+}
+
+// can a runner at p still get back into the ring? (off the walking map counts as no)
+static bool ffReach(V3 p) {
+    if (flatDist(ffSite, shdSite) > 0.5f) shdBuildField();
+    int i, j; return ffCellOf(p, i, j) && ffDist[j * FF_N + i] != 0xFFFF;
+}
 // a new ring: wherever it lands, not where the last one was
 static void shdPickSite(float u) { shdPickSiteAny(u); shdLastSite = shdSite; shdHaveLast = true; }
 // where a bot's car leaves the road (or, for a ring on the road, pulls up), and where it parks
@@ -125,6 +181,7 @@ static bool showdownStart(int racePlace) {   // called as you cross the line. Th
     bool watch = racePlace > NFIGHT;
     showdownOn = true; shdCut = true; shdPhase = SH_DRIVE; shdT = 0; shdRing = shdRingTgt = SH_RING0; shdWinner = -1; shdOverT = 0; shdRacePlace = racePlace; shdResult = false; wrongT = 0;
     shdPickSite(sdSite >= 0 ? sdSite : -1.0f);
+    shdBuildField();
     int order[NAI]; for (int k = 0; k < NAI; k++) order[k] = k;   // the four best of the others come too; the rest of the field has gone home
     std::sort(order, order + NAI, [](int a, int b) { bool fa = ai[a].finishT >= 0, fb = ai[b].finishT >= 0; return fa != fb ? fa : fa ? ai[a].finishT < ai[b].finishT : ai[a].progress > ai[b].progress; });
     for (int k = watch ? NFIGHT : NFIGHT - 1; k < NAI; k++) { ai[order[k]].dead = true; ai[order[k]].deadT = 1e9f; }
@@ -187,10 +244,11 @@ static FootIn botThink(Fighter& f, float dt) {
     f.gun = bestGun(f); if (f.gun == G_LAUNCHER && tg >= 0 && td < 11) { f.gun = baseGun(); for (int g = G_SHOTGUN; g > G_PISTOL; g--) if (f.ammo[g] > 0) { f.gun = g; break; } }   // not at their own feet
     // the pick-up most worth the run
     int bd = -1; float bv = 0;
-    for (size_t i = 0; i < drops.size(); i++) { float v = dropValue(f, drops[i]); if (v <= 0 || flatDist(drops[i].p, shdSite) > shdRing - 2) continue; float sc = v * (fight ? 14.0f : 40.0f) - flatDist(f.pos, drops[i].p); if (sc > bv) { bv = sc; bd = (int)i; } }
+    for (size_t i = 0; i < drops.size(); i++) { float v = dropValue(f, drops[i]); if (v <= 0 || flatDist(drops[i].p, shdSite) > shdRing - 2 || !ffReach(drops[i].p)) continue; float sc = v * (fight ? 14.0f : 40.0f) - flatDist(f.pos, drops[i].p); if (sc > bv) { bv = sc; bd = (int)i; } }
     V3 mv; float ringD = flatDist(f.pos, shdSite);
     auto toward = [&](V3 q) { V3 d(q.x - f.pos.x, 0, q.z - f.pos.z); float L = len(d); return L > 0.01f ? d * (1 / L) : V3(); };
-    if (ringD > shdRing - 4) { mv = toward(shdSite); in.sprint = ringD > shdRing - 1; }                                    // the ring comes first
+    bool closing = shdRingTgt < shdRing - 0.4f;
+    if (ringD > shdRing - 4 || (closing && ringD > shdRingTgt + 1)) { if (!ffWay(f.pos, mv)) mv = toward(shdSite); in.sprint = ringD > shdRing - 1; }          // the ring comes first: the way round what blocks a runner
     else if (bd >= 0 && (!fight || !see || bv > 12)) { mv = toward(drops[bd].p); in.sprint = !fight || td > 16; }
     else if (tg >= 0) {   // keep the range this gun likes, and never stand still
         static const float IDEAL[NGUNS] = { 1.0f, 14, 24, 11, 6, 20 }; float ideal = IDEAL[f.gun]; V3 to = toward(fighters[tg].pos), side(to.z, 0, -to.x);
@@ -199,6 +257,10 @@ static FootIn botThink(Fighter& f, float dt) {
         V3 post = shdSite + yawDir(f.id * 2.1f + 0.7f) * 17.0f; if (flatDist(f.pos, post) > 2.5f) mv = toward(post);
     }
     if (f.sideT > 0) mv = mv + V3(mv.z, 0, -mv.x) * (f.strafe * 1.3f);
+    if (len(mv) > 0.1f && ffReach(f.pos)) {   // never a step to somewhere with no way back up into the ring (a drop off a ledge, a pocket below a wall)
+        V3 u = mv * (1 / len(mv)), w;
+        if (!ffReach(f.pos + u * 2.5f) || !ffReach(f.pos + u * 1.2f)) { if (ffWay(f.pos, w)) mv = w; else mv = V3(); }
+    }
     float L = len(mv); f.wantMove = L > 0.1f; if (L > 1) mv = mv * (1 / L); in.mx = mv.x; in.mz = mv.z;
     if (fight && tg >= 0 && see && td < GUNS[f.gun].range * 0.9f && f.reactT <= 0) in.fire = f.gun == G_SMG ? fmodf(f.burstT, 1.2f) < 0.7f : true;
     if (f.hurtT > 0 && !f.flinched) { f.flinched = true; if (f.rollCD <= 0 && grng.f() < 0.4f) { in.roll = true; if (L < 0.1f) { in.mx = cosf(f.yaw) * f.strafe; in.mz = -sinf(f.yaw) * f.strafe; } } }   // hit: sometimes dive out of the way
@@ -279,10 +341,10 @@ static void stepShowdown(float dt) {
         if (left <= 0) { shdPhase = SH_FIGHT; shdT = 0; say("FIGHT!", V3(1, 0.3f, 0.2f), 1.6f); tone(880, 0.6f, 0.6f, 2); }
     } else if (shdPhase == SH_FIGHT) {
         shdRingTgt = shdAlive() <= 2 ? SH_RING_END : lerpf(SH_RING0, SH_RING_MID, clampf(shdT / SH_SHRINK, 0, 1));
-        shdRing += (shdRingTgt - shdRing) * (1 - expf(-0.9f * dt));
+        shdRing += std::max((shdRingTgt - shdRing) * (1 - expf(-0.9f * dt)), -net::SD_CLOSE_MAX * dt);   // (never faster than you can run in)
         for (auto& f : fighters) {   // outside the ring: it burns, in ticks
             if (!f.on || !f.alive || flatDist(f.pos, shdSite) <= shdRing) { f.ringT = 0; continue; }
-            f.ringT += dt; if (f.ringT >= SH_BURN_EVERY) { f.ringT = 0; damageFighter(f, SH_BURN, -1, V3(), true); for (int i = 0; i < 6; i++) spawn(f.pos + V3(0, grng.r(0.2f, 1.6f), 0), V3(grng.r(-1, 1), grng.r(1, 3), grng.r(-1, 1)), 0.4f, 0.14f, 0, V3(4, 1.4f, 0.3f), 1, 1, 1); }
+            f.ringT += dt; if (f.ringT >= SH_BURN_EVERY) { f.ringT = 0; damageFighter(f, SH_BURN, -1, V3(), true); if (!f.alive && f.bot) shdRingDeaths++; for (int i = 0; i < 6; i++) spawn(f.pos + V3(0, grng.r(0.2f, 1.6f), 0), V3(grng.r(-1, 1), grng.r(1, 3), grng.r(-1, 1)), 0.4f, 0.14f, 0, V3(4, 1.4f, 0.3f), 1, 1, 1); }
         }
         if (shdAlive() <= 1) {
             shdPhase = SH_OVER; shdOverT = 0; shdWinner = -1;

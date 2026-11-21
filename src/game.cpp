@@ -64,7 +64,7 @@ struct Car {
     bool grounded = true, dead = false, sunk = false, braking = false, wheelspin = false, offroad = false, wet = false; float deadT = 0, airT = 0;
     // AI / race bookkeeping
     float stot = 0, lat = 0, latT = 0, speed = 0, aiTop = 60, progress = 0, finishT = -1; int lap = 0, nextCp = 0;
-    bool brOn = false; float bu = 0, brBase = 0;   // a bot on the alternate route: metres along it, and the lap's start in stot
+    bool brOn = false; int brK = 0; float bu = 0, brBase = 0;   // a bot on an alternate route: which one, metres along it, and the lap's start in stot
     float shield = 0;                              // seconds of shield left (any car)
     float latV = 0, wob = 0, wobV = 0;             // a bot knocked sideways: drift across the road (m/s), and a yaw wobble that springs back
     int botAmmo = 0, botRLap = -99; float botFireCD = 0;   // a bot's rockets: how many, the lap it last took a crate, time till it may fire
@@ -418,7 +418,7 @@ static void setupCars(bool race) {
     camInit = false; parts.clear(); marks.clear(); marksDirty = true; markOn[0] = markOn[1] = false;
     wrecks.clear(); debris.clear(); rockets.clear(); crates.clear(); ammo = startAmmo; lockTgt = -1; resetHint = 0; rocketLap = -1;
     player.shield = startShield ? SHIELD_TIME : 0; shieldPopT = 0; for (auto& a : ai) { a.shield = 0; a.botAmmo = startBotAmmo; a.botRLap = -99; a.botFireCD = 3; }
-    nShieldPU = W.hasBranch() ? 2 : 0; for (int k = 0; k < nShieldPU; k++) { float yaw; W.atBranch(W.bLen * (k ? 0.68f : 0.32f), 0, shieldPU[k].p, yaw); shieldPU[k].p.y += 1.0f; shieldPU[k].holder = -2; shieldPU[k].at = 0; }
+    nShieldPU = W.hasBranch() ? 2 : 0; for (int k = 0; k < nShieldPU; k++) { float yaw; const World::Branch& sb = W.brs[k % W.brs.size()]; W.brs.size() > 1 ? sb.at(sb.len * 0.5f, 0, shieldPU[k].p, yaw) : sb.at(sb.len * (k ? 0.68f : 0.32f), 0, shieldPU[k].p, yaw); shieldPU[k].p.y += 1.0f; shieldPU[k].holder = -2; shieldPU[k].at = 0; }
     mech::setup(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
     for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
@@ -488,8 +488,10 @@ static void leaveWreck(const Car& c) {
     wrecks.push_back(w);
 }
 // is there a wreck in our lane within `ahead` metres of sample i? If so, `lat` is the offset that clears it
+#include "wardenfx.h"
 static bool dodge(int i, float myLat, float ahead, float& lat) {
     bool any = false; float best = ahead;
+    for (auto& o : wfx::obs) { float d = (float)((o.si - i + W.n) % W.n); if (d < best && fabsf(o.lat - myLat) < o.r + 2.6f) { best = d; lat = o.lat > 0 ? o.lat - (o.r + 3.0f) : o.lat + (o.r + 3.0f); any = true; } }   // a Warden's foot, a wrecked UFO
     for (auto& w : wrecks) { float d = (float)((w.si - i + W.n) % W.n); if (w.age < WRECK_LIFE - 1.5f && d < best && fabsf(w.lat) < ROADW + 3 && fabsf(w.lat - myLat) < 3.6f) { best = d; lat = w.lat > 0 ? w.lat - 4.6f : w.lat + 4.6f; any = true; } }
     return any;
 }
@@ -643,8 +645,8 @@ static void doReset() {
     respawn(player); resetCD = 1.0f; resetHint = 0; tm.resets++; tone(520, 0.1f, 0.4f, 2); tone(780, 0.16f, 0.4f, 2, 0, 0.08f); say("BACK ON TRACK", V3(0.6f, 0.9f, 1), 1.2f);
 }
 static void respawn(Car& c) {
-    int onBr = -1; W.loopPos(c.pos.x, c.pos.z, c.pos.y, &onBr);
-    int i = W.nearest(c.pos.x, c.pos.z, c.pos.y); const TS& s = onBr >= 0 ? W.bts[onBr] : W.ts[i]; c.pos = V3(s.x, s.y + 0.2f, s.z);
+    int onBr = -1, whichBr = -1; W.loopPos(c.pos.x, c.pos.z, c.pos.y, &onBr, &whichBr);
+    int i = W.nearest(c.pos.x, c.pos.z, c.pos.y); const TS& s = onBr >= 0 ? W.brs[whichBr].ts[onBr] : W.ts[i]; c.pos = V3(s.x, s.y + 0.2f, s.z);
     // never respawn on top of a wreck: move across the road, to the side traffic does not use to pass it (see dodge)
     for (auto& w : wrecks) { float dx = w.pos.x - s.x, dz = w.pos.z - s.z; if (dx * dx + dz * dz < 4.5f * 4.5f) { float l = w.lat > 0 ? w.lat + 4.6f : w.lat - 4.6f; if (fabsf(l) > ROADW - 1.5f) l = w.lat > 0 ? w.lat - 4.6f : w.lat + 4.6f; c.pos.x += s.tz * l; c.pos.z -= s.tx * l; break; } }
     c.yaw = atan2f(s.tx, s.tz); c.vel = V3(); c.dead = false; c.hp = 100; c.pitch = c.roll = c.yawRate = 0; c.grounded = true; camInit = false;
@@ -782,7 +784,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
 
 static void stepAI(Car& c, float dt, bool go, float playerProg) {
     float lat0 = c.lat; int n = W.n; int i = (((int)floorf(c.stot)) % n + n) % n; float mc = 0;
-    if (c.brOn) { int m = (int)W.bts.size(); for (int k = 8; k < 80; k += 6) mc = std::max(mc, W.bts[std::min(m - 1, (int)c.bu + k)].curv); }
+    if (c.brOn) { const std::vector<TS>& bt = W.brs[c.brK].ts; int m = (int)bt.size(); for (int k = 8; k < 80; k += 6) mc = std::max(mc, bt[std::min(m - 1, (int)c.bu + k)].curv); }
     else for (int k = 8; k < 80; k += 6) mc = std::max(mc, W.ts[(i + k) % n].curv);
     float tgt = std::min(c.aiTop * (0.55f + 0.45f * wx().grip), sqrtf(21.0f * wx().grip / std::max(mc, 1e-4f)));
     tgt *= clampf(1 + (playerProg - c.stot) * 0.0007f, 0.90f, 1.10f);
@@ -790,17 +792,19 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
     c.speed += clampf(tgt - c.speed, -26 * dt, 12 * dt);
     if (c.brOn) {   // on the alternate route: metres along it, counted as the matching stretch of the loop
         c.bu += c.speed * dt;
-        if (c.bu >= W.bLen) { c.brOn = false; c.stot = c.brBase + W.bB + (c.bu - W.bLen); }
-        else c.stot = c.brBase + W.branchS(c.bu);
+        const World::Branch& br = W.brs[c.brK];
+        if (c.bu >= br.len) { c.brOn = false; c.stot = c.brBase + br.b + (c.bu - br.len); }
+        else c.stot = c.brBase + br.S(c.bu);
     } else {
         float s0 = c.stot; c.stot += c.speed * dt;
         // at the fork, about half the field takes the backstreet: the same bots each lap would be dull, so it is a
         // fixed pick from the bot, its paint and the lap (no random numbers drawn: races stay as repeatable as before)
         if (W.hasBranch() && go && c.finishT < 0) {
             float base = floorf(s0 / n) * n, f0 = s0 - base, f1 = c.stot - base;
-            if (f0 < W.bA && f1 >= W.bA) {
-                unsigned hsh = (unsigned)(c.paint * 131 + c.type * 17 + (int)(base / n) * 7 + (int)c.aiTop) * 2654435761u;
-                if ((hsh >> 16) % 100 < 50u) { tm.aiBranch++; c.brOn = true; c.brBase = base; c.bu = f1 - W.bA; c.stot = base + W.branchS(c.bu); c.latT = clampf(c.latT, -2.5f, 2.5f); }
+            for (int k = 0; k < (int)W.brs.size(); k++) { const World::Branch& br = W.brs[k]; if (!(f0 < br.a && f1 >= br.a)) continue;
+                unsigned hsh = (unsigned)(c.paint * 131 + c.type * 17 + (int)(base / n) * 7 + (int)c.aiTop + k * 101) * 2654435761u;
+                if ((hsh >> 16) % 100 < 50u) { tm.aiBranch++; c.brOn = true; c.brK = k; c.brBase = base; c.bu = f1 - br.a; c.stot = base + br.S(c.bu); c.latT = clampf(c.latT, -2.5f, 2.5f); }
+                break;
             }
         }
     }
@@ -815,7 +819,7 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
     }
     c.wobV += (-c.wob * 70 - c.wobV * 9) * dt; c.wob = clampf(c.wob + c.wobV * dt, -0.5f, 0.5f);
     V3 p, pa; float yaw, ya;
-    if (c.brOn) { W.atBranch(c.bu, c.lat, p, yaw); W.atBranch(c.bu + 2.5f, c.lat, pa, ya); } else { W.at(c.stot, c.lat, p, yaw); W.at(c.stot + 2.5f, c.lat, pa, ya); }
+    if (c.brOn) { W.brs[c.brK].at(c.bu, c.lat, p, yaw); W.brs[c.brK].at(c.bu + 2.5f, c.lat, pa, ya); } else { W.at(c.stot, c.lat, p, yaw); W.at(c.stot + 2.5f, c.lat, pa, ya); }
     float y = p.y, yahead = pa.y; V3 old = c.pos; bool onBr = !c.brOn && W.ts[i].br;   // road height, not terrain height: the road may be on a bridge
     c.pos = V3(p.x, y, p.z); c.vel = (c.pos - old) * (dt > 0 ? 1 / dt : 0); c.yaw = yaw + c.wob;
     if (dt > 0) { float lr = clampf((c.lat - lat0) / dt, -12, 12); c.vel.x = sinf(yaw) * c.speed + cosf(yaw) * lr; c.vel.z = cosf(yaw) * c.speed - sinf(yaw) * lr; }   // (a shove's position fix is not speed)
@@ -966,7 +970,9 @@ static void update(float dt) {
     if ((state == RACE || (netRace && state == PAUSED)) && go && !showdownOn) {   // (the showdown comes after the race: its clock has stopped)
         raceT += dt; int n = W.n;
         int cpI = (player.nextCp % NCP) * n / NCP; float dx = player.pos.x - W.ts[cpI].x, dz = player.pos.z - W.ts[cpI].z;
-        if (dx * dx + dz * dz < (ROADW + 16) * (ROADW + 16) && fabsf(player.pos.y - W.ts[cpI].y) < 5 && !player.dead) {
+        bool viaShortcut = false;   // a shortcut that runs past this gate: through it once you are level with the gate on it
+        { int ob = -1, wb = -1; float lp = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &ob, &wb); if (wb >= 0 && W.brs[wb].a < cpI && W.brs[wb].b > cpI && lp >= cpI) viaShortcut = true; }
+        if ((viaShortcut || (dx * dx + dz * dz < (ROADW + 16) * (ROADW + 16) && fabsf(player.pos.y - W.ts[cpI].y) < 5)) && !player.dead) {
             if (player.nextCp % NCP == 0) {
                 if (player.lap > 0) { lastLap = raceT - lapStart; if (bestLapRace == 0 || lastLap < bestLapRace) bestLapRace = lastLap; if (bestLap[W.id] == 0 || lastLap < bestLap[W.id]) { bestLap[W.id] = lastLap; if (!exploreMode) say("NEW LAP RECORD!", V3(1, 0.9f, 0.2f)); } }
                 player.lap++; lapStart = raceT;
@@ -974,13 +980,13 @@ static void update(float dt) {
             } else if (!exploreMode) { timeLeft += 11; say("CHECKPOINT  +11", V3(0.4f, 1, 0.5f), 1.6f); }
             tone(660, 0.15f, 0.4f, 2); tone(990, 0.3f, 0.4f, 2, 0, 0.1f); player.nextCp++;
         }
-        int onBr = -1; float lp = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &onBr); int pi = (int)lp; float pp = lp;   // on the alternate route: the matching point of the loop
+        int onBr = -1, whichBr = -1; float lp = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &onBr, &whichBr); int pi = (int)lp; float pp = lp;   // on the alternate route: the matching point of the loop
         if (player.lap == 0) pp -= n; else { if (player.nextCp % NCP == 1 && pi > n * 0.8f) pp -= n; if (player.nextCp % NCP == 0 && pi < n * 0.2f) pp += n; pp += (player.lap - 1) * n; }
         player.progress = pp;
         place = 1; for (auto& a : ai) { if (a.finishT < 0 && a.stot >= raceLaps * n) { a.finishT = raceT; aiFinished++; } if (a.progress > player.progress) place++; }
         if (exploreMode) place = 1;
         if (netRace) place = nc.myPlace;
-        const TS& s = onBr >= 0 ? W.bts[onBr] : W.ts[pi]; float fd = sinf(player.yaw) * s.tx + cosf(player.yaw) * s.tz;
+        const TS& s = onBr >= 0 ? W.brs[whichBr].ts[onBr] : W.ts[pi]; float fd = sinf(player.yaw) * s.tx + cosf(player.yaw) * s.tz;
         if (fd < -0.4f && player.vf > 6 && W.RD(player.pos.x, player.pos.z) < 20) wrongT += dt; else wrongT = 0;
         tm.maxWrongT = std::max(tm.maxWrongT, wrongT);
         if (!exploreMode && !rampage && !netRace && state == RACE) { timeLeft -= dt; if (timeLeft <= 0) { timeLeft = 0; finishRace(true); } else if (timeLeft < 10 && (int)(timeLeft + dt) != (int)timeLeft) tone(1200, 0.08f, 0.35f, 2); }
@@ -1018,6 +1024,7 @@ static void update(float dt) {
                 if (parts.size() < 5200) parts.push_back({ mech::stackTop(m, k & 1 ? 1 : -1, mechT), V3(j * 1.2f + 0.8f, 3.2f + l, l * 1.2f), 3.2f, 3.2f, 0.9f, 1.3f, V3(0.2f, 0.2f, 0.21f), 0.42f, 0, (k % 97) / 97.0f, 0.5f, 0 }); }
         }
     }
+    if (mech::on) wfx::step(mechT, dt); else if (!W.discs.empty() || !wfx::ufos.empty()) wfx::clear();   // UFOs, seeds and flowers; solid feet and wrecks
     resetCD = std::max(0.0f, resetCD - dt); ammoFlash = std::max(0.0f, ammoFlash - dt * 1.5f);
     lockTgt = state == RACE && ammo > 0 && !player.dead && !me.on ? pickTarget() : -1;
     netBotsFrame(dt);   // online, if the server has made us the host: the bots' cars
@@ -1204,7 +1211,7 @@ static void drawCar(const Car& c, Prog& p, bool lit) {
 }
 static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode : st == TITLE; }
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); } if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
-    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); }   // (past 900 m the fog has it)
+    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); if (mech::on) wfx::draw(p, lit, mechT); }   // (past 900 m the fog has it)
 
 #ifdef FCF_GFX_XSDK
 static bool traceDrawGroups = false;
@@ -1480,8 +1487,10 @@ static void drawMap(float cx, float cy, float sc, bool cars) {
     for (int i = 0; i < W.n; i += 5) { const TS& a = W.ts[i], & b = W.ts[(i + 5) % W.n]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 5, V3(0, 0, 0), 0.55f); }
     for (int i = 0; i < W.n; i += 5) { const TS& a = W.ts[i], & b = W.ts[(i + 5) % W.n]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 2.4f, V3(1, 1, 1), 0.9f); }
     // the alternate route: a thinner line in the same style
-    for (size_t i = 0; i + 1 < W.bts.size(); i += 5) { const TS& a = W.bts[i], & b = W.bts[std::min(i + 5, W.bts.size() - 1)]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 3.6f, V3(0, 0, 0), 0.55f); }
-    for (size_t i = 0; i + 1 < W.bts.size(); i += 5) { const TS& a = W.bts[i], & b = W.bts[std::min(i + 5, W.bts.size() - 1)]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 1.6f, V3(1, 1, 1), 0.75f); }
+    for (const World::Branch& br : W.brs) { const std::vector<TS>& bt = br.ts;
+        for (size_t i = 0; i + 1 < bt.size(); i += 5) { const TS& a = bt[i], & b = bt[std::min(i + 5, bt.size() - 1)]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 3.6f, V3(0, 0, 0), 0.55f); }
+        for (size_t i = 0; i + 1 < bt.size(); i += 5) { const TS& a = bt[i], & b = bt[std::min(i + 5, bt.size() - 1)]; ui.line(cx + a.x * sc, cy + a.z * sc, cx + b.x * sc, cy + b.z * sc, 1.6f, V3(1, 1, 1), 0.75f); }
+    }
     ui.rect(cx + W.ts[0].x * sc - 4, cy + W.ts[0].z * sc - 4, 8, 8, V3(1, 0.2f, 0.2f));
     if (showdownOn && shdCut) { float px = 0, py = 0; for (int i = 0; i <= 16; i++) { float a = 2 * (float)M_PI * i / 16, qx = cx + (shdSite.x + cosf(a) * shdRing) * sc, qy = cy + (shdSite.z + sinf(a) * shdRing) * sc; if (i) ui.line(px, py, qx, qy, 2.5f, V3(1, 0.5f, 0.1f), 0.95f); px = qx; py = qy; } }   // the showdown's ring
     if (!cars) return;
@@ -1974,14 +1983,20 @@ static void printJSON(FILE* o) {
     float aiMinHp = -1; for (auto& a : ai) if (!a.dead && (aiMinHp < 0 || a.hp < aiMinHp)) aiMinHp = a.hp;
     float remoteMoved = nc.maxMoved; std::string bindStr; for (int i = 0; i < NBIND; i++) { char t[32]; snprintf(t, sizeof t, "%s%d,%d", i ? ";" : "", binds[i][0], binds[i][1]); bindStr += t; }
     int branchBlocked = 0;   // samples of the alternate route with a building or wall within its width (should be none)
-    for (const TS& b : W.bts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { branchBlocked++; break; } }
+    for (const World::Branch& br : W.brs) for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { branchBlocked++; break; } }
     float mechClear[2] = { mech::on && mech::planN ? mech::routeClearance(0) : 0, mech::on && mech::planN ? mech::routeClearance(1) : 0 };   // how near each route passes a building
     int onBrNow = -1; float loopNow = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &onBrNow);
-    fprintf(o, "{\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
+    { std::string fp; for (auto& f : fighters) { char b[96]; snprintf(b, sizeof b, "%s%.1f,%.1f,%.1f,%d,%d,%.1f", fp.empty() ? "" : ";", f.pos.x, f.pos.y, f.pos.z, (int)f.on, (int)f.alive, flatDist(f.pos, shdSite)); fp += b; }
+      fprintf(o, "{\"fpos\":\"%s\",\"site\":[%.1f,%.1f,%.1f],", fp.c_str(), shdSite.x, shdSite.y, shdSite.z); }
+    { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
+          char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
+      fprintf(o, "\"shortcuts\":\"%s\",", sc.c_str()); }
+    fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
+    fprintf(o, "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
         "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
         "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
         "\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
-        mech::unit[0].at.x, mech::unit[0].at.y, mech::unit[0].at.z, mech::unit[0].yaw, mech::tris, mech::unit[0].gait, W.RD(mech::unit[0].at.x, mech::unit[0].at.z), mech::unit[1].at.x, mech::unit[1].at.y, mech::unit[1].at.z, W.RD(mech::unit[1].at.x, mech::unit[1].at.z), mech::count(), tm.mechFootErr, mechClear[0], mechClear[1], tm.stomps, W.bLen, W.bA, W.bB, branchBlocked, tm.aiBranch, nShieldPU ? shieldPU[0].p.x : 0.0f, nShieldPU ? shieldPU[0].p.z : 0.0f, player.shield, tm.shields, tm.shieldSaves, (int)(nShieldPU > 0 && puHere(shieldPU[0])) + (int)(nShieldPU > 1 && puHere(shieldPU[1])), tm.aiShields, tm.aiShieldSaves, tm.aiCrates, tm.aiRocketsFired, tm.aiRocketHits, tm.rocketsAtMe, tm.bumps, tm.maxShove, tm.maxWob, onBrNow, loopNow, tm.maxWrongT, W.id, player.type, weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id], (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft,
+        shdRingDeaths, mech::unit[0].at.x, mech::unit[0].at.y, mech::unit[0].at.z, mech::unit[0].yaw, mech::tris, mech::unit[0].gait, W.RD(mech::unit[0].at.x, mech::unit[0].at.z), mech::unit[1].at.x, mech::unit[1].at.y, mech::unit[1].at.z, W.RD(mech::unit[1].at.x, mech::unit[1].at.z), mech::count(), tm.mechFootErr, mechClear[0], mechClear[1], tm.stomps, (W.hasBranch() ? W.brs[0].len : 0.0f), (W.hasBranch() ? W.brs[0].a : -1), (W.hasBranch() ? W.brs[0].b : -1), branchBlocked, tm.aiBranch, nShieldPU ? shieldPU[0].p.x : 0.0f, nShieldPU ? shieldPU[0].p.z : 0.0f, player.shield, tm.shields, tm.shieldSaves, (int)(nShieldPU > 0 && puHere(shieldPU[0])) + (int)(nShieldPU > 1 && puHere(shieldPU[1])), tm.aiShields, tm.aiShieldSaves, tm.aiCrates, tm.aiRocketsFired, tm.aiRocketHits, tm.rocketsAtMe, tm.bumps, tm.maxShove, tm.maxWob, onBrNow, loopNow, tm.maxWrongT, W.id, player.type, weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id], (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft,
         gibCount, (int)splats.size(), (int)shdOffRoad, showdownOn || shdResult ? flatDist(avatarPos(), shdSite) : -1.0f, shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount, netSlot, (int)nc.hosts, netBotsMost, (int)shdSpectate, shdWatch, (int)shdPhase, shdAlive(), shdRing, me.place, shdWinner, (int)shdResult, dropsThere(), fStr.c_str(), me.gun, me.ammo[me.gun], me.hp, me.armour, me.stamina, (int)(me.rollT > 0), me.target, me.shots, me.hits, footPickups, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp, (int)me.on, me.pos.x, me.pos.y, me.pos.z, me.yaw, footYaw, me.run, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir, tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis,
         tm.maxBeta, tm.maxSlipF, tm.maxSlipR, tm.maxSpeed, tm.maxYawRate, player.nitro, tm.minNitro, tm.boostT, tm.boosts, ammo, tm.rocketsFired, tm.rocketHits, tm.pickups, tm.resets, (int)wrecks.size(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y, wrecks.empty() ? 0.0f : wrecks.back().pos.z, (int)debris.size(), W.RD(player.pos.x, player.pos.z), tm.maxDeck, tm.maxGap, introT, tm.gridDrift, std::max(countdown, 0.0f), tm.offroadT, (int)W.cross.size(), tm.dist, tm.heading, tm.simT,
         vidAA, vidAF, (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(), (int)hdrOK, deskW > 100000 ? 0 : deskW, deskH > 100000 ? 0 : deskH, (int)nc.connected, nc.id, (int)nc.phase, (int)nc.count, nc.maxCount, (int)nc.myPlace, (int)nc.placeFull, (int)netRace, remoteMoved, nc.error, (int)champOn, champRound, (int)champDone, champTotal(), champPts[0], shdSite.x, shdSite.z, (int)shdPath.size(), (int)grngSeeded);
@@ -1992,6 +2007,11 @@ static void printDump(FILE* o) {
     fprintf(o, "],\"keys\":["); for (size_t k = 0; k < W.keys.size(); k++) fprintf(o, "%s{\"kind\":\"%s\",\"x\":%.1f,\"y\":%.1f,\"z\":%.1f,\"ground\":%.1f,\"startX\":%.1f,\"startZ\":%.1f,\"startYaw\":%.3f,\"startGround\":%.1f,\"seconds\":%.0f}", k ? "," : "", W.recipes[k].kind, W.keys[k].x, W.keys[k].y, W.keys[k].z, W.H(W.keys[k].x, W.keys[k].z), W.recipes[k].x, W.recipes[k].z, W.recipes[k].yaw, W.H(W.recipes[k].x, W.recipes[k].z), W.recipes[k].secs);
     fprintf(o, "],\"ramps\":["); for (size_t k = 0; k < W.ramps.size(); k++) { const Ramp& r = W.ramps[k]; fprintf(o, "%s{\"x\":%.1f,\"z\":%.1f,\"heading\":%.3f,\"base\":%.1f,\"rise\":%.1f,\"len\":%.1f}", k ? "," : "", r.x, r.z, atan2f(r.sa, r.ca), r.base, r.rise, r.len); }
     fprintf(o, "],\"bridges\":["); for (size_t k = 0; k < W.cross.size(); k++) { const TS& b = W.ts[W.cross[k]]; fprintf(o, "%s{\"x\":%.1f,\"z\":%.1f,\"deck\":%.2f,\"under\":%.2f}", k ? "," : "", b.x, b.z, b.y, W.H(b.x, b.z)); }
+    fprintf(o, "],\"loop\":["); for (int i = 0; i < W.n; i += 4) fprintf(o, "%s[%.1f,%.1f,%.1f]", i ? "," : "", W.ts[i].x, W.ts[i].y, W.ts[i].z);
+    fprintf(o, "],\"shortcuts\":["); for (size_t k = 0; k < W.brs.size(); k++) { const World::Branch& br = W.brs[k]; int blocked = 0;
+        for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
+        fprintf(o, "%s{\"a\":%d,\"b\":%d,\"len\":%.1f,\"blocked\":%d,\"pts\":[", k ? "," : "", br.a, br.b, br.len, blocked);
+        for (size_t i = 0; i < br.ts.size(); i += 4) fprintf(o, "%s[%.1f,%.1f,%.1f]", i ? "," : "", br.ts[i].x, br.ts[i].y, br.ts[i].z); fprintf(o, "]}"); }
     fprintf(o, "],\"crates\":["); for (size_t k = 0; k < crates.size(); k++) fprintf(o, "%s{\"x\":%.1f,\"z\":%.1f}", k ? "," : "", crates[k].p.x, crates[k].p.z);
     fprintf(o, "],\"onStreet\":["); { int cnt = 0;   // buildings (not street furniture) whose footprint reaches past the kerb of a backstreet: should be none
         for (auto& b : W.boxes) { if (b.hx < 1.5f && b.hz < 1.5f) continue; bool hit = false;
@@ -2065,6 +2085,44 @@ static void bootColor(uint32_t argb) {
 }
 #endif
 
+
+// --branchscan T (tools): where a shortcut on track T would be worth having. Every stretch [a, b] inside one checkpoint
+// stretch, shaped as the game would (World::branchCurve), that is clearly shorter than the loop, keeps well clear of the
+// rest of the road, stays out of the water, has no steep grades or tight corners and clears the existing shortcuts
+static void branchScan(int t) {
+    W.build(t); int n = W.n; 
+    struct Cand { float a, b, save, ratio, sep, minR, grade; }; std::vector<Cand> cs;
+    float loopGrade = 0; for (int i = 0; i < n; i++) loopGrade = std::max(loopGrade, fabsf(W.ts[(i + 18) % n].y - W.ts[i].y) / 18.0f);
+    float gradeMax = std::max(0.10f, loopGrade * 0.9f);   // no steeper than the track's own road gets
+    for (int a = 120; a < n - 200; a += 10) for (int L = 140; L <= 760; L += 10) {
+        int b = a + L; if (b >= n - 120 || a < 120) continue;   // clear of the start line (a shortcut may run past other gates: they count it)
+        bool bridge = false; for (int k = a - 30; k <= b + 30; k++) if (W.ts[((k % n) + n) % n].br) bridge = true; if (bridge) continue;
+        bool clash = false; for (const World::Branch& o : W.brs) if (b + 60 > o.a && a - 60 < o.b) clash = true; if (clash) continue;
+        std::vector<V3> d = W.branchCurve(a, b); float cl = 0; for (size_t i = 0; i + 1 < d.size(); i++) cl += len(d[i + 1] - d[i]);
+        float ratio = cl / L; if (ratio > (getenv("FCF_SCANRATIO") ? (float)atof(getenv("FCF_SCANRATIO")) : 0.88f) || ratio < 0.40f) continue;
+        float sep = 0, minClear = 1e9f, minR = 1e9f, grade = 0, lowest = 1e9f; float run = 0; float prevH = W.H(d[0].x, d[0].z); V3 prevT = norm(d[1] - d[0]);
+        for (size_t i = 1; i < d.size(); i++) {
+            V3 p = d[i]; float seg = len(d[i] - d[i - 1]); run += seg;
+            float nearAll = 1e9f, nearOwn = 1e9f;
+            for (int k = 0; k < n; k += 2) { float dx = W.ts[k].x - p.x, dz = W.ts[k].z - p.z, dd = dx * dx + dz * dz; bool own = k >= a - 25 && k <= b + 25; if (own) nearOwn = std::min(nearOwn, dd); else nearAll = std::min(nearAll, dd); }
+            sep = std::max(sep, sqrtf(nearOwn));
+            if (run > 30 && cl - run > 30) minClear = std::min(minClear, sqrtf(nearAll));
+            float h = W.H(p.x, p.z); lowest = std::min(lowest, h);
+            if (i % 30 == 0) { grade = std::max(grade, fabsf(h - prevH) / 18.0f); prevH = h;
+                V3 tn = norm(d[std::min(d.size() - 1, i + 1)] - d[i - 1]); float ang = acosf(clampf(dot(tn, prevT), -1, 1)); float dist = 30 * cl / 600; if (ang > 1e-4f) minR = std::min(minR, dist / ang); prevT = tn; }
+        }
+        for (const V3& k : W.keys) for (const V3& p : d) if (flatDist(k, p) < 30) { minClear = 0; break; }
+        for (const Ramp& r : W.ramps) for (const V3& p : d) if (flatDist(V3(r.x, 0, r.z), p) < 30) { minClear = 0; break; }
+        static int rj[6]; if (getenv("FCF_SCANWHY")) { if (minClear < 30) rj[0]++; else if (sep < 25) rj[1]++; else if (lowest < 1.0f) rj[2]++; else if (grade > gradeMax) rj[3]++; else if (minR < 50) rj[4]++; fprintf(stderr, "\rclear %d sep %d water %d grade %d radius %d   ", rj[0], rj[1], rj[2], rj[3], rj[4]); }
+        if (minClear < 30 || sep < 25 || lowest < 1.0f || grade > gradeMax || minR < 50) continue;
+        cs.push_back({ (float)a / n, (float)b / n, L - cl, ratio, sep, minR, grade });
+    }
+    std::sort(cs.begin(), cs.end(), [](const Cand& x, const Cand& y) { return x.save > y.save; });
+    printf("{\"track\":%d,\"n\":%d,\"existing\":%d,\"gradeMax\":%.3f,\"cands\":[", t, n, (int)W.brs.size(), gradeMax);
+    for (size_t i = 0; i < cs.size() && i < 5000; i++) printf("%s[%.4f,%.4f,%.0f,%.2f,%.0f,%.0f,%.3f]", i ? "," : "", cs[i].a, cs[i].b, cs[i].save, cs[i].ratio, cs[i].sep, cs[i].minR, cs[i].grade);
+    printf("]}\n");
+}
+
 int main(int argc, char** argv) {
     std::vector<const char*> cliServers;
     bool netWanted = false, wxSet = false; int keyrun = -1; const char* shot = nullptr; int shotEvery = 0; bool sim = false, dump = false, speedSet = false; float speed0 = 0; int frames = 3, skip = 0, startState = 0, w = 1280, h = 720, cliAA = -1, cliAF = -1; bool sizeSet = false, fullSet = false; bool posSet = false; float px = 0, pz = 0, pyaw = 0; bool windowed = true;
@@ -2079,7 +2137,7 @@ int main(int argc, char** argv) {
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
         else if (a == "--hold") { int sc = SDL_GetScancodeFromName(argv[++i]); if (sc) heldKeys.push_back(sc); }
         else if (a == "--press") { const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) presses.push_back({ (float)atof(q), std::string(c + 1) }); }
-        else if (a == "--seed") { grng.s = (uint32_t)atoi(argv[++i]) * 2654435761u + 1u; grngSeeded = true; } else if (a == "--champ") cliChamp = true; else if (a == "--sim") sim = simMode = noSave = true; else if (a == "--seconds") skip = (int)(F(1) * 60), i++; else if (a == "--flat") W.flat = true; else if (a == "--dump") dump = true;
+        else if (a == "--seed") { grng.s = (uint32_t)atoi(argv[++i]) * 2654435761u + 1u; grngSeeded = true; } else if (a == "--champ") cliChamp = true; else if (a == "--branchscan") { initTracks(); branchScan(atoi(argv[++i])); return 0; } else if (a == "--sim") sim = simMode = noSave = true; else if (a == "--seconds") skip = (int)(F(1) * 60), i++; else if (a == "--flat") W.flat = true; else if (a == "--dump") dump = true;
         else if (a == "--connect") { snprintf(nc.host, sizeof nc.host, "%s", argv[++i]); netWanted = true; } else if (a == "--name") { snprintf(nc.name, sizeof nc.name, "%.16s", argv[++i]); for (char* c = nc.name; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--ready") nc.autoReady = true;
         else if (a == "--keyrun") keyrun = atoi(argv[++i]);
@@ -2271,7 +2329,7 @@ int main(int argc, char** argv) {
         mech::cyl(m, V3(0, 0, 0.05f), V3(0, 0, -0.02f), 0.13f, 0.13f, 12, V3(0.9f, 0.6f, 0.3f), 3, false);  // the glowing nozzle lip
         jetMesh.upload(m, "jet");
     }
-    if (mech::on) mech::build();
+    if (mech::on) { mech::build(); wfx::build(); }
     startGame();
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: startGame complete");

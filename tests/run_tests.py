@@ -119,11 +119,12 @@ def world_dump_has_secrets():
 def alternate_route():
     for t in range(NTRACKS):
         d = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.5)
-        if t != 1:
-            check(d["branchLen"] == 0, "track %d has no alternate route yet" % t, d["branchLen"])
-            continue
-        check(150 < d["branchLen"] < 285 and d["branchB"] - d["branchA"] > d["branchLen"], "Sunset Causeway's backstreet is a shortcut", (d["branchLen"], d["branchA"], d["branchB"]))
-        check(d["branchBlocked"] == 0, "no building stands on it", d["branchBlocked"])
+        sc = [[float(v) for v in s.split(",")] for s in d["shortcuts"].split(";") if s]
+        check(len(sc) == 2, "track %d has two shortcuts" % t, d["shortcuts"])
+        for a, b, L, blocked in sc:
+            check(150 < L < b - a, "track %d: a shortcut is shorter than the road it cuts (%d m against %d)" % (t, L, b - a), (a, b, L))
+            check(blocked == 0, "track %d: no building stands on a shortcut" % t, blocked)
+        check(sc[0][1] + 40 < sc[1][0] or sc[1][1] + 40 < sc[0][0], "track %d: the two are on different parts of the lap" % t, sc)
     # driving down it: on the route, counted as the matching stretch of the loop, never 'wrong way'
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", -428, -120, 3.14, "--speed", 25, seconds=2.5)
     check(d["onBranch"] >= 0 and d["branchA"] < d["loopPos"] < d["branchB"], "a car on the backstreet is placed between the fork and the rejoin", (d["onBranch"], d["loopPos"]))
@@ -132,7 +133,7 @@ def alternate_route():
     check(d["maxWrongT"] > 1, "driving up it is the wrong way", d["maxWrongT"])
     # bots take it on some laps and still finish
     d = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=200)   # (a bot rocket can cost the autopilot the clock)
-    between(d["aiBranch"], 4, 30, "bot trips down the backstreet over three laps")
+    between(d["aiBranch"], 8, 60, "bot trips down the shortcuts over three laps")
     check(d["lap"] >= 3, "the race still runs to the end", d["lap"])
 
 
@@ -1445,7 +1446,7 @@ def showdown_ring_burns_and_closes():
     fs = fighters(d)
     check(fs[0]["alive"] == 0 and d["footShots"] == 0, "outside the ring you burn", d["fighters"])
     left = sum(f["alive"] for f in fs)
-    check(d["shdRing"] < (24 if left <= 2 else 46), "the ring closes with time, and right in once two are left", (d["shdRing"], left))
+    check(d["shdRing"] < 50, "the ring closes with time", (d["shdRing"], left))
     check(d["onFoot"] == 1 and d["resets"] == 0, "and there is no resetting or driving out of it", (d["onFoot"], d["resets"]))
 
 
@@ -1457,6 +1458,38 @@ def blood_and_the_grenade_launcher():
     d = sim(*SHOW, "--footai", "--gun", 5, seconds=t + 20 + 12)
     fs = fighters(d)
     check(d["gibs"] >= 1 and sum(1 for f in fs if not f["alive"]) >= d["gibs"], "a grenade landing beside someone kills them outright and leaves pieces", (d["gibs"], d["fighters"]))
+
+
+@test
+def the_wardens_shoot_down_ufos_and_plant_flowers():
+    for track in range(NTRACKS):
+        d = sim("--track", track, "--state", 3, "--auto", "--nobotguns", seconds=200)
+        check(d["ufoWrecks"] >= 3, "track %d: UFOs circle the Wardens and get shot down; the wrecks stay where they land" % track, d["ufoWrecks"])
+        check(d["ufoOnRoad"] <= 3, "track %d: now and then one lands on the road (and burns out); never a pile-up" % track, d["ufoOnRoad"])
+        check(d["flowers"] >= 3, "track %d: seeds fired into the grass grow into flowers" % track, d["flowers"])
+        check(d["wrecks"] == 0 and d["lap"] >= 3, "track %d: the autopilot steers round the wrecks and the feet and keeps going" % track, (d["wrecks"], d["lap"]))
+    a = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=90)
+    b = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=90)
+    check(a == b, "it all comes from the clock: two runs see the same UFOs fall in the same places and the same flowers")
+
+
+@test
+def the_wardens_feet_are_solid():
+    # a Warden standing on the road at Hilltop's sample 400; we drive at its left foot at 30 m/s
+    hit = sim("--track", 0, "--state", 3, "--mode", 1, "--nobotguns", "--mechat", -163, -174.2, 0.609, "--pos", -200.7, -219.8, 0.609, "--speed", 30, seconds=2.5)
+    miss = sim("--track", 0, "--state", 3, "--mode", 1, "--nobotguns", "--nomech", "--pos", -200.7, -219.8, 0.609, "--speed", 30, seconds=2.5)
+    check(hit["vf"] < 5 and miss["vf"] > 20, "a foot stops a car dead, the way a wall does (no Warden: it drives on)", (hit["vf"], miss["vf"]))
+
+
+@test
+def showdown_bots_always_make_it_back_into_the_ring():
+    # the ring never closes faster than you can run (it used to slam in once two were left), and a bot never wanders
+    # somewhere it can't climb back out of: on every track, with the ring off the road and on it, nobody burns
+    for track in range(NTRACKS):
+        for site in (None, 0.1, 0.55):
+            a = ["--track", track, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--sdplace", 7] + (["--sdsite", site] if site is not None else [])
+            d = sim(*a, seconds=200)
+            check(d["ringDeaths"] == 0 and d["shdResult"] == 1, "track %d, ring %s: no bot burns, and it reaches its results" % (track, "off the road" if site is None else "at %.2f" % site), (d["ringDeaths"], d["fighters"]))
 
 
 @test

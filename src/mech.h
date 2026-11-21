@@ -287,6 +287,7 @@ struct Unit {
     V3 at; float yaw = 0;
     float s0 = 0, tOff = 0;                 // where on the loop it starts; how far its walk cycle is shifted (s)
     float gait = 0, phase = 0, lookYaw = 0, lookPitch = 0;   // 0 standing .. 1 walking; step phase; where it looks (radians, relative)
+    float aim = 0, aimYaw = 0, aimElev = 0;   // 0 .. 1: how far it has turned to aim its cannon; at what (yaw relative to the body, elevation up from level)
     V3 paint;                               // its accent plates
     int route = 0;                          // which planned route (0: prefers the left of the road, 1: the right)
     // worked out in update(), used by draw(): the pelvis height, and each foot's ankle point (world), toe tilt and lift
@@ -330,7 +331,7 @@ static float clearance(float x, float z) {   // to the nearest tall box (capped 
 }
 static float stepCost(float x, float z, float lat, float prefer) {
     float c = (lat - prefer) * (lat - prefer) * 0.05f;
-    float cl = clearance(x, z); if (cl < R_CLEAR) c += 1e5f; else if (cl < R_WANT) c += (R_WANT - cl) * (R_WANT - cl) * 30;   // its shoulders are 11 m out: room to spare where there is room
+    float cl = clearance(x, z); if (cl < R_CLEAR + 1.5f) c += 1e5f;   // (+1.5: the smoothed path between these 6 m steps can cut a corner) else if (cl < R_WANT) c += (R_WANT - cl) * (R_WANT - cl) * 30;   // its shoulders are 11 m out: room to spare where there is room
     if (W.RD(x, z) < ROADW + 6) c += 400;
     float h = W.H(x, z); if (h < -9) c += 3000; else if (h < 0.5f) c += 20;
     return c;
@@ -455,7 +456,17 @@ static M4 torsoOf(const Unit& m, float t, M4& pel) {
     float breathe = sinf(t * 0.8f) * 0.12f * (1 - m.gait), sway = sinf(m.phase) * 0.045f * m.gait;
     pel = mul(translate(V3(m.at.x, m.pelY + breathe * 0.5f, m.at.z)), rotY(m.yaw));   // (the legs hang from this; the sway is the torso's)
     float twist = (1 - m.gait) * (sinf(t * 0.23f) * 0.12f + m.lookYaw * 0.45f) - sway * 2.5f;
+    twist += (clampf(m.aimYaw - 0.28f, -1.5f, 1.5f) - twist) * m.aim;   // aiming: the body turns the cannon arm (on the right) onto the target
     return mul(pel, mul(translate(V3(0, 1.9f, 0)), mul(rotZ(sway), mul(rotY(twist), rotX(0.14f + m.gait * 0.06f + breathe * 0.1f)))));
+}
+// the cannon arm: hanging and swinging as it walks, or raised to point at what it aims at (aimElev) as aim goes to 1.
+// A segment pointing down turned by th points along (0, -cos th, -sin th): forward-and-up by e is th = -(pi/2 + e), the
+// torso's own lean and the elbow's bend taken off
+static void cannonArm(const Unit& m, float t, const M4& tor, M4& shR, M4& elR) {
+    float armSw = sinf(m.phase) * 0.22f * m.gait, breathe = sinf(t * 0.8f) * 0.12f * (1 - m.gait), lean = 0.14f + m.gait * 0.06f + breathe * 0.1f;
+    float hang = -0.25f - armSw * 0.6f + sinf(t * 0.33f + 1) * 0.05f, elbow = lerpf(-1.25f, -0.30f, m.aim), raised = -(1.5708f + m.aimElev) - elbow - lean;
+    shR = mul(tor, mul(translate(V3(SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(0.1f * (1 - m.aim)), rotX(lerpf(hang, raised, m.aim)))));
+    elR = mul(shR, mul(translate(V3(0, -L_UPPER, 0)), rotX(elbow)));
 }
 static void draw(const Unit& m, int u, Prog& p, bool lit, float t0) {
     float t = t0 + m.tOff;
@@ -481,10 +492,18 @@ static void draw(const Unit& m, int u, Prog& p, bool lit, float t0) {
     M4 elL = mul(shL, mul(translate(V3(0, -L_UPPER, 0)), rotX(-0.95f))); put(elL, part[P_CLAW]);
     float open = 0.35f + 0.3f * (0.5f + 0.5f * sinf(t * 0.9f));
     for (int f = 0; f < 3; f++) put(mul(elL, mul(translate(V3(0, -L_FORE - 0.4f, 0)), mul(rotY(f * 2.0944f + 0.5f), mul(translate(V3(0, 0, 0.85f)), rotX(open))))), part[P_FINGER]);
-    M4 shR = mul(tor, mul(translate(V3(SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(0.1f), rotX(-0.25f - armSw * 0.6f + sinf(t * 0.33f + 1) * 0.05f))));
-    put(shR, part[P_UPPER]);
-    M4 elR = mul(shR, mul(translate(V3(0, -L_UPPER, 0)), rotX(-1.25f))); put(elR, part[P_CANNON]);
+    M4 shR, elR; cannonArm(m, t, tor, shR, elR);
+    put(shR, part[P_UPPER]); put(elR, part[P_CANNON]);
     put(mul(elR, mul(translate(V3(0, -3.6f, 0)), rotY(t * 1.5f))), part[P_BARRELS]);
+}
+// the end of the cannon's barrels (world), and which way they point
+static void muzzle(const Unit& m, float t0, V3& at, V3& dir) {
+    float t = t0 + m.tOff; M4 pel; M4 tor = torsoOf(m, t, pel), shR, elR; cannonArm(m, t, tor, shR, elR);
+    at = xf(elR, V3(0, -9.8f, 0)); V3 b = xf(elR, V3(0, -7.0f, 0)); dir = norm(at - b);   // (the barrels run from 3.6 to 9.6 down the cannon)
+}
+// where unit m stands at time t (its walk is a fixed function of time): the middle of its body on the ground
+static V3 bodyAt(const Unit& m, float t) {
+    if (fixed) return m.at; V3 a, f; frameAt(m, m.s0 - walked(t + m.tOff), a, f); return V3(a.x, groundAt(a.x, a.z), a.z);
 }
 static V3 stackTop(const Unit& m, int s, float t) { M4 pel; M4 tor = torsoOf(m, t + m.tOff, pel); return xf(tor, V3(s * 2.4f, 15.6f, -5.6f)); }
 // how far each ankle the legs actually reach is from where its foot should be (m): for the tests (0 when every foot is on its spot)

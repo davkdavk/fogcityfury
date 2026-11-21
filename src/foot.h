@@ -57,6 +57,7 @@ static int solidAt(V3 p, bool cars) {
         const Box& b = W.boxes[bi]; if (p.y > b.top || p.y < b.y0) continue; float dx = p.x - b.cx, dz = p.z - b.cz;
         if (fabsf(dx * b.ca - dz * b.sa) < b.hx && fabsf(dx * b.sa + dz * b.ca) < b.hz) return 1;
     }
+    for (const World::Disc& d : W.discs) if (p.y >= d.y0 && p.y <= d.top && (p.x - d.x) * (p.x - d.x) + (p.z - d.z) * (p.z - d.z) < d.r * d.r) return 1;
     return cars && carAt(p) ? 2 : 0;
 }
 // distance to the first solid thing along a ray (maxT if it is clear all the way)

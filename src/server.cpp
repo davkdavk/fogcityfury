@@ -87,7 +87,7 @@ static void stepShowdown(double dt) {
             if (!(q.s.flags & FF_ALIVE)) sdDown(k, q.s.killedBy == NOBODY ? -1 : q.s.killedBy); }
         // the ring: with three it closes slowly, then hard once two are left; a two-way fight closes all the way in its own time
         double u = std::min(1.0, sdT / (sdFighters >= 3 ? SD_SHRINK : SD_SHRINK * 1.3)), tgt = sdFighters >= 3 ? (sdAlive() <= 2 ? SD_RING_END : SD_RING0 + (SD_RING_MID - SD_RING0) * u) : SD_RING0 + (SD_RING_END - SD_RING0) * u;
-        sdRing += (tgt - sdRing) * (1 - exp(-0.9 * dt));
+        sdRing += std::max((tgt - sdRing) * (1 - exp(-0.9 * dt)), -(double)SD_CLOSE_MAX * dt);   // (never faster than you can run in)
         if (sdT > SD_MAX_FIGHT) while (sdAlive() > 1) { int w = -1; for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive && (w < 0 || S[k].s.hp < S[w].s.hp)) w = k; sdDown(w, -1); }   // out of time: the healthiest takes it
         if (sdAlive() <= 1) {
             sdWinner = -1; for (int k = 0; k < SD_FIGHT; k++) if (S[k].player >= 0 && S[k].alive) { sdWinner = k; S[k].place = 1; }

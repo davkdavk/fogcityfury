@@ -31,9 +31,10 @@ struct TrackDef {
     const char* name; const char* sub;
     std::vector<float> ctrl; std::vector<Gauss> hills;
     float baseH, noiseAmp, landR, cityThr; V3 sun, sunCol, skyTop, skyHor; float fogDen; int seed; float night;
-    // An alternate route: { a, b, x1, z1, x2, z2, ... }. It leaves the loop at fraction a of its length and rejoins it at
-    // fraction b (a < b, both inside one checkpoint stretch, so no gate is skipped), through the points between. Empty: none.
-    std::vector<float> branch;
+    // Alternate routes, each { a, b, x1, z1, x2, z2, ... }. One leaves the loop at fraction a of its length and rejoins it
+    // at fraction b (a < b, both inside one checkpoint stretch, so no gate is skipped), through the points between. With
+    // no points between: one smooth curve that leaves and rejoins along the loop's own heading (no kink at either end).
+    std::vector<std::vector<float>> branches;
 };
 static std::vector<TrackDef> TRACKS;
 
@@ -41,6 +42,7 @@ static void initTracks() {
     if (!TRACKS.empty()) return;
     TrackDef a;
     a.name = "HILLTOP HEIGHTS"; a.sub = "FIGURE 8 - STEEP STREETS, ONE BRIDGE";
+    a.branches = { { 0.7516f, 0.964f }, { 0.4582f, 0.6063f } };   // two shortcuts, shaped by World::branchCurve (found with --branchscan)
     a.ctrl = { -460,-240, -290,-325, -120,-120, 120,120, 300,315, 480,215, 540,-30, 460,-270, 290,-330, 120,-120, -120,120, -300,315, -480,215, -540,-30 };
     a.hills = { {300,318,16,45}, {-300,318,15,45}, {545,-40,7,40}, {290,-332,15,42}, {300,-10,34,95}, {-300,-10,20,90}, {-205,-218,16,38}, {205,218,14,38} };
     a.baseH = 10; a.noiseAmp = 3; a.landR = 562; a.cityThr = 0.40f; a.night = 0;
@@ -54,10 +56,11 @@ static void initTracks() {
     b.baseH = 6.5f; b.noiseAmp = 2.2f; b.landR = 577; b.cityThr = 0.50f; b.night = 0;
     b.sun = norm(V3(-0.72f, 0.24f, 0.45f)); b.sunCol = V3(3.0f, 1.55f, 0.72f);
     b.skyTop = V3(0.10f, 0.13f, 0.42f); b.skyHor = V3(0.95f, 0.50f, 0.28f); b.fogDen = 0.0010f; b.seed = 11;
-    b.branch = { 0.8647f, 0.9622f, -461.7f, -60.4f, -439.6f, -96.5f, -427.6f, -137.0f, -426.7f, -179.3f, -436.8f, -220.4f };   // the backstreet cut, inside the bend before the start: one steady 160 m-radius arc, tangent to the road where it leaves and rejoining it 6 degrees off, so it can be taken flat out (no kink). The gate at 7/8 is passed within reach on it
+    b.branches = { { 0.8647f, 0.9622f, -461.7f, -60.4f, -439.6f, -96.5f, -427.6f, -137.0f, -426.7f, -179.3f, -436.8f, -220.4f }, { 0.1312f, 0.3499f } };   // the backstreet cut, inside the bend before the start: one steady 160 m-radius arc, tangent to the road where it leaves and rejoining it 6 degrees off, so it can be taken flat out (no kink). The gate at 7/8 is passed within reach on it
     TRACKS.push_back(b);
     TrackDef c;
     c.name = "SUMMIT SWITCHBACKS"; c.sub = "MISTY MOUNTAIN PASS - LONG CLIMB";
+    c.branches = { { 0.7243f, 0.9535f }, { 0.4065f, 0.5501f } };   // two shortcuts, shaped by World::branchCurve (found with --branchscan)
     c.ctrl = { 0,-520, 300,-450, 525,-235, 520,100, 345,335, 60,410, -70,230, -40,40, -150,-120, -330,-100, -480,-230, -400,-420, -230,-540, -110,-470 };
     c.hills = { {0,0,75,190}, {528,-60,13,40}, {-450,-330,12,38}, {200,378,14,42}, {-330,330,18,110}, {150,-490,12,38} };
     c.baseH = 8; c.noiseAmp = 3.2f; c.landR = 590; c.cityThr = 0.62f; c.night = 0;
@@ -66,6 +69,7 @@ static void initTracks() {
     TRACKS.push_back(c);
     TrackDef d;
     d.name = "MIDNIGHT MILE"; d.sub = "NIGHT CITY - DOUBLE FIGURE 8, TWO BRIDGES";
+    d.branches = { { 0.2682f, 0.4322f }, { 0.755f, 0.8982f } };   // two shortcuts, shaped by World::branchCurve (found with --branchscan)
     d.ctrl = { -370,-250, -250,-100, -120,100, 0,225, 120,100, 250,-100, 370,-250, 520,-150, 535,130, 380,255, 250,100, 120,-100, 0,-225, -120,-100, -250,100, -380,255, -535,130, -520,-150 };
     d.hills = { {0,228,13,40}, {380,258,13,40}, {0,-228,12,38}, {-380,258,13,40} };
     d.baseH = 8; d.noiseAmp = 1.5f; d.landR = 600; d.cityThr = 0.30f; d.night = 1;
@@ -82,27 +86,33 @@ static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
 struct World {
     int id = -1; const TrackDef* def = nullptr;
     std::vector<float> h, hr, rd; std::vector<TS> ts; int n = 0;
-    // the alternate route (TrackDef::branch): its centre line at 1 m (bts), where it leaves and rejoins the loop (main
-    // sample indices bA < bB), its length. A car on it counts as being on the loop at the matching point: bA + u * bScale.
-    std::vector<TS> bts; int bA = -1, bB = -1; float bLen = 0, bScale = 1;
-    bool hasBranch() const { return !bts.empty(); }
-    float branchS(float u) const { return bA + clampf(u, 0, bLen) * bScale; }
-    void atBranch(float u, float lat, V3& p, float& yaw) const {
-        int m = (int)bts.size(); float fu = clampf(u, 0, (float)(m - 1) - 0.001f); int i = (int)fu; float t = fu - i; const TS& a = bts[i], & b = bts[i + 1];
-        float tx = lerpf(a.tx, b.tx, t), tz = lerpf(a.tz, b.tz, t);
-        p = V3(lerpf(a.x, b.x, t) + tz * lat, lerpf(a.y, b.y, t), lerpf(a.z, b.z, t) - tx * lat); yaw = atan2f(tx, tz);
+    struct Branch {
+        std::vector<TS> ts; int a = -1, b = -1; float len = 0, scale = 1;
+        float S(float u) const { return a + clampf(u, 0, len) * scale; }   // the matching point of the loop
+        void at(float u, float lat, V3& p, float& yaw) const {
+            int m = (int)ts.size(); float fu = clampf(u, 0, (float)(m - 1) - 0.001f); int i = (int)fu; float t = fu - i; const TS& p0 = ts[i], & p1 = ts[i + 1];
+            float tx = lerpf(p0.tx, p1.tx, t), tz = lerpf(p0.tz, p1.tz, t);
+            p = V3(lerpf(p0.x, p1.x, t) + tz * lat, lerpf(p0.y, p1.y, t), lerpf(p0.z, p1.z, t) - tx * lat); yaw = atan2f(tx, tz);
+        }
+        int nearest(float x, float z, float& d2) const {
+            int r = -1; d2 = 1e18f; for (int i = 0; i < (int)ts.size(); i++) { float dx = ts[i].x - x, dz = ts[i].z - z, d = dx * dx + dz * dz; if (d < d2) { d2 = d; r = i; } }
+            return r;
+        }
+    };
+    // the alternate routes: centre lines at 1 m, where each leaves and rejoins the loop (main sample indices a < b), its
+    // length. A car on one counts as being on the loop at the matching point: a + u * scale.
+    std::vector<Branch> brs;
+    bool hasBranch() const { return !brs.empty(); }
+    // where a car at (x, y, z) is along the loop, in main samples (fractional): on an alternate route, the matching point
+    // (onBranch: the sample along it, or -1; whichBranch: which route)
+    float loopPos(float x, float z, float y, int* onBranch = nullptr, int* whichBranch = nullptr) const {
+        int i = nearest(x, z, y); if (onBranch) *onBranch = -1; if (whichBranch) *whichBranch = -1; if (!hasBranch()) return (float)i;
+        float dx = ts[i].x - x, dz = ts[i].z - z, best = std::min(dx * dx + dz * dz, (ROADW + 12) * (ROADW + 12)); int bj = -1, bk = -1;
+        for (int k = 0; k < (int)brs.size(); k++) { float db; int j = brs[k].nearest(x, z, db); if (j >= 0 && db < best) { best = db; bj = j; bk = k; } }
+        if (bk < 0) return (float)i;
+        if (onBranch) *onBranch = bj; if (whichBranch) *whichBranch = bk; return brs[bk].S((float)bj);
     }
-    int nearestBranch(float x, float z, float& d2) const {
-        int b = -1; d2 = 1e18f; for (int i = 0; i < (int)bts.size(); i++) { float dx = bts[i].x - x, dz = bts[i].z - z, d = dx * dx + dz * dz; if (d < d2) { d2 = d; b = i; } }
-        return b;
-    }
-    // where a car at (x, y, z) is along the loop, in main samples (fractional): on the alternate route, the matching point
-    float loopPos(float x, float z, float y, int* onBranch = nullptr) const {
-        int i = nearest(x, z, y); if (onBranch) *onBranch = -1; if (!hasBranch()) return (float)i;
-        float dx = ts[i].x - x, dz = ts[i].z - z, dm = dx * dx + dz * dz, db; int j = nearestBranch(x, z, db);
-        if (j >= 0 && db < dm && db < (ROADW + 12) * (ROADW + 12)) { if (onBranch) *onBranch = j; return branchS((float)j); }
-        return (float)i;
-    }
+    struct Disc { float x, z, r, y0, top; }; std::vector<Disc> discs;   // round solids the game sets each frame (World::collide; foot.h solidAt)
     std::vector<Box> boxes; std::vector<Ramp> ramps; std::vector<V3> keys; std::vector<Recipe> recipes; std::vector<Excl> excl; std::vector<int> cross;   // cross: middle sample of each bridge
     std::vector<float> keyStreet;   // x0, z0, x1, z1 of the backstreet that leads to the warehouse (empty if it stands by the road)
     std::vector<int> grid[GCN * GCN];
@@ -253,6 +263,12 @@ struct World {
             hit = true;
         };
         for (int bi : cell(p.x, p.z)) { const Box& b = boxes[bi]; if (b.top < p.y + 0.9f || b.y0 > p.y + 1.7f) continue; resolve(b.cx, b.cz, b.ca, b.sa, b.hx, b.hz, 0, 0); }
+        for (const Disc& d : discs) {   // round things that move or come and go (the Wardens' feet, wrecked UFOs)
+            if (d.top < p.y + 0.4f || d.y0 > p.y + 1.7f) continue; float dx = p.x - d.x, dz = p.z - d.z, rr = d.r + rad, d2 = dx * dx + dz * dz; if (d2 >= rr * rr) continue;
+            float L = sqrtf(d2); float nx = L > 1e-4f ? dx / L : 1, nz = L > 1e-4f ? dz / L : 0; p.x += nx * (rr - L); p.z += nz * (rr - L);
+            float vn = vel.x * nx + vel.z * nz; if (vn < 0) { impact = std::max(impact, -vn); vel.x -= nx * vn * 1.2f; vel.z -= nz * vn * 1.2f; vel.x *= 0.985f; vel.z *= 0.985f; }
+            hit = true;
+        }
         for (auto& r : ramps) {
             float dx = p.x - r.x, dz = p.z - r.z, u = clampf(dx * r.sa + dz * r.ca, 0, r.len);
             float rh = r.base + r.rise * u / r.len; if (rh < p.y + 1.3f || p.y + 1.7f < rh - r.thick) continue;
@@ -554,18 +570,22 @@ struct World {
     // The alternate route's centre line: a Catmull-Rom from the loop at bA, through the def's points, back to the loop at
     // bB, its end tangents taken from the loop 30 m either side so it leaves and joins it smoothly; at 1 m, its height the
     // ground's, blended into the loop's at both ends.
-    void buildBranch() {
-        bts.clear(); bA = bB = -1; bLen = 0; bScale = 1;
-        const std::vector<float>& bd = def->branch; if (bd.size() < 2 || flat) return;
-        bA = (int)(bd[0] * n); bB = (int)(bd[1] * n); if (bA <= 0 || bB <= bA || bB >= n) { bA = bB = -1; return; }
-        std::vector<V3> cp; auto T = [&](int i) { i = ((i % n) + n) % n; return V3(ts[i].x, 0, ts[i].z); };
-        cp.push_back(T(bA - 30)); cp.push_back(T(bA)); for (size_t k = 2; k + 1 < bd.size(); k += 2) cp.push_back(V3(bd[k], 0, bd[k + 1])); cp.push_back(T(bB)); cp.push_back(T(bB + 30));
-        std::vector<V3> dense;
-        for (size_t i = 1; i + 2 < cp.size(); i++) { V3 p0 = cp[i - 1], p1 = cp[i], p2 = cp[i + 1], p3 = cp[i + 2];
-            for (int k = 0; k < 60; k++) { float t = k / 60.f, t2 = t * t, t3 = t2 * t; dense.push_back((p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5f); } }
-        dense.push_back(cp[cp.size() - 2]);
+    void buildBranches() {
+        brs.clear(); if (flat) return;
+        for (const std::vector<float>& bd : def->branches) { Branch br; if (buildBranch(bd, br)) brs.push_back(std::move(br)); }
+    }
+    bool buildBranch(const std::vector<float>& bd, Branch& br) {
+        if (bd.size() < 2) return false;
+        int bA = (int)(bd[0] * n), bB = (int)(bd[1] * n); if (bA <= 0 || bB <= bA || bB >= n) return false;
+        std::vector<V3> dense; auto T = [&](int i) { i = ((i % n) + n) % n; return V3(ts[i].x, 0, ts[i].z); };
+        if (bd.size() >= 4) {   // through the given points: a Catmull-Rom, its end tangents from the loop 30 m either side
+            std::vector<V3> cp; cp.push_back(T(bA - 30)); cp.push_back(T(bA)); for (size_t k = 2; k + 1 < bd.size(); k += 2) cp.push_back(V3(bd[k], 0, bd[k + 1])); cp.push_back(T(bB)); cp.push_back(T(bB + 30));
+            for (size_t i = 1; i + 2 < cp.size(); i++) { V3 p0 = cp[i - 1], p1 = cp[i], p2 = cp[i + 1], p3 = cp[i + 2];
+                for (int k = 0; k < 60; k++) { float t = k / 60.f, t2 = t * t, t3 = t2 * t; dense.push_back((p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5f); } }
+            dense.push_back(cp[cp.size() - 2]);
+        } else dense = branchCurve(bA, bB);
         float L = 0; for (size_t i = 0; i + 1 < dense.size(); i++) L += len(dense[i + 1] - dense[i]);
-        int m = std::max(2, (int)L); float step = L / (m - 1), acc = 0; size_t di = 0; bts.resize(m);
+        int m = std::max(2, (int)L); float step = L / (m - 1), acc = 0; size_t di = 0; std::vector<TS>& bts = br.ts; bts.resize(m);
         for (int i = 0; i < m; i++) {   // resample at even spacing
             float target = i * step;
             while (di + 2 < dense.size() && acc + len(dense[di + 1] - dense[di]) < target) { acc += len(dense[di + 1] - dense[di]); di++; }
@@ -574,22 +594,34 @@ struct World {
         }
         for (int i = 0; i < m; i++) { const TS& a = bts[std::max(0, i - 1)], & b = bts[std::min(m - 1, i + 1)]; V3 t = norm(V3(b.x - a.x, 0, b.z - a.z)); bts[i].tx = t.x; bts[i].tz = t.z; bts[i].y = std::max(H(bts[i].x, bts[i].z), 2.2f); }
         for (int pass = 0; pass < 3; pass++) { std::vector<float> y(m); for (int i = 0; i < m; i++) { float s = 0; int c = 0; for (int k = -5; k <= 5; k++) { int q = i + k; if (q >= 0 && q < m) { s += bts[q].y; c++; } } y[i] = s / c; } for (int i = 0; i < m; i++) bts[i].y = y[i]; }
-        for (int i = 0; i < m; i++) {   // meet the loop's own height at both ends
+        for (int i = 0; i < m; i++) {   // meet the loop's own height at both ends, and wherever it runs alongside the loop:
+            // there the two share their ground, so they must agree on its height (or the ground at the loop's edge buckles)
             float wa = 1 - smooth(0, 25, (float)i), wb = 1 - smooth(0, 25, (float)(m - 1 - i));
             bts[i].y = lerpf(lerpf(bts[i].y, ts[bA].y, wa), ts[bB].y, wb);
+            float bd = 1e18f; int bk = bA; for (int k = bA - 60; k <= bB + 60; k++) { const TS& q = ts[((k % n) + n) % n]; float dx = q.x - bts[i].x, dz = q.z - bts[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bk = k; } }
+            float w = 1 - smooth(ROADW + BRANCH_W + 2, ROADW + BRANCH_W + 30, sqrtf(bd)); bts[i].y = lerpf(bts[i].y, ts[((bk % n) + n) % n].y, w);
         }
         for (int i = 0; i < m; i++) { const TS& a = bts[std::max(0, i - 6)], & b = bts[std::min(m - 1, i + 6)]; bts[i].curv = fabsf(wrapPi(atan2f(b.tx, b.tz) - atan2f(a.tx, a.tz))) / 12; }
-        bLen = (float)(m - 1); bScale = (bB - bA) / bLen;
+        br.a = bA; br.b = bB; br.len = (float)(m - 1); br.scale = (bB - bA) / br.len;
 #ifdef FCF_XENOS_CULL
         for (const TS& s : bts) for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++) worldCells[worldCell(s.x + dx * 8.0f, s.z + dz * 8.0f)].road = true;
 #endif
+        return true;
+    }
+    // a shortcut's own shape: a cubic from the loop at bA to the loop at bB that sets off and arrives along the loop's own
+    // heading, its handles a third of the way along, so it peels away and back in smoothly
+    std::vector<V3> branchCurve(int bA, int bB) const {
+        V3 p0(ts[bA].x, 0, ts[bA].z), p3(ts[bB].x, 0, ts[bB].z), t0(ts[bA].tx, 0, ts[bA].tz), t1(ts[bB].tx, 0, ts[bB].tz); float k = len(p3 - p0) * 0.38f;
+        V3 p1 = p0 + t0 * k, p2 = p3 - t1 * k; std::vector<V3> d;
+        for (int i = 0; i <= 600; i++) { float t = i / 600.f, u = 1 - t; d.push_back(p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t)); }
+        return d;
     }
     // its road: narrower than the loop (a centre line and lane dashes, no edge lines), laid a hair under the loop's so
     // that where the two overlap at the ends the loop's markings stay on top
     // the alternate route's surface: the road shader paints by u, metres from the centre on the main road's 8 m half
     // width (lines at 0.17, 4 and 7.5, red and white kerbs from 8 to 8.7). The branch is narrower (BRANCH_W), so its
     // tarmac carries u from -8 to 8 across its own width and its kerbs 8 to 8.7: the same markings and kerbs, scaled
-    void branchRibbon() {
+    void branchRibbon(const std::vector<TS>& bts) {
         int m = (int)bts.size(); if (m < 2) return; const float w = BRANCH_W + 0.7f; V3 kerb(0.5f, 0.5f, 0.5f), nrm(0, 1, 0);
         const float X[4] = { -w, -BRANCH_W, BRANCH_W, w }, U[4] = { -8.7f, -8.0f, 8.0f, 8.7f };
         for (int i = 0; i + 1 < m; i++) {
@@ -654,11 +686,12 @@ struct World {
             if (t >= 0 && t < 1 && u >= 0 && u < 1) cross.push_back(j);
         }
         for (int j : cross) for (int d = -BR_LW; d <= BR_LW; d++) { TS& s = ts[(j + d + n) % n]; s.y += BR_LIFT * (0.5f + 0.5f * cosf((float)M_PI * d / BR_LW)); if (abs(d) <= BR_SPAN) s.br = true; }
-        buildBranch();
+        buildBranches();
         // --- stamp the road into the height field (bridge decks are not ground: they only count for "how far is the road") ---
         std::vector<float> by(GN * GN, 0), rdh(GN * GN, 999); const int R = (int)(76 / CELL);
-        for (int k = 0; k < n + (int)bts.size(); k++) {   // the loop, then the alternate route
-            const TS& sk = k < n ? ts[k] : bts[k - n];
+        std::vector<const TS*> all; for (const TS& t : ts) all.push_back(&t); for (const Branch& br : brs) for (const TS& t : br.ts) all.push_back(&t);
+        for (size_t k = 0; k < all.size(); k++) {   // the loop, then the alternate routes
+            const TS& sk = *all[k];
             int ci = (int)((sk.x + HALF) / CELL), cj = (int)((sk.z + HALF) / CELL);
             for (int j = std::max(0, cj - R); j <= std::min(GN - 1, cj + R); j++) for (int i = std::max(0, ci - R); i <= std::min(GN - 1, ci + R); i++) {
                 float dx = -HALF + i * CELL - sk.x, dz = -HALF + j * CELL - sk.z, d = sqrtf(dx * dx + dz * dz);
@@ -690,7 +723,7 @@ struct World {
             mb.cellTag = oldTag;
 #endif
         }
-        branchRibbon();
+        for (const Branch& br : brs) branchRibbon(br.ts);
         for (int j : cross) bridge(j);
         for (int c = 0; c < NCP; c++) gate(c * n / NCP, c == 0);
         for (int k = 0; k < GRID_SLOTS; k++) {   // starting grid: a painted box for every slot, staggered left and right behind the line
