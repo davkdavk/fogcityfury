@@ -291,7 +291,7 @@ struct Unit {
     V3 paint;                               // its accent plates
     int route = 0;                          // which planned route (0: prefers the left of the road, 1: the right)
     // worked out in update(), used by draw(): the pelvis height, and each foot's ankle point (world), toe tilt and lift
-    float pelY = 0; V3 ankle[2]; float slope[2] = {}, lift[2] = {}, meta[2] = {};
+    float pelY = 0; V3 ankle[2], land[2]; float slope[2] = {}, lift[2] = {}, meta[2] = {};   // land: where each foot is down, or is about to come down
 };
 static Unit unit[NUNIT];
 static int count() { return !on ? 0 : fixed ? 1 : NUNIT; }
@@ -410,13 +410,13 @@ static int update(Unit& m, float t, V3 target) {
     float gy[2]; int landed = 0;
     for (int e = 0; e < 2; e++) {
         V3 foot; float lift = 0;
-        if (fixed) { foot = m.at + rt * ((e ? 1.0f : -1.0f) * HIP_W) + fw * 1.0f; foot.y = groundAt(foot.x, foot.z); }
+        if (fixed) { foot = m.at + rt * ((e ? 1.0f : -1.0f) * HIP_W) + fw * 1.0f; foot.y = groundAt(foot.x, foot.z); m.land[e] = foot; }
         else {
             float u = d / STRIDE + (e ? 0.5f : 0), n = floorf(u), fr = u - n, dLand = (n - (e ? 0.5f : 0)) * STRIDE;
             V3 p0 = plantAt(m, e, dLand);
-            if (fr < 0.5f) foot = p0;   // planted
+            if (fr < 0.5f) { foot = p0; m.land[e] = p0; }   // planted
             else {   // swinging to the next spot; the lift dies away as it slows to a stop, so a foot never hangs in the air
-                V3 p1 = plantAt(m, e, dLand + STRIDE); float q = (fr - 0.5f) * 2, sq = q * q * (3 - 2 * q);
+                V3 p1 = plantAt(m, e, dLand + STRIDE); float q = (fr - 0.5f) * 2, sq = q * q * (3 - 2 * q); m.land[e] = p1;
                 foot = p0 + (p1 - p0) * sq; lift = sinf(q * 3.14159265f) * 2.6f * m.gait;
             }
             float u0 = d0 / STRIDE + (e ? 0.5f : 0); if (floorf(u) != floorf(u0) && m.gait > 0.3f && d > d0) landed = e ? 1 : -1;

@@ -73,6 +73,11 @@ struct Car {
 struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false, fire = false; };
 
 // ------------------------------------------------------------------ particles
+#ifdef FCF_GFX_XSDK
+static const float RAIN_MINW = 0.0017f, RAIN_LEN = 1.25f, RAIN_V = 0.12f;   // rain streaks on the 360: wider, longer, shown their whole length
+#else
+static const float RAIN_MINW = 0.0011f, RAIN_LEN = 1.0f, RAIN_V = 1.0f;
+#endif
 struct Particle { V3 p, v; float life, maxLife, size, grow; V3 col; float a, add, seed, buoy, stretch; };   // stretch > 0: drawn as a streak along its velocity, not a billboard
 static std::vector<Particle> parts;
 static void spawn(V3 p, V3 v, float life, float size, float grow, V3 col, float a, float add = 0, float buoy = 0.6f, float stretch = 0) {
@@ -148,7 +153,7 @@ static float frameDt = 1 / 60.f, slowT = 0, flashT = 0, caT = 0, fovKick = 0, sh
 static V3 flashCol(1, 1, 1);
 static std::vector<float> marks; static bool marksDirty = false, markOn[2] = { false, false }; static V3 markLast[2]; static gfx::Buf markBuf = 0;
 static gfx::Target sceneFBO = 0, resFBO = 0, blFBO[2] = {}; static gfx::Tex sceneCol = 0, sceneDep = 0, resTex = 0, blTex[2] = {}; static int postW = 0, postH = 0;
-static Prog pMark, pPost;
+static Prog pMark, pPost, pGlass;   // pGlass: the undersea tunnel's glass
 // test instrumentation (see docs/TESTING.md)
 static struct Metrics { float maxBeta = 0, maxSlipF = 0, maxSlipR = 0, maxSpeed = 0, dist = 0, heading = 0, maxYawRate = 0, simT = 0, boostT = 0, minNitro = 1; int wrecks = 0, sinks = 0, camOffAxis = 0, bigAirs = 0, boosts = 0, rocketsFired = 0, rocketHits = 0, pickups = 0, resets = 0, aiBranch = 0, shields = 0, shieldSaves = 0, aiShields = 0, aiShieldSaves = 0, aiCrates = 0, aiRocketsFired = 0, aiRocketHits = 0, rocketsAtMe = 0, bumps = 0, stomps = 0; float maxShove = 0, maxWob = 0, mechFootErr = 0; float maxWrongT = 0; float maxDeck = 0, maxGap = 0, offroadT = 0, gridDrift = 0; } tm;
 struct ScriptKey { float t; float steer, gas, brake; bool hb, nitro; };
@@ -362,8 +367,10 @@ static void loadSave() {
 #endif
     if (noSave) return; FILE* f = fopen(savePath().c_str(), "r"); if (!f) return;
     int ver = 0; bool ok = fscanf(f, "v%d", &ver) == 1 && (ver == 2 || ver == 3);
-    for (int t = 0; ok && t < NTRACKS; t++) { ok = fscanf(f, "%u %f", &keysGot[t], &bestLap[t]) == 2; if (ok && ver >= 3) { int w = 0; ok = fscanf(f, "%d", &w) == 1; weatherOf[t] = ((w % NWX) + NWX) % NWX; } }
-    if (!ok) for (int t = 0; t < NTRACKS; t++) { keysGot[t] = 0; bestLap[t] = 0; weatherOf[t] = W_CLEAR; }
+    int got = 0;   // a save from before the two undersea tracks has four: keep those, and start the new two fresh
+    for (int t = 0; ok && t < NTRACKS; t++) { ok = fscanf(f, "%u %f", &keysGot[t], &bestLap[t]) == 2; if (ok && ver >= 3) { int w = 0; ok = fscanf(f, "%d", &w) == 1; weatherOf[t] = ((w % NWX) + NWX) % NWX; } if (ok) got = t + 1; }
+    if (got < NTRACKS_ORIG) got = 0;
+    for (int t = got; t < NTRACKS; t++) { keysGot[t] = 0; bestLap[t] = 0; weatherOf[t] = W_CLEAR; }
     fclose(f);
 }
 static void writeSave() {
@@ -374,7 +381,7 @@ static void writeSave() {
 }
 static bool allKeys();
 static int keyCount(int t) { int c = 0; for (int i = 0; i < NKEYS; i++) if (keysGot[t] >> i & 1) c++; return c; }
-static bool allKeys() { for (int t = 0; t < NTRACKS; t++) if (keyCount(t) < NKEYS) return false; return true; }
+static bool allKeys() { for (int t = 0; t < NTRACKS_ORIG; t++) if (keyCount(t) < NKEYS) return false; return true; }   // (chrome: the first four tracks' keys, as it always was)
 static void say(const char* s, V3 c = V3(1, 1, 1), float t = 2.2f) { snprintf(msg, sizeof msg, "%s", s); msgCol = c; msgT = t; }
 
 // ---- wreckage: every car that blows up leaves its burnt shell and some parts on the road ----
@@ -425,6 +432,7 @@ static void setupCars(bool race) {
 static void loadTrack(int t) { if (W.id != t) W.build(t); setupCars(false); }
 // Track select builds the track you stop on, not every one you scroll past: building a city takes a moment (seconds on
 // the 360), so each left/right only marks it, and it is built once the choice has rested a moment, or at once on start.
+static const int TRACK_SONG[NTRACKS] = { 1, 2, 3, 4, 6, 7 };   // which song goes with each track (mus::SONGS)
 static int pendingTrack = -1; static float pendingT = 0;
 static void flushPendingTrack() { if (pendingTrack >= 0) { int t = pendingTrack; pendingTrack = -1; loadTrack(t); } }
 static void startRace() {
@@ -472,7 +480,7 @@ static void blast(V3 p, V3 vel, float k) {
 }
 static float nearK(V3 p) { return clampf(1.3f - len(p - player.pos) / 80, 0.12f, 1); }
 static void leaveWreck(const Car& c) {
-    if (W.H(c.pos.x, c.pos.z) < -0.2f && c.pos.y < 0.6f) return;             // it went into the water
+    if (W.HW(c.pos.x, c.pos.z) < -0.2f && c.pos.y < 0.6f) return;            // it went into the water (the tunnel is dry)
     const CarSpec& S = SPECS[c.type]; V3 f(sinf(c.yaw), 0, cosf(c.yaw)), sd(cosf(c.yaw), 0, -sinf(c.yaw));
     Wreck w; w.pos = V3(c.pos.x, W.ground(c.pos.x, c.pos.z, c.pos.y + 0.6f), c.pos.z); w.yaw = c.yaw + grng.r(-0.3f, 0.3f); w.pitch = grng.r(-0.04f, 0.04f); w.roll = grng.r(-0.09f, 0.09f); w.age = 0; w.type = c.type; w.wheels = 0;
     w.si = W.nearest(w.pos.x, w.pos.z, w.pos.y); w.lat = (w.pos.x - W.ts[w.si].x) * W.ts[w.si].tz - (w.pos.z - W.ts[w.si].z) * W.ts[w.si].tx;
@@ -490,10 +498,19 @@ static void leaveWreck(const Car& c) {
 // is there a wreck in our lane within `ahead` metres of sample i? If so, `lat` is the offset that clears it
 #include "wardenfx.h"
 static bool dodge(int i, float myLat, float ahead, float& lat) {
-    bool any = false; float best = ahead;
-    for (auto& o : wfx::obs) { float d = (float)((o.si - i + W.n) % W.n); if (d < best && fabsf(o.lat - myLat) < o.r + 2.6f) { best = d; lat = o.lat > 0 ? o.lat - (o.r + 3.0f) : o.lat + (o.r + 3.0f); any = true; } }   // a Warden's foot, a wrecked UFO
-    for (auto& w : wrecks) { float d = (float)((w.si - i + W.n) % W.n); if (w.age < WRECK_LIFE - 1.5f && d < best && fabsf(w.lat) < ROADW + 3 && fabsf(w.lat - myLat) < 3.6f) { best = d; lat = w.lat > 0 ? w.lat - 4.6f : w.lat + 4.6f; any = true; } }
-    return any;
+    // everything in the way within `ahead` samples: wrecked cars, Warden feet, wrecked UFOs. If the line we're on is clear
+    // of all of them, nothing to do; if not, the nearest line across the road that is (so dodging one never steers into another)
+    struct Ob { float lat, r; }; Ob ob[24]; int no = 0;
+    for (auto& w : wrecks) { float d = (float)((w.si - i + W.n) % W.n); if (w.age < WRECK_LIFE - 1.5f && d < ahead && fabsf(w.lat) < ROADW + 3 && no < 24) ob[no++] = { w.lat, 2.2f }; }
+    for (auto& o : wfx::obs) { float d = (float)((o.si - i + W.n) % W.n); if (d < ahead && no < 24) ob[no++] = { o.lat, o.r + 0.6f }; }
+    auto clear = [&](float l) { for (int k = 0; k < no; k++) if (fabsf(ob[k].lat - l) < ob[k].r + 1.4f) return false; return true; };
+    if (!no || clear(myLat)) return false;
+    float best = 1e9f;
+    for (float l = -ROADW + 1.2f; l <= ROADW - 1.2f; l += 0.4f) if (clear(l) && fabsf(l - myLat) < fabsf(best - myLat)) best = l;
+    if (best > 1e8f) {   // nowhere quite clear: the line with the most room
+        float room = -1e9f; for (float l = -ROADW + 1.2f; l <= ROADW - 1.2f; l += 0.4f) { float m = 1e9f; for (int k = 0; k < no; k++) m = std::min(m, fabsf(ob[k].lat - l) - ob[k].r); if (m > room) { room = m; best = l; } }
+    }
+    lat = best; return true;
 }
 static void shieldPop(Car& c) {   // the shield breaks, taking the hit
     c.shield = 0; bool me = &c == &player; float nk = me ? 1 : clampf(1 - len(c.pos - player.pos) / 150, 0, 1);
@@ -668,9 +685,9 @@ static float tyre(float x) { float a = fabsf(x), y = a < 1 ? sinf(a * 1.5708f) :
 static void stepPlayer(Car& c, const Input& in, float dt) {
     const CarSpec& S = SPECS[c.type];
     if (c.dead) { c.deadT -= dt; if (c.deadT <= 0) respawn(c); return; }
-    float cy = c.pos.y + 0.4f, gh = W.ground(c.pos.x, c.pos.z, cy), tH = W.H(c.pos.x, c.pos.z);
+    float cy = c.pos.y + 0.4f, gh = W.ground(c.pos.x, c.pos.z, cy), tH = W.H(c.pos.x, c.pos.z), tW = W.HW(c.pos.x, c.pos.z);
     bool gr = c.pos.y - gh < 0.15f, onPlat = gh > tH + 0.3f;
-    bool onRoad = onPlat || W.RD(c.pos.x, c.pos.z) < ROADW + 1.0f; c.wet = tH < -0.03f && c.pos.y < 0.15f; c.offroad = !onRoad;
+    bool onRoad = onPlat || W.RD(c.pos.x, c.pos.z) < ROADW + 1.0f; c.wet = tW < -0.03f && c.pos.y < 0.15f; c.offroad = !onRoad;
     float sr = (in.steer * c.steer < 0 || fabsf(in.steer) < fabsf(c.steer)) ? 6.0f : 3.4f;
     c.steer += clampf(in.steer - c.steer, -sr * dt, sr * dt);
     V3 f(sinf(c.yaw), 0, cosf(c.yaw)), sd(cosf(c.yaw), 0, -sinf(c.yaw));
@@ -747,8 +764,11 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
         float rise = hgt - c.pos.y;   // follow slopes, but a kerb-like step must not launch the car
         c.vel.y = rise > hs * dt * 0.75f + 0.02f ? clampf(c.vel.y, 0, hs * 0.3f) : clampf(rise / dt, -60, hs * 0.75f); np.y = hgt; c.grounded = true; c.airT = 0;
     } else c.grounded = np.y - hgt < 0.15f;
+    if (W.dry(np.x, np.z)) {   // in the undersea tunnel: its roof is solid (a car thrown up hits it and drops back)
+        float roof = W.H(np.x, np.z) + TUBE_TOP - 1.9f; if (np.y > roof) { np.y = roof; if (c.vel.y > 0) { c.vel.y *= -0.3f; c.airT = std::min(c.airT, 0.3f); } }
+    }
     c.pos = np;
-    if (W.H(np.x, np.z) < -1.1f && np.y < -0.85f) {   // sunk
+    if (W.HW(np.x, np.z) < -1.1f && np.y < -0.85f) {   // sunk (not in the tunnel: it is dry)
         tm.sinks++; c.dead = true; c.sunk = true; c.deadT = 1.4f; tone(500, 0.7f, 0.8f, 1, -300);
         for (int i = 0; i < 40; i++) spawn(V3(np.x, 0.1f, np.z) + V3(grng.r(-1.5f, 1.5f), 0, grng.r(-1.5f, 1.5f)), V3(grng.r(-4, 4), grng.r(5, 14), grng.r(-4, 4)), grng.r(0.6f, 1.2f), 0.6f, 1.5f, V3(0.85f, 0.92f, 1), 0.7f, 0, -14);
         return;
@@ -869,11 +889,12 @@ static void carContacts(bool racing) {   // bots against bots
 }
 static Input autoInput(const Car& c) {
     Input in; int i = W.nearest(c.pos.x, c.pos.z, c.pos.y); float sp = sqrtf(c.vel.x * c.vel.x + c.vel.z * c.vel.z);
-    float lat = 0; dodge(i, (c.pos.x - W.ts[i].x) * W.ts[i].tz - (c.pos.z - W.ts[i].z) * W.ts[i].tx, 30 + sp * 1.2f, lat);   // steer round wrecks
-    V3 tp; float ty; W.at(i + 12 + sp * 0.45f, lat, tp, ty);
+    float lat = 0; bool dg = dodge(i, (c.pos.x - W.ts[i].x) * W.ts[i].tz - (c.pos.z - W.ts[i].z) * W.ts[i].tx, 30 + sp * 1.4f, lat);   // steer round wrecks
+    V3 tp; float ty; W.at(i + (dg ? 7 + sp * 0.28f : 12 + sp * 0.45f), lat, tp, ty);   // (while dodging it aims closer, so it moves across in time)
     in.steer = clampf(wrapPi(atan2f(tp.x - c.pos.x, tp.z - c.pos.z) - c.yaw) * 2.6f, -1, 1);
     float mc = 0; for (int k = 8; k < 90; k += 6) mc = std::max(mc, W.ts[(i + k) % W.n].curv);
-    float vmax = sqrtf(17.0f * wx().grip / std::max(mc, 1e-4f)); in.gas = sp < vmax ? 1 : 0; in.brake = sp > vmax * 1.12f ? 1 : 0; return in;
+    float vmax = sqrtf(17.0f * wx().grip / std::max(mc, 1e-4f)); if (dg) vmax = std::min(vmax, 16.0f + 8.0f * wx().grip);   // (easing right off while it steers round something: a graze at speed is a wreck)
+    in.gas = sp < vmax ? 1 : 0; in.brake = sp > vmax * 1.12f ? 1 : 0; return in;
 }
 
 static Input readInput() {
@@ -918,7 +939,7 @@ static void update(float dt) {
     else if (state == TITLE) weather = W_CLEAR;
     bool driving = state == RACE || state == RESULTS || state == TITLE || (netRace && state == PAUSED);
     snd.musicDuck = state == PAUSED ? 0.35f : (state == RACE || state == RESULTS ? 0.85f : 1.0f);
-    mus::want = (state == TITLE || state == CARSEL || state == OPTS || state == NETJOIN || state == NETLOBBY) ? 0 : showdownOn ? 5 : 1 + (state == TRACKSEL ? selTrack : W.id) % NTRACKS;   // each track has its own song, the showdown too; the menus keep the title song
+    mus::want = (state == TITLE || state == CARSEL || state == OPTS || state == NETJOIN || state == NETLOBBY) ? 0 : showdownOn ? 5 : TRACK_SONG[(state == TRACKSEL ? selTrack : ((W.id % NTRACKS) + NTRACKS) % NTRACKS)];   // each track has its own song, the showdown too; the menus keep the title song
     if ((state == PAUSED && !netRace) || (state == OPTS && optReturn == PAUSED)) return;   // an online race cannot be paused: the car coasts while the menu is up
     Input in; bool go = true;
     if (state == RACE && introT > 0) introT = std::max(0.0f, introT - dt);
@@ -1113,22 +1134,26 @@ static void update(float dt) {
         if (me.on) { snd.engV *= 0.4f * clampf(1 - flatDist(me.pos, player.pos) / 30, 0, 1); snd.wind = wx().wind * 0.45f; }   // on foot: your engine idles behind you
     } else { snd.engV = state == CARSEL || state == TRACKSEL ? 0.12f : 0; snd.engF = 62 * S.snd; snd.skid = 0; snd.wind = wx().wind * 0.45f; snd.nitro = 0; snd.rain = wx().rain * 0.3f; }
     // --- weather: rain around the car, spray off the road, lightning ---
-    if (driving && wx().rain > 0) {
+    bool covered = W.dry(player.pos.x, player.pos.z);   // in the undersea tunnel: no rain
+    if (covered) snd.rain *= 0.15f;
+    if (driving && wx().rain > 0 && !covered) {
         V3 wind(wx().wind * 13, 0, wx().wind * 5); float rn = wx().rain, dim = W.def->night > 0.5f ? 0.55f : 1.5f; rainRel = player.vel * 0.75f;
         int n = (int)(1500 * rn * dt + grng.f());                                // many thin streaks, not a few fat ones
         for (int i = 0; i < n; i++) {
             V3 c = player.pos + player.vel * 0.45f + V3(grng.r(-24, 24), grng.r(1.5f, 16), grng.r(-24, 24));
-            spawn(c, V3(wind.x, -27 - grng.f() * 8, wind.z), 0.42f, 0.2f, 0, V3(0.20f, 0.24f, 0.31f) * dim, 0.5f, 1, 0, 4.5f);
+            float vy = -27 - grng.f() * 8; if (W.dry(c.x, c.z)) continue;   // (none falling inside the tunnel)
+            spawn(c, V3(wind.x, vy, wind.z), 0.42f, 0.2f, 0, V3(0.20f, 0.24f, 0.31f) * dim, 0.5f, 1, 0, 4.5f);
         }
         n = (int)(230 * rn * dt + grng.f());                                     // drops bursting on the ground
         for (int i = 0; i < n; i++) {
             float x = player.pos.x + player.vel.x * 0.5f + grng.r(-17, 17), z = player.pos.z + player.vel.z * 0.5f + grng.r(-17, 17), g = W.ground(x, z, player.pos.y + 1); if (g < 0) g = 0;
+            if (W.dry(x, z)) continue;   // (no splashes on the tunnel's road)
             spawn(V3(x, g + 0.04f, z), V3(0, 1.1f, 0), 0.17f, 0.045f, 0.9f, V3(0.75f, 0.80f, 0.90f), 0.32f, 0, 0);
         }
     }
     if (driving && wx().wet > 0.5f) {                                            // every other car drags a plume of spray
         auto spray = [&](const Car& a) {
-            float sp = sqrtf(a.vel.x * a.vel.x + a.vel.z * a.vel.z); if (a.dead || sp < 12 || len(a.pos - player.pos) > 150 || grng.f() > dt * (10 + sp * 0.35f)) return;
+            float sp = sqrtf(a.vel.x * a.vel.x + a.vel.z * a.vel.z); if (a.dead || sp < 12 || len(a.pos - player.pos) > 150 || W.dry(a.pos.x, a.pos.z) || grng.f() > dt * (10 + sp * 0.35f)) return;   // (no spray in the tunnel: it is dry)
             V3 af(sinf(a.yaw), 0, cosf(a.yaw)); spawn(a.pos - af * 1.9f + V3(grng.r(-0.8f, 0.8f), 0.25f, grng.r(-0.8f, 0.8f)), V3(grng.r(-1, 1), grng.r(1.2f, 2.8f), grng.r(-1, 1)) + a.vel * 0.35f, grng.r(0.5f, 0.9f), 0.45f, 3.0f, V3(0.72f, 0.76f, 0.85f), 0.13f);
         };
         if (showAI()) for (auto& a : ai) spray(a);
@@ -1210,6 +1235,54 @@ static void drawCar(const Car& c, Prog& p, bool lit) {
     }
 }
 static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode : st == TITLE; }
+// ---- the fish outside the tunnel's glass ----
+// Three shoals and a shark, swimming up and down the glass stretch at their own paces, a little way out from it. Each
+// shoal is one mesh (its fish set out in a loose cluster), so a shoal is one draw; they are drawn only near the glass.
+static Mesh shoalMesh[3], sharkMesh;
+static V3 glassMid() { if (W.glassA < 0) return V3(1e9f, 0, 1e9f); const TS& t = W.ts[(W.glassA + W.glassB) / 2]; return V3(t.x, t.y, t.z); }
+static void buildFish() {
+    using namespace mech; const V3 WHITE(1, 1, 1), EYE(0.02f, 0.02f, 0.02f);
+    auto fish = [&](MB& m, V3 at, float s, V3 belly) {   // nose along +z; the back in the paint colour, a pale belly
+        tbox(m, at + V3(0, 0, -0.55f * s), at + V3(0, 0, 0.55f * s), X, 0.18f * s, 0.34f * s, 0.06f * s, 0.12f * s, WHITE, 1);
+        tbox(m, at + V3(0, -0.08f * s, -0.45f * s), at + V3(0, -0.08f * s, 0.4f * s), X, 0.15f * s, 0.16f * s, 0.05f * s, 0.06f * s, belly, 0);
+        m.tri(at + V3(0, 0, -0.5f * s), at + V3(0, 0.32f * s, -0.95f * s), at + V3(0, -0.32f * s, -0.95f * s), WHITE, 1);   // the tail
+        abox(m, at + V3(0.1f * s, 0.06f * s, 0.38f * s), V3(0.03f * s, 0.03f * s, 0.03f * s), EYE, 0); abox(m, at + V3(-0.1f * s, 0.06f * s, 0.38f * s), V3(0.03f * s, 0.03f * s, 0.03f * s), EYE, 0);
+    };
+    for (int k = 0; k < 3; k++) { MB m; int nf = k == 2 ? 7 : 16; float s = k == 2 ? 1.6f : 0.9f;
+        for (int i = 0; i < nf; i++) { float a = i * 2.3999f, r = 0.8f + 2.6f * sqrtf((i + 0.5f) / nf); fish(m, V3(cosf(a) * r, sinf(a * 1.7f) * 1.4f, sinf(a) * r * 1.6f), s * (0.85f + 0.3f * ((i * 37) % 10) / 10.0f), V3(0.85f, 0.85f, 0.80f)); }
+        shoalMesh[k].upload(m, "fish"); }
+    { MB m; const V3 GREY(0.40f, 0.44f, 0.48f), PALE(0.80f, 0.80f, 0.78f);   // a shark, 6 m: body, fins, tail
+        tbox(m, V3(0, 0, -2.6f), V3(0, 0, 2.4f), X, 0.55f, 0.7f, 0.25f, 0.35f, GREY, 0); tbox(m, V3(0, -0.25f, -2.0f), V3(0, -0.25f, 2.0f), X, 0.45f, 0.35f, 0.2f, 0.15f, PALE, 0);
+        m.tri(V3(0, 0.6f, 0.2f), V3(0, 1.9f, -0.6f), V3(0, 0.6f, -1.1f), GREY, 0);                          // dorsal fin
+        m.tri(V3(0, 0, -2.5f), V3(0, 1.5f, -3.6f), V3(0, 0, -3.0f), GREY, 0); m.tri(V3(0, 0, -2.5f), V3(0, 0, -3.0f), V3(0, -0.9f, -3.4f), GREY, 0);   // tail
+        m.tri(V3(0.5f, -0.2f, 0.9f), V3(1.8f, -0.6f, 0.1f), V3(0.5f, -0.2f, 0.0f), GREY, 0); m.tri(V3(-0.5f, -0.2f, 0.9f), V3(-0.5f, -0.2f, 0.0f), V3(-1.8f, -0.6f, 0.1f), GREY, 0);
+        sharkMesh.upload(m, "fish"); }
+}
+static void drawFish(Prog& p) {
+    if (W.glassA < 0 || len(camPos - glassMid()) > 260) return;
+    static const V3 COL[3] = { V3(0.20f, 0.45f, 0.75f), V3(0.95f, 0.50f, 0.10f), V3(0.75f, 0.78f, 0.82f) };
+    // only along the deep part (the road 12 m or more under the sea): near the shores the water is too shallow for them
+    int fa = W.glassA, fb = W.glassB; while (fa < fb && W.ts[fa].y > -12) fa++; while (fb > fa && W.ts[fb].y > -12) fb--; if (fb - fa < 30) return;
+    float L = (float)(fb - fa), t = T;
+    auto swim = [&](float speed, float phase, float side, float out, float up, V3& p0, float& yaw) {   // up and down the deep stretch, turning at each end
+        float a = t * speed / L * 3.14159f + phase, u = 0.5f + 0.5f * sinf(a), du = cosf(a);
+        float s = fa + u * L, lat = side * (out + 3 * sinf(t * 0.3f + phase)); V3 q; float ry; W.at(s, lat, q, ry);
+        float bed = W.H(q.x, q.z) + 2.5f, top = -4.5f; q.y = std::max(std::min(W.ts[(int)s % W.n].y + up, top), std::min(bed, top));   // over the bed, and always well under the surface
+        p0 = q; yaw = ry + (du < 0 ? 3.14159f : 0) + 0.15f * sinf(t * 2.0f + phase);
+    };
+    p.f1("uChrome", 0); p.f1("uBurnt", 0); p.f1("uGone", 0); p.f1("uBrake", 0);
+    for (int k = 0; k < 6; k++) { V3 q; float yaw; swim(4.0f + k * 0.9f, k * 1.05f, k % 2 ? -1.0f : 1.0f, 16.0f + (k % 3) * 3.0f, 2.5f + (k % 3) * 2.2f, q, yaw);   // six shoals, spread along it
+        p.v3("uPaint", COL[k % 3]); p.m4("uModel", mul(translate(q), rotY(yaw))); shoalMesh[k % 3].draw(); }
+    for (int k = 0; k < 2; k++) { V3 q; float yaw; swim(3.0f + k, 2.5f + k * 3.1f, k ? -1.0f : 1.0f, 24.0f, 5.5f, q, yaw);   // and two sharks, further out
+        p.v3("uPaint", V3(0.4f, 0.44f, 0.48f)); p.m4("uModel", mul(translate(q), mul(rotY(yaw), rotZ(0.08f * sinf(t * 1.1f + k))))); sharkMesh.draw(); }
+}
+// a point (the chase camera) held inside the undersea tube: in from the walls and under the arch
+static void keepInTube(V3& c) {
+    int i = W.nearest(c.x, c.z, c.y); const TS& t = W.ts[i]; if (!t.tun) return;
+    float lat = (c.x - t.x) * t.tz - (c.z - t.z) * t.tx, lim = TUBE_W - 1.0f, l2 = clampf(lat, -lim, lim), r = l2 / TUBE_W;
+    float arch = TUBE_SILL + (TUBE_TOP - TUBE_SILL) * sqrtf(std::max(0.0f, 1 - r * r)) - 0.8f;
+    c.x += t.tz * (l2 - lat); c.z -= t.tx * (l2 - lat); c.y = clampf(c.y, t.y + 0.5f, t.y + std::max(arch, 1.2f));
+}
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); } if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
     if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); if (mech::on) wfx::draw(p, lit, mechT); }   // (past 900 m the fog has it)
 
@@ -1432,7 +1505,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         static std::vector<float> ao; ao.clear();
         auto patch = [&](const Car& c) {
             if (c.dead) return; const CarSpec& S = SPECS[c.type]; V3 f(sinf(c.yaw), 0, cosf(c.yaw)), sd(cosf(c.yaw), 0, -sinf(c.yaw));
-            float g0 = W.ground(c.pos.x, c.pos.z, c.pos.y + 0.6f), up = c.pos.y - g0; if (up > 6 || g0 < -0.05f) return;
+            float g0 = W.ground(c.pos.x, c.pos.z, c.pos.y + 0.6f), up = c.pos.y - g0; if (up > 6 || (g0 < -0.05f && !W.dry(c.pos.x, c.pos.z))) return;
             float a = 0.62f * clampf(1 - up / 4, 0, 1), hl = (S.wbF + S.wbR) * 0.5f + 1.25f, hw = S.tw + 0.75f, mid = (S.wbF - S.wbR) * 0.5f; static const float cu[6] = { -1, 1, 1, -1, 1, -1 }, cv[6] = { -1, -1, 1, -1, 1, 1 };
             for (int k = 0; k < 6; k++) { V3 q = c.pos + f * (mid + cv[k] * hl) + sd * (cu[k] * hw); q.y = W.ground(q.x, q.z, c.pos.y + 0.6f) + 0.035f; if (fabsf(q.y - g0) > 1.2f) q.y = g0 + 0.035f;
                 float d[11] = { q.x, q.y, q.z, cu[k], cv[k], 0.0f, 0.0f, 0.0f, a, 0, 1 }; ao.insert(ao.end(), d, d + 11); }
@@ -1458,6 +1531,14 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         for (size_t k = 0; k < W.keys.size(); k++) if (!(keysGot[W.id] >> k & 1)) { pCar.m4("uModel", mul(translate(W.keys[k] + V3(0, 0.25f * sinf(T * 2 + k), 0)), mul(rotY(T * 2.2f + k), scale(1.9f, 1.9f, 1.9f)))); keyMesh.draw(); }
     }
     if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2); W.water.draw(); }
+    if ((DRAW_MASK & DM_WATER) && mainPass && !W.glassV.empty() && len(cam - glassMid()) < 900) {   // the tunnel's glass, over the sea and the fish outside it
+        traceDraw("glass"); setCommon(pGlass, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
+        gfx::data(partBuf, W.glassV.data(), W.glassV.size() * 4, true); gfx::draw(partBuf, 0, (int)(W.glassV.size() / 11)); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
+        // the fish outside: drawn after the glass (or it would hide them), so they get their own sea: the fog is the
+        // water's colour and thick, so the near ones are clear and the far ones fade into the blue
+        setCommon(pCar, VP, cam, hdr); pCar.v3("uSkyHor", V3(0.03f, 0.20f, 0.27f)); pCar.f1("uFogDen", 0.03f); drawFish(pCar); setCommon(pCar, VP, cam, hdr);
+        gfx::blend(gfx::B_ALPHA);
+    }
     if ((DRAW_MASK & DM_EFFECTS) && mainPass && !parts.empty()) {
         traceDraw("particles");
         V3 R(V.m[0], V.m[4], V.m[8]), U(V.m[1], V.m[5], V.m[9]), F(-V.m[2], -V.m[6], -V.m[10]); static std::vector<float> pv; pv.clear();
@@ -1466,12 +1547,15 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
             V3 pr = R * p.size, pu = U * (p.size * (p.add > 0.5f ? 1.0f : 1.0f)); float off = p.add > 0.5f ? 0 : 0.75f;
             if (p.stretch > 0) {   // a rain streak: at least about a pixel wide however far off (thinner ones flickered out between pixels, worst at the 360's
                                    // resolution with no MSAA), dimmed to match so the rain is as heavy as before
-                V3 d = norm(p.v - rainRel); float hw = p.size * 0.12f, mw = len(p.p - cam) * 0.0011f; if (mw > hw) { a *= hw / mw; hw = mw; }
+                V3 d = norm(p.v - rainRel); float hw = p.size * 0.12f, mw = len(p.p - cam) * RAIN_MINW; if (mw > hw) { a *= hw / mw; hw = mw; }
 #ifdef FCF_GFX_XSDK
-                a *= 1.6f;   // and a touch brighter there: the 360's tone curve flattens faint additive streaks
+                a *= 2.4f;   // and brighter there: the 360's tone curve flattens faint additive streaks
 #endif
-                pr = norm(cross(d, F)) * hw; pu = d * (p.size * p.stretch); off = 0; }
-            for (int k = 0; k < 6; k++) { V3 q = p.p + pr * cu[k] + pu * (cv[k] + off); float d[11] = { q.x, q.y, q.z, cu[k], cv[k], p.col.x, p.col.y, p.col.z, a, p.seed, p.add }; pv.insert(pv.end(), d, d + 11); }
+                pr = norm(cross(d, F)) * hw; pu = d * (p.size * p.stretch * RAIN_LEN); off = 0; }
+            // (on the 360 a streak's corners carry v near 0, so the particle shader's round fade runs across the streak only and the
+            // whole length shows; with v at +-1 only its middle survived, which is why the 360's rain was so faint)
+            float vs = p.stretch > 0 ? RAIN_V : 1.0f;
+            for (int k = 0; k < 6; k++) { V3 q = p.p + pr * cu[k] + pu * (cv[k] + off); float d[11] = { q.x, q.y, q.z, cu[k], cv[k] * vs, p.col.x, p.col.y, p.col.z, a, p.seed, p.add }; pv.insert(pv.end(), d, d + 11); }
         }
         setCommon(pPart, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
         gfx::data(partBuf, pv.data(), pv.size() * 4, true);
@@ -1814,6 +1898,7 @@ static void render(int fbw, int fbh) {
         else {
             V3 w2 = player.pos - cf * dist + V3(0, hgt, 0); camPos.x = w2.x; camPos.z = w2.z; camPos.y += (w2.y - camPos.y) * (1 - expf(-9 * dt)); if (fabsf(camPos.y - w2.y) > 10) camPos.y = w2.y;
             camPos.y = std::max(camPos.y, W.H(camPos.x, camPos.z) + 0.8f); camTgt = player.pos + V3(0, 1.25f, 0) + f * (3.0f + sp * 0.05f);
+            if (W.dry(player.pos.x, player.pos.z)) keepInTube(camPos);   // in the tunnel: the camera stays inside it (or it sees the world from outside the glass)
         }
         fov = 64 + clampf(sp / 75, 0, 1) * 22 + fovKick;
         float amp = shake * 0.25f + smooth(0.8f, 1.0f, sp / S.top) * 0.018f + (player.offroad && player.grounded ? clampf(sp / 40, 0, 1) * 0.03f : 0);
@@ -1976,6 +2061,17 @@ static void onKey(SDL_Keycode k, int sc = 0) {
     }
 }
 
+// (tests) tunnel samples where the ground rises inside the tube: across its floor and up its walls, the ground (as drawn)
+// must stay under the arch everywhere
+static int tubeDirt() {
+    int bad = 0; if (!W.hasTunnel()) return 0;
+    for (int i = W.tunA; i <= W.tunB; i++) { const TS& t = W.ts[i]; bool b = false;
+        for (float x = -TUBE_W + 0.2f; x <= TUBE_W - 0.2f; x += 0.6f) {
+            float c = clampf(x / TUBE_W, -1, 1), arch = TUBE_SILL + (TUBE_TOP - TUBE_SILL) * sqrtf(1 - c * c);
+            V3 q(t.x + t.tz * x, 0, t.z - t.tx * x); if (W.sampleTri(W.hr, q.x, q.z) > t.y + std::min(arch, 1.2f) - 0.05f) b = true; }
+        if (b) bad++; }
+    return bad;
+}
 static void printJSON(FILE* o) {
     std::string srvStr; for (auto& e : servers) { char t[200]; snprintf(t, sizeof t, "%s%s|%d|%d|%d|%.20s", srvStr.empty() ? "" : ";", e.host.c_str(), e.st, e.st == 2 ? e.info.count : -1, e.st == 2 ? e.info.track : -1, e.st == 2 ? e.info.name : ""); srvStr += t; }   // host|status|players|track|name
     std::string tbStr; if (touchOn) { touchLayout(); for (auto& t : tbtn) { if (!tbStr.empty()) tbStr += ","; tbStr += t.label; } }
@@ -1990,7 +2086,7 @@ static void printJSON(FILE* o) {
       fprintf(o, "{\"fpos\":\"%s\",\"site\":[%.1f,%.1f,%.1f],", fp.c_str(), shdSite.x, shdSite.y, shdSite.z); }
     { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
-      fprintf(o, "\"shortcuts\":\"%s\",", sc.c_str()); }
+      fprintf(o, "\"shortcuts\":\"%s\",\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
     fprintf(o, "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
         "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
@@ -2007,7 +2103,8 @@ static void printDump(FILE* o) {
     fprintf(o, "],\"keys\":["); for (size_t k = 0; k < W.keys.size(); k++) fprintf(o, "%s{\"kind\":\"%s\",\"x\":%.1f,\"y\":%.1f,\"z\":%.1f,\"ground\":%.1f,\"startX\":%.1f,\"startZ\":%.1f,\"startYaw\":%.3f,\"startGround\":%.1f,\"seconds\":%.0f}", k ? "," : "", W.recipes[k].kind, W.keys[k].x, W.keys[k].y, W.keys[k].z, W.H(W.keys[k].x, W.keys[k].z), W.recipes[k].x, W.recipes[k].z, W.recipes[k].yaw, W.H(W.recipes[k].x, W.recipes[k].z), W.recipes[k].secs);
     fprintf(o, "],\"ramps\":["); for (size_t k = 0; k < W.ramps.size(); k++) { const Ramp& r = W.ramps[k]; fprintf(o, "%s{\"x\":%.1f,\"z\":%.1f,\"heading\":%.3f,\"base\":%.1f,\"rise\":%.1f,\"len\":%.1f}", k ? "," : "", r.x, r.z, atan2f(r.sa, r.ca), r.base, r.rise, r.len); }
     fprintf(o, "],\"bridges\":["); for (size_t k = 0; k < W.cross.size(); k++) { const TS& b = W.ts[W.cross[k]]; fprintf(o, "%s{\"x\":%.1f,\"z\":%.1f,\"deck\":%.2f,\"under\":%.2f}", k ? "," : "", b.x, b.z, b.y, W.H(b.x, b.z)); }
-    fprintf(o, "],\"loop\":["); for (int i = 0; i < W.n; i += 4) fprintf(o, "%s[%.1f,%.1f,%.1f]", i ? "," : "", W.ts[i].x, W.ts[i].y, W.ts[i].z);
+    fprintf(o, "],\"loop\":["); for (int i = 0; i < W.n; i += 4) fprintf(o, "%s[%.1f,%.1f,%.1f,%.1f,%d]", i ? "," : "", W.ts[i].x, W.ts[i].y, W.ts[i].z, W.baseHeight(W.ts[i].x, W.ts[i].z), (int)W.ts[i].tun);
+    fprintf(o, "],\"tunnel\":[%d,%d,%d,%d],\"heights\":[", W.tunA, W.tunB, W.glassA, W.glassB); for (int j = 0; j < 96; j++) for (int i = 0; i < 96; i++) fprintf(o, "%s%.1f", i || j ? "," : "", W.H(-HALF + (i + 0.5f) * 16, -HALF + (j + 0.5f) * 16));
     fprintf(o, "],\"shortcuts\":["); for (size_t k = 0; k < W.brs.size(); k++) { const World::Branch& br = W.brs[k]; int blocked = 0;
         for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
         fprintf(o, "%s{\"a\":%d,\"b\":%d,\"len\":%.1f,\"blocked\":%d,\"pts\":[", k ? "," : "", br.a, br.b, br.len, blocked);
@@ -2096,7 +2193,7 @@ static void branchScan(int t) {
     float gradeMax = std::max(0.10f, loopGrade * 0.9f);   // no steeper than the track's own road gets
     for (int a = 120; a < n - 200; a += 10) for (int L = 140; L <= 760; L += 10) {
         int b = a + L; if (b >= n - 120 || a < 120) continue;   // clear of the start line (a shortcut may run past other gates: they count it)
-        bool bridge = false; for (int k = a - 30; k <= b + 30; k++) if (W.ts[((k % n) + n) % n].br) bridge = true; if (bridge) continue;
+        bool bridge = false; for (int k = a - 30; k <= b + 30; k++) { const TS& q = W.ts[((k % n) + n) % n]; if (q.br || q.tun) bridge = true; } if (bridge) continue;
         bool clash = false; for (const World::Branch& o : W.brs) if (b + 60 > o.a && a - 60 < o.b) clash = true; if (clash) continue;
         std::vector<V3> d = W.branchCurve(a, b); float cl = 0; for (size_t i = 0; i + 1 < d.size(); i++) cl += len(d[i + 1] - d[i]);
         float ratio = cl / L; if (ratio > (getenv("FCF_SCANRATIO") ? (float)atof(getenv("FCF_SCANRATIO")) : 0.88f) || ratio < 0.40f) continue;
@@ -2246,6 +2343,7 @@ int main(int argc, char** argv) {
     FCF_MAKE_PROG(pUI, "ui", VS_UI, "", FS_UI_FULL);
     FCF_MAKE_PROG(pMark, "mark", VS_PART, FS_COMMON, FS_MARK);
     FCF_MAKE_PROG(pRing, "ring", VS_PART, FS_COMMON, FS_RING);
+    FCF_MAKE_PROG(pGlass, "glass", VS_PART, FS_COMMON, FS_GLASS);
     FCF_MAKE_PROG(pPost, "post", VS_SKY, "", FS_POST);
 #ifdef FCF_XENOS_LEAN
     FCF_MAKE_PROG(pGround, "ground", VS_MESH, FS_COMMON, FS_WORLD);
@@ -2330,6 +2428,7 @@ int main(int argc, char** argv) {
         jetMesh.upload(m, "jet");
     }
     if (mech::on) { mech::build(); wfx::build(); }
+    buildFish();
     startGame();
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: startGame complete");

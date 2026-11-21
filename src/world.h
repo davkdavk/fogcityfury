@@ -3,13 +3,14 @@
 #include "base.h"
 
 static const float HALF = 768, CELL = 3, ROADW = 8.0f, GCELL = 48, BRANCH_W = 5.5f;   // BRANCH_W: half the alternate route's width   // world is 1536 m square; collider grid cells are 48 m
-static const int GN = 513, GCN = 32, NCP = 8, NKEYS = 5, NTRACKS = 4;
+static const int GN = 513, GCN = 32, NCP = 8, NKEYS = 5, NTRACKS = 6, NTRACKS_ORIG = 4;   // NTRACKS_ORIG: the first four (chrome is for their keys)
 
 struct Gauss { float x, z, a, s; };
-struct TS { float x, z, y, tx, tz, curv; bool br = false; };   // br: this sample is on a bridge deck, not on the ground
+struct TS { float x, z, y, tx, tz, curv; bool br = false, tun = false; };   // br: this sample is on a bridge deck, not on the ground; tun: inside the undersea tunnel
 struct Box { float cx, cz, hx, hz, ca, sa, y0, top; };
 struct Ramp { float x, z, ca, sa, len, hw, base, rise; float thick = 1e9f; };   // thick: bridge decks are this deep and open underneath; ordinary ramps are solid
 static const int GRID_SLOTS = 10; static float gridS(int k) { return -8.0f * (k + 1); } static float gridLat(int k) { return (k % 2) ? 3.2f : -3.2f; }   // starting grid: slot 0 is pole
+static const float TUBE_W = ROADW + 1.2f, TUBE_SILL = 1.4f, TUBE_TOP = 8.6f, TUBE_TH = 0.5f; static const int TUBE_ARC = 14;   // the tunnel: inside half-width, a low wall (the sill), then a round arch to the apex; its thickness; facets in the arch
 static const float BR_LIFT = 7.5f; static const int BR_LW = 85, BR_SPAN = 38;   // bridge: height over the lower road, length of the climb, half-length of the deck (samples)
 struct Excl { float x, z, r; };
 // How a scripted driver collects a key: start pose, waypoints, speed. Used by --keyrun and the tests,
@@ -35,6 +36,9 @@ struct TrackDef {
     // at fraction b (a < b, both inside one checkpoint stretch, so no gate is skipped), through the points between. With
     // no points between: one smooth curve that leaves and rejoins along the loop's own heading (no kink at either end).
     std::vector<std::vector<float>> branches;
+    // An undersea tunnel: { a, b, depth, g0, g1 }. Between fractions a and b of the loop the road dives to `depth` (m,
+    // below the sea) and comes back up; wherever it is below 0.8 m it runs in a tube, glass-roofed between g0 and g1.
+    std::vector<float> tunnel;
 };
 static std::vector<TrackDef> TRACKS;
 
@@ -76,6 +80,26 @@ static void initTracks() {
     d.sun = norm(V3(-0.40f, 0.70f, 0.30f)); d.sunCol = V3(0.42f, 0.52f, 0.85f);
     d.skyTop = V3(0.004f, 0.008f, 0.025f); d.skyHor = V3(0.045f, 0.055f, 0.11f); d.fogDen = 0.0011f; d.seed = 41;
     TRACKS.push_back(d);
+    TrackDef e;
+    e.name = "HARBOUR DEEP"; e.sub = "UNDER THE HARBOUR - GLASS TUNNEL OR THE CAUSEWAY";
+    e.ctrl = { -450,-150, -380,-400, -180,-460, 180,-460, 380,-400, 460,-150, 440,180, 300,420, 0,470, -300,420, -440,180 };
+    e.hills = { {0,-480,-62,150}, {350,230,22,95}, {-290,210,15,85}, {-470,-260,9,40}, {60,180,10,120} };
+    e.tunnel = { 300.0f / 3166, 1000.0f / 3166, -19, 480.0f / 3166, 800.0f / 3166 };   // under the harbour mouth, glass over the deepest part
+    e.branches = { { 130.0f / 3166, 1190.0f / 3166, -350, -280, -190, -255, 0, -250, 190, -255, 345, -270 }, { 0.7107f, 0.9507f } };   // the causeway across the inner harbour, 200 m inside the tunnel; and a cut through the west side
+    e.baseH = 8; e.noiseAmp = 2.4f; e.landR = 600; e.cityThr = 0.42f; e.night = 0;
+    e.sun = norm(V3(0.30f, 0.66f, 0.55f)); e.sunCol = V3(2.6f, 2.35f, 1.95f);
+    e.skyTop = V3(0.06f, 0.25f, 0.60f); e.skyHor = V3(0.45f, 0.62f, 0.82f); e.fogDen = 0.0008f; e.seed = 57;
+    TRACKS.push_back(e);
+    TrackDef f;
+    f.name = "LAGOON LOOP"; f.sub = "TROPIC ISLAND - UNDER THE LAGOON";
+    f.ctrl = { 20,430, -280,400, -470,260, -480,40, -420,-300, -150,-430, 80,-320, 180,-120, 300,120, 430,330, 300,480 };
+    f.hills = { {270,90,-55,120}, {-250,-200,26,110}, {-380,330,12,60}, {40,-430,10,50}, {-80,140,14,90} };
+    f.tunnel = { 1780.0f / 2926, 2480.0f / 2926, -19, 2010.0f / 2926, 2290.0f / 2926 };   // diagonally under the lagoon
+    f.branches = { { 1700.0f / 2926, 2560.0f / 2926, 230, -215, 380, -120, 470, 40, 495, 200, 465, 345 }, { 0.3008f, 0.5605f } };   // the causeway round the lagoon's seaward side; and a cut across the north
+    f.baseH = 7; f.noiseAmp = 2.0f; f.landR = 590; f.cityThr = 0.55f; f.night = 0;
+    f.sun = norm(V3(-0.25f, 0.80f, 0.40f)); f.sunCol = V3(2.9f, 2.6f, 2.1f);
+    f.skyTop = V3(0.02f, 0.30f, 0.62f); f.skyHor = V3(0.50f, 0.75f, 0.85f); f.fogDen = 0.0007f; f.seed = 71;
+    TRACKS.push_back(f);
 }
 
 static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
@@ -103,6 +127,14 @@ struct World {
     // length. A car on one counts as being on the loop at the matching point: a + u * scale.
     std::vector<Branch> brs;
     bool hasBranch() const { return !brs.empty(); }
+    // the undersea tunnel: the stretch of loop samples that run in the tube (tunA..tunB), its glass-roofed part, the
+    // ground cells inside it (dry: the sea is not there), and the glass itself (triangles in the particle layout, 11 floats
+    // a vertex: position, metres along and up the glass, colour, depth below the sea, 0) for the glass program
+    int tunA = -1, tunB = -1, glassA = -1, glassB = -1; std::vector<uint8_t> dryMask; std::vector<float> glassV;
+    bool hasTunnel() const { return tunA >= 0; }
+    bool dry(float x, float z) const { if (dryMask.empty()) return false; int i = (int)clampf(roundf((x + HALF) / CELL), 0, GN - 1), j = (int)clampf(roundf((z + HALF) / CELL), 0, GN - 1); return dryMask[j * GN + i] != 0; }
+    // the ground's height for "is this the sea?": inside the tunnel it is dry whatever the height
+    float HW(float x, float z) const { return dry(x, z) ? 50.0f : H(x, z); }
     // where a car at (x, y, z) is along the loop, in main samples (fractional): on an alternate route, the matching point
     // (onBranch: the sample along it, or -1; whichBranch: which route)
     float loopPos(float x, float z, float y, int* onBranch = nullptr, int* whichBranch = nullptr) const {
@@ -566,6 +598,116 @@ struct World {
             return;
         }
     }
+    // ---- the undersea tunnel ----
+    // the road's profile: between a and b it eases down to the depth and back up (a cosine ease over the first and last
+    // 36%: no steeper than about 12%), then every sample below 0.8 m is in the tube
+    void applyTunnel() {
+        tunA = tunB = glassA = glassB = -1; glassV.clear(); for (TS& t : ts) t.tun = false;
+        const std::vector<float>& td = def->tunnel; if (td.size() < 5 || flat) return;
+        int a = (int)(td[0] * n), b = (int)(td[1] * n); if (a <= 0 || b <= a || b >= n) return;
+        for (int i = a; i <= b; i++) { float u = (float)(i - a) / (b - a), w = smooth(0, 0.36f, u) * (1 - smooth(0.64f, 1, u)); ts[i].y = lerpf(ts[i].y, td[2], w); }
+        for (int i = a; i <= b; i++) if (ts[i].y < 0.8f) { if (tunA < 0) tunA = i; tunB = i; ts[i].tun = true; }
+        if (tunA < 0) return;
+        // the glass: everywhere the sea is outside it, from the shoreline to the shoreline (the natural ground under the tube
+        // below the sea). Near the shores the arch stands up out of the water, and the glass shows the waterline climbing it
+        // as you go under. Under land it is concrete. td[3], td[4] are kept for the record but no longer limit it
+        glassA = glassB = -1;
+        for (int i = tunA; i <= tunB; i++) if (baseHeight(ts[i].x, ts[i].z) < -0.5f) { if (glassA < 0) glassA = i; glassB = i; }
+        if (glassB - glassA < 40) glassA = glassB = -1;
+    }
+    // the tube: round. A low concrete wall each side (the sill), then one arch (half an ellipse) over the road, concrete
+    // with strip lights, or in the glass stretch all glass (its window joins are drawn by the glass shader). Inside and outside faces; portals
+    // with a headwall round each mouth. Its walls are solid (boxes every 8 m)
+    void buildTube() {
+        if (!hasTunnel()) return;
+        const V3 CIN(0.60f, 0.59f, 0.57f), COUT(0.40f, 0.42f, 0.43f), LAMP(1.0f, 0.92f, 0.75f);
+        auto P = [&](const TS& t, float x, float y) { return V3(t.x + t.tz * x, t.y + y, t.z - t.tx * x); };
+        auto arc = [&](int k, float grow, float& x, float& y) { float th = 3.14159265f * k / TUBE_ARC; x = (TUBE_W + grow) * cosf(th); y = TUBE_SILL + (TUBE_TOP - TUBE_SILL + grow) * sinf(th); };
+        auto glassy = [&](int i) { return glassA >= 0 && i >= glassA && i < glassB; };
+        auto gv = [&](V3 p, float u, float v) { float d[11] = { p.x, p.y, p.z, u, v, 1, 1, 1, 1, std::max(0.0f, -p.y), 0 }; glassV.insert(glassV.end(), d, d + 11); };
+        const int ST = 4;   // 4 m segments: the tunnels run nearly straight, and the glass is streamed every frame it is in view
+        for (int i = tunA; i < tunB; i += ST) {
+            int k2 = std::min(i + ST, tunB); const TS& a = ts[i], & b = ts[k2]; bool gl = glassy(i);
+            const V3 SILL(0.36f, 0.47f, 0.54f), SILLO(0.24f, 0.33f, 0.38f);   // under the glass the sills take the sea's light: a cool blue-grey
+            for (int sd = -1; sd <= 1; sd += 2) {   // the sills: concrete, inside and out, and their top
+                float x = sd * TUBE_W, ox = sd * (TUBE_W + TUBE_TH);
+                mb.quad(P(a, x, 0), P(b, x, 0), P(b, x, TUBE_SILL), P(a, x, TUBE_SILL), gl ? SILL : CIN, 3);
+                mb.quad(P(b, ox, -0.6f), P(a, ox, -0.6f), P(a, ox, TUBE_SILL), P(b, ox, TUBE_SILL), gl ? SILLO : COUT, 3);
+                mb.quad(P(a, x, TUBE_SILL), P(b, x, TUBE_SILL), P(b, ox, TUBE_SILL), P(a, ox, TUBE_SILL), gl ? SILL * 0.85f : CIN, 3);   // the sill's top, under the glass
+            }
+            for (int k = 0; k < TUBE_ARC; k++) {   // the arch, facet by facet
+                float x0, y0, x1, y1, ox0, oy0, ox1, oy1; arc(k, 0, x0, y0); arc(k + 1, 0, x1, y1); arc(k, TUBE_TH, ox0, oy0); arc(k + 1, TUBE_TH, ox1, oy1);
+                if (gl) { float v0 = (float)k / TUBE_ARC, v1 = (float)(k + 1) / TUBE_ARC, u0 = (float)i, u1 = (float)k2;
+                    V3 g0 = P(a, x0, y0), g1 = P(b, x0, y0), g2 = P(b, x1, y1), g3 = P(a, x1, y1);
+                    gv(g0, u0, v0); gv(g1, u1, v0); gv(g2, u1, v1); gv(g0, u0, v0); gv(g2, u1, v1); gv(g3, u0, v1); continue; }
+                mb.quad(P(a, x0, y0), P(b, x0, y0), P(b, x1, y1), P(a, x1, y1), CIN, 3);
+                mb.quad(P(b, ox0, oy0), P(a, ox0, oy0), P(a, ox1, oy1), P(b, ox1, oy1), COUT, 3);
+            }
+            if (!gl) for (int sd = -1; sd <= 1; sd += 2) {   // strip lights along each side of the arch
+                float x0, y0, x1, y1; arc(sd > 0 ? 3 : TUBE_ARC - 3, -0.03f, x0, y0); arc(sd > 0 ? 4 : TUBE_ARC - 4, -0.03f, x1, y1);
+                V3 m0 = P(a, x0 + (x1 - x0) * 0.35f, y0 + (y1 - y0) * 0.35f), m1 = P(b, x0 + (x1 - x0) * 0.35f, y0 + (y1 - y0) * 0.35f), n0 = P(a, x0 + (x1 - x0) * 0.6f, y0 + (y1 - y0) * 0.6f), n1 = P(b, x0 + (x1 - x0) * 0.6f, y0 + (y1 - y0) * 0.6f);
+                mb.quad(m0, m1, n1, n0, LAMP, 6);
+            }
+            if ((i - tunA) % 8 == 0) for (int sd = -1; sd <= 1; sd += 2) {   // the walls are solid
+                int m = std::min(i + 4, tunB); const TS& c = ts[m]; V3 w = P(c, sd * (TUBE_W + TUBE_TH * 0.5f), 0);
+                addBox(w.x, w.z, TUBE_TH * 0.5f + 0.3f, 4.4f, atan2f(c.tx, c.tz), c.y - 1.0f, c.y + TUBE_TOP + TUBE_TH);
+            }
+        }
+        for (int end = 0; end < 2; end++) {   // the portals: a solid headwall round each mouth, 1.6 m thick, the arch lined through it
+            const TS& t = ts[end ? tunB : tunA]; float fx = end ? 1.0f : -1.0f; V3 f(t.tx * fx, 0, t.tz * fx);   // f: out of the tunnel
+            const float HW2 = TUBE_W + 5.0f, HT = TUBE_TOP + 2.4f, D = 1.6f;
+            for (int face = 0; face < 2; face++) {   // the outer face (in front of the mouth) and the back (over the tube)
+                float o = face ? -D : 0.05f; auto Q = [&](float x, float y) { return P(t, x, y) + f * o; };
+                for (int k = 0; k < TUBE_ARC; k++) { float x0, y0, x1, y1; arc(k, 0, x0, y0); arc(k + 1, 0, x1, y1);
+                    if (face) mb.quad(Q(x1, y1), Q(x0, y0), Q(x0, HT), Q(x1, HT), COUT, 3); else mb.quad(Q(x0, y0), Q(x1, y1), Q(x1, HT), Q(x0, HT), COUT, 3); }
+                if (face) { mb.quad(Q(HW2, 0), Q(TUBE_W, 0), Q(TUBE_W, HT), Q(HW2, HT), COUT, 3); mb.quad(Q(-TUBE_W, 0), Q(-HW2, 0), Q(-HW2, HT), Q(-TUBE_W, HT), COUT, 3); }
+                else { mb.quad(Q(TUBE_W, 0), Q(HW2, 0), Q(HW2, HT), Q(TUBE_W, HT), COUT, 3); mb.quad(Q(-HW2, 0), Q(-TUBE_W, 0), Q(-TUBE_W, HT), Q(-HW2, HT), COUT, 3); }
+            }
+            auto F = [&](float x, float y) { return P(t, x, y) + f * 0.05f; }; auto B = [&](float x, float y) { return P(t, x, y) - f * D; };
+            for (int k = 0; k < TUBE_ARC; k++) { float x0, y0, x1, y1; arc(k, 0, x0, y0); arc(k + 1, 0, x1, y1); mb.quad(F(x1, y1), F(x0, y0), B(x0, y0), B(x1, y1), CIN, 3); }   // the arch's lining
+            for (int sd = -1; sd <= 1; sd += 2) { float x = sd * TUBE_W; mb.quad(F(x, 0), F(x, TUBE_SILL), B(x, TUBE_SILL), B(x, 0), CIN, 3);                      // the sills' ends
+                float e = sd * HW2; mb.quad(F(e, -0.6f), B(e, -0.6f), B(e, HT), F(e, HT), COUT, 3); }                                                                 // the two ends
+            mb.quad(F(-HW2, HT), F(HW2, HT), B(HW2, HT), B(-HW2, HT), COUT * 1.15f, 3);                                                                               // the top
+            for (int sd = -1; sd <= 1; sd += 2) mb.quad(F(sd * (TUBE_W + 0.6f), HT - 1.4f) + f * 0.02f, F(sd * (TUBE_W + 4.2f), HT - 1.4f) + f * 0.02f, F(sd * (TUBE_W + 4.2f), HT - 0.5f) + f * 0.02f, F(sd * (TUBE_W + 0.6f), HT - 0.5f) + f * 0.02f, V3(0.95f, 0.65f, 0.05f), 5);   // hazard bands
+        }
+    }
+    // the sea's surface: one big sheet, but with a hole wherever the tube's inside reaches up through the waterline
+    // (near its ends, where the road is less than the tube's height under the sea), or the sea would show inside it.
+    // There the sheet is laid in 1.5 m squares and the squares over the tube's inside are left out; the roof covers them.
+    void seaSurface(MB& w) {
+        std::vector<float> rx0, rx1, rz0, rz1; std::vector<std::pair<int, int>> runs;
+        if (hasTunnel()) { int s = -1; for (int i = tunA; i <= tunB + 1; i++) { bool in = i <= tunB && ts[i].y > -(TUBE_TOP + TUBE_TH + 0.3f); if (in && s < 0) s = i; if (!in && s >= 0) { runs.push_back({ s, i - 1 }); s = -1; } } }
+        for (auto& r : runs) { float a0 = 1e9f, a1 = -1e9f, b0 = 1e9f, b1 = -1e9f; for (int i = r.first; i <= r.second; i++) { a0 = std::min(a0, ts[i].x); a1 = std::max(a1, ts[i].x); b0 = std::min(b0, ts[i].z); b1 = std::max(b1, ts[i].z); }
+            const float M = TUBE_W + 3; rx0.push_back(floorf((a0 - M) / 1.5f) * 1.5f); rx1.push_back(ceilf((a1 + M) / 1.5f) * 1.5f); rz0.push_back(floorf((b0 - M) / 1.5f) * 1.5f); rz1.push_back(ceilf((b1 + M) / 1.5f) * 1.5f); }
+        // the rest of the sheet, in rectangles round the patches
+        std::vector<float> xs = { -5000, 5000 }, zs = { -5000, 5000 }; for (size_t k = 0; k < rx0.size(); k++) { xs.push_back(rx0[k]); xs.push_back(rx1[k]); zs.push_back(rz0[k]); zs.push_back(rz1[k]); }
+        std::sort(xs.begin(), xs.end()); std::sort(zs.begin(), zs.end());
+        for (size_t i = 0; i + 1 < xs.size(); i++) for (size_t j = 0; j + 1 < zs.size(); j++) {
+            float x0 = xs[i], x1 = xs[i + 1], z0 = zs[j], z1 = zs[j + 1]; if (x1 - x0 < 0.01f || z1 - z0 < 0.01f) continue; float cx = (x0 + x1) / 2, cz = (z0 + z1) / 2; bool inPatch = false;
+            for (size_t k = 0; k < rx0.size(); k++) if (cx > rx0[k] && cx < rx1[k] && cz > rz0[k] && cz < rz1[k]) inPatch = true;
+            if (!inPatch) w.quad(V3(x0, 0, z0), V3(x0, 0, z1), V3(x1, 0, z1), V3(x1, 0, z0), V3(1, 1, 1), 0);
+        }
+        for (size_t k = 0; k < runs.size(); k++) for (float x = rx0[k]; x < rx1[k] - 0.01f; x += 1.5f) for (float z = rz0[k]; z < rz1[k] - 0.01f; z += 1.5f) {
+            float cx = x + 0.75f, cz = z + 0.75f, bd = 1e18f; int bi = runs[k].first;   // over the tube's inside? (nearest sample of the run, and the patch's own overlap)
+            for (int i = std::max(tunA, runs[k].first - 20); i <= std::min(tunB, runs[k].second + 20); i++) { float dx = ts[i].x - cx, dz = ts[i].z - cz, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
+            bool inside = false; for (size_t q = 0; q < rx0.size(); q++) if (q < k && cx > rx0[q] && cx < rx1[q] && cz > rz0[q] && cz < rz1[q]) inside = true;   // (overlapping patches: laid once)
+            if (inside) continue;
+            // the edge: the tube's inside at the waterline (half an ellipse above the sills), clipped exactly so the sea meets
+            // the arch in a clean line instead of in 1.5 m steps
+            const TS& t = ts[bi]; float e = 0, hgt = -t.y;
+            if (t.tun) { if (hgt <= TUBE_SILL) e = TUBE_W; else if (hgt < TUBE_TOP) { float r = (hgt - TUBE_SILL) / (TUBE_TOP - TUBE_SILL); e = TUBE_W * sqrtf(1 - r * r); } }
+            V3 c[4] = { V3(x, 0, z), V3(x, 0, z + 1.5f), V3(x + 1.5f, 0, z + 1.5f), V3(x + 1.5f, 0, z) };
+            if (e <= 0) { w.quad(c[0], c[1], c[2], c[3], V3(1, 1, 1), 0); continue; }
+            e += 0.02f; auto lat = [&](V3 q) { return (q.x - t.x) * t.tz - (q.z - t.z) * t.tx; };
+            float sd = lat(V3(cx, 0, cz)) >= 0 ? 1.0f : -1.0f;   // which side of the tube this square is on: keep sd*lat >= e
+            auto keep = [&](V3 q) { return sd * lat(q) - e; };
+            std::vector<V3> poly;
+            for (int k = 0; k < 4; k++) { V3 a = c[k], b = c[(k + 1) % 4]; float ka = keep(a), kb = keep(b);
+                if (ka >= 0) poly.push_back(a);
+                if ((ka >= 0) != (kb >= 0)) { float u = ka / (ka - kb); poly.push_back(a + (b - a) * u); } }
+            for (size_t k = 1; k + 1 < poly.size(); k++) w.tri(poly[0], poly[k], poly[k + 1], V3(1, 1, 1), 0);
+        }
+    }
     void decorate();
     // The alternate route's centre line: a Catmull-Rom from the loop at bA, through the def's points, back to the loop at
     // bB, its end tangents taken from the loop 30 m either side so it leaves and joins it smoothly; at 1 m, its height the
@@ -686,17 +828,20 @@ struct World {
             if (t >= 0 && t < 1 && u >= 0 && u < 1) cross.push_back(j);
         }
         for (int j : cross) for (int d = -BR_LW; d <= BR_LW; d++) { TS& s = ts[(j + d + n) % n]; s.y += BR_LIFT * (0.5f + 0.5f * cosf((float)M_PI * d / BR_LW)); if (abs(d) <= BR_SPAN) s.br = true; }
+        applyTunnel();
         buildBranches();
         // --- stamp the road into the height field (bridge decks are not ground: they only count for "how far is the road") ---
         std::vector<float> by(GN * GN, 0), rdh(GN * GN, 999); const int R = (int)(76 / CELL);
         std::vector<const TS*> all; for (const TS& t : ts) all.push_back(&t); for (const Branch& br : brs) for (const TS& t : br.ts) all.push_back(&t);
+        std::vector<float> tubeY(GN * GN, 0), tubeD(GN * GN, 999);   // the tunnel: its floor is dug (and under the sea, banked up) to the road, nothing more
         for (size_t k = 0; k < all.size(); k++) {   // the loop, then the alternate routes
             const TS& sk = *all[k];
             int ci = (int)((sk.x + HALF) / CELL), cj = (int)((sk.z + HALF) / CELL);
             for (int j = std::max(0, cj - R); j <= std::min(GN - 1, cj + R); j++) for (int i = std::max(0, ci - R); i <= std::min(GN - 1, ci + R); i++) {
                 float dx = -HALF + i * CELL - sk.x, dz = -HALF + j * CELL - sk.z, d = sqrtf(dx * dx + dz * dz);
                 if (d < rd[j * GN + i]) rd[j * GN + i] = d;
-                if (!sk.br && d < rdh[j * GN + i]) { rdh[j * GN + i] = d; by[j * GN + i] = sk.y; }
+                if (sk.tun) { if (d < tubeD[j * GN + i]) { tubeD[j * GN + i] = d; tubeY[j * GN + i] = sk.y; } }
+                else if (!sk.br && d < rdh[j * GN + i]) { rdh[j * GN + i] = d; by[j * GN + i] = sk.y; }
             }
         }
         for (int q = 0; q < GN * GN; q++) {
@@ -704,6 +849,15 @@ struct World {
             // the drawn terrain dips under the road ribbon so the two never fight (ground() knows about the dip just outside the ribbon's edge)
             hr[q] = h[q] - 0.28f * (1 - smooth(ROADW - 1.6f, ROADW + 0.6f, rdh[q]));
         }
+        if (hasTunnel()) {   // the tube: its floor is the road; under the sea a bank of sand rises under it; under land it is bored
+            dryMask.assign(GN * GN, 0);
+            for (int q = 0; q < GN * GN; q++) { float d = tubeD[q]; if (d > ROADW + 24 || d > rdh[q] + 0.01f) continue;   // (where the open road is nearer, at the mouths, it shapes the ground)
+                if (d < TUBE_W + 4.6f) h[q] = tubeY[q];   // dug out a full grid square (3 m, 4.2 across) past the walls, so no slope of ground between grid points reaches inside the tube
+                else if (h[q] < tubeY[q]) h[q] = lerpf(h[q], tubeY[q], 1 - smooth(TUBE_W + 4.6f, ROADW + 24, d));
+                hr[q] = h[q] - 0.28f * (1 - smooth(ROADW - 1.6f, ROADW + 0.6f, std::min(d, rdh[q])));
+                if (d < TUBE_W + 2.6f) dryMask[q] = 1;   // (out to the walls and a grid square past them: nearest-square lookups near the walls still land inside)
+            }
+        } else dryMask.clear();
         // --- road ribbon ---
         V3 kerb(0.5f, 0.5f, 0.5f);
         for (int i = 0; i < n; i++) {
@@ -713,7 +867,8 @@ struct World {
 #ifdef FCF_XENOS_CULL
             int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f);
 #endif
-            unsigned q = mb.add(ar, nrm, V3(1, 1, 1), -w, (float)i, 1); mb.add(al, nrm, V3(1, 1, 1), w, (float)i, 1); mb.add(bl, nrm, V3(1, 1, 1), w, (float)i + 1, 1); mb.add(br, nrm, V3(1, 1, 1), -w, (float)i + 1, 1);
+            V3 ca(1, 1, a.tun ? 0.0f : 1.0f), cb(1, 1, b.tun ? 0.0f : 1.0f);   // (colour blue: 0 in the tunnel, where the road stays dry; the road shaders scale the wet by it)
+            unsigned q = mb.add(ar, nrm, ca, -w, (float)i, 1); mb.add(al, nrm, ca, w, (float)i, 1); mb.add(bl, nrm, cb, w, (float)i + 1, 1); mb.add(br, nrm, cb, -w, (float)i + 1, 1);
             mb.idx.insert(mb.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
 #ifdef FCF_XENOS_CULL
             mb.triTags.push_back(oldTag); mb.triTags.push_back(oldTag);
@@ -725,7 +880,8 @@ struct World {
         }
         for (const Branch& br : brs) branchRibbon(br.ts);
         for (int j : cross) bridge(j);
-        for (int c = 0; c < NCP; c++) gate(c * n / NCP, c == 0);
+        buildTube();
+        for (int c = 0; c < NCP; c++) if (!ts[c * n / NCP].tun) gate(c * n / NCP, c == 0);   // (no gantry inside a tunnel: it would stand through the roof; the checkpoint still counts)
         for (int k = 0; k < GRID_SLOTS; k++) {   // starting grid: a painted box for every slot, staggered left and right behind the line
             float s = gridS(k), lat = gridLat(k); V3 w(0.88f, 0.88f, 0.86f);
             auto Q = [&](float s0, float l0, float s1, float l1) { V3 a, b, c2, d; float yw; at(s0, l0, a, yw); at(s0, l1, b, yw); at(s1, l1, c2, yw); at(s1, l0, d, yw); a.y += 0.07f; b.y += 0.07f; c2.y += 0.07f; d.y += 0.07f;
@@ -820,7 +976,7 @@ struct World {
 #else
         terrain.upload(t);
 #endif
-        MB w; w.quad(V3(-5000, 0, -5000), V3(-5000, 0, 5000), V3(5000, 0, 5000), V3(5000, 0, -5000), V3(1, 1, 1), 0); water.upload(w);
+        MB w; seaSurface(w); water.upload(w);
         if (g_noGL) return;
 #if defined(FCF_GFX_XSDK) && FCF_WATER_TEST == 1
         std::vector<uint8_t> packedHeight(h.size() * 4);
@@ -853,6 +1009,18 @@ void World::decorate() {
         waterJump(V3(130, 0, -590), V3(0.1f, 0, -1));
         courtyard(-250, 250, 2.2f, false);
         garage(n * 2 / 10);
+    } else if (id == 4) {
+        summit(350, 230);                                      // the hill on the east side
+        island(V3(-515, 0, 60), V3(-1, 0, 0.15f));             // off the west coast
+        waterJump(V3(520, 0, 20), V3(1, 0, 0));                // off the east shore
+        courtyard(60, 150, 0, false);
+        garage(n * 55 / 100);
+    } else if (id == 5) {
+        summit(-250, -200);                                    // the island's peak
+        island(V3(-400, 0, -400), V3(-0.7f, 0, -0.7f));
+        waterJump(V3(-150, 0, 480), V3(0, 0, 1));              // off the south shore
+        courtyard(-80, 150, 0, false);
+        garage(n * 15 / 100);
     } else {
         rooftop(-532, 20, -1, 2);
         pier(V3(430, 0, 330), V3(0.55f, 0, 0.83f));

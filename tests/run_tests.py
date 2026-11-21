@@ -22,7 +22,7 @@ RENDER = "--render" in sys.argv
 WINDOWS = "--windows" in sys.argv
 FILTERS = [a for a in sys.argv[1:] if not a.startswith("-")]
 CARS = ["stallion", "katana", "bruiser"]
-NTRACKS = 4
+NTRACKS = 6
 PI = "3.1416"
 
 results = []          # (name, status, detail)
@@ -89,7 +89,7 @@ def boot_reports_valid_state():
     for t in range(NTRACKS):
         d = sim("--track", t, "--state", 3, "--mode", 1, seconds=1)
         check(d["track"] == t, "track id echoed", d["track"])
-        between(d["trackLen"], 3100, 3900, "track %d length (m): all tracks are 3.1 to 3.9 km" % t)
+        between(d["trackLen"], 2900, 3900, "track %d length (m): all tracks are 2.9 to 3.9 km" % t)
         check(d["dead"] == 0 and d["y"] > 1.0, "car spawns alive and on land", (d["dead"], d["y"]))
 
 
@@ -106,7 +106,9 @@ def world_dump_has_secrets():
         check(d["onStreet"] == [], "track %d: no building stands on a backstreet (walls line up with the kerbs)" % t, d["onStreet"][:4])
         check(len(d["ramps"]) >= 1, "track %d has a ramp" % t, len(d["ramps"]))
         check(d["boxes"] > 150, "track %d has buildings" % t, d["boxes"])
-        for c in d["checkpoints"]:
+        ta, tb = d["tunnel"][0], d["tunnel"][1]
+        for ci, c in enumerate(d["checkpoints"]):   # (one in an undersea tunnel is under the sea, dry inside it)
+            if ta <= ci * d["trackLen"] // 8 <= tb: continue
             check(c[1] >= 2.0, "checkpoint above water", c[1])
         for k in d["keys"]:
             kinds.add(k["kind"])
@@ -121,7 +123,11 @@ def alternate_route():
         d = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.5)
         sc = [[float(v) for v in s.split(",")] for s in d["shortcuts"].split(";") if s]
         check(len(sc) == 2, "track %d has two shortcuts" % t, d["shortcuts"])
+        ta, tb = d["tunnel"][0], d["tunnel"][1]
         for a, b, L, blocked in sc:
+            if ta >= 0 and a < ta and b > tb:   # the way over the water instead of under it: an alternative, not a shortcut
+                check(150 < L < (b - a) * 1.25, "track %d: the surface route round the tunnel is a fair alternative (%d m against %d)" % (t, L, b - a), (a, b, L))
+                continue
             check(150 < L < b - a, "track %d: a shortcut is shorter than the road it cuts (%d m against %d)" % (t, L, b - a), (a, b, L))
             check(blocked == 0, "track %d: no building stands on a shortcut" % t, blocked)
         check(sc[0][1] + 40 < sc[1][0] or sc[1][1] + 40 < sc[0][0], "track %d: the two are on different parts of the lap" % t, sc)
@@ -402,7 +408,7 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 7
+NET_MAGIC, NET_PROTO = 0x59464346, 8
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
 C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
@@ -874,7 +880,7 @@ def ring_goes_somewhere_new_each_race():
 def bots_drive_the_backstreets_to_an_off_road_ring():
     d = sim("--seed", 5, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--footai", "--keys", 5, seconds=120)
     feet = d["fighters"].split(";")
-    check(d["shdOffRoad"] == 1 and d["shdPath"] >= 1, "the ring is off the road, with a backstreet route to it", (d["shdOffRoad"], d["shdPath"]))
+    check(d["shdOffRoad"] == 1, "the ring is off the road (the bots find a way in: straight, or along the backstreets)", (d["shdOffRoad"], d["shdPath"]))
     check(all(f.split("|")[0] == "1" for f in feet) and d["prepAt"] > 0, "all five get out of their cars at the ring", (feet, d["prepAt"]))
 
 
@@ -1458,6 +1464,21 @@ def blood_and_the_grenade_launcher():
     d = sim(*SHOW, "--footai", "--gun", 5, seconds=t + 20 + 12)
     fs = fighters(d)
     check(d["gibs"] >= 1 and sum(1 for f in fs if not f["alive"]) >= d["gibs"], "a grenade landing beside someone kills them outright and leaves pieces", (d["gibs"], d["fighters"]))
+
+
+@test
+def the_undersea_tunnels():
+    for track in (4, 5):
+        d = sim("--track", track, "--state", 3, "--mode", 1, seconds=0.5)
+        ta, tb, ga, gb = d["tunnel"]
+        check(0 < ta < ga < gb < tb, "track %d: a tunnel with a glass-roofed stretch in the middle" % track, d["tunnel"])
+        check(d["tubeDirt"] == 0, "track %d: no ground pokes into the tube anywhere" % track, d["tubeDirt"])
+        r = sim("--track", track, "--state", 3, "--auto", "--nobotguns", seconds=260)
+        check(r["finished"] == 1 and r["sinks"] == 0 and r["wrecks"] == 0, "track %d: three laps through the tunnel: it is dry, nobody sinks, nothing to hit" % track, (r["finished"], r["sinks"], r["wrecks"]))
+        check(r["aiBranch"] >= 10, "track %d: the bots split between the tunnel and the way over the top" % track, r["aiBranch"])
+    for t in range(4):
+        d = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.5)
+        check(d["tunnel"][0] == -1, "track %d has no tunnel" % t, d["tunnel"])
 
 
 @test

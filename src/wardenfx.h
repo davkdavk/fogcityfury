@@ -44,13 +44,14 @@ static const Landing& landing(int u, int j, int g) {
     if (!W.flat && R01(u, j, g, 8) >= 0.35f) for (int tr = 0; tr < 4 && !done; tr++) {
         float a = 6.2832f * R01(u, j, g, 10 + tr), d = 60 + 160 * R01(u, j, g, 20 + tr);
         V3 q(clampf(p0.x + cosf(a) * d, -HALF + 40, HALF - 40), 0, clampf(p0.z + sinf(a) * d, -HALF + 40, HALF - 40)); float h = W.H(q.x, q.z);
-        if (h < 0.4f || W.RD(q.x, q.z) < ROADW + 10) continue;   // (off the road means clear of the shortcuts too: the bots on them cannot steer round)
+        if (h < 0.4f || W.RD(q.x, q.z) < ROADW + 10 || W.dry(q.x, q.z)) continue;   // (off the road means clear of the shortcuts too: the bots on them cannot steer round)
         bool box = false; for (int bi : W.cell(q.x, q.z)) { const Box& b = W.boxes[bi]; float dx = q.x - b.cx, dz = q.z - b.cz; if (b.top > h + 1 && fabsf(dx * b.ca - dz * b.sa) < b.hx + 5 && fabsf(dx * b.sa + dz * b.ca) < b.hz + 5) box = true; }
         if (box) continue;
         q.y = W.ground(q.x, q.z, h + 0.5f); L.p = q; done = true;
     }
     if (!done) {   // on the road, a little way along from where it was hit
         int i = W.nearest(p0.x, p0.z); float s = i + (R01(u, j, g, 30) < 0.5f ? -1.0f : 1.0f) * (30 + 110 * R01(u, j, g, 31)), lat = (R01(u, j, g, 32) * 2 - 1) * 5.0f, ry;
+        if (W.hasTunnel()) { int si = ((int)s % W.n + W.n) % W.n; if (si >= W.tunA - 30 && si <= W.tunB + 30) s = (si - W.tunA < W.tunB - si) ? W.tunA - 40.0f - 60 * R01(u, j, g, 33) : W.tunB + 40.0f + 60 * R01(u, j, g, 33); }   // never in (or on) a tunnel
         W.at(s, lat, L.p, ry); L.p.y = W.ground(L.p.x, L.p.z, L.p.y + 1.0f);
     }
     L.road = W.RD(L.p.x, L.p.z) < ROADW + 5;
@@ -115,6 +116,7 @@ static void step(float t, float dt) {
                 }
                 const Landing& L = landing(u, j, g); downed++;
                 if (t < S + 0.6f) { float w = 1 - smooth(S + 0.2f, S + 0.6f, t); if (w > aim) { aim = w; tgt = orbit(u, j, g, S); } }
+                if (t < S + FALL && L.road) obs.push_back({ L.si, L.lat, 4.6f });   // coming down on the road: steered round from the moment it is hit
                 if (t < S + FALL) {   // hit: it lurches, spins and comes down smoking
                     V3 p0 = orbit(u, j, g, S); float q = (t - S) / FALL;
                     V3 p(p0.x + (L.p.x - p0.x) * q, p0.y + (L.p.y + 1.2f - p0.y) * q * q + sinf(q * 3.14159f) * 5.0f, p0.z + (L.p.z - p0.z) * q);
@@ -165,11 +167,12 @@ static void step(float t, float dt) {
         m.aim = aim; V3 d = tgt - (body + V3(0, 28, 0)); float hz = sqrtf(d.x * d.x + d.z * d.z);
         m.aimYaw = wrapPi(atan2f(d.x, d.z) - m.yaw); m.aimElev = clampf(atan2f(d.y, std::max(hz, 1.0f)), -0.9f, 1.2f);
         // the feet and ankles are solid; a foot in the air is above the cars
-        for (int e = 0; e < 2; e++) {
-            V3 a = m.ankle[e]; float gy = a.y - mech::FOOT_H - m.lift[e];
-            W.discs.push_back({ a.x, a.z, 2.4f, gy + m.lift[e] - 0.3f, gy + m.lift[e] + 1.6f });   // the foot
-            W.discs.push_back({ a.x, a.z, 1.2f, a.y - 0.6f, a.y + 6.0f });                       // ankle and shin
-            if (m.lift[e] < 0.8f && W.RD(a.x, a.z) < ROADW + 4) { int si = W.nearest(a.x, a.z); const TS& s = W.ts[si]; obs.push_back({ si, (a.x - s.x) * s.tz - (a.z - s.z) * s.tx, 2.6f }); }
+        for (int e = 0; e < 2; e++) {   // a planted foot (and its ankle) is solid; one swinging through the air passes over the cars
+            V3 l = m.land[e];   // where it is down, or about to come down: steered round in good time either way
+            if (W.RD(l.x, l.z) < ROADW + 4) { int si = W.nearest(l.x, l.z); const TS& s = W.ts[si]; obs.push_back({ si, (l.x - s.x) * s.tz - (l.z - s.z) * s.tx, 2.6f }); }
+            V3 a = m.ankle[e]; float gy = a.y - mech::FOOT_H - m.lift[e]; if (m.lift[e] >= 0.8f) continue;
+            W.discs.push_back({ a.x, a.z, 2.4f, gy - 0.3f, gy + m.lift[e] + 1.6f });   // the foot
+            W.discs.push_back({ a.x, a.z, 1.2f, a.y - 0.6f, a.y + 6.0f });            // ankle and shin
         }
     }
     for (const UWreck& w : wrecks) {   // wrecks: solid; on the road the bots go round; smoking for a while

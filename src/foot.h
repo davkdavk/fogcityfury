@@ -101,7 +101,7 @@ static int pickFoe(const Fighter& f, float yawRef, float cone) {
 }
 
 // ---- blood ----
-static void splat(V3 at, float r) { if (splats.size() >= 140) splats.erase(splats.begin()); V3 q = at; q.y = W.ground(at.x, at.z, at.y + 1.0f); if (W.H(q.x, q.z) < -0.05f && q.y < 0.1f) return; splats.push_back({ q, r, 0 }); }
+static void splat(V3 at, float r) { if (splats.size() >= 140) splats.erase(splats.begin()); V3 q = at; q.y = W.ground(at.x, at.z, at.y + 1.0f); if (W.HW(q.x, q.z) < -0.05f && q.y < 0.1f) return; splats.push_back({ q, r, 0 }); }
 // a shot has gone in at `at`, travelling along dir: red spray out the far side, and drops on the ground beyond
 static void bleed(V3 at, V3 dir, float dmg) {
     int n = 5 + (int)std::min(dmg, 40.0f) / 4;
@@ -258,7 +258,7 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     if (f.stamina <= 0.02f) f.winded = true; else if (f.stamina > 0.3f) f.winded = false;
     f.sprinting = in.sprint && !aiming && !rolling && ml > 0.5f && !f.winded;
     f.stamina = clampf(f.stamina + (f.sprinting ? -dt / 4.5f : dt / 5.0f), 0, 1);
-    float top = rolling ? FOOT_ROLL : aiming ? FOOT_AIM : f.sprinting ? FOOT_SPRINT : FOOT_RUN; bool wading = W.H(f.pos.x, f.pos.z) < -0.05f && f.pos.y < 0.1f; if (wading) top *= 0.55f;
+    float top = rolling ? FOOT_ROLL : aiming ? FOOT_AIM : f.sprinting ? FOOT_SPRINT : FOOT_RUN; bool wading = W.HW(f.pos.x, f.pos.z) < -0.05f && f.pos.y < 0.1f; if (wading) top *= 0.55f;
     V3 want = rolling ? yawDir(f.rollYaw) * top : mv * top, hv(f.vel.x, 0, f.vel.z), dv = want - hv; float dl = len(dv), acc = (rolling ? 70.0f : ml > 0.05f ? 38.0f : 30.0f) * dt;
     hv = dl <= acc ? want : hv + dv * (acc / dl);
     // facing: the target while aiming, otherwise the way you run
@@ -267,7 +267,7 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     // move: walls, cars, deep water and steps too high all stop you
     V3 np = f.pos + hv * dt; float imp = 0; np.y = f.pos.y; W.collide(np, hv, FOOT_R, imp); pushFromCars(np, hv, FOOT_R);
     float g = W.ground(np.x, np.z, f.pos.y + 0.6f);
-    if (W.H(np.x, np.z) < -1.0f || g > f.pos.y + 0.8f) { np.x = f.pos.x; np.z = f.pos.z; hv = V3(); g = g0; }
+    if (W.HW(np.x, np.z) < -1.0f || g > f.pos.y + 0.8f) { np.x = f.pos.x; np.z = f.pos.z; hv = V3(); g = g0; }
     float y = f.pos.y, vy = f.vel.y; if (y > g + 0.02f) { vy -= 22 * dt; y = std::max(g, y + vy * dt); if (y <= g) vy = 0; } else { y = g; vy = 0; }
     f.pos = V3(np.x, y, np.z); f.vel = V3(hv.x, vy, hv.z);
     // animation state

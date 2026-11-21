@@ -161,6 +161,7 @@ progs = {
  'ui':('VS_UI','','FS_UI_FULL',UI),
  'mark':('VS_PART','FS_COMMON','FS_MARK',PART),
  'ring':('VS_PART','FS_COMMON','FS_RING',PART),
+ 'glass':('VS_PART','FS_COMMON','FS_GLASS',PART),
  'post':('VS_SKY','','FS_POST',SKY),
 }
 if PERF_TEST == 'lean':

@@ -196,13 +196,14 @@ void main(){
     alb = mix(alb, vec3(0.82), max(dash,edge)*fade*0.85);
     if(u > 8.0){ alb = mix(vec3(0.75,0.08,0.06), vec3(0.85), step(0.5, fract(v/4.0))); }
     spec = 0.25; gloss = 30.0;
-    if(uWet > 0.001){
+    float wetR = uWet*clamp(vC.b, 0.0, 1.0);   // (vertex colour blue: 0 on the undersea tunnel's road, which stays dry)
+    if(wetR > 0.001){
       vec2 p = vP.xz; float kd = 1.0/(1.0 + dist*0.035);                      // detail fades with distance so it does not shimmer
       // standing water collects in the hollows; more of it the harder it rains
-      float pud = smoothstep(0.50-0.15*uRain, 0.60-0.15*uRain, fbm(p*0.10+3.7))*step(0.2, uRain)*(1.0 - 0.5*step(8.0, u));
+      float pud = smoothstep(0.50-0.15*(uRain*clamp(vC.b, 0.0, 1.0)), 0.60-0.15*(uRain*clamp(vC.b, 0.0, 1.0)), fbm(p*0.10+3.7))*step(0.2, (uRain*clamp(vC.b, 0.0, 1.0)))*(1.0 - 0.5*step(8.0, u));
       // bump map: asphalt grain on damp tarmac, raindrop rings on the puddles
       float e = 0.07, g0 = roadGrain(p), gx = roadGrain(p+vec2(e,0.0)), gz = roadGrain(p+vec2(0.0,e));
-      vec2 bump = vec2(g0-gx, g0-gz)/e*0.05*mix(1.0, 0.12, pud) + (ripple(p, 1.15, 0.0) + ripple(p, 2.05, 5.0))*0.42*pud*min(uRain, 1.3);
+      vec2 bump = vec2(g0-gx, g0-gz)/e*0.05*mix(1.0, 0.12, pud) + (ripple(p, 1.15, 0.0) + ripple(p, 2.05, 5.0))*0.42*pud*min((uRain*clamp(vC.b, 0.0, 1.0)), 1.3);
       vec3 nb = normalize(vec3(bump.x*kd, 1.0, bump.y*kd));
       vec3 Rw = reflect(-V, nb); Rw.y = abs(Rw.y) + 0.02; Rw = normalize(Rw);
       float F = 0.04 + 0.96*pow(1.0-max(dot(nb,V),0.0), 5.0);
@@ -214,9 +215,9 @@ void main(){
         vec3 ec = textureLod(uEnv, dir, mix(4.0, 0.7, pud)).rgb;                 // blurred sheen on damp tarmac, near-mirror on water
         envc = mix(envc, ec, 1.0 - smoothstep(55.0, 140.0, length(ro)));
       }
-      alb *= 1.0 - (0.40 + 0.28*pud)*uWet;
-      refl += envc*uWet*mix(0.04 + 0.42*F, 0.08 + 0.92*F, pud);
-      spec = mix(0.55, 1.5, pud)*uWet; gloss = mix(110.0, 800.0, pud); n = nb;
+      alb *= 1.0 - (0.40 + 0.28*pud)*wetR;
+      refl += envc*wetR*mix(0.04 + 0.42*F, 0.08 + 0.92*F, pud);
+      spec = mix(0.55, 1.5, pud)*wetR; gloss = mix(110.0, 800.0, pud); n = nb;
     }
   } else if(m==6){
     emis = vC*3.0; alb = vC;                                                   // lamps
@@ -387,6 +388,37 @@ void main(){
   c = mix(c, uSkyHor, (1.0 - exp(-d*uFogDen))*0.5);
   if(uHDR < 0.5) c = tonemap(c);
   oCol = vec4(c*a, 0.0);
+}
+)";
+
+// the undersea tunnel's glass: what you see through it is the sea. vUV.x runs along the tunnel in metres, vUV.y round the
+// arch (0 at one sill, 0.5 overhead, 1 at the other); vMisc.x is how deep under the surface this point
+// is. Blue-green deepening with depth, the sun's caustics rippling over it, shafts of light,.
+// Drawn premultiplied over the world: the seabed, the fish and the surface above show through, dimmed and tinted.
+static const char* FS_GLASS = R"(
+in vec3 vP; in vec2 vUV; in vec4 vC; in vec2 vMisc;
+void main(){
+  // where the sea's surface meets the glass: a gentle swell, the same one-ish as the sea outside
+  float wl = 0.22*sin(vP.x*0.40 + uTime*1.3) + 0.18*sin(vP.z*0.33 - uTime*1.1);
+  float under = smoothstep(wl + 0.05, wl - 0.05, vP.y), depth = max(wl - vP.y, 0.0), k = clamp(depth/28.0, 0.0, 1.0);
+  vec3 water = mix(vec3(0.07, 0.38, 0.44), vec3(0.012, 0.11, 0.17), k)*(0.55 + 0.25*(uSunCol.r + uSunCol.g + uSunCol.b)/3.0);
+  vec2 q = vP.xz*0.32;
+  float c1 = sin(q.x + uTime*1.1 + sin(q.y*1.3 + uTime*0.7)) + sin(q.y*1.1 - uTime*0.9 + sin(q.x*1.7 - uTime*0.5));
+  float c2 = sin((q.x + q.y)*1.7 + uTime*1.6)*sin((q.x - q.y)*1.4 - uTime*1.2);
+  float caus = (pow(clamp(1.0 - abs(c1)*0.55, 0.0, 1.0), 6.0) + 0.5*pow(clamp(1.0 - abs(c2), 0.0, 1.0), 8.0))*exp(-depth*0.06);
+  float shaft = pow(0.5 + 0.5*sin(vUV.x*0.11 + vP.y*0.05 + uTime*0.25), 6.0)*0.5*exp(-depth*0.05);
+  vec3 cw = water*(1.0 + 1.4*caus) + vec3(0.25, 0.45, 0.42)*shaft*uSunCol.g*0.4;
+  float aw = mix(0.84, 0.62, sin(vUV.y*3.14159))*(0.9 + 0.1*k) - 0.15*caus;   // low down the arch you look out through more water than overhead
+  // above it: clear glass, just a hint of tint and a sheen
+  vec3 ca = vec3(0.55, 0.70, 0.75)*0.10 + uSkyHor*0.04; float aa = 0.10;
+  vec3 c = mix(ca, cw, under); float a = mix(aa, aw, under);
+  // the waterline itself: a bright band with a little froth, wobbling along
+  float band = exp(-abs(vP.y - wl)*7.0)*(0.75 + 0.25*sin(vUV.x*2.3 + uTime*3.0));
+  c += vec3(0.75, 0.92, 0.95)*band*0.9; a = max(a, band*0.8);
+  float frame = 1.0 - smoothstep(0.0, 0.012, abs(fract(vUV.x*0.1 + 0.5) - 0.5));                        // thin window joins: one every 10 m, nothing along the arch
+  c = mix(c, vec3(0.05, 0.06, 0.07), frame*0.9); a = mix(a, 0.96, frame);
+  if(uHDR < 0.5) c = tonemap(c);
+  oCol = vec4(c*a, a);
 }
 )";
 

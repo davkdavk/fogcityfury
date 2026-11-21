@@ -549,7 +549,7 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
         }
         xsdk_shader_set_vertex_layout(&p.vs,M,5,meshStride);
     }
-    else if(!strcmp(name,"part")||!strcmp(name,"mark")||!strcmp(name,"ring")) xsdk_shader_set_vertex_layout(&p.vs,P,4,partStride);
+    else if(!strcmp(name,"part")||!strcmp(name,"mark")||!strcmp(name,"ring")||!strcmp(name,"glass")) xsdk_shader_set_vertex_layout(&p.vs,P,4,partStride);
     else if(!strcmp(name,"ui")) xsdk_shader_set_vertex_layout(&p.vs,U,3,uiStride);
     uint32_t vr=0,fr=0;
     for(uint32_t i=0;i<p.meta->nvu;i++) vr=std::max(vr,(p.meta->vu[i].offset+p.meta->vu[i].size+15)/16);

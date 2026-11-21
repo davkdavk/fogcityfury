@@ -100,7 +100,7 @@ _ROAD = '''  { float u = abs(vUV.x);                                        // t
     r = mix(r, vec3(0.85,0.62,0.05), k.x*0.9);
     r = mix(r, vec3(0.82), max(k.y*step(fract(vUV.y/9.0), 0.42), k.z)*0.85);
     alb = mix(r, mix(vec3(0.75,0.08,0.06), vec3(0.85), step(0.5, fract(vUV.y*0.25))), step(8.0, u));
-    lit = uSkyHor*0.55 + vec3(0.05,0.045,0.04); glow = uSkyHor*(uWet*0.22); }               // lit by the sky alone, as the PC game's road is; a wet road shines with it
+    lit = uSkyHor*0.55 + vec3(0.05,0.045,0.04); glow = uSkyHor*(uWet*0.22*vC.b); }   // (vC.b: 0 on the tunnel's road, which stays dry)               // lit by the sky alone, as the PC game's road is; a wet road shines with it
 '''
 _WALL = '''  { vec2 q = vUV*vec2(0.2941, 0.3030), f = abs(fract(q) - vec2(0.5, 0.55));   // windows 3.4 m apart, a floor every 3.3 m; some lit at night
     float win = step(f.x, 0.3)*step(f.y, 0.27)*step(0.0, vUV.y);
@@ -119,7 +119,8 @@ _ROAD_WET = '''  {
     float u = abs(vUV.x);
     vec3 V = normalize(uCamPos - vP);
     // standing water where the slow noise is high; more of it the harder it rains; none on the kerbs
-    float pud = clamp((texture(uNoise, vP.xz*0.0101 + 0.37).g - 0.55 + 0.15*uRain)*10.0, 0.0, 1.0)*step(0.2, uRain)*step(u, 8.0);
+    float wk = uWet*vC.b;   // (vC.b: 0 on the tunnel's road, which stays dry)
+    float pud = clamp((texture(uNoise, vP.xz*0.0101 + 0.37).g - 0.55 + 0.15*uRain)*10.0, 0.0, 1.0)*step(0.2, uRain)*step(u, 8.0)*vC.b;
     // raindrop rings: one a 70 cm cell, its place and timing from the noise texture's white noise
     vec2 q = vP.xz*1.43, f = fract(q) - 0.5;
     vec2 h = texture(uNoise, (floor(q) + 0.5)*0.00390625).br;
@@ -130,8 +131,8 @@ _ROAD_WET = '''  {
     float dn = dot(nb, V), ry = abs(2.0*dn - V.y) + 0.02;                    // the reflected ray's height: reflect(-V, nb).y with nb.y = 1
     float c5 = 1.0 - max(dn, 0.0), c2 = c5*c5, F = 0.04 + 0.96*c2*c2*c5;
     vec3 sky = mix(uSkyHor, uSkyTop, clamp(ry*1.5, 0.0, 1.0));
-    alb *= 1.0 - (0.40 + 0.28*pud)*uWet;
-    glow = sky*uWet*mix(0.03 + 0.30*F, 0.06 + 0.80*F, pud); }
+    alb *= 1.0 - (0.40 + 0.28*pud)*wk;
+    glow = sky*wk*mix(0.03 + 0.30*F, 0.06 + 0.80*F, pud); }
 '''
 GROUND = _HEAD + _GROUND + _TAIL
 ROAD = _HEAD + _ROAD + _TAIL
@@ -235,6 +236,33 @@ void main(){
 }
 '''
 
+# the undersea tunnel's glass: the sea seen through it (shaders.h FS_GLASS): blue-green deepening with depth, the sun's
+# caustics, shafts of light, thin window joins every 4 m and three round the arch; premultiplied over the world
+GLASS = COMMON + '''
+in vec3 vP; in vec2 vUV; in vec4 vC; in vec2 vMisc;
+void main(){
+  float wl = 0.22*sin(vP.x*0.40 + uTime*1.3) + 0.18*sin(vP.z*0.33 - uTime*1.1);
+  float under = clamp((wl - vP.y)*10.0 + 0.5, 0.0, 1.0), depth = max(wl - vP.y, 0.0), k = clamp(depth*0.0357, 0.0, 1.0);
+  vec3 water = mix(vec3(0.07, 0.38, 0.44), vec3(0.012, 0.11, 0.17), k)*(0.55 + 0.0833*(uSunCol.r + uSunCol.g + uSunCol.b));
+  vec2 q = vP.xz*0.32;
+  float c1 = sin(q.x + uTime*1.1 + sin(q.y*1.3 + uTime*0.7)) + sin(q.y*1.1 - uTime*0.9 + sin(q.x*1.7 - uTime*0.5));
+  float c2 = sin((q.x + q.y)*1.7 + uTime*1.6)*sin((q.x - q.y)*1.4 - uTime*1.2);
+  float e1 = clamp(1.0 - abs(c1)*0.55, 0.0, 1.0), e2 = clamp(1.0 - abs(c2), 0.0, 1.0); e1 = e1*e1*e1; e2 = e2*e2; e2 = e2*e2;
+  float caus = (e1*e1 + 0.5*e2*e2)*exp(-depth*0.06);
+  float sh = 0.5 + 0.5*sin(vUV.x*0.11 + vP.y*0.05 + uTime*0.25); sh = sh*sh*sh; float shaft = sh*sh*0.5*exp(-depth*0.05);
+  vec3 cw = water*(1.0 + 1.4*caus) + vec3(0.25, 0.45, 0.42)*shaft*uSunCol.g*0.4;
+  float aw = mix(0.84, 0.62, sin(vUV.y*3.14159))*(0.9 + 0.1*k) - 0.15*caus;
+  vec3 ca = vec3(0.055, 0.07, 0.075) + uSkyHor*0.04;
+  vec3 c = mix(ca, cw, under); float a = mix(0.10, aw, under);
+  float band = exp(-abs(vP.y - wl)*7.0)*(0.75 + 0.25*sin(vUV.x*2.3 + uTime*3.0));
+  c += vec3(0.75, 0.92, 0.95)*band*0.9; a = max(a, band*0.8);
+  float frame = clamp(1.0 - abs(fract(vUV.x*0.1 + 0.5) - 0.5)*83.3, 0.0, 1.0);
+  c = mix(c, vec3(0.05, 0.06, 0.07), frame*0.9); a = mix(a, 0.96, frame);
+  c = tone(c);
+  oCol = vec4(c*a, a);
+}
+'''
+
 LEAN_VS = {n: (WORLD_VS, WORLD_LOC) for n in ('world', 'ground', 'road', 'roadwet', 'wall', 'misc')}
 LEAN_VS['sky'] = (SKY_VS, {'vNdc': 0})
 # The depth pre-pass must place every vertex exactly where the colour pass does, or the colour pass's depth test
@@ -262,7 +290,7 @@ void main(){
 }
 '''
 
-LEAN = {'ui': UI, 'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'roadwet': ROAD_WET, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING}
+LEAN = {'ui': UI, 'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'roadwet': ROAD_WET, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING, 'glass': GLASS}
 
 # Diagnostic (FCF_LEAN_DEBUG=mat): every world surface in one flat colour per material, so a picture shows which
 # geometry is where. Road (vMat 1) red, walls (2) green, the rest of the props (3-6) blue, terrain yellow. Anything
