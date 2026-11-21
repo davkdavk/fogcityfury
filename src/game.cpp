@@ -914,6 +914,7 @@ static void update(float dt) {
     else if (state == TITLE) weather = W_CLEAR;
     bool driving = state == RACE || state == RESULTS || state == TITLE || (netRace && state == PAUSED);
     snd.musicDuck = state == PAUSED ? 0.35f : (state == RACE || state == RESULTS ? 0.85f : 1.0f);
+    mus::want = (state == TITLE || state == CARSEL || state == OPTS || state == NETJOIN || state == NETLOBBY) ? 0 : 1 + (state == TRACKSEL ? selTrack : W.id) % NTRACKS;   // each track has its own song; the menus keep the title song
     if ((state == PAUSED && !netRace) || (state == OPTS && optReturn == PAUSED)) return;   // an online race cannot be paused: the car coasts while the menu is up
     Input in; bool go = true;
     if (state == RACE && introT > 0) introT = std::max(0.0f, introT - dt);

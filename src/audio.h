@@ -24,53 +24,130 @@ static void tone(float f, float dur, float vol, int type = 0, float slide = 0, f
 namespace mus {
 static uint32_t rs = 777;
 static inline float nz() { rs = rs * 1664525u + 1013904223u; return ((rs >> 9) / 4194304.f) - 1; }
-static const float BPM = 94, SWING = 0.15f;                 // sixteenths are swung: the off ones land late
-static const double STEP = SR * 60.0 / BPM / 4.0;
-static const float KEY = 87.31f;                            // F: bass register; the chords are two octaves up, the lead three
 
-struct Chord { int root; int v[4]; };                      // semitones from F: the bass note and a rootless four-note voicing
-static const Chord PROG[2][4] = {
-    { { 0, { 3, 7, 10, 14 } }, { 0, { 3, 7, 10, 14 } }, { -4, { 0, 3, 7, 10 } }, { -5, { -1, 5, 10, 14 } } },      // Fm9  Fm9  Dbmaj9  C7#9
-    { { 5, { 3, 7, 8, 12 } },  { 5, { 3, 7, 8, 12 } },  { 0, { 3, 7, 10, 14 } }, { -5, { -1, 5, 10, 14 } } } };    // Bbm9 Bbm9 Fm9     C7#9
-// bass: hex semitones above the chord's root; '.' holds the note, '-' lets go
-static const char* BASS[2][4] = { { "0..0..0-..a0..7.", "0..0..0-....a.c.", "0..0..0-..70..c.", "0..0..0-..4.7.a." },
-                                  { "0..0..0-..70..a.", "0..0..0-....7.5.", "0..0..0-..a0..7.", "0..0..0-..4.7.a." } };
-static const char* KEYS[4] = { "x.....x..x......", "x.....x.....x...", "x.....x..x......", "x..x..x...x.x..." };
-static const char* KICK[2] = { "x......x..x.....", "x......x.xx....." };
-static const char* SNARE = "....x.......x...";
-// lead lines, semitones above the F three octaves over the bass: -1 holds, -2 lets go
-static const int LEAD[3][64] = {
-    { 12,-1,-1,-1, -1,-1,10,-1, 12,-1,-1,-1, -1,-1,-1,-1,   15,-1,-1,14, -1,12,-1,-1, 10,-1,-1,-1,  7,-1,-1,-1,
-       8,-1,-1,-1, -1,-1, 7,-1,  8,-1,-1,12, -1,-1,-1,-1,   10,-1,-1,-1, -1,-1,11,-1,  7,-1,-1,-1, -2,-1,-1,-1 },
-    { 19,-1,-1,-1, 17,-1,15,-1, 12,-1,-1,-1, -1,-1,15,-1,   17,-1,-1,-1, -1,-1,-1,-1, 15,-1,14,-1, 12,-1,-1,-1,
-      15,-1,-1,-1, -1,-1,12,-1,  8,-1,-1,-1, -1,-1, 7,-1,   11,-1,-1,-1, 10,-1, 7,-1, -2,-1,-1,-1, -1,-1,-1,-1 },
-    {  8,-1,-1,-1, -1,-1, 7,-1,  8,-1,-1,-1,  5,-1,-1,-1,   12,-1,-1,-1, -1,-1,-1,-1,  8,-1, 7,-1,  5,-1,-1,-1,
-       7,-1,-1,-1, -1,-1, 3,-1,  7,-1,-1,-1, 10,-1,-1,-1,   11,-1,-1,-1, -1,-1,10,-1,  7,-1,-1,-1, -2,-1,-1,-1 } };
-struct Sec { int prog, drum, lead; };   // drum: 0 hats and claps only, 1 the full beat. lead: 0 none, 1..3 a line from LEAD
-static const Sec SONG[] = { { 0, 1, 0 }, { 0, 1, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 1, 1 }, { 0, 0, 2 }, { 1, 1, 3 }, { 0, 1, 2 } };
-static const int NSEC = sizeof(SONG) / sizeof(SONG[0]);
+struct Chord { int root; int v[4]; };   // semitones from the song's key: the bass note and a rootless four-note voicing
+struct Sec { int prog, drum, lead; };   // drum: 0 hats and claps only, 1 the full beat. lead: 0 none, 1..3 a line from lead
+// A song: tempo, swing, key (bass register, Hz), the lead's octave over the key, how much saw the lead has (0 a pure
+// whistle, more is brassier), echo feedback; two four-bar progressions; bass lines (hex semitones over the chord's root,
+// '.' holds, '-' lets go); electric-piano, kick and snare rhythms; three 4-bar lead lines (semitones over the lead's
+// root, -1 holds, -2 lets go); and the order of the eight 4-bar sections.
+struct Song {
+    float bpm, swing, key, leadMul, leadSaw, echo;
+    Chord prog[2][4]; const char* bass[2][4]; const char* keys[4]; const char* kick[2]; const char* snare;
+    int lead[3][64]; Sec sec[8];
+};
+static const int NSONGS = 5;   // 0: the title song; 1..4: one for each track, in track order
+static const Song SONGS[NSONGS] = {
+    // 0 — title: F minor, the original theme
+    { 94, 0.15f, 87.31f, 8, 0.30f, 0.38f,
+      { { { 0, { 3, 7, 10, 14 } }, { 0, { 3, 7, 10, 14 } }, { -4, { 0, 3, 7, 10 } }, { -5, { -1, 5, 10, 14 } } },
+        { { 5, { 3, 7, 8, 12 } },  { 5, { 3, 7, 8, 12 } },  { 0, { 3, 7, 10, 14 } }, { -5, { -1, 5, 10, 14 } } } },
+      { { "0..0..0-..a0..7.", "0..0..0-....a.c.", "0..0..0-..70..c.", "0..0..0-..4.7.a." },
+        { "0..0..0-..70..a.", "0..0..0-....7.5.", "0..0..0-..a0..7.", "0..0..0-..4.7.a." } },
+      { "x.....x..x......", "x.....x.....x...", "x.....x..x......", "x..x..x...x.x..." },
+      { "x......x..x.....", "x......x.xx....." }, "....x.......x...",
+      { { 12,-1,-1,-1, -1,-1,10,-1, 12,-1,-1,-1, -1,-1,-1,-1,   15,-1,-1,14, -1,12,-1,-1, 10,-1,-1,-1,  7,-1,-1,-1,
+           8,-1,-1,-1, -1,-1, 7,-1,  8,-1,-1,12, -1,-1,-1,-1,   10,-1,-1,-1, -1,-1,11,-1,  7,-1,-1,-1, -2,-1,-1,-1 },
+        { 19,-1,-1,-1, 17,-1,15,-1, 12,-1,-1,-1, -1,-1,15,-1,   17,-1,-1,-1, -1,-1,-1,-1, 15,-1,14,-1, 12,-1,-1,-1,
+          15,-1,-1,-1, -1,-1,12,-1,  8,-1,-1,-1, -1,-1, 7,-1,   11,-1,-1,-1, 10,-1, 7,-1, -2,-1,-1,-1, -1,-1,-1,-1 },
+        {  8,-1,-1,-1, -1,-1, 7,-1,  8,-1,-1,-1,  5,-1,-1,-1,   12,-1,-1,-1, -1,-1,-1,-1,  8,-1, 7,-1,  5,-1,-1,-1,
+           7,-1,-1,-1, -1,-1, 3,-1,  7,-1,-1,-1, 10,-1,-1,-1,   11,-1,-1,-1, -1,-1,10,-1,  7,-1,-1,-1, -2,-1,-1,-1 } },
+      { { 0, 1, 0 }, { 0, 1, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 1, 1 }, { 0, 0, 2 }, { 1, 1, 3 }, { 0, 1, 2 } } },
+    // 1 — HILLTOP HEIGHTS: G minor, a rolling cruise up the hill. Gm9 Cm9 Gm9 D7#9 / Ebmaj9 Ebmaj9 Cm9 D7#9
+    { 92, 0.16f, 98.00f, 8, 0.32f, 0.36f,
+      { { { 0, { 3, 7, 10, 14 } }, { -7, { -4, 0, 3, 7 } }, { 0, { 3, 7, 10, 14 } }, { -5, { -1, 5, 10, 14 } } },
+        { { -4, { 0, 3, 7, 10 } }, { -4, { 0, 3, 7, 10 } }, { -7, { -4, 0, 3, 7 } }, { -5, { -1, 5, 10, 14 } } } },
+      { { "0...-.0.7..-a.c.", "0...-.0.3..-5.7.", "0...-.0.7..-c.a.", "0...-.0..7.-5.4." },
+        { "0...-.0.7..-b.c.", "0...-.0..7..4.5.", "0...-.0.3..-5.7.", "0...-.0..7.-a.0." } },
+      { "x.....x..x......", "x.....x.....x...", "x.....x..x......", "x..x..x...x.x..." },
+      { "x......x..x.....", "x......x.xx....." }, "....x.......x...",
+      { {  7,-1,-1,-1, -1,-1,10,-1, 12,-1,10,-1,  7,-1,-1,-1,    8,-1,-1,-1, -1,-1,-1,-1, 12,-1,-1,15, -1,-1,12,-1,
+          10,-1,-1,-1, -1,-1,-1,-1,  7,-1,-1,-1,  5,-1, 3,-1,    2,-1,-1,-1, -1,-1, 6,-1,  7,-1,-1,-1, -2,-1,-1,-1 },
+        { 19,-1,-1,-1, 17,-1,15,-1, 14,-1,-1,-1, -1,-1,10,-1,   15,-1,-1,-1, -1,-1,-1,-1, 12,-1,10,-1,  8,-1,-1,-1,
+          10,-1,-1,-1, -1,-1,12,-1, 14,-1,-1,-1, 15,-1,14,-1,   11,-1,-1,-1, -1,-1,-1,-1,  9,-1, 7,-1, -2,-1,-1,-1 },
+        { 14,-1,-1,-1, -1,-1,12,-1, 10,-1,-1,-1, -1,-1,-1,-1,   15,-1,-1,-1, 14,-1,-1,-1, 12,-1,-1,-1, 10,-1,-1,-1,
+           8,-1,-1,-1, -1,-1,10,-1, 12,-1,-1,-1, -1,-1,-1,-1,   11,-1,-1,-1, -1,-1, 9,-1,  7,-1,-1,-1, -2,-1,-1,-1 } },
+      { { 0, 1, 0 }, { 0, 1, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 0, 1 }, { 1, 1, 3 }, { 0, 1, 2 }, { 0, 1, 1 } } },
+    // 2 — BAYSIDE BREAKER: E-flat major, sunset on the causeway; brighter, a purer whistle. Ebmaj9 Ebmaj9 Abmaj9 Bb13sus / Cm9 Fm9 Bb13sus Ebmaj9
+    { 98, 0.14f, 77.78f, 8, 0.14f, 0.42f,
+      { { { 0, { 4, 7, 11, 14 } }, { 0, { 4, 7, 11, 14 } }, { 5, { -3, 0, 4, 7 } }, { 7, { 5, 9, 12, 16 } } },
+        { { -3, { 0, 4, 7, 11 } }, { 2, { 5, 9, 12, 16 } }, { 7, { 5, 9, 12, 16 } }, { 0, { 4, 7, 11, 14 } } } },
+      { { "0..0..-.7..-b.c.", "0..0..-.4..7.b.c", "0..0..-.7..-4.7.", "0..0..-.5..7.a.c" },
+        { "0..0..-.7..a.c..", "0..0..-.3..5.7.a", "0..0..-.5..-7.a.", "0..0..-.4.7..b.c" } },
+      { "x.....x...x.....", "x.....x.....x...", "x.....x...x.....", "x..x..x...x..x.." },
+      { "x.....x...x.....", "x.....x...x..x.." }, "....x.......x...",
+      { { 12,-1,-1,-1, -1,-1,14,-1, 16,-1,-1,-1, -1,-1,14,-1,   11,-1,-1,-1, -1,-1,-1,-1,  7,-1,-1,-1,  9,-1,11,-1,
+          12,-1,-1,-1, -1,-1,-1,-1, 15,-1,-1,-1, 14,-1,12,-1,   10,-1,-1,-1, -1,-1,-1,-1,  9,-1, 7,-1, -2,-1,-1,-1 },
+        { 19,-1,-1,-1, -1,-1,-1,-1, 16,-1,14,-1, 11,-1,-1,-1,   14,-1,-1,-1, -1,-1,12,-1, 11,-1,-1,-1, -1,-1,-1,-1,
+          16,-1,-1,-1, 15,-1,-1,-1, 12,-1,-1,-1,  9,-1,-1,-1,   10,-1,-1,-1, 12,-1,-1,-1, 14,-1,-1,-1, -2,-1,-1,-1 },
+        {  7,-1,-1,-1, -1,-1,10,-1, 11,-1,-1,-1, 14,-1,-1,-1,   12,-1,-1,-1, -1,-1,-1,-1,  8,-1,-1,-1,  7,-1, 5,-1,
+           5,-1,-1,-1, -1,-1, 7,-1,  9,-1,-1,-1, 10,-1,-1,-1,   11,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -2,-1,-1,-1 } },
+      { { 0, 0, 0 }, { 0, 1, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 1, 1 }, { 1, 0, 3 } } },
+    // 3 — SUMMIT SWITCHBACKS: A minor, slow and misty; the lead an octave down, long echoes. Am9 Fmaj9 Dm9 E7#9 / Fmaj9 Fmaj9 Am9 E7#9
+    { 86, 0.17f, 110.00f, 4, 0.10f, 0.50f,
+      { { { 0, { 3, 7, 10, 14 } }, { -4, { 0, 3, 7, 10 } }, { -7, { -4, 0, 3, 7 } }, { -5, { -1, 5, 10, 14 } } },
+        { { -4, { 0, 3, 7, 10 } }, { -4, { 0, 3, 7, 10 } }, { 0, { 3, 7, 10, 14 } }, { -5, { -1, 5, 10, 14 } } } },
+      { { "0..-..0.7..-a.c.", "0..-..0.4..7..c.", "0..-..0.3..-5.7.", "0..-..0.4..7.a.." },
+        { "0..-..0.7..b..c.", "0..-..0.4..7.9.7", "0..-..0.7..-a.c.", "0..-..0..4.7.a.c" } },
+      { "x.......x.......", "x.....x.........", "x.......x.......", "x.....x...x....." },
+      { "x.........x.....", "x.......x.x....." }, "....x.......x...",
+      { { 12,-1,-1,-1, -1,-1,-1,-1, 10,-1,-1,-1,  7,-1,-1,-1,   12,-1,-1,-1, -1,-1,14,-1, 15,-1,-1,-1, -1,-1,-1,-1,
+          17,-1,-1,-1, -1,-1,15,-1, 12,-1,-1,-1, 10,-1,-1,-1,   11,-1,-1,-1, -1,-1,-1,-1,  8,-1, 7,-1, -2,-1,-1,-1 },
+        { 19,-1,-1,-1, -1,-1,-1,-1, 17,-1,15,-1, 14,-1,12,-1,   15,-1,-1,-1, -1,-1,-1,-1, 12,-1,-1,-1, -1,-1,-1,-1,
+          12,-1,-1,-1, 14,-1,-1,-1, 15,-1,-1,-1, 17,-1,-1,-1,   17,-1,-1,-1, -1,-1,14,-1, 11,-1,-1,-1, -2,-1,-1,-1 },
+        { 12,-1,-1,-1, -1,-1,-1,-1, 15,-1,-1,-1, 14,-1,-1,-1,   19,-1,-1,-1, -1,-1,-1,-1, 15,-1,-1,-1, 12,-1,-1,-1,
+          12,-1,-1,-1, -1,-1,10,-1,  7,-1,-1,-1,  3,-1,-1,-1,    5,-1,-1,-1, -1,-1, 8,-1, 11,-1,-1,-1, -2,-1,-1,-1 } },
+      { { 0, 0, 0 }, { 0, 1, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 1, 1 }, { 1, 0, 3 }, { 0, 1, 2 }, { 0, 1, 0 } } },
+    // 4 — MIDNIGHT MILE: C minor, night city; quicker, busier bass and kick, a brassy talk-box lead. Cm9 Cm9 Dbmaj9 Bbm9 / Abmaj9 Abmaj9 G7#9 G7#9
+    { 101, 0.13f, 65.41f, 8, 0.55f, 0.34f,
+      { { { 0, { 3, 7, 10, 14 } }, { 0, { 3, 7, 10, 14 } }, { 1, { 5, 8, 12, 15 } }, { 10, { 1, 5, 8, 12 } } },
+        { { 8, { 0, 3, 7, 10 } }, { 8, { 0, 3, 7, 10 } }, { 7, { -1, 5, 10, 14 } }, { 7, { -1, 5, 10, 14 } } } },
+      { { "0.0-..0.7.a-c.a.", "0.0-..0.3.5-7.a.", "0.0-..0.7.-.4.7.", "0.0-..0.3.5-7.c." },
+        { "0.0-..0.7.-.b.c.", "0.0-..0.4.7-b.7.", "0.0-..0.4.7-a.c.", "0.0-..0.4.7.a.0." } },
+      { "x.....x..x......", "x..x..x.....x...", "x.....x..x......", "x..x..x...x.x..." },
+      { "x..x....x.x.....", "x..x...xx.x....." }, "....x.......x...",
+      { { 15,-1,-1,-1, -1,-1,12,-1, 10,-1,-1,-1, 12,-1,-1,-1,    7,-1,-1,-1, -1,-1,-1,-1, 10,-1,-1,-1,  3,-1, 5,-1,
+           5,-1,-1,-1, -1,-1, 8,-1, 12,-1,-1,-1, 13,-1,-1,-1,   13,-1,-1,-1, -1,-1,12,-1, 10,-1, 8,-1, -2,-1,-1,-1 },
+        { 19,-1,-1,-1, 17,-1,-1,-1, 15,-1,-1,-1, 14,-1,15,-1,   12,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, 10,-1,-1,-1,
+          17,-1,-1,-1, -1,-1,15,-1, 13,-1,-1,-1, 12,-1,-1,-1,   13,-1,-1,-1, 12,-1,-1,-1, 10,-1,-1,-1, -2,-1,-1,-1 },
+        { 12,-1,-1,-1, -1,-1,10,-1,  7,-1,-1,-1,  3,-1,-1,-1,    8,-1,-1,-1, -1,-1, 7,-1,  3,-1,-1,-1,  0,-1,-1,-1,
+          11,-1,-1,-1, -1,-1,-1,-1, 14,-1,-1,-1, 17,-1,-1,-1,   15,-1,-1,-1, 14,-1,-1,-1, 11,-1,-1,-1, -2,-1,-1,-1 } },
+      { { 0, 1, 0 }, { 0, 1, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 0, 0, 1 }, { 0, 1, 2 }, { 1, 1, 3 }, { 1, 1, 3 } } },
+};
+static const int NSEC = 8;
+// which song: the game sets want (any thread may write it); the audio thread changes over at the next bar line
+static volatile int want = 0; static int cur = 0; static const Song* S = &SONGS[0];
+static double STEP = SR * 60.0 / 94 / 4.0;
 
 static int gstep = -1, solo = 15; static double left = 0;
 static float kT = 9, sT = 9, hT = 9, oT = 9, hVol = 1, sVol = 1, hLP = 0, oLP = 0, sLP = 0, cBP1 = 0, cBP2 = 0; static double kPh = 0;
-static double bPh = 0; static float bF = KEY, bTgt = KEY, bGate = 0, bEnv = 0, bLP = 0;
+static double bPh = 0; static float bF = 87.31f, bTgt = 87.31f, bGate = 0, bEnv = 0, bLP = 0;
 static double ePh[4] = {}; static float eF[4] = { 220, 220, 220, 220 }, eT = 9, eLP = 0;
 static double lPh = 0, panPh = 0; static float lF = 700, lTgt = 700, lGate = 0, lEnv = 0, lT = 0, lLP = 0; static float dly[32768]; static int dpos = 0;
 
 static void onStep(int g) {
-    const Sec& sec = SONG[(g / 64) % NSEC]; int bar = (g / 16) % 4, st = g % 16; const Chord& ch = PROG[sec.prog][bar];
-    char n = BASS[sec.prog][bar][st];
+    const Song& s = *S; const float KEY = s.key;
+    const Sec& sec = s.sec[(g / 64) % NSEC]; int bar = (g / 16) % 4, st = g % 16; const Chord& ch = s.prog[sec.prog][bar];
+    char n = s.bass[sec.prog][bar][st];
     if (n == '-') bGate = 0;
     else if (n != '.') { int semi = n >= 'a' ? n - 'a' + 10 : n - '0'; bTgt = KEY * powf(2, (ch.root + semi) / 12.f); if (bGate == 0) bF = bTgt; bGate = 1; }
-    if (KEYS[bar][st] == 'x') { for (int i = 0; i < 4; i++) eF[i] = KEY * 2 * powf(2, ch.v[i] / 12.f); eT = 0; }
+    if (s.keys[bar][st] == 'x') { for (int i = 0; i < 4; i++) eF[i] = KEY * 2 * powf(2, ch.v[i] / 12.f); eT = 0; }
     bool fill = bar == 3 && st >= 14;
-    if (sec.drum == 1 && KICK[bar & 1][st] == 'x') { kT = 0; kPh = 0; }
-    if (SNARE[st] == 'x') { sT = 0; sVol = 1; } else if (fill && sec.drum == 1) { sT = 0; sVol = 0.45f; }
+    if (sec.drum == 1 && s.kick[bar & 1][st] == 'x') { kT = 0; kPh = 0; }
+    if (s.snare[st] == 'x') { sT = 0; sVol = 1; } else if (fill && sec.drum == 1) { sT = 0; sVol = 0.45f; }
     if (st == 14 && (bar & 1)) oT = 0; else { hT = 0; hVol = st % 4 == 0 ? 1.0f : st % 2 == 0 ? 0.7f : 0.38f; }
-    if (sec.lead) { int v = LEAD[sec.lead - 1][bar * 16 + st]; if (v == -2) lGate = 0; else if (v >= 0) { lTgt = KEY * 8 * powf(2, v / 12.f); if (lGate == 0) { lF = lTgt; lT = 0; } lGate = 1; } }
+    if (sec.lead) { int v = s.lead[sec.lead - 1][bar * 16 + st]; if (v == -2) lGate = 0; else if (v >= 0) { lTgt = KEY * s.leadMul * powf(2, v / 12.f); if (lGate == 0) { lF = lTgt; lT = 0; } lGate = 1; } }
     else lGate = 0;
 }
 static void render(float& L, float& Rr) {
-    left -= 1; if (left <= 0) { onStep(++gstep); left += STEP * (gstep % 2 == 0 ? 1 + SWING : 1 - SWING); }
+    left -= 1;
+    if (left <= 0) {
+        int w = want; if (w < 0 || w >= NSONGS) w = 0;
+        if (w != cur && (gstep + 1) % 16 == 0) {   // a new song starts on a bar line, from its top; the old lead and bass let go
+            cur = w; S = &SONGS[cur]; STEP = SR * 60.0 / S->bpm / 4.0; gstep = -1; lGate = 0; bGate = 0;
+        }
+        onStep(++gstep); left += STEP * (gstep % 2 == 0 ? 1 + S->swing : 1 - S->swing);
+    }
     const float dt = 1.0f / SR, TAU = 6.2832f;
     // drums
     float d = 0, hat = 0;
@@ -97,8 +174,8 @@ static void render(float& L, float& Rr) {
     lF += (lTgt - lF) * 0.00035f; lT += dt; lEnv += (lGate - lEnv) * (lGate > lEnv ? 0.003f : 0.0006f);
     float vib = 1 + 0.008f * sinf(lT * TAU * 5.6f) * smooth(0.18f, 0.5f, lT);
     lPh += lF * vib * dt; if (lPh > 1) lPh -= 1; float lp = (float)lPh * TAU;
-    lLP += ((sinf(lp) * 0.75f + (float)(lPh * 2 - 1) * 0.30f) * lEnv - lLP) * 0.30f;
-    float dl = dly[(dpos + 32768 - (int)(STEP * 3)) & 32767]; dly[dpos] = lLP + dl * 0.38f; dpos = (dpos + 1) & 32767;
+    lLP += ((sinf(lp) * (1.05f - S->leadSaw) + (float)(lPh * 2 - 1) * S->leadSaw) * lEnv - lLP) * 0.30f;
+    float dl = dly[(dpos + 32768 - (int)(STEP * 3)) & 32767]; dly[dpos] = lLP + dl * S->echo; dpos = (dpos + 1) & 32767;
     float lead = lLP * 0.21f * ((solo & 8) ? 1 : 0), echo = dl * 0.10f * ((solo & 8) ? 1 : 0);
     L = d + hat * 0.7f + bass + keys * (1 - pan) * 2 + lead * 1.1f + echo * 0.5f;
     Rr = d + hat * 1.3f + bass + keys * pan * 2 + lead * 0.9f + echo * 1.5f;
@@ -133,6 +210,7 @@ static void audioCB(void*, uint8_t* stream, int bytes) {
 // offline render of the soundtrack, for checking it without a sound card
 static void renderWav(const char* path, float secs) {
     if (getenv("FCF_SOLO")) mus::solo = atoi(getenv("FCF_SOLO"));
+    if (getenv("FCF_SONG")) mus::want = atoi(getenv("FCF_SONG"));
     int n = (int)(secs * SR); std::vector<float> buf(n * 2); snd.engV = 0; snd.master = 0.5f;
     for (int i = 0; i < n; i += 1024) { int c = std::min(1024, n - i); audioCB(nullptr, (Uint8*)&buf[i * 2], c * 8); }
     FILE* f = fopen(path, "wb"); if (!f) return; int data = n * 4, riff = 36 + data, sr = SR, br = SR * 4, fmt = 16; short pcm = 1, ch = 2, ba = 4, bits = 16;
