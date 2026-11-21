@@ -337,6 +337,8 @@ files applied with `git am -3 <file>`.
   received packet's type/length, each send result, join/server timeouts, and
   `net loop alive` once a second. LAN joining still needs RGH testing.
 - XEX artifacts are ignored by Git (`*.xex`); do not commit built console binaries.
+- Lean XEX = FCF_PERF_TEST=lean only. Check it with strings | grep 'cull: cells' before uploading.
+- Before uploading a release XEX, test that exact production-built file in Xenia for 60 seconds, confirm the perf log keeps updating without a GPU-wait failure or multi-second frame, and keep the run log beside the artifact.
 - Saves remain disabled/not implemented on the 360.
 - Real RGH 360 testing is in progress; wait for the user's visual result before
   changing rendering behavior beyond diagnostic draw masks.

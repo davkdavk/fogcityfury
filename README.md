@@ -77,6 +77,10 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.45
+
+- A G-funk song for each track and the showdown; the Xbox 360 release now uses the verified lean XEX (previous downloads were plain builds).
+
 ## What's new in 1.44
 
 - Town streets now meet the main road with a grass verge, kerbstone and brick promenade, on PC, Android and Xbox 360.
