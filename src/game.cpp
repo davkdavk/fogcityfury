@@ -270,7 +270,8 @@ static void logoSounds(float t0, float t1) {
 static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBtn> tbtn; static std::vector<Finger> fingers; static int touchLaid = -1;
 static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold == b) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
 static const int RES[][2] = { { 854, 480 }, { 1024, 576 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } }; static const int NRES = 8;
-static const int AA_OPT[4] = { 0, 2, 4, 8 }, AF_OPT[5] = { 1, 2, 4, 8, 16 }, NVIDROWS = 5;
+static const int AA_OPT[4] = { 0, 2, 4, 8 }, AF_OPT[5] = { 1, 2, 4, 8, 16 }, NVIDROWS = 6;
+static int vidBright = 85;   // brightness, %: scales the light going into the tone curve (50-150; 85 since 1.72, 100 was the old look)
 #ifdef __ANDROID__
 static bool vidFull = true, vidVsync = true; static int vidW = 1280, vidH = 720, vidAA = 0, vidAF = 4;    // phones: always full screen, drawn at 720p and scaled up, no MSAA. All changeable in the options
 #else
@@ -362,7 +363,8 @@ static void loadCfg() {
         if (fscanf(f, " name %16[^\n]", h) == 1 && h[0]) snprintf(nc.name, sizeof nc.name, "%.16s", h);
         int lp = 0; if (fscanf(f, " laps %d", &lp) == 1 && lp >= 1 && lp <= 9) selLaps = lp;
         int fl = 0; if (fscanf(f, " flowers %d", &fl) == 1 && fl >= 0) roamFlowers = fl;
-        char cn[200]; unsigned cm = 0; while (fscanf(f, " ckey %199s %u", cn, &cm) == 2) customKeysSaved.push_back({ cn, cm });   // free roam: flowers picked up, the levels they make (minis.h)
+        char cn[200]; unsigned cm = 0; while (fscanf(f, " ckey %199s %u", cn, &cm) == 2) customKeysSaved.push_back({ cn, cm });
+        int br = 0; if (fscanf(f, " bright %d", &br) == 1) vidBright = std::max(50, std::min(150, br));   // free roam: flowers picked up, the levels they make (minis.h)
     }
     fclose(f);
 }
@@ -374,6 +376,7 @@ static void saveCfg() {
     fprintf(f, "v1\nvideo %d %d %d %d %d %d\n", (int)vidFull, vidW, vidH, vidAA, vidAF, (int)vidVsync); for (int i = 0; i < NBIND; i++) fprintf(f, "bind %d %d %d\n", i, binds[i][0], binds[i][1]);
     fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\nlaps %d\nflowers %d\n", nc.name, selLaps, roamFlowers);
     for (int t = NTRACKS; t < (int)TRACKS.size(); t++) if (keysGot[t] && !TRACKS[t].file.empty()) { std::string n = TRACKS[t].file; size_t sl = n.find_last_of("/\\"); if (sl != std::string::npos) n = n.substr(sl + 1); if (n.find(' ') == std::string::npos) fprintf(f, "ckey %s %u\n", n.c_str(), keysGot[t]); }   // keys found on your own tracks
+    fprintf(f, "bright %d\n", vidBright);
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the
@@ -1272,7 +1275,7 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
     p.v3("uSunDir", d.sun); p.v3("uSunCol", sunC * (1 - 0.35f * w.grey)); p.v3("uSkyTop", skyT + V3(0.25f, 0.25f, 0.32f) * bolt); p.v3("uSkyHor", skyH + V3(0.25f, 0.25f, 0.32f) * bolt);
     p.f1("uWet", w.wet); p.f1("uRain", w.rain); p.f1("uOvercast", w.grey); p.f1("uFogNoise", weather == W_FOG ? 1.0f : w.rain > 0 ? 0.4f : 0.0f); p.f1("uBoltI", bolt); p.v3("uBoltDir", boltDir);
     p.i1("uDetail", 6); if (p.has("uKeySt")) { if (W.keyStreet.size() == 4) p.v4("uKeySt", W.keyStreet[0], W.keyStreet[1], W.keyStreet[2], W.keyStreet[3]); else p.v4("uKeySt", 0, 0, 0, 0); if (p.has("uKeyLot")) { if (W.keyLot.size() == 4) p.v4("uKeyLot", W.keyLot[0], W.keyLot[1], W.keyLot[2], W.keyLot[3]); else p.v4("uKeyLot", 1, 1, 0, 0); } } p.i1("uEnv", 1); p.f1("uUseEnv", envPass ? 0.0f : 1.0f); p.v3("uEnvPos", player.pos + V3(0, 1.0f, 0));   // the cubemap cannot be read while it is being drawn
-    p.v3("uCamPos", cam); p.f1("uTime", T); p.f1("uFogDen", debugTop ? 0.0f : d.fogDen * w.fog); p.f1("uHDR", hdr); p.m4("uLightVP", lightVP); p.i1("uShadow", 0);
+    p.v3("uCamPos", cam); p.f1("uTime", T); p.f1("uFogDen", debugTop ? 0.0f : d.fogDen * w.fog); p.f1("uHDR", hdr); p.f1("uBright", vidBright * 0.01f); p.m4("uLightVP", lightVP); p.i1("uShadow", 0);
 #ifdef FCF_PERF_NOISE
     p.i1("uNoise", 7);
 #endif
@@ -1755,12 +1758,12 @@ static void drawHUD() {
             if (optCapture) ui.text(Wd / 2, 646, 2.2f, white, "PRESS THE KEY TO USE     ESC: CANCEL", 1);
             else { if (!touchOn && !padUI) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, P("TAB: VIDEO SETTINGS     ESC: BACK", "{LB} {RB} VIDEO SETTINGS     {B} BACK"), 1); }
         } else {
-            char v[NVIDROWS][48]; static const char* nm[NVIDROWS] = { "DISPLAY", "RESOLUTION", "ANTI-ALIASING", "ANISOTROPIC FILTERING", "VSYNC" };
-            static const char* help[NVIDROWS] = { "F11 SWITCHES THIS AT ANY TIME", "", "MSAA: SMOOTHS THE EDGES OF CARS AND BUILDINGS", "KEEPS THE ROAD AND GROUND SHARP INTO THE DISTANCE", "OFF: NO FRAME-RATE CAP, MAY TEAR" };
+            char v[NVIDROWS][48]; static const char* nm[NVIDROWS] = { "DISPLAY", "RESOLUTION", "ANTI-ALIASING", "ANISOTROPIC FILTERING", "VSYNC", "BRIGHTNESS" };
+            static const char* help[NVIDROWS] = { "F11 SWITCHES THIS AT ANY TIME", "", "MSAA: SMOOTHS THE EDGES OF CARS AND BUILDINGS", "KEEPS THE ROAD AND GROUND SHARP INTO THE DISTANCE", "OFF: NO FRAME-RATE CAP, MAY TEAR", "LOWER IT IF THE PICTURE LOOKS WASHED OUT (100%: THE OLD LOOK)" };
             snprintf(v[0], 48, "%s", vidFull ? "FULL SCREEN" : "WINDOW"); snprintf(v[1], 48, "%d X %d", vidW, vidH);
             if (vidAA > 0) snprintf(v[2], 48, "%dX MSAA", vidAA); else snprintf(v[2], 48, "OFF");
             if (maxAF <= 1) snprintf(v[3], 48, "NOT SUPPORTED"); else if (vidAF > 1) snprintf(v[3], 48, "%dX", vidAF); else snprintf(v[3], 48, "OFF");
-            snprintf(v[4], 48, "%s", vidVsync ? "ON" : "OFF");
+            snprintf(v[4], 48, "%s", vidVsync ? "ON" : "OFF"); snprintf(v[5], 48, "%d%%", vidBright);
             for (int i = 0; i < NVIDROWS; i++) {
                 float y = 200 + i * 62.0f; bool sel = i == optRow; ui.rect(Wd / 2 - 500, y - 8, 1000, 50, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.9f : 0.5f);
                 ui.text(Wd / 2 - 470, y + 4, 3, sel ? white : V3(0.8f, 0.82f, 0.86f), nm[i]); snprintf(b, sizeof b, "%s %.47s %s", sel ? "<" : " ", v[i], sel ? ">" : " "); ui.text(Wd / 2 + 250, y + 4, 3, sel ? yel : V3(0.75f, 0.85f, 1), b, 1);
@@ -2069,7 +2072,7 @@ static void render(int fbw, int fbh) {
     }
     float psp = sqrtf(player.vel.x * player.vel.x + player.vel.z * player.vel.z), blur = chase && !player.dead ? powf(clampf((psp - 22) / 50, 0, 1), 1.4f) * 0.075f : 0;
     gfx::use(0, fbw, fbh); gfx::bind(4, resTex); gfx::bind(5, blTex[0]);
-    pPost.i1("uMode", 2); pPost.f1("uBlur", blur); pPost.f1("uCA", chase ? caT * 0.012f + blur * 0.04f : 0); pPost.f1("uFlash", clampf(flashT, 0, 1) * 0.55f); pPost.v3("uFlashCol", flashCol);
+    pPost.f1("uBright", vidBright * 0.01f); pPost.i1("uMode", 2); pPost.f1("uBlur", blur); pPost.f1("uCA", chase ? caT * 0.012f + blur * 0.04f : 0); pPost.f1("uFlash", clampf(flashT, 0, 1) * 0.55f); pPost.v3("uFlashCol", flashCol);
     pPost.f1("uRain", chase && !debugTop && state != CARSEL && state != TRACKSEL ? wx().rain : 0.0f); pPost.f1("uTime", T);
     pPost.f1("uVig", 0.45f + blur * 5); pPost.f1("uSat", chase && player.dead && state != TITLE ? 0.5f : 1.0f); gfx::drawFull(); gfx::depthTest(true);
     }
@@ -2100,7 +2103,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
             if (optRow == 0) vidFull = !vidFull;
 #endif
             if (optRow == 1) { int i = 0; for (int q = 0; q < NRES; q++) if (RES[q][0] == vidW && RES[q][1] == vidH) i = q; for (int t = 0; t < NRES; t++) { i = (i + d + NRES) % NRES; if (RES[i][0] <= deskW && RES[i][1] <= deskH) break; } vidW = RES[i][0]; vidH = RES[i][1]; }
-            if (optRow == 2) vidAA = cycle(AA_OPT, 4, vidAA, maxAA); if (optRow == 3) vidAF = cycle(AF_OPT, 5, vidAF, maxAF); if (optRow == 4) vidVsync = !vidVsync;
+            if (optRow == 2) vidAA = cycle(AA_OPT, 4, vidAA, maxAA); if (optRow == 3) vidAF = cycle(AF_OPT, 5, vidAF, maxAF); if (optRow == 4) vidVsync = !vidVsync; if (optRow == 5) vidBright = std::max(50, std::min(150, vidBright + d * 5));
             applyVideo(); saveCfg();
         }
         break; }
@@ -2214,11 +2217,11 @@ static void printJSON(FILE* o) {
     fprintf(o, "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
         "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
         "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
-        "\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
+        "\"bright\":%d,\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
         shdRingDeaths, mech::unit[0].at.x, mech::unit[0].at.y, mech::unit[0].at.z, mech::unit[0].yaw, mech::tris, mech::unit[0].gait, W.RD(mech::unit[0].at.x, mech::unit[0].at.z), mech::unit[1].at.x, mech::unit[1].at.y, mech::unit[1].at.z, W.RD(mech::unit[1].at.x, mech::unit[1].at.z), mech::count(), tm.mechFootErr, mechClear[0], mechClear[1], tm.stomps, (W.hasBranch() ? W.brs[0].len : 0.0f), (W.hasBranch() ? W.brs[0].a : -1), (W.hasBranch() ? W.brs[0].b : -1), branchBlocked, tm.aiBranch, nShieldPU ? shieldPU[0].p.x : 0.0f, nShieldPU ? shieldPU[0].p.z : 0.0f, player.shield, tm.shields, tm.shieldSaves, (int)(nShieldPU > 0 && puHere(shieldPU[0])) + (int)(nShieldPU > 1 && puHere(shieldPU[1])), tm.aiShields, tm.aiShieldSaves, tm.aiCrates, tm.aiRocketsFired, tm.aiRocketHits, tm.rocketsAtMe, tm.bumps, tm.maxShove, tm.maxWob, onBrNow, loopNow, tm.maxWrongT, W.id, player.type, weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id], (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft,
         gibCount, (int)splats.size(), (int)shdOffRoad, showdownOn || shdResult ? flatDist(avatarPos(), shdSite) : -1.0f, shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount, netSlot, (int)nc.hosts, netBotsMost, (int)shdSpectate, shdWatch, (int)shdPhase, shdAlive(), shdRing, me.place, shdWinner, (int)shdResult, dropsThere(), fStr.c_str(), me.gun, me.ammo[me.gun], me.hp, me.armour, me.stamina, (int)(me.rollT > 0), me.target, me.shots, me.hits, footPickups, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp, (int)me.on, me.pos.x, me.pos.y, me.pos.z, me.yaw, footYaw, me.run, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir, tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis,
         tm.maxBeta, tm.maxSlipF, tm.maxSlipR, tm.maxSpeed, tm.maxYawRate, player.nitro, tm.minNitro, tm.boostT, tm.boosts, ammo, tm.rocketsFired, tm.rocketHits, tm.pickups, tm.resets, (int)wrecks.size(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y, wrecks.empty() ? 0.0f : wrecks.back().pos.z, (int)debris.size(), W.RD(player.pos.x, player.pos.z), tm.maxDeck, tm.maxGap, introT, tm.gridDrift, std::max(countdown, 0.0f), tm.offroadT, (int)W.cross.size(), tm.dist, tm.heading, tm.simT,
-        vidAA, vidAF, (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(), (int)hdrOK, deskW > 100000 ? 0 : deskW, deskH > 100000 ? 0 : deskH, (int)nc.connected, nc.id, (int)nc.phase, (int)nc.count, nc.maxCount, (int)nc.myPlace, (int)nc.placeFull, (int)netRace, remoteMoved, nc.error, (int)champOn, champRound, (int)champDone, champTotal(), champPts[0], shdSite.x, shdSite.z, (int)shdPath.size(), (int)grngSeeded);
+        vidBright, vidAA, vidAF, (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(), (int)hdrOK, deskW > 100000 ? 0 : deskW, deskH > 100000 ? 0 : deskH, (int)nc.connected, nc.id, (int)nc.phase, (int)nc.count, nc.maxCount, (int)nc.myPlace, (int)nc.placeFull, (int)netRace, remoteMoved, nc.error, (int)champOn, champRound, (int)champDone, champTotal(), champPts[0], shdSite.x, shdSite.z, (int)shdPath.size(), (int)grngSeeded);
 }
 static void printDump(FILE* o) {
     fprintf(o, "{\"track\":%d,\"weather\":%d,\"name\":\"%s\",\"trackLen\":%d,\"start\":[%.1f,%.1f,%.1f],\"checkpoints\":[", W.id, weather, W.def->name, W.n, W.ts[0].x, W.ts[0].y, W.ts[0].z);
@@ -2351,7 +2354,7 @@ int main(int argc, char** argv) {
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--shotevery") shotEvery = atoi(argv[++i]); else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
-        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--autocut") { autoDrive = true; autoCut = atoi(argv[++i]); } else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
+        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--bright") vidBright = std::max(50, std::min(150, atoi(argv[++i]))); else if (a == "--autocut") { autoDrive = true; autoCut = atoi(argv[++i]); } else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
         else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;

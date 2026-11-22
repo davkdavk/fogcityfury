@@ -85,6 +85,7 @@ in the options.
 
 - Shortcuts can be tunnels: in the editor's Tunnel tool, click a shortcut (right click takes it back up)
 - A shortcut can no longer start or end inside a tunnel
+- Brightness setting in Options > Video (starts at 85%; 100% is the old look)
 
 ## What's new in 1.71
 

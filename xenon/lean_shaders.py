@@ -17,11 +17,11 @@ Uniform names are the game's own; ones a shader does not declare are skipped by 
 
 COMMON = '''#version 330 core
 uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCamPos;
-uniform float uTime, uFogDen, uNight, uOvercast, uWet;
+uniform float uTime, uFogDen, uNight, uOvercast, uWet, uBright;
 uniform sampler2D uNoise;
 out vec4 oCol;
 // the game's tone curve (ACES fit, then gamma 2.2) to within 0.03 above the deepest shadows: a cubic under a square root
-vec3 tone(vec3 c){ c = min(c, vec3(2.5)); return sqrt(max(c*(1.3246 + c*(c*0.1284 - 0.6999)) - 0.0257, 0.0)); }
+vec3 tone(vec3 c){ c = min(c*(uBright > 0.01 ? uBright : 1.0), vec3(2.5)); return sqrt(max(c*(1.3246 + c*(c*0.1284 - 0.6999)) - 0.0257, 0.0)); }
 vec3 ambient(float ny){ return mix(uSkyHor*0.55 + vec3(0.05,0.045,0.04), uSkyTop*0.6 + uSkyHor*0.35, ny*0.5+0.5); }
 '''
 
@@ -81,11 +81,11 @@ WORLD_LOC = {'vP':0, 'vL':1, 'vC':2, 'vUV':3, 'vMat':4, 'vFx':5, 'vFog':6}
 #   road, wall, misc   one material class each, for when the props mesh is drawn in per-material ranges
 #   world   road + wall + misc picked by vMat: the whole props mesh in one draw, until it is split
 _HEAD = '''#version 330 core
-uniform vec3 uSkyHor; uniform float uNight, uWet;
+uniform vec3 uSkyHor; uniform float uNight, uWet, uBright;
 uniform sampler2D uNoise;
 in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx; in vec4 vFog;
 out vec4 oCol;
-vec3 tone(vec3 c){ c = min(c, vec3(2.5)); return sqrt(max(c*(1.3246 + c*(c*0.1284 - 0.6999)) - 0.0257, 0.0)); }
+vec3 tone(vec3 c){ c = min(c*(uBright > 0.01 ? uBright : 1.0), vec3(2.5)); return sqrt(max(c*(1.3246 + c*(c*0.1284 - 0.6999)) - 0.0257, 0.0)); }
 void main(){
   // fine grain from the noise texture's white-noise channel (8 cm a texel), faded out with distance: no mip maps here.
   // (The game's own detail texture, unit 6, is not used: on the console the ground and road that sampled it came out black.)

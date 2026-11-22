@@ -1059,6 +1059,11 @@ def options_video_settings_change_and_are_remembered():
     check((d["aa"], d["af"], d["full"], d["resW"], d["resH"], d["vsync"]) == want, "and are still there next time", (d["aa"], d["af"], d["full"], d["resW"], d["resH"], d["vsync"]))
     d = run(*_presses("F1", "TAB", "RIGHT", "ESCAPE"))
     check(d["full"] == 1, "display toggles to full screen", d["full"])
+    check(d["bright"] == 85, "brightness starts at 85%", d["bright"])
+    d = run(*_presses("F1", "TAB", "UP", "LEFT", "LEFT", "ESCAPE"))
+    check(d["bright"] == 75, "brightness: two steps down is 75%", d["bright"])
+    d = run()
+    check(d["bright"] == 75, "and it is remembered", d["bright"])
     d = run("--state", 3, "--mode", 1, *_presses("ESCAPE", "F1", "ESCAPE"))
     check(d["state"] == 4, "from the pause menu, options return to the pause menu", d["state"])
 
