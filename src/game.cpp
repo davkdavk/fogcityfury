@@ -929,8 +929,27 @@ static void carContacts(bool racing) {   // bots against bots
         bumpBot(a, k.nx, k.nz, k.pen * 0.5f, J, k.at); bumpBot(b, -k.nx, -k.nz, k.pen * 0.5f, J, k.at);
     }
 }
+// --autocut K (tests): the autopilot takes the track's shortcut K every time it comes to it. autoCutRuns: trips along it
+// to the end; autoCutMinY: the lowest the car went on it (a shortcut in a tunnel: down in the tube)
+static int autoCut = -1, autoCutRuns = 0; static float autoCutMinY = 1e9f;
+static bool autoCutInput(const Car& c, Input& in, float sp) {
+    static bool on = false; int k = -1; for (size_t q = 0; q < W.brs.size(); q++) if (W.brs[q].def == autoCut) k = (int)q;
+    if (k < 0) return false; const World::Branch& br = W.brs[k]; int m = (int)br.ts.size();
+    int bi = 0; float bd = 1e18f; for (int q = 0; q < m; q++) { float dx = br.ts[q].x - c.pos.x, dz = br.ts[q].z - c.pos.z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = q; } }
+    int i = W.nearest(c.pos.x, c.pos.z, c.pos.y);
+    if (!on && i >= br.a - 3 && i < br.a + 20 && bd < 100) on = true;
+    if (on && bi >= m - 12) { on = false; autoCutRuns++; }
+    if (!on || bd > 400) { on = false; return false; }
+    autoCutMinY = std::min(autoCutMinY, c.pos.y);
+    V3 tp; float ty; br.at((float)bi + 12 + sp * 0.45f, 0, tp, ty);
+    in.steer = clampf(wrapPi(atan2f(tp.x - c.pos.x, tp.z - c.pos.z) - c.yaw) * 2.6f, -1, 1);
+    float mc = 0; for (int q = bi + 8; q < std::min(m, bi + 90); q += 6) mc = std::max(mc, br.ts[q].curv);
+    float vmax = sqrtf(17.0f * wx().grip / std::max(mc, 1e-4f)); in.gas = sp < vmax ? 1 : 0; in.brake = sp > vmax * 1.12f ? 1 : 0;
+    return true;
+}
 static Input autoInput(const Car& c) {
     Input in; int i = W.nearest(c.pos.x, c.pos.z, c.pos.y); float sp = sqrtf(c.vel.x * c.vel.x + c.vel.z * c.vel.z);
+    if (autoCut >= 0 && &c == &player && autoCutInput(c, in, sp)) return in;
     float lat = 0; bool dg = dodge(i, (c.pos.x - W.ts[i].x) * W.ts[i].tz - (c.pos.z - W.ts[i].z) * W.ts[i].tx, 30 + sp * 1.4f, lat);   // steer round wrecks
     V3 tp; float ty; W.at(i + (dg ? 7 + sp * 0.28f : 12 + sp * 0.45f), lat, tp, ty);   // (while dodging it aims closer, so it moves across in time)
     in.steer = clampf(wrapPi(atan2f(tp.x - c.pos.x, tp.z - c.pos.z) - c.yaw) * 2.6f, -1, 1);
@@ -1291,8 +1310,8 @@ static bool showAI() { State st = viewState(); return nc.on ? false : (st == RAC
 // shoal is one mesh (its fish set out in a loose cluster), so a shoal is one draw; they are drawn only near the glass.
 static Mesh shoalMesh[3], sharkMesh;
 static V3 glassMid() {   // the middle of the nearest tunnel's glass (and that tunnel becomes the one in use: the fish swim along it)
-    float best = 1e18f; int bk = -1; for (int k = 0; k < (int)W.tuns.size(); k++) { if (W.tuns[k].ga < 0) continue; const TS& t = W.ts[(W.tuns[k].ga + W.tuns[k].gb) / 2]; float d = len(camPos - V3(t.x, t.y, t.z)); if (d < best) { best = d; bk = k; } }
-    if (bk < 0) return V3(1e9f, 0, 1e9f); W.useTun(bk); const TS& t = W.ts[(W.glassA + W.glassB) / 2]; return V3(t.x, t.y, t.z); }
+    float best = 1e18f; int bk = -1; for (int k = 0; k < (int)W.tuns.size(); k++) { if (W.tuns[k].ga < 0) continue; const TS& t = W.tunPath(W.tuns[k])[(W.tuns[k].ga + W.tuns[k].gb) / 2]; float d = len(camPos - V3(t.x, t.y, t.z)); if (d < best) { best = d; bk = k; } }
+    if (bk < 0) return V3(1e9f, 0, 1e9f); W.useTun(bk); const TS& t = W.curTun()[(W.glassA + W.glassB) / 2]; return V3(t.x, t.y, t.z); }
 static void buildFish() {
     using namespace mech; const V3 WHITE(1, 1, 1), EYE(0.02f, 0.02f, 0.02f);
     auto fish = [&](MB& m, V3 at, float s, V3 belly) {   // nose along +z; the back in the paint colour, a pale belly
@@ -1315,12 +1334,12 @@ static void drawFish(Prog& p) {
     if (len(camPos - glassMid()) > 260 || W.glassA < 0) return;
     static const V3 COL[3] = { V3(0.20f, 0.45f, 0.75f), V3(0.95f, 0.50f, 0.10f), V3(0.75f, 0.78f, 0.82f) };
     // only along the deep part (the road 12 m or more under the sea): near the shores the water is too shallow for them
-    int fa = W.glassA, fb = W.glassB; while (fa < fb && W.ts[fa].y > -12) fa++; while (fb > fa && W.ts[fb].y > -12) fb--; if (fb - fa < 30) return;
+    const std::vector<TS>& tp = W.curTun(); int fa = W.glassA, fb = W.glassB; while (fa < fb && tp[fa].y > -12) fa++; while (fb > fa && tp[fb].y > -12) fb--; if (fb - fa < 30) return;
     float L = (float)(fb - fa), t = T;
     auto swim = [&](float speed, float phase, float side, float out, float up, V3& p0, float& yaw) {   // up and down the deep stretch, turning at each end
         float a = t * speed / L * 3.14159f + phase, u = 0.5f + 0.5f * sinf(a), du = cosf(a);
-        float s = fa + u * L, lat = side * (out + 3 * sinf(t * 0.3f + phase)); V3 q; float ry; W.at(s, lat, q, ry);
-        float bed = W.H(q.x, q.z) + 2.5f, top = -4.5f; q.y = std::max(std::min(W.ts[(int)s % W.n].y + up, top), std::min(bed, top));   // over the bed, and always well under the surface
+        float s = fa + u * L, lat = side * (out + 3 * sinf(t * 0.3f + phase)); V3 q; float ry; W.tunAt(s, lat, q, ry);
+        float bed = W.H(q.x, q.z) + 2.5f, top = -4.5f; q.y = std::max(std::min(tp[std::min((int)s, (int)tp.size() - 1)].y + up, top), std::min(bed, top));   // over the bed, and always well under the surface
         p0 = q; yaw = ry + (du < 0 ? 3.14159f : 0) + 0.15f * sinf(t * 2.0f + phase);
     };
     p.f1("uChrome", 0); p.f1("uBurnt", 0); p.f1("uGone", 0); p.f1("uBrake", 0);
@@ -1331,7 +1350,7 @@ static void drawFish(Prog& p) {
 }
 // a point (the chase camera) held inside the undersea tube: in from the walls and under the arch
 static void keepInTube(V3& c) {
-    int i = W.nearest(c.x, c.z, c.y); const TS& t = W.ts[i]; if (!t.tun) return;
+    const TS* tt = W.tubeAt(c); if (!tt) return; const TS& t = *tt;   // (on the loop, or on a shortcut in a tunnel)
     float lat = (c.x - t.x) * t.tz - (c.z - t.z) * t.tx, lim = TUBE_W - 1.0f, l2 = clampf(lat, -lim, lim), r = l2 / TUBE_W;
     float arch = TUBE_SILL + (TUBE_TOP - TUBE_SILL) * sqrtf(std::max(0.0f, 1 - r * r)) - 0.8f;
     c.x += t.tz * (l2 - lat); c.z -= t.tx * (l2 - lat); c.y = clampf(c.y, t.y + 0.5f, t.y + std::max(arch, 1.2f));
@@ -2189,7 +2208,7 @@ static void printJSON(FILE* o) {
     { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
       fprintf(o, "\"shortcuts\":\"%s\",\"tunnels\":%d,\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), (int)W.tuns.size(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
-    fprintf(o, "\"shared\":%d,", sharedCount);
+    fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);
     fprintf(o, "\"minis\":%d,\"miniSpawned\":%d,\"miniKilled\":%d,\"miniRams\":%d,\"roamFeet\":%d,\"remoteMinis\":%d,\"netTrackId\":%d,\"keysGot\":%u,\"jumps\":%d,\"miniPenalties\":%d,\"miniJets\":%d,\"miniRockets\":%d,\"roamFlowers\":%d,\"level\":%d,\"blooms\":%d,\"miniPos\":[%.1f,%.1f,%.1f,%.2f],\"carHp\":%.1f,\"footHp\":%.1f,\"footMaxHp\":%.0f,", mini::alive(), mini::spawned, mini::killed, mini::rams, (int)std::count_if(roamPeople, roamPeople + net::MAXP, [](const Fighter& f) { return f.on; }), (int)std::count_if(fighters + 1, fighters + NFIGHT, [](const Fighter& f) { return f.on && f.mini && f.remote && f.alive; }), (int)nc.trackId, keysGot[W.id], (int)W.def->jumps.size() / 5, mini::penalties, mini::jets, mini::rocketsFired, roamFlowers, mini::level(), (int)mini::blooms.size(), fighters[1].pos.x, fighters[1].pos.y, fighters[1].pos.z, fighters[1].yaw, player.hp, me.on ? me.hp : -1.0f, footMaxHp);
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
     fprintf(o, "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
@@ -2332,7 +2351,7 @@ int main(int argc, char** argv) {
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--shotevery") shotEvery = atoi(argv[++i]); else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
-        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
+        else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--autocut") { autoDrive = true; autoCut = atoi(argv[++i]); } else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
         else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;

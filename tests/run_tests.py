@@ -1671,6 +1671,25 @@ def the_editor_makes_a_track_you_can_race():
 
 
 @test
+def a_shortcut_can_be_a_tunnel():
+    """The TUNNEL tool on a shortcut makes it dive under the sea (in the editor: on Twin Isles, the causeway between the
+    islands). The file keeps it; a car takes it end to end, down in the tube and out the far side; right click undoes it."""
+    tmp = tempfile.mkdtemp()
+    try:
+        d = sim("--state", 2, "--tracksdir", tmp, "--track", 6, "--edit", "--edscript", "tool 2;down 0 0;up;wait", seconds=1)
+        check(d["tunnels"] == 3, "the causeway is now a third tunnel", d["tunnels"])
+        files = [os.path.join(tmp, f) for f in os.listdir(tmp) if f.endswith(".fcft")]
+        check(len(files) == 1 and "tunnel  shortcut 1  depth 19" in open(files[0]).read(), "the file says so", files)
+        r = sim("--trackfile", files[0], "--state", 3, "--autocut", 1, "--nobotguns", "--laps", 1, seconds=200)
+        check(r["autoCutRuns"] >= 1 and r["autoCutMinY"] < -15, "a car drives it end to end, down in the tube", (r["autoCutRuns"], r["autoCutMinY"]))
+        check(r["finished"] == 1 and r["sinks"] == 0 and r["wrecks"] == 0, "and the race finishes: nobody sinks, nothing hit", (r["finished"], r["sinks"], r["wrecks"]))
+        u = sim("--state", 2, "--tracksdir", tmp, "--trackfile", files[0], "--edit", "--edscript", "tool 2;rdown 0 0;up;wait", seconds=1)
+        check(u["tunnels"] == 2, "right click: the causeway is back on the surface", u["tunnels"])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
 def the_wardens_shoot_down_ufos_and_plant_flowers():
     for track in range(NTRACKS):
         d = sim("--track", track, "--state", 3, "--auto", "--nobotguns", seconds=200)

@@ -51,9 +51,9 @@ static void check() {
     if (steep) { snprintf(b, sizeof b, "%d VERY STEEP SLOPE%s", steep, steep > 1 ? "S" : ""); warn.push_back(b); }
     if (edge) warn.push_back("ROAD TOO NEAR THE EDGE OF THE MAP");
     if (d.tunnel.size() >= 5) {
-        if (W.tuns.size() < d.tunnel.size() / 5) warn.push_back("A TUNNEL NEVER GOES UNDER");
+        if (W.tuns.size() < d.tunnel.size() / 5 + d.cutTun.size() / 2) warn.push_back("A TUNNEL NEVER GOES UNDER");
         for (const World::Tun& tn : W.tuns) { if (tn.ga < 0) warn.push_back("TUNNEL NOT UNDER WATER: NO GLASS ROOF");
-            for (int j : W.cross) if (j >= tn.a - 20 && j <= tn.b + 20) { warn.push_back("THE ROAD CROSSES ITSELF AT A TUNNEL"); marks.push_back(V3(W.ts[j].x, W.ts[j].y, W.ts[j].z)); break; } }
+            if (tn.br < 0) for (int j : W.cross) if (j >= tn.a - 20 && j <= tn.b + 20) { warn.push_back("THE ROAD CROSSES ITSELF AT A TUNNEL"); marks.push_back(V3(W.ts[j].x, W.ts[j].y, W.ts[j].z)); break; } }
     }
     if (W.brs.size() < d.branches.size()) warn.push_back("A SHORTCUT COULD NOT BE BUILT");
 }
@@ -99,6 +99,15 @@ static void resume() { testing = false; footReset(); champOn = champDone = false
 static int roadAt(V3 p, float maxD = 45) { if (dirty) rebuild(); int i = W.nearest(p.x, p.z); float dx = W.ts[i].x - p.x, dz = W.ts[i].z - p.z; return dx * dx + dz * dz < maxD * maxD ? i : -1; }
 // tunnel k of the track (five numbers each); k = how many there are adds one
 static int nTun() { return (int)def().tunnel.size() / 5; }
+// the shortcut (its place in the track's list) whose road is under the pointer and nearer than the loop's, else -1
+static int cutAt(V3 p) {
+    if (dirty) rebuild(); int i = W.nearest(p.x, p.z); float ld = (W.ts[i].x - p.x) * (W.ts[i].x - p.x) + (W.ts[i].z - p.z) * (W.ts[i].z - p.z), lim = std::max(20.0f, topH * 0.025f), best = lim * lim; int k = -1;
+    for (const World::Branch& br : W.brs) for (const TS& s : br.ts) { float q = (s.x - p.x) * (s.x - p.x) + (s.z - p.z) * (s.z - p.z); if (q < best && q < ld) { best = q; k = br.def; } }
+    return k;
+}
+static int cutTunOf(int k) { const std::vector<float>& c = def().cutTun; for (size_t q = 0; q + 1 < c.size(); q += 2) if ((int)c[q] == k) return (int)q; return -1; }
+// shortcut k has gone: its tunnel goes with it, and the later shortcuts move down a place
+static void dropCut(int k) { std::vector<float>& c = def().cutTun; for (size_t q = 0; q + 1 < c.size();) { if ((int)c[q] == k) { c.erase(c.begin() + q, c.begin() + q + 2); continue; } if ((int)c[q] > k) c[q] -= 1; q += 2; } }
 static void setTunnel(int k, float a, float b) { if (a > b) std::swap(a, b); std::vector<float>& t = def().tunnel; float q = (b - a) * 0.2f, dep = k < nTun() ? t[k * 5 + 2] : -19; float v[5] = { a, b, dep, a + q, b - q };
     if (k < nTun()) std::copy(v, v + 5, t.begin() + k * 5); else t.insert(t.end(), v, v + 5); }
 // where jump k is on the map (its middle) and which way it faces
@@ -123,7 +132,16 @@ static void mouseDown(int button) {
         if (h >= 0 && right) { push(); d.hills.erase(d.hills.begin() + h); sel = -1; touch(0); return; }
         if (h < 0 && !right) { if ((int)d.hills.size() >= FCFT_MAXHILLS) { tell("NO MORE HILLS: THAT IS THE MOST A TRACK CAN HAVE"); return; } push(); d.hills.push_back({ p.x, p.z, 16, 70 }); sel = (int)d.hills.size() - 1; drag = true; moved = true; touch(); return; }
         if (h >= 0) { push(); sel = h; drag = true; moved = false; return; }
-    } else if (tool == TUNNEL && !right) {
+    } else if (tool == TUNNEL && (cutAt(p) >= 0 || !right)) {
+        int ck = cutAt(p);
+        if (ck >= 0) {   // on a shortcut: it becomes a tunnel (right click: back on the surface)
+            int t = cutTunOf(ck);
+            if (right) { if (t >= 0) { push(); d.cutTun.erase(d.cutTun.begin() + t, d.cutTun.begin() + t + 2); touch(0); tell("SHORTCUT BACK ON THE SURFACE"); } return; }
+            if (t >= 0) { tell("THAT SHORTCUT IS A TUNNEL ALREADY: RIGHT CLICK TO TAKE IT OUT"); return; }
+            int bi = -1; for (size_t k = 0; k < W.brs.size(); k++) if (W.brs[k].def == ck) bi = (int)k;
+            if (bi >= 0 && W.brs[bi].ts.size() < 260) { tell("TOO SHORT: A TUNNEL NEEDS 260 M TO GET DOWN AND UP"); return; }
+            push(); d.cutTun.push_back((float)ck); d.cutTun.push_back(-19); touch(0); tell("SHORTCUT TUNNEL SET"); return;
+        }
         for (int k = 0; k < nTun(); k++) for (int e = 0; e < 2; e++) { const TS& s = W.ts[clampi((int)(d.tunnel[k * 5 + e] * W.n), 0, W.n - 1)]; if (hit(s.x, s.z, 16)) h = k * 2 + e; }
         if (h >= 0) { push(); sel = h; drag = true; moved = false; return; }
         int i = roadAt(p); if (i < 0) { pick = -1; return; }
@@ -136,10 +154,11 @@ static void mouseDown(int button) {
         return;
     } else if (tool == CUT) {
         for (size_t k = 0; k < d.branches.size(); k++) for (int e = 0; e < 2; e++) { const TS& s = W.ts[clampi((int)(d.branches[k][e] * W.n), 0, W.n - 1)]; if (hit(s.x, s.z, 16)) h = (int)k * 2 + e; }
-        if (h >= 0 && right) { push(); d.branches.erase(d.branches.begin() + h / 2); sel = -1; touch(0); return; }
+        if (h >= 0 && right) { push(); d.branches.erase(d.branches.begin() + h / 2); dropCut(h / 2); sel = -1; touch(0); return; }
         if (h >= 0) { push(); sel = h; drag = true; moved = false; return; }
         if (!right) {
             int i = roadAt(p); if (i < 0) { pick = -1; return; }
+            { int o = W.offTunnel(i); if (o != i) { i = o; tell("A SHORTCUT CANNOT JOIN INSIDE A TUNNEL: MOVED TO ITS MOUTH"); if (pick < 0) { pick = i; return; } } }
             if (pick < 0) { pick = i; tell("NOW CLICK WHERE THE SHORTCUT REJOINS THE ROAD"); }
             else if ((int)d.branches.size() >= FCFT_MAXBR) { pick = -1; tell("NO MORE SHORTCUTS: THAT IS THE MOST A TRACK CAN HAVE"); }
             else if (abs(i - pick) > W.n * 45 / 100) { pick = -1; tell("TOO FAR APART (OR ACROSS THE START LINE)"); }
@@ -173,7 +192,7 @@ static void mouseMove(float nx, float ny) {
     else if (tool == TUNNEL && sel / 2 < nTun()) { int k = sel / 2, i = W.nearest(p.x, p.z); float f = i / (float)W.n, a = d.tunnel[k * 5], b = d.tunnel[k * 5 + 1]; if (sel % 2 == 0) a = clampf(f, b - 0.5f, b - 0.08f); else b = clampf(f, a + 0.08f, a + 0.5f); if (!tunnelClash(k, a, b)) { setTunnel(k, a, b); touch(); } }
     else if (tool == JUMP && sel < (int)d.jumps.size() / 5) { jumpTo(d, sel, p); touch(); }
     else if (tool == KEY && sel < (int)d.keyPts.size() / 3) { d.keyPts[sel * 3] = clampf(p.x, -700, 700); d.keyPts[sel * 3 + 1] = clampf(p.z, -700, 700); touch(); }
-    else if (tool == CUT && sel / 2 < (int)d.branches.size()) { int i = W.nearest(p.x, p.z); float f = i / (float)W.n; std::vector<float>& br = d.branches[sel / 2]; if (sel % 2 == 0) br[0] = clampf(f, br[1] - 0.45f, br[1] - 0.03f); else br[1] = clampf(f, br[0] + 0.03f, br[0] + 0.45f); touch(); }
+    else if (tool == CUT && sel / 2 < (int)d.branches.size()) { int i = W.offTunnel(W.nearest(p.x, p.z)); float f = i / (float)W.n; std::vector<float>& br = d.branches[sel / 2]; if (sel % 2 == 0) br[0] = clampf(f, br[1] - 0.45f, br[1] - 0.03f); else br[1] = clampf(f, br[0] + 0.03f, br[0] + 0.45f); touch(); }
 }
 static void mouseUp() { if (drag) { if (!moved && !undo.empty()) undo.pop_back(); else if (dirty) dirtyT = 0; } drag = pan = false; }
 static void zoom(float steps) { V3 a = world(mx, my); topH = clampf(topH * powf(0.88f, steps), 140, 1900); V3 b = world(mx, my); camTgt.x = clampf(camTgt.x + a.x - b.x, -800, 800); camTgt.z = clampf(camTgt.z + a.z - b.z, -800, 800); }
@@ -210,7 +229,7 @@ static void key(SDL_Keycode k) {
         if (tool == ROAD && sel >= 0) { if (d.ctrl.size() > 8) { push(); d.ctrl.erase(d.ctrl.begin() + sel * 2, d.ctrl.begin() + sel * 2 + 2); sel = -1; touch(0); } else tell("A TRACK NEEDS AT LEAST 4 POINTS"); }
         else if (tool == HILL && sel >= 0 && sel < (int)d.hills.size()) { push(); d.hills.erase(d.hills.begin() + sel); sel = -1; touch(0); }
         else if (tool == TUNNEL && nTun() > 0) { push(); int k = sel >= 0 && sel / 2 < nTun() ? sel / 2 : nTun() - 1; d.tunnel.erase(d.tunnel.begin() + k * 5, d.tunnel.begin() + k * 5 + 5); sel = pick = -1; touch(0); }   // (the chosen one, or the last)
-        else if (tool == CUT && sel >= 0 && sel / 2 < (int)d.branches.size()) { push(); d.branches.erase(d.branches.begin() + sel / 2); sel = -1; touch(0); }
+        else if (tool == CUT && sel >= 0 && sel / 2 < (int)d.branches.size()) { push(); d.branches.erase(d.branches.begin() + sel / 2); dropCut(sel / 2); sel = -1; touch(0); }
         else if (tool == JUMP && sel >= 0 && sel < (int)d.jumps.size() / 5) { push(); d.jumps.erase(d.jumps.begin() + sel * 5, d.jumps.begin() + sel * 5 + 5); sel = -1; touch(0); }
         else if (tool == KEY && sel >= 0 && sel < (int)d.keyPts.size() / 3) { push(); d.keyPts.erase(d.keyPts.begin() + sel * 3, d.keyPts.begin() + sel * 3 + 3); sel = -1; touch(0); }
         return;
@@ -253,7 +272,7 @@ static void draw(float Wd) {
     // the centre line, straight from the points
     { std::vector<V3> sp; spline(d, sp, 10); float px = 0, py = 0; for (size_t i = 0; i <= sp.size() && !sp.empty(); i++) { const V3& q = sp[i % sp.size()]; screenXZ(q.x, q.z, sx, sy); if (i) ui.line(px, py, sx, sy, 2, YEL, tool == ROAD ? 0.75f : 0.35f); px = sx; py = sy; } }
     if (!dirty) {
-        for (const World::Tun& tn : W.tuns) path(W.ts, tn.a, tn.b, 6, CYA, 0.9f, 5);
+        for (const World::Tun& tn : W.tuns) path(W.tunPath(tn), tn.a, tn.b, 6, CYA, 0.9f, 5);
         for (const World::Branch& br : W.brs) path(br.ts, 0, (int)br.ts.size() - 1, 6, GRN, 0.9f, 3);
         for (const V3& m : marks) { screen(m, sx, sy); ring(sx, sy, 15 + 3 * sinf(T * 6), RED, 0.9f, 3); }
     }

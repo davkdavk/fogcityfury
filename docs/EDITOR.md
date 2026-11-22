@@ -17,7 +17,7 @@ The editor shows the island from straight above. Every change rebuilds the world
 |---|---|---|
 | 1 Road | Drag a point. Click the yellow line to add a point. Right-click a point to remove it. | Del removes the chosen point |
 | 2 Hills | Click to add a hill, drag to move it. Right-click removes it. | + and - height (below 0 digs water), 9 and 0 width |
-| 3 Tunnel | Click the road where it goes down, then where it comes up. Drag the ends. | + and - depth, Del removes it |
+| 3 Tunnel | Click the road where it goes down, then where it comes up. Drag the ends. Click a shortcut to put the whole shortcut in a tunnel; right click it to bring it back up. | + and - depth, Del removes it |
 | 4 Shortcuts | Click the road where the shortcut leaves, then where it rejoins. Drag the ends. Right-click an end to remove it. | Del removes the chosen one |
 | 5 Jumps | Click on or beside the road to put a jump there (it faces the way you drive), drag it. Right-click removes it. | + and - height, 9 and 0 length, R turns it round, Del removes it |
 | 6 Keys | Click to hide a key (up to five), drag it. Right-click removes it. | + and - raise it off the ground (into the air past a jump, or onto a roof) |
@@ -33,6 +33,9 @@ places. A track with warnings can still be driven.
 Limits: 4 to 60 road points, 24 hills, 3 shortcuts, 2 tunnels (click the road twice more for a second one). A tunnel or a shortcut cannot cross
 the start line; a shortcut skips less than 45% of a lap; a tunnel needs 260 m to get down and up.
 A tunnel gets its glass roof wherever it runs under water, so dig a lagoon (a hill below 0) on its way.
+A shortcut in a tunnel goes down about 60 m before it reaches the sea and comes back up just past the far shore
+(all on land, it stays under the whole way). It needs 260 m too. A shortcut cannot leave or rejoin the road inside a
+tunnel: its end is moved to the tunnel's mouth.
 
 ## Where the files are
 
@@ -79,7 +82,7 @@ One setting per line. Lines the game does not know are skipped. `#` starts a com
 | `road` | The loop's control points, `x z` in metres from the middle of the map (each within 640). Several `road` lines add up. The first point is the start line. |
 | `hill` | `x z height radius`. A height below 0 digs; deep enough and it fills with water. |
 | `branch` | A shortcut: the fractions of a lap where it leaves and rejoins, then (optional) points it passes through. |
-| `tunnel` | The fractions of a lap where the road starts down and is back up, `depth` below the sea (12-26 m), `glass` the fractions between which the roof is glass. Up to two `tunnel` lines. |
+| `tunnel` | The fractions of a lap where the road starts down and is back up, `depth` below the sea (12-26 m), `glass` the fractions between which the roof is glass. Up to two `tunnel` lines. `tunnel shortcut K depth D` puts shortcut K (counting the `branch` lines from 0) in a tunnel instead. |
 | `island` | `x z radius`: one island (up to four). Leave them all out for one round island of `land radius`. |
 | `wardens` | How many Wardens walk the track, 0 to 4 (2 if left out). |
 | `laps` | `x2` or `x3`: an endurance track, raced at that many times the laps picked. |

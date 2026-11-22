@@ -40,6 +40,9 @@ struct TrackDef {
     // An undersea tunnel: { a, b, depth, g0, g1 }. Between fractions a and b of the loop the road dives to `depth` (m,
     // below the sea) and comes back up; wherever it is below 0.8 m it runs in a tube, glass-roofed between g0 and g1.
     std::vector<float> tunnel;
+    // Shortcuts that dive under the sea: { k, depth } each, k being the shortcut's place in branches. The shortcut's
+    // road dips to depth like a tunnel on the loop, in a tube wherever it is below 0.8 m.
+    std::vector<float> cutTun;
     // Custom tracks (made in the editor, loaded from .fcft files: see trackfile.h). deco: which built-in track's set of
     // hidden keys it has (-1: none). song: its tune (-1: the built-in one for its place in the list). wx: its usual weather.
     int deco = -1, song = -1, wx = 0; std::string nameS, subS, file;
@@ -143,7 +146,8 @@ struct World {
     int id = -1, gen = 0; const TrackDef* def = nullptr;   // gen: counts builds (the editor rebuilds the same track: anything cached per track goes by this)
     std::vector<float> h, hr, rd; std::vector<TS> ts; int n = 0;
     struct Branch {
-        std::vector<TS> ts; int a = -1, b = -1; float len = 0, scale = 1;
+        std::vector<TS> ts; int a = -1, b = -1, def = -1;   // def: its place in the track's list of shortcuts
+        float len = 0, scale = 1;
         float S(float u) const { return a + clampf(u, 0, len) * scale; }   // the matching point of the loop
         void at(float u, float lat, V3& p, float& yaw) const {
             int m = (int)ts.size(); float fu = clampf(u, 0, (float)(m - 1) - 0.001f); int i = (int)fu; float t = fu - i; const TS& p0 = ts[i], & p1 = ts[i + 1];
@@ -165,10 +169,20 @@ struct World {
     // A track can have several: tuns lists them all, and tunA..glassB are the one in use (useTun: the first, except
     // while each is built in turn, and the one nearest the camera when the fish are drawn)
     int tunA = -1, tunB = -1, glassA = -1, glassB = -1; std::vector<uint8_t> dryMask; std::vector<float> glassV;
-    struct Tun { int a, b, ga, gb; }; std::vector<Tun> tuns;
+    // br: -1 for a tunnel on the loop (a..gb are loop samples), else brs[br], a shortcut in a tunnel (its own samples)
+    struct Tun { int a, b, ga, gb; int br = -1; }; std::vector<Tun> tuns; int tunBr = -1;
     bool hasTunnel() const { return !tuns.empty(); }
-    void useTun(int k) { if (k < 0 || k >= (int)tuns.size()) { tunA = tunB = glassA = glassB = -1; return; } tunA = tuns[k].a; tunB = tuns[k].b; glassA = tuns[k].ga; glassB = tuns[k].gb; }
-    bool inTun(int i, int margin = 0) const { for (const Tun& t : tuns) if (i >= t.a - margin && i <= t.b + margin) return true; return false; }
+    void useTun(int k) { if (k < 0 || k >= (int)tuns.size()) { tunA = tunB = glassA = glassB = -1; tunBr = -1; return; } tunA = tuns[k].a; tunB = tuns[k].b; glassA = tuns[k].ga; glassB = tuns[k].gb; tunBr = tuns[k].br; }
+    const std::vector<TS>& tunPath(const Tun& t) const { return t.br < 0 ? ts : brs[t.br].ts; }
+    const std::vector<TS>& curTun() const { return tunBr < 0 ? ts : brs[tunBr].ts; }   // the samples of the tunnel in use
+    void tunAt(float s, float lat, V3& p, float& yaw) const { if (tunBr < 0) at(s, lat, p, yaw); else brs[tunBr].at(s, lat, p, yaw); }
+    bool inTun(int i, int margin = 0) const { for (const Tun& t : tuns) if (t.br < 0 && i >= t.a - margin && i <= t.b + margin) return true; return false; }   // (loop sample i)
+    // the tunnel sample a point is in (the nearest sample of the loop, or of a shortcut in a tunnel, if that one is in a tube), else null
+    const TS* tubeAt(V3 c) const {
+        int i = nearest(c.x, c.z, c.y); const TS* best = &ts[i]; float bd = (ts[i].x - c.x) * (ts[i].x - c.x) + (ts[i].z - c.z) * (ts[i].z - c.z);
+        for (const Tun& t : tuns) if (t.br >= 0) for (const TS& s : brs[t.br].ts) { float d = (s.x - c.x) * (s.x - c.x) + (s.z - c.z) * (s.z - c.z); if (d < bd && fabsf(s.y - c.y) < 12) { bd = d; best = &s; } }
+        return best->tun ? best : nullptr;
+    }
     bool dry(float x, float z) const { if (dryMask.empty()) return false; int i = (int)clampf(roundf((x + HALF) / CELL), 0, GN - 1), j = (int)clampf(roundf((z + HALF) / CELL), 0, GN - 1); return dryMask[j * GN + i] != 0; }
     // the ground's height for "is this the sea?": inside the tunnel it is dry whatever the height
     float HW(float x, float z) const { return dry(x, z) ? 50.0f : H(x, z); }
@@ -689,6 +703,7 @@ struct World {
     // with a headwall round each mouth. Its walls are solid (boxes every 8 m)
     void buildTube() { for (int k = 0; k < (int)tuns.size(); k++) { useTun(k); buildOneTube(); } useTun(0); }
     void buildOneTube() {
+        const std::vector<TS>& ts = curTun();   // (the loop's samples, or a shortcut's)
         const V3 CIN(0.60f, 0.59f, 0.57f), COUT(0.40f, 0.42f, 0.43f), LAMP(1.0f, 0.92f, 0.75f);
         auto P = [&](const TS& t, float x, float y) { return V3(t.x + t.tz * x, t.y + y, t.z - t.tx * x); };
         auto arc = [&](int k, float grow, float& x, float& y) { float th = 3.14159265f * k / TUBE_ARC; x = (TUBE_W + grow) * cosf(th); y = TUBE_SILL + (TUBE_TOP - TUBE_SILL + grow) * sinf(th); };
@@ -746,8 +761,8 @@ struct World {
     void seaSurface(MB& w) {
         std::vector<float> rx0, rx1, rz0, rz1; std::vector<std::pair<int, int>> runs;
         std::vector<Tun> runTun;   // (the tunnel each run belongs to)
-        for (const Tun& tn : tuns) { int s = -1; for (int i = tn.a; i <= tn.b + 1; i++) { bool in = i <= tn.b && ts[i].y > -(TUBE_TOP + TUBE_TH + 0.3f); if (in && s < 0) s = i; if (!in && s >= 0) { runs.push_back({ s, i - 1 }); runTun.push_back(tn); s = -1; } } }
-        for (auto& r : runs) { float a0 = 1e9f, a1 = -1e9f, b0 = 1e9f, b1 = -1e9f; for (int i = r.first; i <= r.second; i++) { a0 = std::min(a0, ts[i].x); a1 = std::max(a1, ts[i].x); b0 = std::min(b0, ts[i].z); b1 = std::max(b1, ts[i].z); }
+        for (const Tun& tn : tuns) { const std::vector<TS>& ts = tunPath(tn); int s = -1; for (int i = tn.a; i <= tn.b + 1; i++) { bool in = i <= tn.b && ts[i].y > -(TUBE_TOP + TUBE_TH + 0.3f); if (in && s < 0) s = i; if (!in && s >= 0) { runs.push_back({ s, i - 1 }); runTun.push_back(tn); s = -1; } } }
+        for (size_t rk = 0; rk < runs.size(); rk++) { auto& r = runs[rk]; const std::vector<TS>& ts = tunPath(runTun[rk]); float a0 = 1e9f, a1 = -1e9f, b0 = 1e9f, b1 = -1e9f; for (int i = r.first; i <= r.second; i++) { a0 = std::min(a0, ts[i].x); a1 = std::max(a1, ts[i].x); b0 = std::min(b0, ts[i].z); b1 = std::max(b1, ts[i].z); }
             const float M = TUBE_W + 3; rx0.push_back(floorf((a0 - M) / 1.5f) * 1.5f); rx1.push_back(ceilf((a1 + M) / 1.5f) * 1.5f); rz0.push_back(floorf((b0 - M) / 1.5f) * 1.5f); rz1.push_back(ceilf((b1 + M) / 1.5f) * 1.5f); }
         // the rest of the sheet, in rectangles round the patches
         std::vector<float> xs = { -5000, 5000 }, zs = { -5000, 5000 }; for (size_t k = 0; k < rx0.size(); k++) { xs.push_back(rx0[k]); xs.push_back(rx1[k]); zs.push_back(rz0[k]); zs.push_back(rz1[k]); }
@@ -758,7 +773,7 @@ struct World {
             if (!inPatch) w.quad(V3(x0, 0, z0), V3(x0, 0, z1), V3(x1, 0, z1), V3(x1, 0, z0), V3(1, 1, 1), 0);
         }
         for (size_t k = 0; k < runs.size(); k++) for (float x = rx0[k]; x < rx1[k] - 0.01f; x += 1.5f) for (float z = rz0[k]; z < rz1[k] - 0.01f; z += 1.5f) {
-            float cx = x + 0.75f, cz = z + 0.75f, bd = 1e18f; int bi = runs[k].first;   // over the tube's inside? (nearest sample of the run, and the patch's own overlap)
+            const std::vector<TS>& ts = tunPath(runTun[k]); float cx = x + 0.75f, cz = z + 0.75f, bd = 1e18f; int bi = runs[k].first;   // over the tube's inside? (nearest sample of the run, and the patch's own overlap)
             for (int i = std::max(runTun[k].a, runs[k].first - 20); i <= std::min(runTun[k].b, runs[k].second + 20); i++) { float dx = ts[i].x - cx, dz = ts[i].z - cz, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
             bool inside = false; for (size_t q = 0; q < rx0.size(); q++) if (q < k && cx > rx0[q] && cx < rx1[q] && cz > rz0[q] && cz < rz1[q]) inside = true;   // (overlapping patches: laid once)
             if (inside) continue;
@@ -784,11 +799,49 @@ struct World {
     // ground's, blended into the loop's at both ends.
     void buildBranches() {
         brs.clear(); if (flat) return;
-        for (const std::vector<float>& bd : def->branches) { Branch br; if (buildBranch(bd, br)) brs.push_back(std::move(br)); }
+        for (size_t k = 0; k < def->branches.size(); k++) { Branch br; br.def = (int)k; if (buildBranch(def->branches[k], br)) brs.push_back(std::move(br)); }
+    }
+    // shortcuts in a tunnel (def->cutTun): the road dips to the depth and back like a tunnel on the loop (applyTunnel), in
+    // a tube wherever it is below 0.8 m. Too short (under 260 m: no room to get down and up) and it stays on the surface
+    void applyBranchTunnels() {
+        const std::vector<float>& c = def->cutTun; if (flat) return;
+        for (size_t q = 0; q + 1 < c.size(); q += 2) {
+            int bi = -1; for (size_t k = 0; k < brs.size(); k++) if (brs[k].def == (int)c[q]) bi = (int)k;
+            if (bi < 0) continue; bool dup = false; for (const Tun& t : tuns) if (t.br == bi) dup = true; if (dup) continue;
+            std::vector<TS>& b = brs[bi].ts; int m = (int)b.size(); if (m < 260) continue;
+            // across the sea: down from 60 m before the shore, back up 60 m after the far one (on land the cutting would be an
+            // open trench). All on land: the whole way, like a tunnel on the loop
+            int s0 = -1, s1 = -1; for (int i = 0; i < m; i++) if (baseHeight(b[i].x, b[i].z) < -0.5f) { if (s0 < 0) s0 = i; s1 = i; }
+            // each ramp long enough that it is no steeper than about 12% at its steepest (a smoothstep is 1.5 times its mean
+            // slope there), started so the road is a few metres under the sea at the shore: the tube's portal stands near it
+            auto rampFor = [&](int at) { return clampf(1.5f * (b[std::max(0, std::min(m - 1, at))].y - c[q + 1]) / 0.12f, 120.0f, 420.0f); };
+            int da = 0, db = m - 1; float La, Lb;
+            if (s0 >= 0) { La = rampFor(s0 - 60); Lb = rampFor(s1 + 60); da = std::max(25, s0 - (int)(0.45f * La)); db = std::min(m - 26, s1 + (int)(0.45f * Lb)); }
+            else { La = Lb = (m - 1) * 0.36f; }
+            if (db - da < 200) continue;
+            if (La + Lb > db - da) { float k = (db - da) / (La + Lb); La *= k; Lb *= k; }
+            for (int i = da; i <= db; i++) { float w = smooth((float)da, da + La, (float)i) * (1 - smooth(db - Lb, (float)db, (float)i)); b[i].y = lerpf(b[i].y, c[q + 1], w); }
+            int ta = -1, tb = -1, ga = -1, gb = -1;
+            for (int i = 0; i < m; i++) if (b[i].y < 0.8f) { if (ta < 0) ta = i; tb = i; }
+            if (ta < 0) continue;
+            for (int i = ta; i <= tb; i++) b[i].tun = true;
+            for (int i = ta; i <= tb; i++) if (baseHeight(b[i].x, b[i].z) < -0.5f) { if (ga < 0) ga = i; gb = i; }
+            if (gb - ga < 40) ga = gb = -1;
+            Tun t = { ta, tb, ga, gb }; t.br = bi; tuns.push_back(t);
+            if (!def->islands.empty()) for (int i = ta; i <= tb; i += 8) addExcl(b[i].x, b[i].z, 40);
+        }
+        useTun(0);
+    }
+    // a shortcut cannot leave or rejoin the road inside a tunnel (the tube's wall is in the way, and under the sea there
+    // is nowhere to go): the nearest place on the road clear of every tunnel and its ramps
+    int offTunnel(int i) const {
+        const std::vector<float>& t = def->tunnel;
+        for (size_t q = 0; q + 4 < t.size(); q += 5) { int a = (int)(t[q] * n) - 15, b = (int)(t[q + 1] * n) + 15; if (i > a && i < b) i = (i - a <= b - i) ? a : b; }
+        return i;
     }
     bool buildBranch(const std::vector<float>& bd, Branch& br) {
         if (bd.size() < 2) return false;
-        int bA = (int)(bd[0] * n), bB = (int)(bd[1] * n); if (bA <= 0 || bB <= bA || bB >= n) return false;
+        int bA = offTunnel((int)(bd[0] * n)), bB = offTunnel((int)(bd[1] * n)); if (bA <= 0 || bB <= bA + 40 || bB >= n) return false;
         std::vector<V3> dense; auto T = [&](int i) { i = ((i % n) + n) % n; return V3(ts[i].x, 0, ts[i].z); };
         if (bd.size() >= 4) {   // through the given points: a Hermite spline that leaves and rejoins along the loop's own
             // heading (so a car turning on or off it follows a curve, never a kink); between the points a Catmull-Rom
@@ -814,7 +867,7 @@ struct World {
             // there the two share their ground, so they must agree on its height (or the ground at the loop's edge buckles)
             float wa = 1 - smooth(0, 25, (float)i), wb = 1 - smooth(0, 25, (float)(m - 1 - i));
             bts[i].y = lerpf(lerpf(bts[i].y, ts[bA].y, wa), ts[bB].y, wb);
-            float bd = 1e18f; int bk = bA; for (int k = bA - 60; k <= bB + 60; k++) { const TS& q = ts[((k % n) + n) % n]; float dx = q.x - bts[i].x, dz = q.z - bts[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bk = k; } }
+            float bd = 1e18f; int bk = bA; for (int k = bA - 60; k <= bB + 60; k++) { const TS& q = ts[((k % n) + n) % n]; if (q.tun) continue; float dx = q.x - bts[i].x, dz = q.z - bts[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bk = k; } }   // (not the road down in a tunnel: a shortcut passing over or beside one keeps to the ground)
             float w = 1 - smooth(ROADW + BRANCH_W + 2, ROADW + BRANCH_W + 30, sqrtf(bd)); bts[i].y = lerpf(bts[i].y, ts[((bk % n) + n) % n].y, w);
         }
         for (int i = 0; i < m; i++) { const TS& a = bts[std::max(0, i - 6)], & b = bts[std::min(m - 1, i + 6)]; bts[i].curv = fabsf(wrapPi(atan2f(b.tx, b.tz) - atan2f(a.tx, a.tz))) / 12; }
@@ -847,8 +900,9 @@ struct World {
             int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f);
 #endif
             for (int k = 0; k < 3; k++) {   // kerb, tarmac, kerb
-                unsigned q = mb.add(at(a, X[k + 1]), nrm, V3(1, 1, 1), U[k + 1], (float)i, 1); mb.add(at(a, X[k]), nrm, V3(1, 1, 1), U[k], (float)i, 1);
-                mb.add(at(b, X[k]), nrm, V3(1, 1, 1), U[k], (float)i + 1, 1); mb.add(at(b, X[k + 1]), nrm, V3(1, 1, 1), U[k + 1], (float)i + 1, 1);
+                V3 ca(1, 1, a.tun ? 0.0f : 1.0f), cb(1, 1, b.tun ? 0.0f : 1.0f);   // (blue 0: in a tunnel, the road stays dry)
+                unsigned q = mb.add(at(a, X[k + 1]), nrm, ca, U[k + 1], (float)i, 1); mb.add(at(a, X[k]), nrm, ca, U[k], (float)i, 1);
+                mb.add(at(b, X[k]), nrm, cb, U[k], (float)i + 1, 1); mb.add(at(b, X[k + 1]), nrm, cb, U[k + 1], (float)i + 1, 1);
                 mb.idx.insert(mb.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
 #ifdef FCF_XENOS_CULL
                 mb.triTags.push_back(oldTag); mb.triTags.push_back(oldTag);
@@ -905,7 +959,7 @@ struct World {
         applyTunnel();
         if (!def->islands.empty())   // islands: no buildings over the tunnels' land ends (the Wardens walk over them, along the road's line)
             for (const Tun& tn : tuns) for (int i = tn.a; i <= tn.b; i += 8) addExcl(ts[i].x, ts[i].z, 40);
-        buildBranches();
+        buildBranches(); applyBranchTunnels();
         // --- stamp the road into the height field (bridge decks are not ground: they only count for "how far is the road") ---
         std::vector<float> by(GN * GN, 0), rdh(GN * GN, 999); const int R = (int)(76 / CELL);
         std::vector<const TS*> all; for (const TS& t : ts) all.push_back(&t); for (const Branch& br : brs) for (const TS& t : br.ts) all.push_back(&t);

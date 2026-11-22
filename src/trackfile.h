@@ -77,6 +77,7 @@ static bool trackSanitize(TrackDef& d) {
     for (size_t k = 0; k + 2 < d.keyPts.size(); k += 3) { d.keyPts[k] = clampf(fin(d.keyPts[k], 0), -700, 700); d.keyPts[k + 1] = clampf(fin(d.keyPts[k + 1], 0), -700, 700); d.keyPts[k + 2] = clampf(fin(d.keyPts[k + 2], 1.3f), 0.8f, 40); }
     d.wardens = d.wardens < 0 ? 0 : d.wardens > 4 ? 4 : d.wardens; d.lapMul = d.lapMul < 1 ? 1 : d.lapMul > 3 ? 3 : d.lapMul;
     if (d.branches.size() > (size_t)FCFT_MAXBR) d.branches.resize(FCFT_MAXBR);
+    { std::vector<float> ct; for (size_t k = 0; k + 1 < d.cutTun.size(); k += 2) { int b = (int)d.cutTun[k]; bool dup = false; for (size_t q = 0; q < ct.size(); q += 2) if ((int)ct[q] == b) dup = true; if (b >= 0 && b < (int)d.branches.size() && !dup) { ct.push_back((float)b); ct.push_back(-clampf(fabsf(d.cutTun[k + 1]), 12, 26)); } } d.cutTun = ct; }
     for (size_t k = 0; k < d.branches.size(); ) {
         std::vector<float>& br = d.branches[k]; bool ok = br.size() >= 2;
         if (ok) { if (br.size() % 2) br.pop_back(); if (br.size() > 2 + 16) br.resize(2 + 16);
@@ -102,6 +103,7 @@ static void trackWrite(const TrackDef& d, FILE* f) {
     fprintf(f, "\n");
     for (const Gauss& g : d.hills) fprintf(f, "hill    %g %g %g %g\n", g.x, g.z, g.a, g.s);
     for (const std::vector<float>& br : d.branches) { fprintf(f, "branch "); for (size_t i = 0; i < br.size(); i++) fprintf(f, " %g%s", br[i], i % 2 ? " " : ""); fprintf(f, "\n"); }
+    for (size_t k = 0; k + 1 < d.cutTun.size(); k += 2) fprintf(f, "tunnel  shortcut %d  depth %g\n", (int)d.cutTun[k], -d.cutTun[k + 1]);   // (older games read this as a tunnel that never goes under, and leave it out)
     for (size_t k = 0; k + 4 < d.tunnel.size(); k += 5) fprintf(f, "tunnel  %g %g  depth %g  glass %g %g\n", d.tunnel[k], d.tunnel[k + 1], -d.tunnel[k + 2], d.tunnel[k + 3], d.tunnel[k + 4]);
     for (size_t k = 0; k + 2 < d.islands.size(); k += 3) fprintf(f, "island  %g %g %g\n", d.islands[k], d.islands[k + 1], d.islands[k + 2]);
     if (d.wardens != 2) fprintf(f, "wardens %d\n", d.wardens);
@@ -116,7 +118,7 @@ static bool trackParse(const std::string& textAll, TrackDef& d, const TrackDef& 
 static bool trackRead(FILE* f, TrackDef& d, const TrackDef& base) { std::string t; char b[1024]; size_t n; while ((n = fread(b, 1, sizeof b, f)) > 0 && t.size() < 65536) t.append(b, n); return trackParse(t, d, base); }
 // a track from its text (a file's contents, or one sent by a server)
 static bool trackParse(const std::string& textAll, TrackDef& d, const TrackDef& base) {
-    d = base; d.ctrl.clear(); d.hills.clear(); d.branches.clear(); d.tunnel.clear(); d.islands.clear(); d.jumps.clear(); d.keyPts.clear(); d.wardens = 2; d.lapMul = 1; d.deco = -1; d.song = -1; d.wx = 0; d.nameS = ""; d.subS = ""; d.file = "";
+    d = base; d.ctrl.clear(); d.hills.clear(); d.branches.clear(); d.tunnel.clear(); d.cutTun.clear(); d.islands.clear(); d.jumps.clear(); d.keyPts.clear(); d.wardens = 2; d.lapMul = 1; d.deco = -1; d.song = -1; d.wx = 0; d.nameS = ""; d.subS = ""; d.file = "";
     char line[1024]; bool head = false; int lines = 0; size_t pos = 0;
     auto nextLine = [&]() { if (pos >= textAll.size()) return false; size_t e = textAll.find('\n', pos); if (e == std::string::npos) e = textAll.size(); size_t n = std::min(e - pos, sizeof line - 1); memcpy(line, textAll.data() + pos, n); line[n] = 0; pos = e + 1; return true; };
     while (nextLine() && lines++ < 400) {
@@ -142,6 +144,7 @@ static bool trackParse(const std::string& textAll, TrackDef& d, const TrackDef& 
         else if (K == "road") d.ctrl.insert(d.ctrl.end(), num.begin(), num.end());
         else if (K == "hill" && num.size() >= 4) d.hills.push_back({ num[0], num[1], num[2], num[3] });
         else if (K == "branch" && num.size() >= 2) d.branches.push_back(num);
+        else if (K == "tunnel" && text.find("shortcut") != std::string::npos && !num.empty()) { d.cutTun.push_back(after("shortcut", 0, 0)); d.cutTun.push_back(-fabsf(after("depth", 0, 19))); }
         else if (K == "tunnel" && num.size() >= 2) { float a = num[0], b = num[1], q = (b - a) * 0.2f; float v[5] = { a, b, -fabsf(after("depth", 0, 19)), after("glass", 0, a + q), after("glass", 1, b - q) }; d.tunnel.insert(d.tunnel.end(), v, v + 5); }
         else if (K == "island" && num.size() >= 3) d.islands.insert(d.islands.end(), num.begin(), num.begin() + 3);
         else if (K == "wardens" && !num.empty()) d.wardens = (int)num[0];
