@@ -439,6 +439,8 @@ class Server:
         self.args = [SERVER, "--port", str(self.port)] + [str(a) for a in args]
         if "--bots" not in self.args:   # the tests count players: no computer-driven cars unless one asks for them
             self.args += ["--bots", "0"]
+        if "--min-lap" not in self.args:   # the protocol tests report finishes within a second of the start
+            self.args += ["--min-lap", "0"]
 
     def __enter__(self):
         self.proc = subprocess.Popen(self.args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -709,6 +711,46 @@ def net_player_shares_a_track_from_the_lobby():
         import zlib
         c.send_raw(c.hdr(11) + struct.pack("<BBBBHHI", 0, 0, 1, 0, len(body), len(body), zlib.crc32(body)) + body); time.sleep(0.4)
     check("shared a track" not in srv.log, "--no-uploads: the server ignores shared tracks")
+
+@test
+def net_server_holds_up_against_misbehaving_players():
+    """Hardening: a flood of packets from one address is cut off, one IP can only fill so many slots, a finish that
+    comes too soon is not believed, one address cannot share track after track, uploaded names are cleaned, and when the
+    shared tracks fill up the oldest one not in use makes room."""
+    import zlib
+    with Server("--rate", 50) as srv:
+        c = FakeClient(srv.port, "flood")
+        q = struct.pack(HDR, NET_MAGIC, NET_PROTO, 4, 0xFF) + struct.pack("<I", 7) + b"\0" * 36
+        for _ in range(600): c.send_raw(q)
+        time.sleep(0.5); got = 0
+        c.sock.settimeout(0.2)
+        try:
+            while True: c.sock.recvfrom(4096); got += 1
+        except Exception: pass
+    check(0 < got <= 130, "600 queries at once: only a burst's worth answered", got)
+    with Server("--per-ip", 2) as srv:
+        cs = [FakeClient(srv.port, "p%d" % k) for k in range(3)]
+        kinds = [c.join()[0] for c in cs]
+    check(kinds == [S_WELCOME, S_WELCOME, S_REJECT], "a third player from the same IP is turned away", kinds)
+    with Server("--laps", 1, "--countdown", 0.3, "--min-lap", 30) as srv:
+        a = FakeClient(srv.port, "SPEEDY"); a.join(); a.state(flags=F_READY); time.sleep(0.6)
+        a.state(flags=F_FINISHED, lap=2, progress=3400); time.sleep(0.3)
+        sn = a.snapshot()
+    check(not (sn["players"]["SPEEDY"]["flags"] & F_FINISHED) and "not believed" in srv.log, "a finish a second after the start is not believed", sn["players"])
+    def upload(c, body):
+        c.send_raw(c.hdr(11) + struct.pack("<BBBBHHI", 0, 0, 1, 0, len(body), len(body), zlib.crc32(body)) + body); time.sleep(0.3)
+    base = open(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), "rb").read()
+    variant = lambda k, name: base.replace(b"name    MY TRACK", b"name    " + name).replace(b"seed    100", b"seed    %d" % (200 + k))
+    with Server() as srv:
+        c = FakeClient(srv.port, "sharer"); c.join(); upload(c, variant(1, b"ONE")); upload(c, variant(2, b"TWO"))
+    check(srv.log.count("shared a track") == 1 and "shared again too soon" in srv.log, "a second share from the same address straight after is ignored")
+    with Server("--share-gap", 0, "--shared-max", 2) as srv:
+        c = FakeClient(srv.port, "sharer"); c.join()
+        for k, n in enumerate((b"FIRST", b"SECOND", b"BAD\x01NAME")): upload(c, variant(k, n))
+    check(srv.log.count("shared a track") == 3 and "dropping the oldest shared track (FIRST)" in srv.log, "with two kept, the third pushes out the oldest", srv.log[-400:])
+    check("track %d, BAD?NAME" % (NTRACKS + 0) in srv.log, "names from the file are cleaned (and the new one took the old one's place)", srv.log[-300:])
+
+
 
 @test
 def net_server_list_shows_what_each_server_is_running():

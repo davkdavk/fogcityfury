@@ -37,9 +37,17 @@ Server options:
 | `--tracks DIR` | | also offer every `.fcft` track file in DIR (made in the track editor). Players who have not got one are sent it |
 | `--custom-only` | | only the tracks from `--tracks` |
 | `--no-uploads` | | players may not share tracks of their own from the lobby |
+| `--share-gap S` | 120 | seconds between tracks shared from one address |
+| `--shared-max N` | 200 | shared tracks kept; then the oldest one not in play makes room (it takes over its id) |
+| `--per-ip N` | 4 | players from one IP address (a household shares one). Loopback is exempt unless this is given |
+| `--rate N` | 150 | packets a second one address may send (bursts to twice that, four times as many per IP); the rest are dropped unread |
+| `--min-lap S` | 12 | a finish sooner than S seconds a lap after the start is not believed, for the rest of that race |
 | `--roam` | | a roam server: no race; everyone drives and walks the same track together, mini Wardens included |
 | `--roam-minutes M` | stay | roam: move to the next track every M minutes |
 | `--quiet` | | no log output |
+
+For a public server, `deploy/fogcityfury-server.service` runs it under systemd as its own unprivileged user,
+sandboxed, restarted if it stops; the file says how to install it.
 
 The server needs one UDP port reachable by the players. It has no dependencies beyond libstdc++, so
 it runs on a machine with no graphics. It prints joins, leaves, phase changes and each result table.

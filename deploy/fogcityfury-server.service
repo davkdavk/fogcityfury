@@ -1,0 +1,38 @@
+# systemd service for the Fog City Fury dedicated server.
+#
+# Install (as root):
+#   useradd --system --home /opt/fogcityfury --shell /usr/sbin/nologin fcf
+#   mkdir -p /opt/fogcityfury/tracks && cp fogcityfury-server /opt/fogcityfury/ && chown -R fcf:fcf /opt/fogcityfury
+#   cp fogcityfury-server.service /etc/systemd/system/ && systemctl daemon-reload
+#   systemctl enable --now fogcityfury-server
+# Open only UDP 27015 in the firewall (e.g. ufw allow 27015/udp).
+# Logs: journalctl -u fogcityfury-server -f      Update: copy the new binary in, then systemctl restart fogcityfury-server
+[Unit]
+Description=Fog City Fury dedicated server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=fcf
+Group=fcf
+WorkingDirectory=/opt/fogcityfury
+ExecStart=/opt/fogcityfury/fogcityfury-server --port 27015 --name "THADAV.COM" --tracks /opt/fogcityfury/tracks
+Restart=always
+RestartSec=3
+# keep it in a box: no privileges, a read-only system, its own /tmp, no other users' files
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryMax=256M
+TasksMax=16
+
+[Install]
+WantedBy=multi-user.target

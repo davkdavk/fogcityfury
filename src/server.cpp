@@ -15,6 +15,7 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <unordered_map>
 #ifndef _WIN32
 #include <dirent.h>
 #endif
@@ -23,6 +24,7 @@ using namespace net;
 template <class F> static void sortIdx(int* a, int n, F less) { for (int i = 1; i < n; i++) { int v = a[i], j = i - 1; while (j >= 0 && less(v, a[j])) { a[j + 1] = a[j]; j--; } a[j + 1] = v; } }
 
 struct Player { bool bot = false;   // computer-driven: it has no address; the host's game reports it
+    bool suspect = false;   // claimed an impossible finish this race
     bool used = false; sockaddr_in addr; char name[NAMELEN + 1]; double lastHeard = 0; CarState s; bool ready = false, racing = false, finished = false; double finishT = 0; int finishOrder = 0; uint32_t seq = 0;
     uint8_t have = 255; int chunkNext = 0;                     // the custom track its game has; the next piece of the current one to send it
     bool footOn = false; FootState foot; uint32_t footSeq = 0; double footHeard = -9; };   // roam: its player on foot
@@ -33,7 +35,7 @@ static double cfgCountdown = 5, cfgResults = 12, cfgLobby = 0, cfgFinish = 45, c
 // the showdown: slots are in podium order
 struct Slot { int player = -1; bool heard = false, alive = false; int place = 0, kills = 0; uint32_t seq = 0; FootState s; };
 // custom tracks (--tracks DIR): their files' text, sent to the games that need them. Track ids TRACKS and up
-struct CustomTrack { std::string name, text; uint32_t crc = 0; bool shared = false; }; static std::vector<CustomTrack> CT;   // shared: a player's (C_TRACK), never in the rotation
+struct CustomTrack { std::string name, text; uint32_t crc = 0; bool shared = false; double added = 0; }; static std::vector<CustomTrack> CT;   // shared: a player's (C_TRACK), never in the rotation
 static int nTracks() { return TRACKS + (int)CT.size(); }
 static void loadTracks(const char* dir) {
 #ifndef _WIN32
@@ -81,7 +83,7 @@ static void setPhase(Phase p, double t) {
     phase = p; phaseT = t; say("phase %s  track %d (%s)  weather %d  players %d", phaseName(p), track, trackName(track), weather, count());
     if (p == ROAM) { removeBots(); roamT = 0; nMinis = 0; for (auto& q : P) { q.racing = q.used; q.footOn = false; } }
     if (p == LOBBY) { removeBots(); readySince = -1; for (auto& q : P) { q.ready = false; q.racing = false; q.finished = false; } }
-    if (p == COUNTDOWN) { addBots(); sdFighters = 0; finishCount = 0; firstFinish = -1; raceT = 0; for (auto& q : P) { q.racing = q.used; q.finished = false; q.finishT = 0; q.finishOrder = 0; } }
+    if (p == COUNTDOWN) { addBots(); sdFighters = 0; finishCount = 0; firstFinish = -1; raceT = 0; for (auto& q : P) { q.racing = q.used; q.finished = false; q.suspect = false; q.finishT = 0; q.finishOrder = 0; } }
     if (p == RESULTS) {
         say("results:"); int order[MAXP], n = 0; for (int i = 0; i < MAXP; i++) if (P[i].used && P[i].racing) order[n++] = i;
         sortIdx(order, n, [](int a, int b) { if (P[a].finished != P[b].finished) return P[a].finished; return P[a].finished ? P[a].finishOrder < P[b].finishOrder : P[a].s.progress > P[b].s.progress; });
@@ -140,10 +142,25 @@ static void sendShowdown(uint32_t tick) {
     for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot) sendTo(sock, P[i].addr, &m, sizeof m);
 }
 static char serverName[24] = "FOG CITY FURY SERVER";   // --name: shown in the game's server list
+// ---- hardening ----
+// cfgRate: packets a second each address may send (bursts to twice that; each IP four times as many), the rest dropped
+// unread. cfgPerIp: players from one IP (a household behind one router; loopback is exempt unless --per-ip is given).
+// cfgShareGap: seconds between tracks shared from one IP. cfgSharedMax: shared tracks kept (then the oldest not in use
+// goes). cfgMinLap: a finish sooner than this many seconds a lap is not believed (the game says when it has finished)
+static double cfgRate = 150, cfgShareGap = 120, cfgMinLap = 12; static int cfgPerIp = 4, cfgSharedMax = 200; static bool perIpLoopback = false;
+static long dropped = 0;
+struct Bucket { double tokens, last; }; static std::unordered_map<uint64_t, Bucket> rateAddr, rateIp; static std::unordered_map<uint32_t, double> lastShare;
+static bool allow(std::unordered_map<uint64_t, Bucket>& m, uint64_t key, double rate, double t) {
+    auto it = m.find(key); if (it == m.end()) { if (m.size() > 50000) m.clear(); it = m.emplace(key, Bucket{ rate * 2, t }).first; }
+    Bucket& b = it->second; b.tokens = std::min(rate * 2, b.tokens + (t - b.last) * rate); b.last = t; if (b.tokens < 1) return false; b.tokens -= 1; return true;
+}
+static bool loopback(const sockaddr_in& a) { return (ntohl(a.sin_addr.s_addr) >> 24) == 127; }
+static void cleanName(std::string& n, size_t maxLen) { if (n.size() > maxLen) n.resize(maxLen); for (char& c : n) if (c < 32 || c > 126) c = '?'; if (n.empty()) n = "SHARED TRACK"; }
 static void drop(int i, const char* why) { say("player %d (%s) left: %s", i, P[i].name, why); P[i].used = false; }
 
 static void stampFinish(Player& p, int who, uint8_t flags) {   // first report of a finish: the server stamps the time and order
     if (phase != RACE || !p.racing || p.finished || !(flags & F_FINISHED) || p.s.lap <= laps) return;
+    if (raceT < laps * cfgMinLap) { if (!p.suspect) say("player %d (%s) claimed a finish after %.1f s: not believed", who, p.name, raceT); p.suspect = true; return; }   // (it is never believed this race)
     p.finished = true; p.finishT = raceT; p.finishOrder = ++finishCount; if (firstFinish < 0) firstFinish = raceT;
     say("player %d (%s) finished %d in %.2f s", who, p.name, p.finishOrder, p.finishT);
 }
@@ -160,6 +177,8 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
     if (h.type == C_JOIN && len >= (int)sizeof(Join)) {
         Join j; memcpy(&j, buf, sizeof j);
         if (who < 0) {
+            int same = 0; for (auto& q : P) if (q.used && !q.bot && q.addr.sin_addr.s_addr == from.sin_addr.s_addr) same++;
+            if (same >= cfgPerIp && (perIpLoopback || !loopback(from))) { Reject r; r.h = header(S_REJECT, 0xFF); r.reason = R_FULL; sendTo(sock, from, &r, sizeof r); return; }   // (as full: for that address it is)
             for (int i = 0; i < MAXP && who < 0; i++) if (!P[i].used) who = i;
             if (who < 0) { Reject r; r.h = header(S_REJECT, 0xFF); r.reason = R_FULL; sendTo(sock, from, &r, sizeof r); return; }
             Player& p = P[who]; p = Player(); p.used = true; p.addr = from; memcpy(p.name, j.name, NAMELEN); p.name[NAMELEN] = 0;
@@ -178,9 +197,18 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         memcpy(&u.data[m.chunk * CHUNK], m.data, m.len); u.got[m.chunk] = 1;
         for (uint8_t g : u.got) if (!g) return;
         bool good = crc32(u.data.data(), u.total) == u.crc && u.data.compare(0, 5, "fcft ") == 0 && u.data.find("\nroad") != std::string::npos; int k = -1;
+        uint32_t ip = from.sin_addr.s_addr; auto ls = lastShare.find(ip); int reuse = -1;
+        if (good && ls != lastShare.end() && t - ls->second < cfgShareGap) { say("%s shared again too soon: ignored", P[who].name); good = false; }
+        if (good) { lastShare[ip] = t; if (lastShare.size() > 5000) lastShare.clear(); }
         if (good) { for (size_t i = 0; i < CT.size(); i++) if (CT[i].crc == u.crc && CT[i].text == u.data) k = (int)i;
-            if (k < 0 && (int)CT.size() < MAXCT) { CustomTrack c; c.shared = true; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
-                size_t a = u.data.find("\nname"); if (a != std::string::npos) { a = u.data.find_first_not_of(" \t", a + 5); size_t e = u.data.find('\n', a); if (a != std::string::npos && e != std::string::npos && e > a) c.name = u.data.substr(a, std::min(e - a, (size_t)32)); } c.text = u.data; c.crc = u.crc; CT.push_back(c); k = (int)CT.size() - 1; say("%s shared a track (%d bytes): track %d", P[who].name, u.total, TRACKS + k); } }
+            if (k < 0) {   // full: the oldest shared track that is not in play makes room (track ids are one byte: 255 at most)
+                int nShared = 0, old = -1; reuse = -1; for (size_t i = 0; i < CT.size(); i++) if (CT[i].shared) { nShared++; int id = TRACKS + (int)i; if (id != track && id != vote.track && id != pendTrack && id != returnTrack && (old < 0 || CT[i].added < CT[old].added)) old = (int)i; }
+                // The new one takes its place and its id (ids never move, or games would mix up the tracks they have). A game that
+                // had the old one under that id and is still connected could be confused; that takes cfgSharedMax shares first
+                if ((nShared >= cfgSharedMax || TRACKS + (int)CT.size() > 255) && old >= 0) { say("dropping the oldest shared track (%s) to make room", CT[old].name.c_str()); reuse = old; }
+            }
+            if (k < 0 && (reuse >= 0 || TRACKS + (int)CT.size() <= 255)) { CustomTrack c; c.shared = true; c.added = t; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
+                size_t a = u.data.find("\nname"); if (a != std::string::npos) { a = u.data.find_first_not_of(" \t", a + 5); size_t e = u.data.find('\n', a); if (a != std::string::npos && e != std::string::npos && e > a) c.name = u.data.substr(a, std::min(e - a, (size_t)32)); } cleanName(c.name, 23); c.text = u.data; c.crc = u.crc; if (reuse >= 0) { CT[reuse] = c; k = reuse; } else { CT.push_back(c); k = (int)CT.size() - 1; } say("%s shared a track (%d bytes): track %d, %s", P[who].name, u.total, TRACKS + k, CT[k].name.c_str()); } }
         if (k >= 0 && TRACKS + k != track && !vote.open) { pendTrack = TRACKS + k; pendBy = who; say("%s shared track %d: the lobby votes on it", P[who].name, TRACKS + k); }
         u = Upload();
     } else if (h.type == C_VOTE && len >= (int)sizeof(VoteMsg) && who >= 0 && h.id == who) {
@@ -302,7 +330,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto next = [&] { return i + 1 < argc ? argv[++i] : (char*)"0"; };
         if (a == "--port") port = atoi(next()); else if (a == "--laps") laps = std::max(1, std::min(20, atoi(next()))); else if (a == "--track") trackArg = atoi(next()); else if (a == "--tracks") tracksDir = next(); else if (a == "--custom-only") customOnly = true;
-        else if (a == "--roam") cfgRoam = true; else if (a == "--no-uploads") cfgUploads = false; else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
+        else if (a == "--roam") cfgRoam = true; else if (a == "--no-uploads") cfgUploads = false; else if (a == "--rate") cfgRate = std::max(10.0, atof(next())); else if (a == "--per-ip") { cfgPerIp = std::max(1, atoi(next())); perIpLoopback = true; } else if (a == "--share-gap") cfgShareGap = std::max(0.0, atof(next())); else if (a == "--shared-max") cfgSharedMax = std::max(1, atoi(next())); else if (a == "--min-lap") cfgMinLap = std::max(0.0, atof(next())); else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
         else if (a == "--weather") { const char* v = next(); if (!strcmp(v, "random")) { wxMode = 1; weather = 1; } else weather = ((atoi(v) % 4) + 4) % 4; }
         else if (a == "--name") { snprintf(serverName, sizeof serverName, "%s", next()); for (char* c = serverName; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--fixed-track") fixedTrack = true; else if (a == "--countdown") cfgCountdown = atof(next()); else if (a == "--results") cfgResults = atof(next());
@@ -321,6 +349,11 @@ int main(int argc, char** argv) {
                    "  --tracks DIR       also rotate through the custom tracks (.fcft files) in DIR (track ids %d and up); players' games are sent them\n"
                    "  --custom-only      only the custom tracks from --tracks\n"
                    "  --no-uploads       players may not share tracks of their own from the lobby\n"
+                   "  --share-gap S      seconds between tracks shared from one address (default 120)\n"
+                   "  --shared-max N     shared tracks kept; then the oldest not in use is dropped (default 200)\n"
+                   "  --per-ip N         players from one IP address (default 4; 127.x is exempt unless this is given)\n"
+                   "  --rate N           packets a second one address may send before the rest are dropped (default 150)\n"
+                   "  --min-lap S        a finish faster than S seconds a lap is not believed (default 12)\n"
                    "  --roam             a roam server: no laps, everyone drives and walks the island together (mini Wardens included)\n"
                    "  --roam-minutes M   roam: move on to the next track every M minutes (default: stay)\n", DEFPORT, TRACKS - 1, TRACKS);
             return a == "--help" ? 0 : 2;
@@ -337,7 +370,10 @@ int main(int argc, char** argv) {
     while (running) {
         double t = now(), dt = t - last; last = t;
         uint8_t buf[2048]; sockaddr_in from;
-        for (int guard = 0; guard < 500; guard++) { int n = recvFrom(sock, buf, sizeof buf, from); if (n <= 0) break; handle(buf, n, from, t); }
+        for (int guard = 0; guard < 500; guard++) { int n = recvFrom(sock, buf, sizeof buf, from); if (n <= 0) break;
+            uint64_t ip = from.sin_addr.s_addr; if (!allow(rateAddr, ip << 16 | ntohs(from.sin_port), cfgRate, t) || !allow(rateIp, ip, cfgRate * 4, t)) { dropped++; continue; }   // flood control
+            handle(buf, n, from, t); }
+        { static double lastNote = 0; static long noted = 0; if (dropped != noted && t - lastNote > 10) { say("flood control: %ld packets dropped", dropped - noted); noted = dropped; lastNote = t; } }
         for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot && t - P[i].lastHeard > cfgTimeout) drop(i, "timed out");
         int n = count(), ready = 0, racing = 0, done = 0;
         int people = 0;   // people still in the race: when the last one leaves, it is over, bots or no bots
