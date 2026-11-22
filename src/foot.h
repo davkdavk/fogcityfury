@@ -14,7 +14,7 @@ struct Shell { V3 p, v; float life, age; int by; bool fake = false; };     // a 
 static std::vector<Shell> shells;
 // blood: a spray where a shot lands, splats on the ground that fade, and (after a grenade) the pieces
 struct Splat { V3 p; float r, age; };
-struct Gib { V3 p, v; float rx, ry, spinX, spinY, age; int part, paint; };   // part: 0 torso, 1 helmet, 2 upper arm, 3 forearm, 4 thigh, 5 shin
+struct Gib { V3 p, v; float rx, ry, spinX, spinY, age; int part, paint; bool robot = false; V3 col; };   // robot: a mini Warden's piece (part: a mech::P_ part, col its paint)   // part: 0 torso, 1 helmet, 2 upper arm, 3 forearm, 4 thigh, 5 shin
 static std::vector<Splat> splats; static std::vector<Gib> gibs; static int gibCount = 0;   // gibCount: test metric
 static const V3 BLOOD(0.42f, 0.015f, 0.02f);
 
@@ -84,8 +84,8 @@ static void pushFromCars(V3& p, V3& vel, float rad) {
 }
 
 // ---- targets: another fighter, or (out of the car in a race) a racer ----
-static bool tgtAlive(int t) { return t >= 8 ? (t - 8 < NAI && !ai[t - 8].dead && racersAreTargets()) : (t >= 0 && t < NFIGHT && fighters[t].on && fighters[t].alive); }
-static V3 tgtPos(int t) { return t >= 8 ? ai[t - 8].pos + V3(0, 0.7f, 0) : fighters[t].pos + V3(0, 1.1f, 0); }
+static bool tgtAlive(int t) { if (t == 7) return roamCarTarget && !me.on && !player.dead; return t >= 8 ? (t - 8 < NAI && !ai[t - 8].dead && racersAreTargets()) : (t >= 0 && t < NFIGHT && fighters[t].on && fighters[t].alive); }
+static V3 tgtPos(int t) { if (t == 7) return player.pos + V3(0, 0.7f, 0); return t >= 8 ? ai[t - 8].pos + V3(0, 0.7f, 0) : fighters[t].pos + V3(0, 1.1f, 0); }
 // the best target for f: close to the direction yawRef (the camera, for you), in range and in view. The one already held is preferred, so the lock does not flicker
 static int pickFoe(const Fighter& f, float yawRef, float cone) {
     int best = -1; float bs = 1e9f, range = GUNS[f.gun].range * 1.1f; V3 eye = f.pos + V3(0, 1.4f, 0);
@@ -112,6 +112,17 @@ static void bleed(V3 at, V3 dir, float dmg) {
 // a grenade went off beside them: nothing left but pieces, a red cloud and a wide stain
 static void gibFighter(Fighter& t, V3 from) {
     if (t.gibbed) return; t.gibbed = true; gibCount++; V3 c = t.pos + V3(0, 1.0f, 0);
+    if (t.mini) {   // a mini Warden bursts into pieces of Warden: armour, legs, its head, its cannon; sparks and smoke, no blood
+        static const int RP[13] = { mech::P_TORSO, mech::P_HEAD, mech::P_PELVIS, mech::P_THIGH, mech::P_THIGH, mech::P_SHIN, mech::P_SHIN, mech::P_FOOT, mech::P_FOOT, mech::P_UPPER, mech::P_UPPER, mech::P_CANNON, mech::P_CLAW };
+        V3 col = t.paint ? V3(0.05f, 0.20f, 0.30f) : V3(0.42f, 0.07f, 0.04f);
+        for (int i = 0; i < 13; i++) {
+            Gib g; g.p = c + V3(grng.r(-0.3f, 0.3f), grng.r(-0.6f, 0.6f), grng.r(-0.3f, 0.3f)); V3 out = g.p - from; out.y = 0; float L = len(out); out = L > 0.05f ? out * (1 / L) : V3(grng.r(-1, 1), 0, grng.r(-1, 1));
+            g.v = out * grng.r(4, 12) + V3(grng.r(-3, 3), grng.r(5, 12), grng.r(-3, 3)); g.rx = grng.r(0, 6.28f); g.ry = grng.r(0, 6.28f); g.spinX = grng.r(-14, 14); g.spinY = grng.r(-9, 9); g.age = 0; g.part = RP[i]; g.paint = 0; g.robot = true; g.col = col; gibs.push_back(g);
+        }
+        for (int i = 0; i < 60; i++) { V3 d = norm(V3(grng.r(-1, 1), grng.r(-0.2f, 1.3f), grng.r(-1, 1))); spawn(c, d * grng.r(3, 14), grng.r(0.3f, 0.8f), 0.08f, 0, V3(4, 2.6f, 0.8f), 1, 1, -9); }   // sparks
+        for (int i = 0; i < 8; i++) spawn(c + V3(grng.r(-0.5f, 0.5f), grng.r(-0.4f, 0.6f), grng.r(-0.5f, 0.5f)), V3(grng.r(-1, 1), grng.r(0.5f, 2.5f), grng.r(-1, 1)), grng.r(0.8f, 1.4f), 1.0f, 2.8f, V3(0.25f, 0.25f, 0.27f), 0.6f, 0, 0.3f);   // smoke
+        sfx(t.pos, 70, 0.5f, 0.9f, 2, -30); sfx(t.pos, 1800, 0.2f, 0.4f, 2, -900); return;
+    }
     static const int PARTS[11] = { 0, 1, 2, 2, 3, 3, 4, 4, 5, 5, 0 };
     for (int i = 0; i < 11; i++) {
         Gib g; g.p = c + V3(grng.r(-0.25f, 0.25f), grng.r(-0.6f, 0.6f), grng.r(-0.25f, 0.25f)); V3 out = g.p - from; out.y = 0; float L = len(out); out = L > 0.05f ? out * (1 / L) : V3(grng.r(-1, 1), 0, grng.r(-1, 1));
@@ -157,16 +168,22 @@ static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = f
             bleed(t.pos + V3(0, 1.15f, 0), dir, dmg);
         return;
     }
+    if (t.mini && !meleeHit && !ramHit) {   // a mini Warden: bullets and blasts spark off its armour. Only fists (or a car) hurt it
+        for (int i = 0; i < 5; i++) spawn(t.pos + V3(0, 1.1f, 0), V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
+        sfx(t.pos, 2600, 0.05f, 0.3f, 2); if (by == 0) { hitFlash = 0.1f; static float told = -99; if (T - told > 6) { told = T; say("ONLY YOUR FISTS HURT A MINI WARDEN", V3(1, 0.8f, 0.3f), 2.0f); } }
+        return;
+    }
     float a = pierce ? 0.0f : std::min(t.armour, dmg * 0.7f); t.armour -= a; t.hp -= dmg - a; t.hurtT = 0.25f;
     if (by >= 0 && by != t.id) { t.hitBy = by; t.hitByT = 0; t.vel = t.vel + V3(dir.x, 0, dir.z) * 1.0f; }
-    if (!pierce) bleed(t.pos + V3(0, 1.15f, 0), len(dir) > 0.1f ? dir : V3(0, 0.3f, 0), dmg);
+    if (t.mini) { for (int i = 0; i < 6; i++) spawn(t.pos + V3(0, 1.1f, 0), V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.3f, 0.07f, 0, V3(4, 2.6f, 0.8f), 1, 1, -9); }   // a mini Warden sparks, it does not bleed
+    else if (!pierce) bleed(t.pos + V3(0, 1.15f, 0), len(dir) > 0.1f ? dir : V3(0, 0.3f, 0), dmg);
     if (by == 0 && &t != &me) { me.hits++; hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); }
     if (mine(t)) { hurtFlash = 0.45f; if (by >= 0) hurtAng = wrapPi(atan2f(-dir.x, -dir.z) - footYaw); shake = std::max(shake, 0.22f); rumble(0.6f, 120); tone(150, 0.12f, 0.45f, 1); }
     else sfx(t.pos, 420, 0.06f, 0.25f, 1);
     if (t.hp <= 0) killFighter(t, by);
 }
 static void hurtCar(Car& c, float dmg, V3 at) {
-    if (c.dead) return; c.hp -= dmg; hitFlash = 0.2f;
+    if (c.dead) return; if (&c == &player) dmg *= carArmourMul; c.hp -= dmg; hitFlash = 0.2f;
     for (int i = 0; i < 5; i++) spawn(at, V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.3f, 0.07f, 0, V3(4, 2.6f, 0.8f), 1, 1, -9);
     sfx(at, 2400, 0.04f, 0.2f, 2);
     if (c.hp <= 0) { explode(c); say("WRECKED!", V3(1, 0.6f, 0.2f), 1.5f); }
@@ -180,10 +197,12 @@ static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
         for (float h : { 0.45f, 0.95f, 1.45f }) { V3 q = t.pos + V3(0, h, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 0.40f) { bt = tt; tg = i; } }
     }
     if (racers) for (int k = 0; k < NAI; k++) { if (ai[k].dead) continue; V3 q = ai[k].pos + V3(0, 0.7f, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 1.5f) { bt = std::max(tt - 1.2f, 0.5f); tg = 8 + k; } }
+    if (roamCarTarget && f.mini && !me.on && !player.dead) { V3 q = player.pos + V3(0, 0.7f, 0) - o; float tt = dot(q, d); if (tt > 0 && tt < bt && len(q - d * tt) < 1.5f) { bt = std::max(tt - 1.2f, 0.5f); tg = 7; } }   // a mini Warden shooting at your car
     V3 end = o + d * bt;
     spawn(o + d * std::min(2.0f, bt * 0.5f), d * 150, clampf(bt / 150, 0.035f, 0.13f), 0.55f, 0, V3(3.2f, 2.5f, 1.2f), 0.9f, 1, 0, 3.2f);   // tracer
     if (tg >= 8) hurtCar(ai[tg - 8], g.carDmg, end);
-    else if (tg >= 0) damageFighter(fighters[tg], g.dmg, f.id, d);
+    else if (tg == 7) hurtCar(player, g.carDmg * 0.25f, end);
+    else if (tg >= 0) damageFighter(fighters[tg], g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f) * (f.mini ? 0.4f : 1.0f), f.id, d);   // (a mini Warden's little gun)
     else if (bt < g.range - 0.01f) {
         for (int i = 0; i < 3; i++) spawn(end, V3(grng.r(-3, 3), grng.r(0.5f, 4), grng.r(-3, 3)) - d * 2.0f, 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
         spawn(end, V3(0, 0.6f, 0) - d * 0.8f, 0.5f, 0.18f, 0.9f, V3(0.42f, 0.40f, 0.38f), 0.5f, 0, 0.5f);
@@ -194,11 +213,11 @@ static void fireGun(Fighter& f, float aimYaw) {
     const GunSpec& g = GUNS[f.gun]; int gi = f.gun; f.cd = g.cd; f.kick = 1; f.shots++;
     V3 fw = yawDir(f.yaw), rt = yawRight(f.yaw), o = f.pos + V3(0, 1.40f, 0) + fw * 0.55f + rt * 0.16f;
     V3 d = norm((f.target >= 0 ? tgtPos(f.target) : o + yawDir(aimYaw) * 40) - o);
-    float s = g.spread * (1 + f.run / FOOT_RUN * 1.3f) * (f.bot ? BOT_SPREAD : 1.0f);
+    float s = g.spread * (1 + f.run / FOOT_RUN * 1.3f) * (f.bot ? BOT_SPREAD : footAimMul);
     if (gi == G_FISTS) {   // a punch: whoever is within reach in front
         gunSound(gi, o); bool hit = false;
         for (auto& t : fighters) { if (&t == &f || !t.on || !t.alive || t.rollT > 0.12f || hit) continue; V3 dd = t.pos - f.pos; dd.y = 0; float L = len(dd);
-            if (L < g.range && fabsf(wrapPi(atan2f(dd.x, dd.z) - f.yaw)) < 0.9f) { damageFighter(t, g.dmg, f.id, L > 0.01f ? dd * (1 / L) : fw); sfx(t.pos, 200, 0.10f, 0.5f, 0, -80); hit = true; } }
+            if (L < g.range && fabsf(wrapPi(atan2f(dd.x, dd.z) - f.yaw)) < 0.9f) { meleeHit = true; damageFighter(t, g.dmg, f.id, L > 0.01f ? dd * (1 / L) : fw); meleeHit = false; sfx(t.pos, 200, 0.10f, 0.5f, 0, -80); hit = true; } }
         if (!hit && racersAreTargets()) for (auto& a : ai) if (!a.dead && flatDist(a.pos, f.pos) < 2.8f) { hurtCar(a, g.carDmg, a.pos + V3(0, 0.8f, 0)); break; }
         if (&f == &me) { footKick = std::min(1.5f, footKick + g.kick * (hit ? 1.0f : 0.4f)); if (hit) { shake = std::max(shake, 0.10f); rumble(0.5f, 90); } }
         return;
@@ -257,18 +276,19 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     // speed: a roll is a burst; aiming slows you to a walk; sprinting drains stamina; water drags
     if (f.stamina <= 0.02f) f.winded = true; else if (f.stamina > 0.3f) f.winded = false;
     f.sprinting = in.sprint && !aiming && !rolling && ml > 0.5f && !f.winded;
-    f.stamina = clampf(f.stamina + (f.sprinting ? -dt / 4.5f : dt / 5.0f), 0, 1);
+    f.stamina = clampf(f.stamina + (f.sprinting ? -dt / (&f == &me ? footLungs : 4.5f) : dt / 5.0f), 0, 1);
     float top = rolling ? FOOT_ROLL : aiming ? FOOT_AIM : f.sprinting ? FOOT_SPRINT : FOOT_RUN; bool wading = W.HW(f.pos.x, f.pos.z) < -0.05f && f.pos.y < 0.1f; if (wading) top *= 0.55f;
-    V3 want = rolling ? yawDir(f.rollYaw) * top : mv * top, hv(f.vel.x, 0, f.vel.z), dv = want - hv; float dl = len(dv), acc = (rolling ? 70.0f : ml > 0.05f ? 38.0f : 30.0f) * dt;
-    hv = dl <= acc ? want : hv + dv * (acc / dl);
+    bool vyJet = false; V3 want = rolling ? yawDir(f.rollYaw) * top : mv * top, hv(f.vel.x, 0, f.vel.z), dv = want - hv; float dl = len(dv), acc = (rolling ? 70.0f : ml > 0.05f ? 38.0f : 30.0f) * dt;
+    if (f.mini && f.jetT > 0) { f.jetT -= dt; vyJet = true; } else hv = dl <= acc ? want : hv + dv * (acc / dl);   // (a jetpack burst: it flies, it does not run)
     // facing: the target while aiming, otherwise the way you run
     float tgtYaw = rolling ? f.rollYaw : aiming ? aimYaw : ml > 0.1f ? atan2f(mv.x, mv.z) : f.yaw, turn = (aiming ? 16.0f : 11.0f) * dt;
     f.yaw = wrapPi(f.yaw + clampf(wrapPi(tgtYaw - f.yaw), -turn, turn));
     // move: walls, cars, deep water and steps too high all stop you
     V3 np = f.pos + hv * dt; float imp = 0; np.y = f.pos.y; W.collide(np, hv, FOOT_R, imp); pushFromCars(np, hv, FOOT_R);
     float g = W.ground(np.x, np.z, f.pos.y + 0.6f);
-    if (W.HW(np.x, np.z) < -1.0f || g > f.pos.y + 0.8f) { np.x = f.pos.x; np.z = f.pos.z; hv = V3(); g = g0; }
-    float y = f.pos.y, vy = f.vel.y; if (y > g + 0.02f) { vy -= 22 * dt; y = std::max(g, y + vy * dt); if (y <= g) vy = 0; } else { y = g; vy = 0; }
+    if ((!vyJet && W.HW(np.x, np.z) < -1.0f) || g > f.pos.y + 0.8f) { np.x = f.pos.x; np.z = f.pos.z; hv = V3(); g = g0; }
+    float y = f.pos.y, vy = f.vel.y; if (vyJet) vy += 19 * dt;   // the jet nearly holds it up
+    if (y > g + 0.02f) { vy -= 22 * dt; y = std::max(g, y + vy * dt); if (y <= g) vy = 0; } else { y = g; vy = 0; }
     f.pos = V3(np.x, y, np.z); f.vel = V3(hv.x, vy, hv.z);
     // animation state
     float sp = sqrtf(hv.x * hv.x + hv.z * hv.z); f.run += (sp - f.run) * (1 - expf(-12 * dt)); f.stride += sp * dt * 2.3f;
@@ -385,19 +405,21 @@ static Pose poseOf(const Fighter& f) {
 static void drawFighter(Prog& p, const Fighter& f, bool lit) {
     if (!f.on || f.gibbed) return; float gone = f.alive ? 0.0f : clampf((f.deadT - 8) / 2.5f, 0, 1); if (gone >= 1 || (!lit && gone > 0.5f)) return;
     Pose P = poseOf(f);
-    if (lit) { p.v3("uPaint", PAINTS[f.paint]); p.f1("uChrome", f.paint == 7 ? 1.0f : 0.0f); p.f1("uBrake", 0); p.f1("uGone", gone); }
+    if (lit) { p.v3("uPaint", PAINTS[f.paint]); p.f1("uChrome", f.paint == 7 ? 1.0f : 0.0f); p.f1("uBrake", 0); p.f1("uGone", gone); }   // (a mini Warden: the Wardens' oxide red or deep teal)
+    if (f.mini) { mech::drawMini(f.pos, f.yaw, f.stride, f.run, f.aim, f.alive, f.deadT, f.paint ? V3(0.05f, 0.20f, 0.30f) : V3(0.42f, 0.07f, 0.04f), f.id, p, lit, T); if (lit) { p.f1("uBurnt", 0); p.f1("uBrake", 0); } return; }   // the Warden itself, shrunk (mech.h)
+    Mesh& T = fTorso, & H = fHead, & UA = fUpperArm, & FA = fForeArm, & TH = fThigh, & SH = fShin;
     M4 base = mul(translate(f.pos + V3(0, P.sink, 0)), rotY(f.yaw));
     if (P.bodyX != 0) base = mul(base, mul(translate(V3(0, P.pivotY, 0)), mul(rotX(P.bodyX), translate(V3(0, -P.pivotY, 0)))));
     M4 torso = mul(base, mul(translate(V3(0, P.hipY, 0)), rotX(P.lean)));
-    p.m4("uModel", torso); fTorso.draw();
-    p.m4("uModel", mul(torso, mul(translate(V3(0, 0.585f, 0)), rotX(P.headX - P.lean * 0.6f)))); fHead.draw();
+    p.m4("uModel", torso); T.draw();
+    p.m4("uModel", mul(torso, mul(translate(V3(0, 0.585f, 0)), rotX(P.headX - P.lean * 0.6f)))); H.draw();
     for (int k = 0; k < 2; k++) {
         float sx = k ? -0.235f : 0.235f, lx = k ? -0.095f : 0.095f;   // someone facing +z has their right hand at -x
-        M4 sh = mul(torso, mul(translate(V3(sx, 0.455f, 0)), mul(rotY(P.shY[k]), rotX(P.shX[k])))); p.m4("uModel", sh); fUpperArm.draw();
-        M4 el = mul(sh, mul(translate(V3(0, -0.29f, 0)), rotX(P.elbow[k]))); p.m4("uModel", el); fForeArm.draw();
+        M4 sh = mul(torso, mul(translate(V3(sx, 0.455f, 0)), mul(rotY(P.shY[k]), rotX(P.shX[k])))); p.m4("uModel", sh); UA.draw();
+        M4 el = mul(sh, mul(translate(V3(0, -0.29f, 0)), rotX(P.elbow[k]))); p.m4("uModel", el); FA.draw();
         if (k == 1 && f.gun != G_FISTS) { p.m4("uModel", mul(el, mul(translate(V3(0, -0.325f, 0.035f)), rotX((float)M_PI / 2)))); gunMesh[f.gun].draw(); }
-        M4 hip = mul(base, mul(translate(V3(lx, P.hipY, 0)), mul(rotY(P.legYaw), rotX(P.thigh[k])))); p.m4("uModel", hip); fThigh.draw();
-        p.m4("uModel", mul(hip, mul(translate(V3(0, -0.45f, 0)), rotX(P.knee[k])))); fShin.draw();
+        M4 hip = mul(base, mul(translate(V3(lx, P.hipY, 0)), mul(rotY(P.legYaw), rotX(P.thigh[k])))); p.m4("uModel", hip); TH.draw();
+        p.m4("uModel", mul(hip, mul(translate(V3(0, -0.45f, 0)), rotX(P.knee[k])))); SH.draw();
     }
     if (lit) p.f1("uGone", 0);
 }
@@ -406,6 +428,7 @@ static void drawFighters(Prog& p, bool lit) {
     for (auto& g : gibs) {   // what a grenade leaves
         float gone = clampf((g.age - 11) / 3, 0, 1); if (!lit && gone > 0.5f) continue;
         if (lit) { p.v3("uPaint", PAINTS[g.paint]); p.f1("uChrome", 0); p.f1("uBrake", 0); p.f1("uGone", gone); }
+        if (g.robot) { if (lit) { p.v3("uPaint", g.col); p.f1("uBurnt", 0.5f); } p.m4("uModel", mul(translate(g.p), mul(rotY(g.ry), mul(rotX(g.rx), scale(mech::MINI, mech::MINI, mech::MINI))))); mech::part[g.part].draw(); if (lit) p.f1("uBurnt", 0); continue; }
         p.m4("uModel", mul(translate(g.p), mul(rotY(g.ry), rotX(g.rx)))); Mesh* part[6] = { &fTorso, &fHead, &fUpperArm, &fForeArm, &fThigh, &fShin }; part[g.part]->draw();
     }
     if (lit) p.f1("uGone", 0);
@@ -431,13 +454,13 @@ static void footSpawn(Fighter& f, int id, V3 pos, float yaw) {
 }
 static int roamAmmo[NGUNS] = {}; static float roamHp = 100;   // what you carry on foot in a race or free roam: handed out once per race (see footReset)
 static void footLeaveCar() {
-    footSpawn(me, 0, player.pos - yawRight(player.yaw) * 2.2f, player.yaw); me.name = "YOU"; me.paint = player.paint; me.hp = roamHp; me.bot = footAuto;
+    footSpawn(me, 0, player.pos - yawRight(player.yaw) * 2.2f, player.yaw); me.name = "YOU"; me.paint = player.paint; me.hp = std::min(roamHp, footMaxHp); me.armour = footStartArmour; me.bot = footAuto;
     for (int g = 0; g < NGUNS; g++) me.ammo[g] = roamAmmo[g]; me.gun = bestGun(me);
     if (forceGun >= 0) { me.ammo[forceGun] = GUNS[forceGun].clip * 20; me.gun = forceGun; }
     footYaw = player.yaw; footPitch = 0.20f; player.vel = V3(); player.vf = 0; player.yawRate = 0; player.steer = 0;
     if (faceAi) { float best = 1e9f; for (auto& a : ai) { float d = flatDist(a.pos, me.pos); if (d < best) { best = d; footYaw = me.yaw = atan2f(a.pos.x - me.pos.x, a.pos.z - me.pos.z); } } }
 }
-static void footEnterCar() { for (int g = 0; g < NGUNS; g++) roamAmmo[g] = me.ammo[g]; roamHp = me.alive ? me.hp : 100; me.on = false; footMouseFire = false; camInit = false; }
+static void footEnterCar() { for (int g = 0; g < NGUNS; g++) roamAmmo[g] = me.ammo[g]; roamHp = me.alive ? me.hp : footMaxHp; me.on = false; footMouseFire = false; camInit = false; }
 static void shdToggle();
 static void footToggle() {
     if (state != RACE) return;

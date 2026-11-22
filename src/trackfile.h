@@ -29,7 +29,7 @@
 #include <algorithm>
 
 static const char* const FCFT_WX[4] = { "clear", "rain", "fog", "storm" };
-static const int FCFT_MAXPTS = 60, FCFT_MAXHILLS = 24, FCFT_MAXBR = 3, FCFT_MAXTUN = 2, FCFT_MAXISL = 4;
+static const int FCFT_MAXPTS = 60, FCFT_MAXHILLS = 24, FCFT_MAXBR = 3, FCFT_MAXTUN = 2, FCFT_MAXISL = 4, FCFT_MAXJUMP = 12;
 
 // a track name as the game's font can draw it
 static std::string trackCleanName(const char* s, size_t cap) {
@@ -71,6 +71,10 @@ static bool trackSanitize(TrackDef& d) {
     }
     d.islands.resize(std::min(d.islands.size() / 3, (size_t)FCFT_MAXISL) * 3);
     for (size_t k = 0; k + 2 < d.islands.size(); k += 3) { d.islands[k] = clampf(fin(d.islands[k], 0), -560, 560); d.islands[k + 1] = clampf(fin(d.islands[k + 1], 0), -560, 560); d.islands[k + 2] = clampf(fin(d.islands[k + 2], 300), 120, 640); }
+    d.jumps.resize(std::min(d.jumps.size() / 5, (size_t)FCFT_MAXJUMP) * 5);
+    for (size_t k = 0; k + 4 < d.jumps.size(); k += 5) { float* j = &d.jumps[k]; j[0] = clampf(fin(j[0], 0.5f), 0.01f, 0.99f); j[1] = clampf(fin(j[1], 0), -45, 45); j[2] = clampf(fin(j[2], 16), 8, 32); j[3] = clampf(fin(j[3], 4), 1.5f, 9); j[4] = j[4] < 0 ? -1.0f : 1.0f; }
+    d.keyPts.resize(std::min(d.keyPts.size() / 3, (size_t)NKEYS) * 3);
+    for (size_t k = 0; k + 2 < d.keyPts.size(); k += 3) { d.keyPts[k] = clampf(fin(d.keyPts[k], 0), -700, 700); d.keyPts[k + 1] = clampf(fin(d.keyPts[k + 1], 0), -700, 700); d.keyPts[k + 2] = clampf(fin(d.keyPts[k + 2], 1.3f), 0.8f, 40); }
     d.wardens = d.wardens < 0 ? 0 : d.wardens > 4 ? 4 : d.wardens; d.lapMul = d.lapMul < 1 ? 1 : d.lapMul > 3 ? 3 : d.lapMul;
     if (d.branches.size() > (size_t)FCFT_MAXBR) d.branches.resize(FCFT_MAXBR);
     for (size_t k = 0; k < d.branches.size(); ) {
@@ -102,12 +106,14 @@ static void trackWrite(const TrackDef& d, FILE* f) {
     for (size_t k = 0; k + 2 < d.islands.size(); k += 3) fprintf(f, "island  %g %g %g\n", d.islands[k], d.islands[k + 1], d.islands[k + 2]);
     if (d.wardens != 2) fprintf(f, "wardens %d\n", d.wardens);
     if (d.lapMul > 1) fprintf(f, "laps    x%d\n", d.lapMul);
+    for (size_t k = 0; k + 4 < d.jumps.size(); k += 5) fprintf(f, "jump    %g %g  length %g  height %g%s\n", d.jumps[k], d.jumps[k + 1], d.jumps[k + 2], d.jumps[k + 3], d.jumps[k + 4] < 0 ? "  reverse" : "");
+    for (size_t k = 0; k + 2 < d.keyPts.size(); k += 3) fprintf(f, "key     %g %g  height %g\n", d.keyPts[k], d.keyPts[k + 1], d.keyPts[k + 2]);
 }
 static bool trackSave(const TrackDef& d, const char* path) { FILE* f = fopen(path, "w"); if (!f) return false; trackWrite(d, f); return fclose(f) == 0; }
 
 // Read one. `base` gives the settings a file leaves out (a file with nothing but a road line makes a track).
 static bool trackRead(FILE* f, TrackDef& d, const TrackDef& base) {
-    d = base; d.ctrl.clear(); d.hills.clear(); d.branches.clear(); d.tunnel.clear(); d.islands.clear(); d.wardens = 2; d.lapMul = 1; d.deco = -1; d.song = -1; d.wx = 0; d.nameS = ""; d.subS = ""; d.file = "";
+    d = base; d.ctrl.clear(); d.hills.clear(); d.branches.clear(); d.tunnel.clear(); d.islands.clear(); d.jumps.clear(); d.keyPts.clear(); d.wardens = 2; d.lapMul = 1; d.deco = -1; d.song = -1; d.wx = 0; d.nameS = ""; d.subS = ""; d.file = "";
     char line[1024]; bool head = false; int lines = 0;
     while (fgets(line, sizeof line, f) && lines++ < 400) {
         if (char* h = strchr(line, '#')) *h = 0;
@@ -135,6 +141,8 @@ static bool trackRead(FILE* f, TrackDef& d, const TrackDef& base) {
         else if (K == "tunnel" && num.size() >= 2) { float a = num[0], b = num[1], q = (b - a) * 0.2f; float v[5] = { a, b, -fabsf(after("depth", 0, 19)), after("glass", 0, a + q), after("glass", 1, b - q) }; d.tunnel.insert(d.tunnel.end(), v, v + 5); }
         else if (K == "island" && num.size() >= 3) d.islands.insert(d.islands.end(), num.begin(), num.begin() + 3);
         else if (K == "wardens" && !num.empty()) d.wardens = (int)num[0];
+        else if (K == "jump" && num.size() >= 2) { bool rev = text.find("reverse") != std::string::npos; float v[5] = { num[0], num[1], after("length", 0, 16), after("height", 0, 4), rev ? -1.0f : 1.0f }; d.jumps.insert(d.jumps.end(), v, v + 5); }
+        else if (K == "key" && num.size() >= 2) { float v[3] = { num[0], num[1], after("height", 0, 1.3f) }; d.keyPts.insert(d.keyPts.end(), v, v + 3); }
         else if (K == "laps" && !num.empty()) d.lapMul = (int)num[0]; else if (K == "laps" && word.size() > 1 && word[0] == 'x') d.lapMul = atoi(word.c_str() + 1);
     }
     return head && trackSanitize(d);

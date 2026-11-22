@@ -123,6 +123,9 @@ static int xsdkPasses = 0;   // debug bring-up: 0 direct, 1 post, 2 shadows, 3 r
 static int xsdkPasses = 3;
 #endif
 static const int NMODES = 4;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races)
+static void miniReset();   // minis.h
+static bool delAsk = false;   // the track screen is asking whether to delete the custom track shown
+static std::vector<std::pair<std::string, unsigned>> customKeysSaved;   // from the config: keys found on custom tracks, by file name (applied once they are loaded)
 static std::string cliTrackFile, cliEdScript; static bool cliEdit = false, cliEdNew = false; static int cliEdTool = 0;   // --trackfile, --edit, --edtool
 static bool champOn = false, champDone = false, cliChamp = false; static int champRound = 0; static int champPts[NAI + 1];   // championship: running, all four rounds done, round 0-3, points (0: you, 1 + k: ai[k])
 static const int CHAMP_TRACK[4] = { 0, 1, 2, 3 }, CHAMP_LAPS[4] = { 1, 2, 2, 3 }, CHAMP_PTS[10] = { 25, 18, 15, 12, 10, 8, 6, 4, 2, 1 };
@@ -356,6 +359,8 @@ static void loadCfg() {
         int ns = 0; char h[100]; if (fscanf(f, " servers %d", &ns) == 1) { servers.clear(); while (ns-- > 0 && fscanf(f, " server %95s", h) == 1) srvAdd(h); }   // the saved list replaces the built-in one
         if (fscanf(f, " name %16[^\n]", h) == 1 && h[0]) snprintf(nc.name, sizeof nc.name, "%.16s", h);
         int lp = 0; if (fscanf(f, " laps %d", &lp) == 1 && lp >= 1 && lp <= 9) selLaps = lp;
+        int fl = 0; if (fscanf(f, " flowers %d", &fl) == 1 && fl >= 0) roamFlowers = fl;
+        char cn[200]; unsigned cm = 0; while (fscanf(f, " ckey %199s %u", cn, &cm) == 2) customKeysSaved.push_back({ cn, cm });   // free roam: flowers picked up, the levels they make (minis.h)
     }
     fclose(f);
 }
@@ -365,7 +370,9 @@ static void saveCfg() {
 #endif
     if (noSave) return; FILE* f = fopen(cfgPath().c_str(), "w"); if (!f) return;
     fprintf(f, "v1\nvideo %d %d %d %d %d %d\n", (int)vidFull, vidW, vidH, vidAA, vidAF, (int)vidVsync); for (int i = 0; i < NBIND; i++) fprintf(f, "bind %d %d %d\n", i, binds[i][0], binds[i][1]);
-    fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\nlaps %d\n", nc.name, selLaps); fclose(f);
+    fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\nlaps %d\nflowers %d\n", nc.name, selLaps, roamFlowers);
+    for (int t = NTRACKS; t < (int)TRACKS.size(); t++) if (keysGot[t] && !TRACKS[t].file.empty()) { std::string n = TRACKS[t].file; size_t sl = n.find_last_of("/\\"); if (sl != std::string::npos) n = n.substr(sl + 1); if (n.find(' ') == std::string::npos) fprintf(f, "ckey %s %u\n", n.c_str(), keysGot[t]); }   // keys found on your own tracks
+    fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the
 // render size are picked up by render(), which rebuilds its targets when they change.
@@ -455,6 +462,7 @@ static void flushPendingTrack() { if (pendingTrack >= 0) { int t = pendingTrack;
 static void startRace() {
     netRace = false; raceLaps = champOn ? CHAMP_LAPS[champRound] : selLaps * std::max(1, W.def->lapMul); weather = selWeather; exploreMode = selMode == 1; rampage = selMode == 2 || champOn; setupCars(!exploreMode); raceT = 0; countdown = exploreMode ? 0 : 3.6f; timeLeft = 45; lapStart = 0; bestLapRace = 0; lastLap = 0;
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
+    miniReset();
     if (exploreMode) say("FREE ROAM - FIND THE KEYS", V3(1, 0.85f, 0.3f), 3.5f);
     if (champOn) { char cb[64]; snprintf(cb, sizeof cb, "CHAMPIONSHIP  -  ROUND %d OF 4", champRound + 1); say(cb, V3(1, 0.85f, 0.2f), 3.5f); }
     else if (rampage) say("RAMPAGE  -  TOP 5 GO TO THE SHOWDOWN", V3(1, 0.4f, 0.2f), 3.5f);
@@ -520,6 +528,7 @@ static bool dodge(int i, float myLat, float ahead, float& lat) {
     struct Ob { float lat, r; }; Ob ob[24]; int no = 0;
     for (auto& w : wrecks) { float d = (float)((w.si - i + W.n) % W.n); if (w.age < WRECK_LIFE - 1.5f && d < ahead && fabsf(w.lat) < ROADW + 3 && no < 24) ob[no++] = { w.lat, 2.2f }; }
     for (auto& o : wfx::obs) { float d = (float)((o.si - i + W.n) % W.n); if (d < ahead && no < 24) ob[no++] = { o.lat, o.r + 0.6f }; }
+    for (auto& o : W.jumpObs) { float d = (float)((o.si - i + W.n) % W.n); if (d < ahead && no < 24) ob[no++] = { o.lat, o.r }; }   // (a custom track's jumps: the bots go round)
     auto clear = [&](float l) { for (int k = 0; k < no; k++) if (fabsf(ob[k].lat - l) < ob[k].r + 1.4f) return false; return true; };
     if (!no || clear(myLat)) return false;
     float best = 1e9f;
@@ -685,7 +694,7 @@ static void respawn(Car& c) {
     for (auto& w : wrecks) { float dx = w.pos.x - s.x, dz = w.pos.z - s.z; if (dx * dx + dz * dz < 4.5f * 4.5f) { float l = w.lat > 0 ? w.lat + 4.6f : w.lat - 4.6f; if (fabsf(l) > ROADW - 1.5f) l = w.lat > 0 ? w.lat - 4.6f : w.lat + 4.6f; c.pos.x += s.tz * l; c.pos.z -= s.tx * l; break; } }
     // nor right behind something on the road (a Warden's foot, a UFO's wreck): onto a lane past it
     if (onBr < 0) { float l = 0; if (dodge(i, 0, 28, l)) { V3 p; float yw; W.at((float)i, l, p, yw); c.pos = V3(p.x, std::max(p.y, W.H(p.x, p.z)) + 0.2f, p.z); } }
-    c.yaw = atan2f(s.tx, s.tz); c.vel = V3(); c.dead = false; c.hp = 100; c.pitch = c.roll = c.yawRate = 0; c.grounded = true; camInit = false;
+    c.yaw = atan2f(s.tx, s.tz); c.vel = V3(); if (c.dead || c.hp <= 0) c.hp = 100; c.dead = false;   // (back on the road: a wreck comes back whole, a hurt car stays hurt) c.pitch = c.roll = c.yawRate = 0; c.grounded = true; camInit = false;
 }
 
 // Chase-camera heading: follow the car, leaning a little towards where it is actually travelling.
@@ -719,7 +728,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
         bool wantBoost = in.nitro && !c.nitroLock && c.nitro > 0 && !c.braking && vf > -1 && !c.wet;
         c.boost += clampf((wantBoost ? 1.0f : 0.0f) - c.boost, -7 * dt, 9 * dt);
         if (wantBoost) { c.nitro -= dt / NITRO_TANK; if (c.nitro <= 0) { c.nitro = 0; c.nitroLock = true; } }
-        else { c.nitro = std::min(1.0f, c.nitro + dt / NITRO_REFILL); if (!in.nitro && c.nitro > NITRO_ARM) c.nitroLock = false; }   // let go before it will fire again
+        else { c.nitro = std::min(1.0f, c.nitro + dt / (NITRO_REFILL * (&c == &player ? nitroMul : 1.0f))); if (!in.nitro && c.nitro > NITRO_ARM) c.nitroLock = false; }   // let go before it will fire again
         float top = S.top * (1 - 0.2f * o) * (1 + 0.22f * c.boost);
         // --- longitudinal ---
         if (in.gas > 0) { drive = S.acc * in.gas * (shiftCut > 0 ? 0.1f : 1.0f) * clampf((1 - vf / top) * 2.2f, 0, 1); vf += drive * dt; if (vf < 7) c.wheelspin = true; }
@@ -757,7 +766,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
         gx = clampf(gx, -1, 1); gz = clampf(gz, -1, 1);
         vf -= GRAV * (gx * f.x + gz * f.z) * 0.7f * dt; vs -= GRAV * (gx * sd.x + gz * sd.z) * 0.2f * dt;
     } else { c.yawRate *= expf(-3.0f * dt); c.yaw += (c.yawRate + c.steer * 0.6f) * dt; c.airT += dt; c.slip = c.slipF = c.slipR = 0;
-        c.boost += clampf(-c.boost, -7 * dt, 0.0f); c.nitro = std::min(1.0f, c.nitro + dt / NITRO_REFILL); if (!in.nitro && c.nitro > NITRO_ARM) c.nitroLock = false; }
+        c.boost += clampf(-c.boost, -7 * dt, 0.0f); c.nitro = std::min(1.0f, c.nitro + dt / (NITRO_REFILL * (&c == &player ? nitroMul : 1.0f))); if (!in.nitro && c.nitro > NITRO_ARM) c.nitroLock = false; }
     c.yaw = wrapPi(c.yaw); c.vel.x = f.x * vf + sd.x * vs; c.vel.z = f.z * vf + sd.z * vs; c.vf = vf;
     V3 np = c.pos; np.x += c.vel.x * dt; np.z += c.vel.z * dt; if (!W.flat) { np.x = clampf(np.x, -HALF + 6, HALF - 6); np.z = clampf(np.z, -HALF + 6, HALF - 6); }
     // walls: three discs along the car (the old single disc let the nose and tail sink into walls). A knock off the
@@ -821,10 +830,21 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
     c.wheelRot += (c.wheelspin && gr ? std::max(vf, 22.0f) : vf) / S.wr * dt;
 }
 
+// does this bot take shortcut k on the lap starting at loop distance `base`? About half the field does: a fixed pick
+// from the bot, its paint and the lap (no random numbers drawn: races stay repeatable)
+static bool aiTakes(const Car& c, int k, float base) { unsigned hsh = (unsigned)(c.paint * 131 + c.type * 17 + (int)(base / W.n) * 7 + (int)c.aiTop + k * 101) * 2654435761u; return (hsh >> 16) % 100 < 50u; }
 static void stepAI(Car& c, float dt, bool go, float playerProg) {
     float lat0 = c.lat; int n = W.n; int i = (((int)floorf(c.stot)) % n + n) % n; float mc = 0;
-    if (c.brOn) { const std::vector<TS>& bt = W.brs[c.brK].ts; int m = (int)bt.size(); for (int k = 8; k < 80; k += 6) mc = std::max(mc, bt[std::min(m - 1, (int)c.bu + k)].curv); }
-    else for (int k = 8; k < 80; k += 6) mc = std::max(mc, W.ts[(i + k) % n].curv);
+    // the tightest bend in the next 80 m of the way it will go: along a shortcut and on past its end onto the loop, or
+    // along the loop and into a shortcut it is about to take
+    if (c.brOn) { const World::Branch& br = W.brs[c.brK]; int m = (int)br.ts.size();
+        for (int k = 8; k < 80; k += 6) { int q = (int)c.bu + k; mc = std::max(mc, q < m ? br.ts[q].curv : W.ts[(br.b + q - (m - 1)) % n].curv); } }
+    else {
+        for (int k = 8; k < 80; k += 6) mc = std::max(mc, W.ts[(i + k) % n].curv);
+        if (W.hasBranch() && go && c.finishT < 0) { float base = floorf(c.stot / n) * n, f = c.stot - base;
+            for (int k = 0; k < (int)W.brs.size(); k++) { const World::Branch& br = W.brs[k]; float ahead = br.a - f; if (ahead < 0 || ahead > 80 || !aiTakes(c, k, base)) continue;
+                for (int q = 0; q < (int)br.ts.size() && q < 80 - ahead; q += 6) mc = std::max(mc, br.ts[q].curv); } }
+    }
     float tgt = std::min(c.aiTop * (0.55f + 0.45f * wx().grip), sqrtf(21.0f * wx().grip / std::max(mc, 1e-4f)));
     tgt *= clampf(1 + (playerProg - c.stot) * 0.0007f, 0.90f, 1.10f);
     if (!go || c.finishT >= 0) tgt = go ? 22 : 0;
@@ -841,8 +861,7 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
         if (W.hasBranch() && go && c.finishT < 0) {
             float base = floorf(s0 / n) * n, f0 = s0 - base, f1 = c.stot - base;
             for (int k = 0; k < (int)W.brs.size(); k++) { const World::Branch& br = W.brs[k]; if (!(f0 < br.a && f1 >= br.a)) continue;
-                unsigned hsh = (unsigned)(c.paint * 131 + c.type * 17 + (int)(base / n) * 7 + (int)c.aiTop + k * 101) * 2654435761u;
-                if ((hsh >> 16) % 100 < 50u) { tm.aiBranch++; c.brOn = true; c.brK = k; c.brBase = base; c.bu = f1 - br.a; c.stot = base + br.S(c.bu); c.latT = clampf(c.latT, -2.5f, 2.5f); }
+                if (aiTakes(c, k, base)) { tm.aiBranch++; c.brOn = true; c.brK = k; c.brBase = base; c.bu = f1 - br.a; c.stot = base + br.S(c.bu); c.latT = clampf(c.latT, -2.5f, 2.5f); }
                 break;
             }
         }
@@ -945,6 +964,7 @@ static void finishRace(bool tu) {
 
 #include "foot.h"
 #include "showdown.h"
+#include "minis.h"
 #include "netshd.h"
 #include "champ.h"
 #ifndef FCF_GFX_XSDK
@@ -1312,7 +1332,7 @@ static void keepInTube(V3& c) {
     c.x += t.tz * (l2 - lat); c.z -= t.tx * (l2 - lat); c.y = clampf(c.y, t.y + 0.5f, t.y + std::max(arch, 1.2f));
 }
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); } if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
-    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); if (mech::on) wfx::draw(p, lit, mechT); }   // (past 900 m the fog has it)
+    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); mini::drawBlooms(p, lit, T); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); if (mech::on) wfx::draw(p, lit, mechT); }   // (past 900 m the fog has it)
 
 #ifdef FCF_GFX_XSDK
 static bool traceDrawGroups = false;
@@ -1608,6 +1628,7 @@ static void drawMap(float cx, float cy, float sc, bool cars) {
     if (!cars) return;
     if (showAI()) for (auto& a : ai) ui.rect(cx + a.pos.x * sc - 3, cy + a.pos.z * sc - 3, 6, 6, PAINTS[a.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f));
     if (netRace) for (auto& r : nc.r) if (r.present && r.racing) ui.rect(cx + r.car.pos.x * sc - 3, cy + r.car.pos.z * sc - 3, 6, 6, PAINTS[r.car.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f));
+    mini::mapDots(cx, cy, sc);
     ui.rect(cx + player.pos.x * sc - 5, cy + player.pos.z * sc - 5, 10, 10, V3(0, 0, 0)); ui.rect(cx + player.pos.x * sc - 3.5f, cy + player.pos.z * sc - 3.5f, 7, 7, V3(1, 0.9f, 0.1f));
 }
 static void panel(float x, float y, float w, float h, float a = 0.55f) { ui.rect(x, y, w, h, V3(0.02f, 0.03f, 0.06f), a); ui.rect(x, y, w, 3, V3(1, 0.55f, 0.1f), 0.9f); }
@@ -1793,9 +1814,10 @@ static void drawHUD() {
         char t[32]; if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST LAP %s", t); ui.text(96, ry[0] + 96, 2.5f, white, b);
 #ifdef FCF_EDITOR
         panel(Wd - 700, 358, 640, 30, 0.5f);
-        ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), W.id >= NTRACKS ? "F4 EDIT THIS TRACK    F6 NEW TRACK" : "F4 EDIT A COPY OF THIS TRACK    F6 NEW TRACK", 2);
+        if (delAsk) ui.text(Wd - 72, 364, 2.3f, V3(1, 0.4f, 0.3f), "DELETE THIS TRACK FOR GOOD?   ENTER = YES   ANY OTHER KEY = NO", 2);
+        else ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), W.id >= NTRACKS ? "F4 EDIT   F6 NEW TRACK   DEL DELETE" : "F4 EDIT A COPY OF THIS TRACK    F6 NEW TRACK", 2);
 #endif
-        if (W.def->deco >= 0) ui.text(96, ry[0] + 120, 2.5f, yel, "HIDDEN KEYS"); else ui.text(96, ry[0] + 120, 2.5f, V3(0.4f, 1, 0.6f), W.id >= NTRACKS ? "YOUR OWN TRACK" : "NO HIDDEN KEYS - JUST RACE"); for (int k = 0; k < NKEYS && W.def->deco >= 0; k++) keyIcon(262 + k * 46, ry[0] + 118, 4, (keysGot[W.id] >> k & 1) ? yel : V3(0.3f, 0.3f, 0.35f), 1);
+        if (!W.keys.empty()) ui.text(96, ry[0] + 120, 2.5f, yel, "HIDDEN KEYS"); else ui.text(96, ry[0] + 120, 2.5f, V3(0.4f, 1, 0.6f), W.id >= NTRACKS ? "YOUR OWN TRACK" : "NO HIDDEN KEYS - JUST RACE"); for (int k = 0; k < (int)W.keys.size(); k++) keyIcon(262 + k * 46, ry[0] + 118, 4, (keysGot[W.id] >> k & 1) ? yel : V3(0.3f, 0.3f, 0.35f), 1);
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
         snprintf(b, sizeof b, "WEATHER  %s %-7s %s  %s", selRow == 1 ? "<" : " ", WX[selWeather].name, selRow == 1 ? ">" : " ", WX[selWeather].sub);
         ui.text(96, ry[1], 2.8f, wcol[selWeather], b);
@@ -1859,10 +1881,10 @@ static void drawHUD() {
             snprintf(b, sizeof b, "LAP %d/%d", std::min(std::max(player.lap, 1), raceLaps), raceLaps); ui.text(36, 106, 2.5f, white, b);
             if (netRace) { char t2[32]; fmtTime(t2, raceT); ui.text(Wd / 2, 26, 5, white, t2, 1, 1, 0.12f); ui.text(Wd / 2, 70, 2, V3(0.5f, 0.9f, 1), "ONLINE", 1); } else if (rampage) { char t3[32]; fmtTime(t3, raceT); ui.text(Wd / 2, 26, 5, white, t3, 1, 1, 0.12f); ui.text(Wd / 2, 100, 2, white, "RACE TIME", 1); } else {
             V3 tc = timeLeft < 10 ? (fmodf(T, 0.5f) < 0.25f ? V3(1, 0.2f, 0.1f) : white) : yel; snprintf(b, sizeof b, "%02d", (int)ceilf(timeLeft)); ui.text(Wd / 2, 22, 10, tc, b, 1, 1, 0.12f); ui.text(Wd / 2, 100, 2, white, "TIME", 1); }
-        } else { panel(20, 20, 230, 50); ui.text(36, 36, 3, V3(0.4f, 1, 0.6f), "FREE ROAM"); }
+        } else { panel(20, 20, 230, 50); ui.text(36, 36, 3, V3(0.4f, 1, 0.6f), "FREE ROAM"); if (!netRace) mini::hud(20, 80); }
         panel(Wd - 300, 20, 280, 86); fmtTime(t, player.lap > 0 ? raceT - lapStart : 0); snprintf(b, sizeof b, "LAP  %s", t); ui.text(Wd - 284, 34, 3, white, b);
         if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST %s", t); ui.text(Wd - 284, 58, 3, yel, b);
-        for (int k = 0; k < NKEYS && W.def->deco >= 0; k++) keyIcon(Wd - 284 + k * 44, 84, 3.6f, (keysGot[W.id] >> k & 1) ? yel : V3(0.35f, 0.35f, 0.4f), (keysGot[W.id] >> k & 1) ? 1 : 0.7f);
+        for (int k = 0; k < (int)W.keys.size(); k++) keyIcon(Wd - 284 + k * 44, 84, 3.6f, (keysGot[W.id] >> k & 1) ? yel : V3(0.35f, 0.35f, 0.4f), (keysGot[W.id] >> k & 1) ? 1 : 0.7f);
         }
         drawFootHUD(Hb); drawShdDriveHUD();
         if (state == RACE && introT > 0) { float a = clampf(introT * 2, 0, 1) * clampf((INTRO_LEN - introT) * 3, 0, 1); ui.text(Wd / 2, 150, 8, yel, W.def->name, 1, a, 0.12f); ui.text(Wd / 2, 232, 3, white, WX[weather].name, 1, a); }
@@ -2059,12 +2081,22 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (k == SDLK_UP) { selRow = (selRow + 3) % 4; blip(); } if (k == SDLK_DOWN) { selRow = (selRow + 1) % 4; blip(); }
         if (k == SDLK_LEFT || k == SDLK_RIGHT) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
-            if (selRow == 0) { selTrack = (selTrack + d + (int)TRACKS.size()) % (int)TRACKS.size(); pendingTrack = selTrack; pendingT = 0.45f; selWeather = weatherOf[selTrack]; }
+            if (selRow == 0) { int nt = (int)TRACKS.size(); do selTrack = (selTrack + d + nt) % nt; while (TRACKS[selTrack].deleted); pendingTrack = selTrack; pendingT = 0.45f; selWeather = weatherOf[selTrack]; }
             else if (selRow == 1) { selWeather = (selWeather + d + NWX) % NWX; weatherOf[selTrack] = selWeather; writeSave(); }
             else if (selRow == 2) selMode = (selMode + d + NMODES) % NMODES;
             else if (selMode != 3) { selLaps = (selLaps - 1 + d + 9) % 9 + 1; saveCfg(); }
         }
 #ifdef FCF_EDITOR
+        if (delAsk) {   // "DELETE THIS TRACK?": Enter deletes its file, anything else keeps it
+            delAsk = false;
+            if (k == SDLK_RETURN && selTrack >= NTRACKS && !TRACKS[selTrack].deleted) {
+                TrackDef& t = TRACKS[selTrack]; if (!t.file.empty()) std::remove(t.file.c_str()); t.deleted = true; keysGot[selTrack] = 0; saveCfg();
+                say("TRACK DELETED", V3(1, 0.5f, 0.3f), 2); int nt = (int)TRACKS.size(); do selTrack = (selTrack + 1) % nt; while (TRACKS[selTrack].deleted);
+                pendingTrack = -1; loadTrack(selTrack); selWeather = weatherOf[selTrack];
+            } else blip();
+            break;
+        }
+        if ((k == SDLK_DELETE || k == SDLK_BACKSPACE) && selTrack >= NTRACKS) { delAsk = true; blip(); break; }
         if (k == SDLK_F4 || k == SDLK_F6) { ok(); flushPendingTrack(); ed::open(k == SDLK_F6 ? -1 : selTrack); break; }
 #endif
         if (k == SDLK_RETURN) { ok(); flushPendingTrack(); if (selMode == 3) champBegin(); else startRace(); } if (k == SDLK_ESCAPE) { flushPendingTrack(); state = CARSEL; } break;
@@ -2132,6 +2164,7 @@ static void printJSON(FILE* o) {
     { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
       fprintf(o, "\"shortcuts\":\"%s\",\"tunnels\":%d,\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), (int)W.tuns.size(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
+    fprintf(o, "\"minis\":%d,\"miniSpawned\":%d,\"miniKilled\":%d,\"miniRams\":%d,\"keysGot\":%u,\"jumps\":%d,\"miniPenalties\":%d,\"miniJets\":%d,\"miniRockets\":%d,\"roamFlowers\":%d,\"level\":%d,\"blooms\":%d,\"miniPos\":[%.1f,%.1f,%.1f,%.2f],\"carHp\":%.1f,\"footHp\":%.1f,\"footMaxHp\":%.0f,", mini::alive(), mini::spawned, mini::killed, mini::rams, keysGot[W.id], (int)W.def->jumps.size() / 5, mini::penalties, mini::jets, mini::rocketsFired, roamFlowers, mini::level(), (int)mini::blooms.size(), fighters[1].pos.x, fighters[1].pos.y, fighters[1].pos.z, fighters[1].yaw, player.hp, me.on ? me.hp : -1.0f, footMaxHp);
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
     fprintf(o, "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
         "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
@@ -2282,6 +2315,7 @@ int main(int argc, char** argv) {
         else if (a == "--seed") { grng.s = (uint32_t)atoi(argv[++i]) * 2654435761u + 1u; grngSeeded = true; } else if (a == "--champ") cliChamp = true; else if (a == "--branchscan") { initTracks(); branchScan(atoi(argv[++i])); return 0; } else if (a == "--sim") sim = simMode = noSave = true; else if (a == "--seconds") skip = (int)(F(1) * 60), i++; else if (a == "--flat") W.flat = true; else if (a == "--dump") dump = true;
         else if (a == "--connect") { snprintf(nc.host, sizeof nc.host, "%s", argv[++i]); netWanted = true; } else if (a == "--name") { snprintf(nc.name, sizeof nc.name, "%.16s", argv[++i]); for (char* c = nc.name; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--ready") nc.autoReady = true;
+        else if (a == "--minisnow") mini::now = true; else if (a == "--minigroup") { mini::now = true; mini::group = atoi(argv[++i]); } else if (a == "--minishold") mini::hold = true; else if (a == "--outcar") mini::outcar = true; else if (a == "--flowers") mini::flowers = atoi(argv[++i]);   // tests: a mini Warden straight away (40 m ahead, on the road); as if that many flowers were picked up
         else if (a == "--tracksdir") tracksDirOverride = argv[++i];                        // where custom tracks (.fcft) are kept
         else if (a == "--trackfile") cliTrackFile = argv[++i];                             // load this custom track and pick it
         else if (a == "--exporttracks") { initTracks(); std::string dir = argv[++i]; trackMkdir(dir); for (int t = 0; t < NTRACKS; t++) { TrackDef d = TRACKS[t]; d.nameS = d.name; d.subS = d.sub; d.song = TRACK_SONG[t]; char num[8]; snprintf(num, sizeof num, "%d", t + 1); std::string f = dir + "/builtin-" + num + ".fcft"; if (!trackSave(d, f.c_str())) { fprintf(stderr, "cannot write %s\n", f.c_str()); return 1; } } return 0; }
@@ -2325,6 +2359,7 @@ int main(int argc, char** argv) {
             }
             if (!cliTrackFile.empty()) { TrackDef d; if (trackLoad(cliTrackFile.c_str(), d, TRACKS[0])) { int t = trackAdd(d); if (t >= 0) selTrack = t; } else { fprintf(stderr, "cannot read track file %s\n", cliTrackFile.c_str()); exit(1); } }
             for (int t = NTRACKS; t < (int)TRACKS.size(); t++) weatherOf[t] = TRACKS[t].wx;
+            for (int t = NTRACKS; t < (int)TRACKS.size(); t++) { std::string n = TRACKS[t].file; size_t sl = n.find_last_of("/\\"); if (sl != std::string::npos) n = n.substr(sl + 1); for (auto& ck : customKeysSaved) if (ck.first == n) keysGot[t] = ck.second; }
         }
         W.build(selTrack); setupCars(true);
         if (startState == 8) { state = OPTS; optReturn = TITLE; }

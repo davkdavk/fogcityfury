@@ -130,6 +130,8 @@ Track files and the editor (see `docs/EDITOR.md`): `--trackfile FILE` loads a cu
 tracks as files and exits, `--edit` / `--ednew` open the editor on the picked track / a new one,
 `--edtool N` picks its tool, `--edscript "..."` works its mouse and keys (`ed::script`).
 
+Free roam mini Wardens (see `docs/ROAM.md`): `--minisnow`, `--minishold`, `--outcar`, `--flowers N`.
+
 ## The JSON report
 
 One line on stdout from `--sim` and `--shot`.

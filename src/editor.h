@@ -5,8 +5,8 @@
 #pragma once
 
 namespace ed {
-enum { ROAD, HILL, TUNNEL, CUT, NTOOL };
-static const char* const TOOL_NAME[NTOOL] = { "ROAD", "HILLS", "TUNNEL", "SHORTCUTS" };
+enum { ROAD, HILL, TUNNEL, CUT, JUMP, KEY, NTOOL };
+static const char* const TOOL_NAME[NTOOL] = { "ROAD", "HILLS", "TUNNEL", "CUTS", "JUMPS", "KEYS" };
 static bool testing = false, naming = false, drag = false, pan = false, moved = false, dirty = false;
 static int slot = -1, tool = ROAD, sel = -1, pick = -1, sky = 0;
 static float mx = 0, my = 0, dirtyT = 0, noteT = 0; static char note[96] = "";
@@ -63,7 +63,7 @@ static void rebuild() {
     TrackDef& d = def();
     if (!trackSanitize(d) && !undo.empty()) { d = undo.back(); undo.pop_back(); trackNames(d); trackSanitize(d); }
     W.build(slot); setupCars(true); dirty = false; check(); save();
-    int m = tool == ROAD ? (int)d.ctrl.size() / 2 : tool == HILL ? (int)d.hills.size() : tool == CUT ? (int)d.branches.size() * 2 : (int)d.tunnel.size() / 5 * 2; if (sel >= m) sel = -1;
+    int m = tool == ROAD ? (int)d.ctrl.size() / 2 : tool == HILL ? (int)d.hills.size() : tool == CUT ? (int)d.branches.size() * 2 : tool == JUMP ? (int)d.jumps.size() / 5 : tool == KEY ? (int)d.keyPts.size() / 3 : (int)d.tunnel.size() / 5 * 2; if (sel >= m) sel = -1;
 }
 static void push() { undo.push_back(def()); if (undo.size() > 60) undo.erase(undo.begin()); }
 static void touch(float wait = 0.25f) { dirty = true; dirtyT = wait; }
@@ -76,7 +76,7 @@ static void open(int t) {   // t < 0: a new track
     TrackDef d = TRACKS[t < 0 ? 0 : t];
     if (t < 0) {
         d.ctrl = { -380,-60, -330,-270, -90,-360, 190,-330, 390,-170, 400,90, 250,300, -20,360, -280,250 }; d.hills = { {0,0,22,150}, {-330,-270,10,45}, {250,300,12,50} };
-        d.branches.clear(); d.tunnel.clear(); d.islands.clear(); d.wardens = 2; d.nameS = "MY TRACK"; d.subS = "CUSTOM TRACK"; d.seed = 100 + (int)(T * 997) % 800; d.baseH = 8; d.noiseAmp = 2.5f; d.landR = 580; d.cityThr = 0.45f;
+        d.branches.clear(); d.tunnel.clear(); d.islands.clear(); d.jumps.clear(); d.keyPts.clear(); d.wardens = 2; d.nameS = "MY TRACK"; d.subS = "CUSTOM TRACK"; d.seed = 100 + (int)(T * 997) % 800; d.baseH = 8; d.noiseAmp = 2.5f; d.landR = 580; d.cityThr = 0.45f;
     } else if (t < NTRACKS) { d.nameS = std::string(d.name) + " REMIX"; d.subS = d.sub; }
     if (t < NTRACKS) {
         d.deco = -1; d.song = t < 0 ? -1 : TRACK_SONG[t]; d.wx = selWeather; d.file = dir.empty() ? "" : trackNewFile(dir, d.nameS);
@@ -101,6 +101,9 @@ static int roadAt(V3 p, float maxD = 45) { if (dirty) rebuild(); int i = W.neare
 static int nTun() { return (int)def().tunnel.size() / 5; }
 static void setTunnel(int k, float a, float b) { if (a > b) std::swap(a, b); std::vector<float>& t = def().tunnel; float q = (b - a) * 0.2f, dep = k < nTun() ? t[k * 5 + 2] : -19; float v[5] = { a, b, dep, a + q, b - q };
     if (k < nTun()) std::copy(v, v + 5, t.begin() + k * 5); else t.insert(t.end(), v, v + 5); }
+// where jump k is on the map (its middle) and which way it faces
+static V3 jumpMid(const TrackDef& d, int k, V3* fw = nullptr) { const float* j = &d.jumps[k * 5]; const TS& s = W.ts[clampi((int)(j[0] * W.n), 0, W.n - 1)]; if (fw) *fw = V3(s.tx * j[4], 0, s.tz * j[4]); return V3(s.x + s.tz * j[1], s.y, s.z - s.tx * j[1]); }
+static void jumpTo(TrackDef& d, int k, V3 p) { if (dirty) rebuild(); int i = W.nearest(p.x, p.z); const TS& s = W.ts[i]; float* j = &d.jumps[k * 5]; j[0] = i / (float)W.n; j[1] = clampf((p.x - s.x) * s.tz - (p.z - s.z) * s.tx, -45, 45); }
 static bool tunnelClash(int k, float a, float b) { const std::vector<float>& t = def().tunnel; for (int q = 0; q < nTun(); q++) if (q != k && a < t[q * 5 + 1] + 0.03f && b > t[q * 5] - 0.03f) return true; return false; }
 static void mouseDown(int button) {
     TrackDef& d = def(); V3 p = world(mx, my); naming = false;
@@ -145,6 +148,19 @@ static void mouseDown(int button) {
             return;
         }
     }
+    if (tool == JUMP) {
+        int nj = (int)d.jumps.size() / 5; for (int k = 0; k < nj; k++) { V3 m = jumpMid(d, k); if (hit(m.x, m.z, 18)) h = k; }
+        if (h >= 0 && right) { push(); d.jumps.erase(d.jumps.begin() + h * 5, d.jumps.begin() + h * 5 + 5); sel = -1; touch(0); return; }
+        if (h >= 0) { push(); sel = h; drag = true; moved = false; return; }
+        if (!right) { int i = roadAt(p, 60); if (i < 0) { tell("PUT A JUMP ON OR BESIDE THE ROAD"); return; } if (nj >= FCFT_MAXJUMP) { tell("NO MORE JUMPS: THAT IS THE MOST A TRACK CAN HAVE"); return; }
+            push(); float v[5] = { i / (float)W.n, 0, 16, 4, 1 }; d.jumps.insert(d.jumps.end(), v, v + 5); jumpTo(d, nj, p); sel = nj; drag = true; moved = true; touch(); tell("JUMP: + AND - HEIGHT, 9 AND 0 LENGTH, R TURNS IT ROUND"); return; }
+    } else if (tool == KEY) {
+        int nk = (int)d.keyPts.size() / 3; for (int k = 0; k < nk; k++) if (hit(d.keyPts[k * 3], d.keyPts[k * 3 + 1], 16)) h = k;
+        if (h >= 0 && right) { push(); d.keyPts.erase(d.keyPts.begin() + h * 3, d.keyPts.begin() + h * 3 + 3); sel = -1; touch(0); return; }
+        if (h >= 0) { push(); sel = h; drag = true; moved = false; return; }
+        if (!right) { if (nk >= NKEYS) { tell("FIVE KEYS IS THE MOST A TRACK CAN HAVE"); return; }
+            push(); float v[3] = { p.x, p.z, 1.3f }; d.keyPts.insert(d.keyPts.end(), v, v + 3); sel = nk; drag = true; moved = true; touch(); tell("KEY: + AND - RAISE IT (UP IN THE AIR AFTER A JUMP, ON A ROOF)"); return; }
+    }
     if (right) pan = true; else sel = -1;
 }
 static void mouseMove(float nx, float ny) {
@@ -155,6 +171,8 @@ static void mouseMove(float nx, float ny) {
     if (tool == ROAD && sel * 2 + 1 < (int)d.ctrl.size()) { d.ctrl[sel * 2] = clampf(p.x, -640, 640); d.ctrl[sel * 2 + 1] = clampf(p.z, -640, 640); touch(); }
     else if (tool == HILL && sel < (int)d.hills.size()) { d.hills[sel].x = clampf(p.x, -760, 760); d.hills[sel].z = clampf(p.z, -760, 760); touch(); }
     else if (tool == TUNNEL && sel / 2 < nTun()) { int k = sel / 2, i = W.nearest(p.x, p.z); float f = i / (float)W.n, a = d.tunnel[k * 5], b = d.tunnel[k * 5 + 1]; if (sel % 2 == 0) a = clampf(f, b - 0.5f, b - 0.08f); else b = clampf(f, a + 0.08f, a + 0.5f); if (!tunnelClash(k, a, b)) { setTunnel(k, a, b); touch(); } }
+    else if (tool == JUMP && sel < (int)d.jumps.size() / 5) { jumpTo(d, sel, p); touch(); }
+    else if (tool == KEY && sel < (int)d.keyPts.size() / 3) { d.keyPts[sel * 3] = clampf(p.x, -700, 700); d.keyPts[sel * 3 + 1] = clampf(p.z, -700, 700); touch(); }
     else if (tool == CUT && sel / 2 < (int)d.branches.size()) { int i = W.nearest(p.x, p.z); float f = i / (float)W.n; std::vector<float>& br = d.branches[sel / 2]; if (sel % 2 == 0) br[0] = clampf(f, br[1] - 0.45f, br[1] - 0.03f); else br[1] = clampf(f, br[0] + 0.03f, br[0] + 0.45f); touch(); }
 }
 static void mouseUp() { if (drag) { if (!moved && !undo.empty()) undo.pop_back(); else if (dirty) dirtyT = 0; } drag = pan = false; }
@@ -177,7 +195,8 @@ static void key(SDL_Keycode k) {
     case SDLK_F5: if (dirty) rebuild(); save(); tell(d.file.empty() ? "NOT SAVED: SAVING IS OFF" : "SAVED"); return;
     case SDLK_F2: naming = true; return;
     case SDLK_TAB: tool = (tool + 1) % NTOOL; sel = pick = -1; drag = false; return;
-    case SDLK_1: case SDLK_2: case SDLK_3: case SDLK_4: tool = k - SDLK_1; sel = pick = -1; drag = false; return;
+    case SDLK_1: case SDLK_2: case SDLK_3: case SDLK_4: case SDLK_5: case SDLK_6: tool = k - SDLK_1; sel = pick = -1; drag = false; return;
+    case SDLK_r: if (tool == JUMP && sel >= 0 && sel < (int)d.jumps.size() / 5) { push(); d.jumps[sel * 5 + 4] = -d.jumps[sel * 5 + 4]; touch(0); } return;
     case SDLK_LEFT: camTgt.x = clampf(camTgt.x - step, -800, 800); return; case SDLK_RIGHT: camTgt.x = clampf(camTgt.x + step, -800, 800); return;
     case SDLK_UP: camTgt.z = clampf(camTgt.z - step, -800, 800); return; case SDLK_DOWN: camTgt.z = clampf(camTgt.z + step, -800, 800); return;
     case SDLK_PAGEUP: zoom(2); return; case SDLK_PAGEDOWN: zoom(-2); return;
@@ -192,15 +211,20 @@ static void key(SDL_Keycode k) {
         else if (tool == HILL && sel >= 0 && sel < (int)d.hills.size()) { push(); d.hills.erase(d.hills.begin() + sel); sel = -1; touch(0); }
         else if (tool == TUNNEL && nTun() > 0) { push(); int k = sel >= 0 && sel / 2 < nTun() ? sel / 2 : nTun() - 1; d.tunnel.erase(d.tunnel.begin() + k * 5, d.tunnel.begin() + k * 5 + 5); sel = pick = -1; touch(0); }   // (the chosen one, or the last)
         else if (tool == CUT && sel >= 0 && sel / 2 < (int)d.branches.size()) { push(); d.branches.erase(d.branches.begin() + sel / 2); sel = -1; touch(0); }
+        else if (tool == JUMP && sel >= 0 && sel < (int)d.jumps.size() / 5) { push(); d.jumps.erase(d.jumps.begin() + sel * 5, d.jumps.begin() + sel * 5 + 5); sel = -1; touch(0); }
+        else if (tool == KEY && sel >= 0 && sel < (int)d.keyPts.size() / 3) { push(); d.keyPts.erase(d.keyPts.begin() + sel * 3, d.keyPts.begin() + sel * 3 + 3); sel = -1; touch(0); }
         return;
     case SDLK_EQUALS: case SDLK_PLUS: case SDLK_KP_PLUS: case SDLK_MINUS: case SDLK_KP_MINUS: {
         float s = (k == SDLK_MINUS || k == SDLK_KP_MINUS) ? -1.0f : 1.0f;
         if (tool == HILL && sel >= 0 && sel < (int)d.hills.size()) { push(); d.hills[sel].a = clampf(d.hills[sel].a + s * 3, -70, 90); touch(0.5f); }
+        else if (tool == JUMP && sel >= 0 && sel < (int)d.jumps.size() / 5) { push(); d.jumps[sel * 5 + 3] = clampf(d.jumps[sel * 5 + 3] + s * 0.5f, 1.5f, 9); touch(0.5f); }
+        else if (tool == KEY && sel >= 0 && sel < (int)d.keyPts.size() / 3) { push(); d.keyPts[sel * 3 + 2] = clampf(d.keyPts[sel * 3 + 2] + s, 0.8f, 40); touch(0.5f); }
         else if (tool == TUNNEL && nTun() > 0) { push(); for (int k = 0; k < nTun(); k++) if (sel < 0 || sel / 2 == k) d.tunnel[k * 5 + 2] = -clampf(-d.tunnel[k * 5 + 2] + s, 12, 26); touch(0.5f); }   // (the chosen one, or all)
         else zoom(s * 2);
         return; }
     case SDLK_LEFTBRACKET: case SDLK_RIGHTBRACKET: case SDLK_9: case SDLK_0:
         if (tool == HILL && sel >= 0 && sel < (int)d.hills.size()) { push(); d.hills[sel].s = clampf(d.hills[sel].s + (k == SDLK_RIGHTBRACKET || k == SDLK_0 ? 8.0f : -8.0f), 20, 260); touch(0.5f); }
+        if (tool == JUMP && sel >= 0 && sel < (int)d.jumps.size() / 5) { push(); d.jumps[sel * 5 + 2] = clampf(d.jumps[sel * 5 + 2] + (k == SDLK_RIGHTBRACKET || k == SDLK_0 ? 2.0f : -2.0f), 8, 32); touch(0.5f); }
         return;
     default: return;
     }
@@ -241,11 +265,26 @@ static void draw(float Wd) {
         if (pick >= 0 && pick < W.n) { const TS& s = W.ts[pick]; screen(V3(s.x, s.y, s.z), sx, sy); ring(sx, sy, 12, CYA, 1, 3); } }
     if (tool == CUT) { for (size_t k = 0; k < d.branches.size(); k++) for (int e = 0; e < 2; e++) { const TS& s = W.ts[clampi((int)(d.branches[k][e] * W.n), 0, W.n - 1)]; screen(V3(s.x, s.y, s.z), sx, sy); ui.disc(sx, sy, sel == (int)k * 2 + e ? 11 : 9, GRN, 1); snprintf(b, sizeof b, "%d", (int)k + 1); ui.text(sx + 14, sy - 10, 2.2f, WHT, b); }
         if (pick >= 0 && pick < W.n) { const TS& s = W.ts[pick]; screen(V3(s.x, s.y, s.z), sx, sy); ring(sx, sy, 12, GRN, 1, 3); } }
+    if (tool == JUMP) for (int k = 0; k < (int)d.jumps.size() / 5; k++) {   // each jump: its footprint, an arrow the way it launches you
+        V3 fw, m = jumpMid(d, k, &fw), rt(fw.z, 0, -fw.x); float L = d.jumps[k * 5 + 2] * 0.5f, hw = 4.0f; bool sl = k == sel; V3 c = sl ? WHT : V3(1, 0.55f, 0.15f);
+        V3 q[4] = { m - fw * L - rt * hw, m - fw * L + rt * hw, m + fw * L + rt * hw, m + fw * L - rt * hw }; float px[4], py[4]; for (int e = 0; e < 4; e++) screenXZ(q[e].x, q[e].z, px[e], py[e]);
+        for (int e = 0; e < 4; e++) ui.line(px[e], py[e], px[(e + 1) % 4], py[(e + 1) % 4], sl ? 3 : 2, c, 1);
+        float ax, ay, bx, by; screenXZ(m.x - fw.x * L, m.z - fw.z * L, ax, ay); screenXZ(m.x + fw.x * (L + 6), m.z + fw.z * (L + 6), bx, by); ui.line(ax, ay, bx, by, 3, c, 1);
+        float hx, hy; screenXZ(m.x + fw.x * L - rt.x * 3, m.z + fw.z * L - rt.z * 3, hx, hy); ui.line(bx, by, hx, hy, 3, c, 1); screenXZ(m.x + fw.x * L + rt.x * 3, m.z + fw.z * L + rt.z * 3, hx, hy); ui.line(bx, by, hx, hy, 3, c, 1);
+        screenXZ(m.x, m.z, sx, sy); snprintf(b, sizeof b, "%dM UP", (int)lroundf(d.jumps[k * 5 + 3])); ui.text(sx + 16, sy - 10, 2.0f, WHT, b);
+    }
+    if (tool == KEY || tool == JUMP) for (int k = 0; k < (int)d.keyPts.size() / 3; k++) {   // each key: a gold diamond, and how high it floats
+        screenXZ(d.keyPts[k * 3], d.keyPts[k * 3 + 1], sx, sy); bool sl = k == sel && tool == KEY; float r = sl ? 11.0f : 9.0f; V3 gold(1, 0.82f, 0.2f);
+        ui.line(sx - r, sy, sx, sy - r, 4, gold, 1); ui.line(sx, sy - r, sx + r, sy, 4, gold, 1); ui.line(sx + r, sy, sx, sy + r, 4, gold, 1); ui.line(sx, sy + r, sx - r, sy, 4, gold, 1);
+        if (sl) ring(sx, sy, 16, WHT, 0.9f, 2);
+        snprintf(b, sizeof b, "%d  %.0fM", k + 1, d.keyPts[k * 3 + 2]); ui.text(sx + 15, sy - 10, 2.0f, WHT, b);
+    }
     // top bar: the name, the lap, the tools
     panel(0, 0, Wd, 54, 0.72f);
     snprintf(b, sizeof b, "%s%s", d.name, naming && fmodf(T, 0.6f) < 0.3f ? "_" : ""); ui.text(18, 15, 2.9f, naming ? YEL : WHT, b);
     snprintf(b, sizeof b, "%.2f KM%s", W.n / 1000.f, dirty ? "  ..." : ""); ui.text(Wd - 18, 16, 2.8f, GREY, b, 2);
-    for (int t = 0; t < NTOOL; t++) { float x = Wd - 868 + t * 162; snprintf(b, sizeof b, "%d %s", t + 1, TOOL_NAME[t]); if (t == tool) ui.rect(x - 8, 8, ui.textW(b, 2.6f) + 16, 38, V3(1, 0.55f, 0.1f), 0.9f); snprintf(b, sizeof b, "%d %s", t + 1, TOOL_NAME[t]); ui.text(x, 16, 2.6f, t == tool ? V3(0.05f, 0.05f, 0.08f) : WHT, b, 0, 1, 0, t != tool); }
+    { float x = Wd - 18 - ui.textW(b, 2.8f) - 28, w[NTOOL]; char nb[24]; for (int t = NTOOL - 1; t >= 0; t--) { snprintf(nb, sizeof nb, "%d %s", t + 1, TOOL_NAME[t]); w[t] = ui.textW(nb, 2.4f); x -= w[t] + 26; }
+      for (int t = 0; t < NTOOL; t++) { snprintf(nb, sizeof nb, "%d %s", t + 1, TOOL_NAME[t]); if (t == tool) ui.rect(x - 8, 8, w[t] + 16, 38, V3(1, 0.55f, 0.1f), 0.9f); ui.text(x, 17, 2.4f, t == tool ? V3(0.05f, 0.05f, 0.08f) : WHT, nb, 0, 1, 0, t != tool); x += w[t] + 26; } }
     // left: the settings
     panel(12, 66, 300, 196, 0.6f); float y = 78;
     auto row = [&](const char* k, const char* name, const char* val) { ui.text(24, y, 2.2f, YEL, k); ui.text(64, y, 2.2f, GREY, name); ui.text(300, y, 2.2f, WHT, val, 2); y += 26; };
@@ -257,7 +296,9 @@ static void draw(float Wd) {
         "DRAG A POINT   -   CLICK THE YELLOW LINE TO ADD A POINT   -   RIGHT-CLICK A POINT TO REMOVE IT",
         "CLICK TO ADD A HILL   -   DRAG IT   -   + AND - HEIGHT (UNDER 0 MAKES WATER)   -   9 AND 0 WIDTH",
         "CLICK THE ROAD WHERE IT GOES DOWN, THEN WHERE IT COMES UP   -   DRAG THE ENDS   -   + AND - DEPTH",
-        "CLICK THE ROAD WHERE THE SHORTCUT LEAVES, THEN WHERE IT REJOINS   -   DRAG THE ENDS" };
+        "CLICK THE ROAD WHERE THE SHORTCUT LEAVES, THEN WHERE IT REJOINS   -   DRAG THE ENDS",
+        "CLICK BY THE ROAD   -   DRAG IT   -   + AND - HEIGHT   -   9 AND 0 LENGTH   -   R TURNS IT ROUND",
+        "CLICK TO HIDE A KEY (UP TO 5)   -   DRAG IT   -   + AND - RAISE IT INTO THE AIR" };
     panel(0, 720 - 62, Wd, 62, 0.72f); ui.text(Wd / 2, 720 - 54, 2.1f, WHT, HELP[tool], 1);
     ui.text(Wd / 2, 720 - 28, 2.1f, GREY, "ENTER DRIVE IT   T RACE IT   TAB TOOL   WHEEL ZOOM   RIGHT-DRAG MOVE THE MAP   DEL REMOVE   ESC DONE", 1);
     if (tool == TUNNEL && nTun() > 0) { snprintf(b, sizeof b, "DEPTH %d M", (int)-d.tunnel[(sel >= 0 && sel / 2 < nTun() ? sel / 2 : 0) * 5 + 2]); ui.text(Wd / 2, 720 - 92, 2.6f, CYA, b, 1); }

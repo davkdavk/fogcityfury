@@ -1502,6 +1502,49 @@ def twin_isles_the_endurance_track():
 
 
 @test
+def mini_wardens_in_free_roam():
+    """Free roam: mini Wardens land near you (now and then, one to three at a time), jet at you, fight you hand to hand
+    on foot and shoot at your car. Only fists beat them; they leave flowers that add up to levels, each unlocking an
+    attribute. Run one down and the flowers towards your next level are lost, and a Warden fires a rocket at you."""
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", seconds=40)
+    check(d["miniSpawned"] == 1 and d["minis"] == 1, "one lands near you", (d["miniSpawned"], d["minis"]))
+    check(d["carHp"] < 90 and d["miniJets"] >= 1, "it jets in and shoots your parked car", (d["carHp"], d["miniJets"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--outcar", "--footai", "--gun", 1, seconds=20)
+    check(d["miniKilled"] == 0 and d["minis"] == 1, "bullets spark off it", (d["miniKilled"], d["minis"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--outcar", "--footai", seconds=45)
+    check(d["miniKilled"] == 1 and d["roamFlowers"] >= 2 and d["footHp"] > 0, "your fists beat it, and you pick up its flowers", (d["miniKilled"], d["roamFlowers"], d["footHp"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--auto", "--flowers", 30, seconds=12)
+    check(d["miniRams"] == 1 and d["miniKilled"] == 1, "driving into it takes it down", (d["miniRams"], d["miniKilled"]))
+    check(d["roamFlowers"] == 25 and d["miniRockets"] == 1, "but the flowers towards the next level are gone, and a Warden fires on you", (d["roamFlowers"], d["miniRockets"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--flowers", 300, seconds=1)
+    check(d["level"] == 8 and d["footMaxHp"] == 125, "300 flowers: every level, and 125 health on foot", (d["level"], d["footMaxHp"]))
+    d = sim("--track", 2, "--state", 3, "--mode", 1, "--auto", seconds=360)
+    check(2 <= d["miniSpawned"] <= 12, "they land on their own every minute or two", d["miniSpawned"])
+    d = sim("--track", 1, "--state", 3, "--auto", "--minisnow", seconds=60)
+    check(d["miniSpawned"] == 0, "never in a race", d["miniSpawned"])
+
+@test
+def the_editor_places_jumps_and_keys():
+    """The editor's JUMPS and KEYS tools: a jump by the road and a key in the air past it, a key on the ground. Saved
+    in the file; the key past the jump is reached off it; a race on the track still finishes (the bots go round)."""
+    tmp = tempfile.mkdtemp()
+    try:
+        script = "tool 4;down 50 -345;up;key plus;key plus;wait;tool 5;down 88 -340;up;" + "key plus;" * 4 + "wait;down -390 -150;up;wait"
+        d = sim("--state", 2, "--tracksdir", tmp, "--ednew", "--edscript", script, seconds=1)
+        check(d["jumps"] == 1, "a jump on the track", d["jumps"])
+        f = os.path.join(tmp, "my-track.fcft"); text = open(f).read()
+        check(text.count("jump ") == 1 and text.count("key ") == 2 and "height 5" in text, "the file has the jump (5 m up) and both keys", text[-160:])
+        r = sim("--trackfile", f, "--state", 3, "--mode", 1, "--keyrun", 0, seconds=30)
+        check(r["keysGot"] & 1, "the key past the jump is reached off it", r["keysGot"])
+        r = sim("--trackfile", f, "--state", 3, "--mode", 1, "--keyrun", 1, seconds=40)
+        check(r["keysGot"] & 2, "the key by the road is reached too", r["keysGot"])
+        r = sim("--trackfile", f, "--state", 3, "--auto", "--nobotguns", seconds=260)
+        check(r["finished"] == 1 and r["wrecks"] == 0, "a race on it finishes, nothing hit", (r["finished"], r["wrecks"]))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
 def track_files_round_trip():
     """--exporttracks writes the six built-in tracks as .fcft files; loading one back builds the same road."""
     tmp = tempfile.mkdtemp()

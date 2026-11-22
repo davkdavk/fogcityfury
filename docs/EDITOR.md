@@ -7,17 +7,20 @@ The code is `src/editor.h` (the editor) and `src/trackfile.h` (the file format).
 
 On the track screen: **F4** edits the track shown (a built-in track is copied first; the original is
 never changed) and **F6** starts a new one. Custom tracks appear in the track list after the six
-built-in ones. They are offline only, and have no hidden keys.
+built-in ones. They are offline only. Their keys are the ones you hide with the KEYS tool (which keys you have found
+on each is kept with your settings). **Del** on the track screen deletes one of your own tracks (its file goes).
 
 The editor shows the island from straight above. Every change rebuilds the world a moment later
 (about a third of a second) and saves the file.
 
-| Tool (Tab, or 1-4) | Mouse | Keys |
+| Tool (Tab, or 1-6) | Mouse | Keys |
 |---|---|---|
 | 1 Road | Drag a point. Click the yellow line to add a point. Right-click a point to remove it. | Del removes the chosen point |
 | 2 Hills | Click to add a hill, drag to move it. Right-click removes it. | + and - height (below 0 digs water), 9 and 0 width |
 | 3 Tunnel | Click the road where it goes down, then where it comes up. Drag the ends. | + and - depth, Del removes it |
 | 4 Shortcuts | Click the road where the shortcut leaves, then where it rejoins. Drag the ends. Right-click an end to remove it. | Del removes the chosen one |
+| 5 Jumps | Click on or beside the road to put a jump there (it faces the way you drive), drag it. Right-click removes it. | + and - height, 9 and 0 length, R turns it round, Del removes it |
+| 6 Keys | Click to hide a key (up to five), drag it. Right-click removes it. | + and - raise it off the ground (into the air past a jump, or onto a roof) |
 
 Everywhere: wheel (or PgUp/PgDn) zooms, right-drag or the arrow keys move the map, **Z** undoes,
 **F2** renames, **K** sky, **X** weather, **M** song, **C** how much city, **G** a new city layout,
@@ -80,6 +83,8 @@ One setting per line. Lines the game does not know are skipped. `#` starts a com
 | `island` | `x z radius`: one island (up to four). Leave them all out for one round island of `land radius`. |
 | `wardens` | How many Wardens walk the track, 0 to 4 (2 if left out). |
 | `laps` | `x2` or `x3`: an endurance track, raced at that many times the laps picked. |
+| `jump` | `u lat  length L  height H` (and `reverse` to face against the way you drive): a jump at that fraction of the lap, that far off the middle of the road (m). Up to twelve. The bots steer round them. |
+| `key` | `x z  height H`: a hidden key, H metres above the ground. Up to five. A key just past a jump, in line with it, is reached off the jump. |
 
 Every number is clamped to what the track builder can take (`trackSanitize`), so a hand-made file
 cannot crash the game; a file with fewer than four usable road points is not loaded.

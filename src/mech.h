@@ -468,9 +468,9 @@ static void cannonArm(const Unit& m, float t, const M4& tor, M4& shR, M4& elR) {
     shR = mul(tor, mul(translate(V3(SHOULDER.x, SHOULDER.y, SHOULDER.z)), mul(rotZ(0.1f * (1 - m.aim)), rotX(lerpf(hang, raised, m.aim)))));
     elR = mul(shR, mul(translate(V3(0, -L_UPPER, 0)), rotX(elbow)));
 }
-static void draw(const Unit& m, int u, Prog& p, bool lit, float t0) {
+static void draw(const Unit& m, int u, Prog& p, bool lit, float t0, const M4* parent = nullptr) {   // parent: drawn inside that frame (a mini Warden: small, where the fighter is)
     float t = t0 + m.tOff;
-    auto put = [&](const M4& M, Mesh& mesh, float glow = 0) { p.m4("uModel", M); if (lit) p.f1("uBrake", glow); mesh.draw(); };
+    auto put = [&](const M4& M, Mesh& mesh, float glow = 0) { p.m4("uModel", parent ? mul(*parent, M) : M); if (lit) p.f1("uBrake", glow); mesh.draw(); };
     if (lit) { p.v3("uPaint", m.paint); p.f1("uChrome", 0); p.f1("uBurnt", 0); p.f1("uGone", 0); }
     M4 pel; M4 tor = torsoOf(m, t, pel);
     put(pel, part[P_PELVIS]);
@@ -515,4 +515,23 @@ static float footError(const Unit& m) {
     return worst;
 }
 static V3 footAt(const Unit& m, int s) { return m.ankle[s > 0 ? 1 : 0] - V3(0, FOOT_H + m.lift[s > 0 ? 1 : 0], 0); }
+// ---- a mini Warden (free roam, minis.h): this same machine at MINI scale, its pose made from how the fighter moves ----
+// The rig stands at the origin facing +z; its feet step on flat ground in time with the fighter's stride; it raises its
+// cannon while the fighter aims; when it goes down it topples. The whole thing is drawn inside the fighter's frame.
+static const float MINI = 0.075f;   // about 2.3 m tall
+static void drawMini(V3 pos, float yaw, float stride, float run, float aim, bool alive, float deadT, V3 paint, int id, Prog& p, bool lit, float t) {
+    Unit m; m.at = V3(); m.yaw = 0; m.tOff = id * 3.1f; m.paint = paint; m.route = 0;
+    m.gait = clampf(run / 4.0f, 0, 1); m.phase = stride; m.aim = clampf(aim, 0, 1); m.aimYaw = 0.28f; m.aimElev = 0.05f;
+    for (int e = 0; e < 2; e++) {
+        float ph = stride + (e ? 3.14159265f : 0), z = sinf(ph) * STRIDE * 0.28f * m.gait, lift = std::max(0.0f, cosf(ph)) * 2.6f * m.gait;
+        m.ankle[e] = V3((e ? 1.0f : -1.0f) * HIP_W, FOOT_H + lift, z + 1.0f); m.land[e] = V3(m.ankle[e].x, 0, z); m.lift[e] = lift; m.slope[e] = 0;
+        m.meta[e] = (HIP + KNEE + ANKLE) - 0.35f * (lift / 2.6f);
+    }
+    float stand = L_THIGH * cosf(HIP) + L_SHIN * cosf(HIP + KNEE) + L_META * cosf(HIP + KNEE + ANKLE) + FOOT_H;
+    m.pelY = stand - 0.35f * m.gait * fabsf(sinf(stride));
+    M4 frame = mul(translate(pos), rotY(yaw));
+    if (!alive) frame = mul(frame, rotX(-1.45f * clampf(deadT * 2.2f, 0, 1)));   // down: it topples backwards
+    frame = mul(frame, scale(MINI, MINI, MINI));
+    draw(m, id % NUNIT, p, lit, t, &frame);
+}
 }   // namespace mech

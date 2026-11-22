@@ -368,17 +368,18 @@ static void takeDrop(Fighter& f, const Drop& d) {
 }
 
 // everything on foot for this frame: the showdown's clock, every fighter's step, pick-ups, launcher rounds, the camera's heading
+namespace mini { static FootIn think(Fighter& f, float dt); static FootIn youThink(Fighter& f, float dt); static void step(float dt); }
 static void footFrame(float dt) {
     hitFlash = std::max(0.0f, hitFlash - dt); hurtFlash = std::max(0.0f, hurtFlash - dt); footKick *= expf(-9 * dt);
     if (sdNow && netRace && state == RACE && countdown <= 0 && !showdownOn) { sdNow = false; netRush = true; player.lap = raceLaps + 1; finishRace(false); }   // tests, online: as if we had just crossed the line
     if (sdNow && !netRace && state == RACE && countdown <= 0 && !showdownOn && !shdResult) { sdNow = false; finalPlace = sdPlace; champRaceEnd(); if (!showdownStart(sdPlace)) { state = RESULTS; resultsT = 0; } }   // tests: as if you had just finished the race in that place
-    stepShowdown(dt); stepShells(dt); stepBlood(dt);
+    stepShowdown(dt); mini::step(dt); stepShells(dt); stepBlood(dt);
     if (testStick) { tstick.on = me.on; tstick.ox = 170; tstick.oy = 560; tstick.x = 170 + stickX * 70; tstick.y = 560 - stickY * 70; }   // --stick X,Y (tests): a thumb held on the stick
     bool act = state == RACE, canFire = !showdownOn || shdPhase == SH_FIGHT, canMove = act && (!showdownOn || shdPhase != SH_OVER);
     footTurn = 0;
     for (auto& f : fighters) {
         if (!f.on) continue; if (f.remote) { netStepRemote(f, dt); continue; } FootIn in;
-        if (act && f.alive) { if (f.bot) in = botThink(f, dt); else if (!(simMode && heldKeys.empty() && fingers.empty() && !tstick.on)) in = readFootInput(footTurn, dt); }
+        if (act && f.alive) { if (f.mini) in = mini::think(f, dt); else if (f.bot) in = &f == &me && !showdownOn && exploreMode ? mini::youThink(f, dt) : botThink(f, dt); else if (!(simMode && heldKeys.empty() && fingers.empty() && !tstick.on)) in = readFootInput(footTurn, dt); }
         stepFighter(f, in, dt, canFire, canMove);
     }
     for (int i = 0; i < NFIGHT; i++) for (int j = i + 1; j < NFIGHT; j++) {   // nobody stands inside anybody
@@ -406,7 +407,7 @@ static void footFrame(float dt) {
         if (a.dead || a.speed < 6 || flatDist(a.pos, me.pos) > 2.3f || fabsf(a.pos.y - me.pos.y) > 2) continue;
         V3 d = norm(V3(me.pos.x - a.pos.x, 0, me.pos.z - a.pos.z)); damageFighter(me, 35, -1, d); me.vel = me.vel + d * 8.0f; say(me.alive ? "RUN DOWN!" : "WASTED", V3(1, 0.4f, 0.2f), 1.5f); break;
     }
-    if (!showdownOn && me.on && !me.alive && me.deadT > 2.2f && state == RACE) { me.on = false; roamHp = 100; camInit = false; say("BACK IN THE CAR", V3(0.6f, 0.9f, 1), 1.5f); }
+    if (!showdownOn && me.on && !me.alive && me.deadT > 2.2f && state == RACE) { me.on = false; roamHp = footMaxHp; camInit = false; say("BACK IN THE CAR", V3(0.6f, 0.9f, 1), 1.5f); }
     // the camera's heading: the mouse or right stick turns it; it swings to keep a locked target in view, and leans into a sideways run
     if (shdSpectate) {   // watching: the view follows the heading of whoever it is on
         if (!fighters[shdWatch].on || (!fighters[shdWatch].alive && fighters[shdWatch].deadT > 1.8f)) for (int i = 0; i < NFIGHT; i++) if (fighters[i].on && fighters[i].alive) { shdWatch = i; break; }
@@ -425,7 +426,7 @@ static void footReset() {
     for (auto& f : fighters) f = Fighter(); for (int i = 0; i < NFIGHT; i++) fighters[i].id = i;
     netShd = shdSpectate = carHidden = false; shdWatch = 0;
     showdownOn = false; shdPhase = SH_OFF; shdCut = false; shdResult = false; shdWinner = -1; shdRacePlace = 0; drops.clear(); splats.clear(); gibs.clear(); shells.clear(); footMouseFire = false; tstick.on = false; hitFlash = hurtFlash = footKick = 0;
-    roamHp = 100; for (int g = 0; g < NGUNS; g++) roamAmmo[g] = gunUnlocked(g) ? GUNS[g].clip * (g == G_SMG ? 2 : 1) : 0;
+    roamHp = footMaxHp; roamCarTarget = false; for (int g = 0; g < NGUNS; g++) roamAmmo[g] = gunUnlocked(g) ? GUNS[g].clip * (g == G_SMG ? 2 : 1) : 0;
 }
 
 // ---- the camera on foot: over the right shoulder, pulled in by walls; from above for the intro; round the winner at the end ----

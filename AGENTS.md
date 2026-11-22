@@ -367,3 +367,8 @@ Read `docs/EDITOR.md` before touching `src/editor.h`, `src/trackfile.h`, the tra
 cached per track. Short version: custom tracks are `TrackDef`s appended to `TRACKS` (never more than
 `MAXT`); per-track caches go by `W.gen`, not `W.id`; saves, the network and the championship only know
 the `NTRACKS` built-in tracks; the editor is compiled out of the Xbox 360 build.
+
+## Free roam: mini Wardens and levels
+
+Read `docs/ROAM.md` before touching `src/minis.h`, `mech::drawMini` or the attribute globals in `fighter.h`. Mini
+Wardens are fighters in slots 1-4 (`mini` set) and only exist in offline free roam; footReset and every new race clear them.

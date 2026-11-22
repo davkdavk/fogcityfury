@@ -21,7 +21,9 @@ static const float GIB_R = 3.5f, BLAST_R = 7.5f;   // a grenade: kills outright 
 // what a fighter wants to do this step. mx, mz: where to run, in world axes (length up to 1)
 struct FootIn { float mx = 0, mz = 0; bool fire = false, sprint = false, roll = false; };
 struct Fighter {
-    bool on = false, alive = true, bot = false; int id = 0, paint = 0, car = -1; const char* name = "";   // car: -1 the player's, else ai[car]
+    float jetT = 0, jetCD = 0;   // a mini Warden's jetpack: seconds of burst left; seconds till it can fire again
+    bool on = false, alive = true, bot = false, mini = false;   // mini: a mini Warden (free roam, minis.h)
+    int id = 0, paint = 0, car = -1; const char* name = "";   // car: -1 the player's, else ai[car]
     V3 pos, vel; float yaw = 0, hp = 100, armour = 0, stamina = 1;
     int gun = G_PISTOL, ammo[NGUNS] = {}; float cd = 0;
     int target = -1;                         // 0..NFIGHT-1 another fighter, 8+k the racer ai[k], -1 nobody
@@ -40,6 +42,9 @@ struct Fighter {
     bool arrived = false, leftRoad = false; V3 park; float stopS = 0, lockT = 0;   // (a bot: leftRoad once it has turned off the road for the ring; park: where its car is to stop)   // lockT: seconds until "you cannot use that yet" may be said again
 };
 static Fighter fighters[NFIGHT]; static Fighter& me = fighters[0];   // fighters[0] is always the player
+// your attributes, from the levels earned in free roam (minis.h sets them every frame; online they stay at these)
+static float footMaxHp = 100, footLungs = 4.5f, footAimMul = 1, footStartArmour = 0, footDmgMul = 1, carArmourMul = 1, nitroMul = 1;
+static bool roamCarTarget = false, meleeHit = false, ramHit = false; static int roamFlowers = 0;   // meleeHit, ramHit: the damage being dealt is a punch / a car running someone down (a mini Warden takes only those)   // roamFlowers: free roam flowers picked up (saved with the settings)   // free roam: the mini Wardens shoot at your car (target 7)
 
 // the showdown: the drive from the finish line to the ring, the countdown once all three are in it, the fight, the winner
 enum ShdPhase { SH_OFF, SH_DRIVE, SH_PREP, SH_FIGHT, SH_OVER };

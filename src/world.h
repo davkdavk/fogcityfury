@@ -47,6 +47,11 @@ struct TrackDef {
     // tunnel (a track can have several). wardens: how many walk the track (0 to 4).
     std::vector<float> islands; int wardens = 2;
     int lapMul = 1;   // an endurance track races this many times the laps picked
+    // a custom track's own jumps and hidden keys (the editor's JUMPS and KEYS tools). jumps: five numbers each: where
+    // along the lap (0-1), how far off the middle of the road (m), length, height, and 1 facing the way you drive or
+    // -1 the other way. keyPts: three each: x, z, and height above the ground
+    std::vector<float> jumps, keyPts;
+    bool deleted = false;   // a custom track deleted on the track screen (its file is gone; it stays in the list, hidden, so no other track moves)
 };
 static const int MAXCUSTOM = 40, MAXT = NTRACKS + MAXCUSTOM;   // (the list never grows past MAXT, so a TrackDef never moves once made)
 static std::vector<TrackDef> TRACKS;
@@ -438,6 +443,28 @@ struct World {
     }
     // walk from p along dir until the sea; returns the shoreline point
     V3 shore(V3 p, V3 dir) const { for (int k = 0; k < 700; k++) { if (H(p.x, p.z) < 0.25f) break; p = p + dir * 1.5f; } return p; }
+    struct JumpOb { int si; float lat, r; }; std::vector<JumpOb> jumpObs;   // a custom track's jumps on the road: what the bots steer round
+    // a custom track's own jumps and keys (TrackDef::jumps, keyPts). A key just after a jump is reached off it: the
+    // scripted driver for that key goes up the jump
+    void buildCustom() {
+        const std::vector<float>& J = def->jumps;
+        struct Placed { V3 start, dir; float len; }; std::vector<Placed> placed;
+        for (size_t q = 0; q + 4 < J.size(); q += 5) {
+            int i = ((int)(J[q] * n) % n + n) % n; const TS& s = ts[i]; float lat = J[q + 1], L = J[q + 2], rise = J[q + 3], dir = J[q + 4] < 0 ? -1.0f : 1.0f;
+            V3 fw(s.tx * dir, 0, s.tz * dir), mid(s.x + s.tz * lat, 0, s.z - s.tx * lat), st = mid - fw * (L * 0.5f);
+            ramp(st.x, st.z, atan2f(fw.x, fw.z), L, 4.0f, rise); addExcl(mid.x, mid.z, L * 0.5f + 10); lane(st - fw * 40, st + fw * (L + 30), 9);
+            if (fabsf(lat) < ROADW + 5) for (int k = -1; k <= 1; k++) jumpObs.push_back({ ((int)(i + k * L * 0.5f * dir) % n + n) % n, lat, 4.6f });
+            placed.push_back({ st, fw, L });
+        }
+        const std::vector<float>& K = def->keyPts;
+        for (size_t q = 0; q + 2 < K.size() && keys.size() < (size_t)NKEYS; q += 3) {
+            float x = K[q], z = K[q + 1], h = K[q + 2]; V3 kp(x, std::max(H(x, z), 0.0f) + h, z); if (h < 6) addExcl(x, z, 12);
+            const Placed* via = nullptr; float bd = 1e9f;   // a jump that points at it, not far before it?
+            for (const Placed& p : placed) { V3 d = kp - p.start; d.y = 0; float u = d.x * p.dir.x + d.z * p.dir.z, side = fabsf(d.x * p.dir.z - d.z * p.dir.x); if (u > 0 && u < p.len + 70 && side < 6 && u < bd) { bd = u; via = &p; } }
+            if (via) addKey(kp, "jump", via->start - via->dir * 70, atan2f(via->dir.x, via->dir.z), 34, 10, { via->start, kp });
+            else { int i = nearest(x, z); const TS& s = ts[((i - 60) % n + n) % n]; addKey(kp, "custom", V3(s.x, 0, s.z), atan2f(s.tx, s.tz), 14, 30, { V3(ts[i].x, 0, ts[i].z), kp }); }
+        }
+    }
     void addKey(V3 k, const char* kind, V3 start, float yaw, float speed, float secs, std::vector<V3> wps) { keys.push_back(k); recipes.push_back({ kind, start.x, start.z, yaw, speed, secs, wps }); }
 
     // ================= secrets: each builds its scenery, its key, and the recipe a scripted driver uses to reach it =================
@@ -762,11 +789,15 @@ struct World {
         if (bd.size() < 2) return false;
         int bA = (int)(bd[0] * n), bB = (int)(bd[1] * n); if (bA <= 0 || bB <= bA || bB >= n) return false;
         std::vector<V3> dense; auto T = [&](int i) { i = ((i % n) + n) % n; return V3(ts[i].x, 0, ts[i].z); };
-        if (bd.size() >= 4) {   // through the given points: a Catmull-Rom, its end tangents from the loop 30 m either side
-            std::vector<V3> cp; cp.push_back(T(bA - 30)); cp.push_back(T(bA)); for (size_t k = 2; k + 1 < bd.size(); k += 2) cp.push_back(V3(bd[k], 0, bd[k + 1])); cp.push_back(T(bB)); cp.push_back(T(bB + 30));
-            for (size_t i = 1; i + 2 < cp.size(); i++) { V3 p0 = cp[i - 1], p1 = cp[i], p2 = cp[i + 1], p3 = cp[i + 2];
-                for (int k = 0; k < 60; k++) { float t = k / 60.f, t2 = t * t, t3 = t2 * t; dense.push_back((p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5f); } }
-            dense.push_back(cp[cp.size() - 2]);
+        if (bd.size() >= 4) {   // through the given points: a Hermite spline that leaves and rejoins along the loop's own
+            // heading (so a car turning on or off it follows a curve, never a kink); between the points a Catmull-Rom
+            std::vector<V3> P; P.push_back(T(bA)); for (size_t k = 2; k + 1 < bd.size(); k += 2) P.push_back(V3(bd[k], 0, bd[k + 1])); P.push_back(T(bB));
+            int np = (int)P.size(); std::vector<V3> M(np);
+            for (int i = 1; i + 1 < np; i++) M[i] = (P[i + 1] - P[i - 1]) * 0.5f;
+            M[0] = V3(ts[bA].tx, 0, ts[bA].tz) * len(P[1] - P[0]); M[np - 1] = V3(ts[bB].tx, 0, ts[bB].tz) * len(P[np - 1] - P[np - 2]);
+            for (int i = 0; i + 1 < np; i++) for (int k = 0; k < 60; k++) { float t = k / 60.f, t2 = t * t, t3 = t2 * t;
+                dense.push_back(P[i] * (2 * t3 - 3 * t2 + 1) + M[i] * (t3 - 2 * t2 + t) + P[i + 1] * (3 * t2 - 2 * t3) + M[i + 1] * (t3 - t2)); }
+            dense.push_back(P[np - 1]);
         } else dense = branchCurve(bA, bB);
         float L = 0; for (size_t i = 0; i + 1 < dense.size(); i++) L += len(dense[i + 1] - dense[i]);
         int m = std::max(2, (int)L); float step = L / (m - 1), acc = 0; size_t di = 0; std::vector<TS>& bts = br.ts; bts.resize(m);
@@ -832,7 +863,7 @@ struct World {
 
     void build(int id_) {
         id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB();
-        boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
+        boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); jumpObs.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
 #ifdef FCF_XENOS_CULL
         for (auto& c : worldCells) c = WorldCell();
 #endif
@@ -1035,7 +1066,7 @@ struct World {
 // Where the five keys of each track live. Order matters: key k is bit k in the save file.
 void World::decorate() {
     const int id = def->deco;
-    if (id < 0) return;   // a custom track: no hidden keys (the places they stand in belong to the built-in layouts)
+    if (id < 0) { buildCustom(); return; }   // a custom track: its own jumps and keys (the built-in tracks' places belong to their layouts)
     if (id == 0) {
         courtyard(0, 290, 0, false);                           // between the two loops, gate facing the crossing
         rooftop(-512, 95, -1, 1);
