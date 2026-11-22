@@ -81,6 +81,11 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.72
+
+- Shortcuts can be tunnels: in the editor's Tunnel tool, click a shortcut (right click takes it back up)
+- A shortcut can no longer start or end inside a tunnel
+
 ## What's new in 1.71
 
 - Share your own tracks online: SHARE TRACK in the lobby (T / Y) sends one to the server and everyone gets it
