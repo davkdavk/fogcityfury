@@ -88,6 +88,12 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.73
+
+- Shared tracks go to a vote: the lobby sees a map of the track and says yes or no
+- Everyone who plays a shared track keeps it; the server then goes back to its own track
+- Tidier towns on custom tracks; nitro pickups on the starting grid
+
 ## What's new in 1.72
 
 - Shortcuts can be tunnels: in the editor's Tunnel tool, click a shortcut (right click takes it back up)
