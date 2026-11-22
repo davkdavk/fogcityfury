@@ -49,6 +49,8 @@ static void loadTracks(const char* dir) {
 }
 static const char* trackName(int t) { static const char* B[TRACKS] = { "HILLTOP HEIGHTS", "BAYSIDE BREAKER", "SUMMIT SWITCHBACKS", "MIDNIGHT MILE", "HARBOUR DEEP", "LAGOON LOOP", "TWIN ISLES" }; return t < TRACKS ? B[t] : CT[t - TRACKS].name.c_str(); }
 // roam (--roam): the mini Wardens as the host's game last reported them, and the last hits on them
+// tracks shared by players (C_TRACK): the pieces so far, by player; wantTrack: the track to move to as soon as we are in the lobby
+struct Upload { uint32_t crc = 0; int total = 0; std::string data; std::vector<uint8_t> got; }; static Upload UP[MAXP]; static int wantTrack = -1; static bool cfgUploads = true;
 static bool cfgRoam = false; static double cfgRoamMinutes = 0, roamT = 0; static MiniState M[MINIS]; static int nMinis = 0; static MiniHit H[HITS]; static uint16_t hitSeq = 0;
 static Slot S[SD_FIGHT]; static SdStage sdStage = SD_DRIVE; static double sdT = 0, sdRing = SD_RING0, Dback[SD_DROPS]; static float sdSite[3] = {}; static SiteKind sdSiteKind = SITE_UNKNOWN; static int sdFighters = 0, sdWinner = -1, sdDrops = 0; static SdDrop D[SD_DROPS];
 static int sdAlive() { int n = 0; for (auto& q : S) if (q.player >= 0 && q.alive) n++; return n; }
@@ -162,6 +164,18 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         }
         P[who].lastHeard = t;
         Welcome w; w.h = header(S_WELCOME, 0xFF); w.yourId = (uint8_t)who; w.track = (uint8_t)track; w.laps = (uint8_t)laps; w.phase = phase; w.weather = (uint8_t)weather; sendTo(sock, from, &w, sizeof w);
+    } else if (h.type == C_TRACK && cfgUploads && who >= 0 && h.id == who && len >= (int)(sizeof(TrackChunk) - CHUNK)) {
+        TrackChunk m; memset(&m, 0, sizeof m); memcpy(&m, buf, std::min(len, (int)sizeof m)); P[who].lastHeard = t;
+        if (m.total == 0 || m.total > TRACKFILE_MAX || m.nchunks != (m.total + CHUNK - 1) / CHUNK || m.chunk >= m.nchunks || m.chunk * CHUNK + m.len > m.total || len < (int)(sizeof m - CHUNK + m.len)) return;
+        Upload& u = UP[who]; if (u.crc != m.crc || u.total != m.total) { u.crc = m.crc; u.total = m.total; u.data.assign(m.total, 0); u.got.assign(m.nchunks, 0); }
+        memcpy(&u.data[m.chunk * CHUNK], m.data, m.len); u.got[m.chunk] = 1;
+        for (uint8_t g : u.got) if (!g) return;
+        bool good = crc32(u.data.data(), u.total) == u.crc && u.data.compare(0, 5, "fcft ") == 0 && u.data.find("\nroad") != std::string::npos; int k = -1;
+        if (good) { for (size_t i = 0; i < CT.size(); i++) if (CT[i].crc == u.crc && CT[i].text == u.data) k = (int)i;
+            if (k < 0 && (int)CT.size() < MAXCT) { CustomTrack c; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
+                size_t a = u.data.find("\nname"); if (a != std::string::npos) { a = u.data.find_first_not_of(" \t", a + 5); size_t e = u.data.find('\n', a); if (a != std::string::npos && e != std::string::npos && e > a) c.name = u.data.substr(a, std::min(e - a, (size_t)32)); } c.text = u.data; c.crc = u.crc; CT.push_back(c); k = (int)CT.size() - 1; say("%s shared a track (%d bytes): track %d", P[who].name, u.total, TRACKS + k); } }
+        if (k >= 0) wantTrack = TRACKS + k;
+        u = Upload();
     } else if (h.type == C_STATE && len >= (int)sizeof(State) && who >= 0 && h.id == who) {
         State st; memcpy(&st, buf, sizeof st); Player& p = P[who]; p.lastHeard = t;
         if (!sane(st.s)) return;   // garbled numbers: keep the last good state rather than pass them on
@@ -251,7 +265,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto next = [&] { return i + 1 < argc ? argv[++i] : (char*)"0"; };
         if (a == "--port") port = atoi(next()); else if (a == "--laps") laps = std::max(1, std::min(20, atoi(next()))); else if (a == "--track") trackArg = atoi(next()); else if (a == "--tracks") tracksDir = next(); else if (a == "--custom-only") customOnly = true;
-        else if (a == "--roam") cfgRoam = true; else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
+        else if (a == "--roam") cfgRoam = true; else if (a == "--no-uploads") cfgUploads = false; else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
         else if (a == "--weather") { const char* v = next(); if (!strcmp(v, "random")) { wxMode = 1; weather = 1; } else weather = ((atoi(v) % 4) + 4) % 4; }
         else if (a == "--name") { snprintf(serverName, sizeof serverName, "%s", next()); for (char* c = serverName; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--fixed-track") fixedTrack = true; else if (a == "--countdown") cfgCountdown = atof(next()); else if (a == "--results") cfgResults = atof(next());
@@ -269,6 +283,7 @@ int main(int argc, char** argv) {
                    "  --showdown-site U  always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race\n"
                    "  --tracks DIR       also rotate through the custom tracks (.fcft files) in DIR (track ids %d and up); players' games are sent them\n"
                    "  --custom-only      only the custom tracks from --tracks\n"
+                   "  --no-uploads       players may not share tracks of their own from the lobby\n"
                    "  --roam             a roam server: no laps, everyone drives and walks the island together (mini Wardens included)\n"
                    "  --roam-minutes M   roam: move on to the next track every M minutes (default: stay)\n", DEFPORT, TRACKS - 1, TRACKS);
             return a == "--help" ? 0 : 2;
@@ -309,6 +324,7 @@ int main(int argc, char** argv) {
             break;
         case RESULTS: phaseT -= dt; if (phaseT <= 0) { if (!fixedTrack) { track = (track + 1) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS; } if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
         }
+        if (wantTrack >= 0 && phase == LOBBY) { if (track != wantTrack) { track = wantTrack; setPhase(LOBBY, -1); } wantTrack = -1; }
         if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); }   // (roam: 15 times a second)
         sleepMs(4);
     }

@@ -36,6 +36,7 @@ Server options:
 | `--timeout S` | 5 | drop a player after this much silence |
 | `--tracks DIR` | | also offer every `.fcft` track file in DIR (made in the track editor). Players who have not got one are sent it |
 | `--custom-only` | | only the tracks from `--tracks` |
+| `--no-uploads` | | players may not share tracks of their own from the lobby |
 | `--roam` | | a roam server: no race; everyone drives and walks the same track together, mini Wardens included |
 | `--roam-minutes M` | stay | roam: move to the next track every M minutes |
 | `--quiet` | | no log output |
@@ -160,6 +161,12 @@ answered. Leave is sent twice and backed by the timeout.
 whole file, total length, offset, piece length (up to 1024), then the bytes. A file is at most 8192 bytes. The
 client puts the pieces together, checks the crc, builds the track and only then may mark itself ready. In the
 server list a custom track shows as "CUSTOM TRACK".
+
+**Sharing a track.** In the lobby a player presses T (Y on a pad, SHARE TRACK on a touch screen), picks one of their
+own tracks from the list, and their game sends the file to the server as `C_TRACK` (11) pieces, laid out like
+`S_TRACK` (the track id is not used). When the server has the whole file and the crc matches, it adds the track to
+its list (up to 24 custom tracks in all, kept until the server stops), moves the lobby to it and sends it to
+everyone else as above. If the race has already started, it becomes the next track. `--no-uploads` turns this off.
 
 **Roam.** A `--roam` server skips the lobby and sits in phase `ROAM` (5). Cars travel as in a race. On top:
 

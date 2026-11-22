@@ -38,7 +38,7 @@ const int MINIS = 4, HITS = 8;                               // online roam: min
 const int BOTS = 4;   // computer-driven cars the server adds to a race, at most. The server has no map: one player's game (the host) drives them
 const int SD_FIGHT = 5, SD_DROPS = 12, SD_SLOW_KIND = 5;   // the showdown: fighters (the podium), pick-ups at most, the kind of pick-up (the grenade launcher) that takes three times as long to come back
 
-enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, C_MINIS = 9, C_MINIHIT = 10, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20, S_TRACK = 21, S_ROAM = 22 };
+enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, C_MINIS = 9, C_MINIHIT = 10, C_TRACK = 11, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20, S_TRACK = 21, S_ROAM = 22 };
 enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4, ROAM = 5 };   // ROAM: a roam server (--roam): everyone drives and walks the island together, no laps   // SHOWDOWN comes between RACE and RESULTS
 enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
 enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
@@ -100,7 +100,7 @@ struct Showdown {                                                               
 // than the answer, so a server cannot be used to flood a forged address. Answered whatever the asker's protocol.
 // Custom tracks: the server sends the track file (the .fcft text) in pieces to every game that does not have it yet
 // (State::have). The game puts it together, checks crc, and builds it like a track of its own.
-struct TrackChunk { Header h; uint8_t track, chunk, nchunks, pad; uint16_t len, total; uint32_t crc; char data[CHUNK]; };   // S_TRACK
+struct TrackChunk { Header h; uint8_t track, chunk, nchunks, pad; uint16_t len, total; uint32_t crc; char data[CHUNK]; };   // S_TRACK, and C_TRACK (a player sharing a track of their own: "track" is not used)
 // Online roam. One game (the host, like the bots' driver) runs the mini Wardens and reports them; anyone who hits one
 // reports the hit (the server keeps re-sending the last HITS to everyone; the host takes each once, by seq). Every game
 // reports its player on foot (C_FOOT); the server sends all of it 15 times a second (S_ROAM).
@@ -245,6 +245,7 @@ inline void turnPacket(uint8_t* p, int len) {
         if (has(FCF_AT(Showdown, siteKind))) { turn32(p + FCF_AT(Showdown, tick)); turn32(p + FCF_AT(Showdown, stageT)); turn32(p + FCF_AT(Showdown, ring)); turn32s(p + FCF_AT(Showdown, site), 3); }
         turnEach(p, len, FCF_AT(Showdown, f), sizeof(FootState), SD_FIGHT, turnFoot);
         turnEach(p, len, FCF_AT(Showdown, d), sizeof(SdDrop), SD_DROPS, turnDrop); break;
+    case C_TRACK:
     case S_TRACK: if (has(FCF_AT(TrackChunk, data))) { turn16(p + FCF_AT(TrackChunk, len)); turn16(p + FCF_AT(TrackChunk, total)); turn32(p + FCF_AT(TrackChunk, crc)); } break;
     case C_MINIS:
         if (has(FCF_AT(Minis, n))) turn32(p + FCF_AT(Minis, seq));

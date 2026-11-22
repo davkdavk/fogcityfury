@@ -315,7 +315,9 @@ static void touchLayout() {
     case TRACKSEL: arrows(); side(0, "START", SDLK_RETURN); side(1, "BACK", SDLK_ESCAPE); break;
     case PAUSED: key("RESUME", W / 2 - 290, 460, 140, 80, SDLK_ESCAPE); act("RESET", W / 2 - 140, 460, 140, 80, TA_RESET); key("OPTIONS", W / 2 + 10, 460, 140, 80, SDLK_F1); key("QUIT", W / 2 + 160, 460, 130, 80, SDLK_q); break;
     case RESULTS: key("OK", bx, by, 130, 80, SDLK_RETURN); key("LEAVE", bx - 140, by, 130, 80, SDLK_ESCAPE); break;
-    case NETLOBBY: key("READY", bx, by, 130, 80, SDLK_RETURN); key("BACK", bx - 140, by, 130, 80, SDLK_ESCAPE); break;
+    case NETLOBBY: key(shareOpen ? "SHARE" : "READY", bx, by, 130, 80, SDLK_RETURN); key("BACK", bx - 140, by, 130, 80, SDLK_ESCAPE);
+        if (shareOpen) { key("UP", 20, by - 90, 130, 80, SDLK_UP); key("DOWN", 20, by, 130, 80, SDLK_DOWN); } else if (!shareList().empty()) key("SHARE TRACK", 20, by, 200, 80, SDLK_t);
+        break;
     case NETJOIN:
         if (nc.on) { key("CANCEL", bx, by, 130, 80, SDLK_ESCAPE); break; }
         if (srvMode != 0) { key("OK", bx, by, 130, 80, SDLK_RETURN); key("CANCEL", bx - 140, by, 130, 80, SDLK_ESCAPE); key("<-", bx - 280, by, 130, 80, SDLK_BACKSPACE); break; }
@@ -978,7 +980,7 @@ static void update(float dt) {
     T += dt; frameNo++;
     if (logoT >= 0) { float t0 = logoT; logoT += dt; logoSounds(t0, logoT); if (logoT >= LOGO_LEN) logoT = -1; }
     if (pendingTrack >= 0 && (pendingT -= dt) <= 0) flushPendingTrack();
-    netPump(dt, state == NETLOBBY); netTrackPieces(); netReact(); netRoamFrame(dt);
+    netPump(dt, state == NETLOBBY); netTrackPieces(); netShareFrame(dt); netReact(); netRoamFrame(dt);
     if (state == NETJOIN && !nc.on) srvPump(dt);
     if (nc.on && (netRace || state == NETLOBBY)) weather = nc.weather % NWX;   // online: the server picks
     else if (state == TRACKSEL || state == CARSEL) weather = selWeather;
@@ -1764,6 +1766,15 @@ static void drawHUD() {
         float yy = 140 + rows * 40 + 20;
         snprintf(b, sizeof b, "%d OF %d READY", readyN, n); ui.text(Wd / 2, yy, 3, white, b, 1);
         if (nc.phase == net::COUNTDOWN) { snprintf(b, sizeof b, "STARTING IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 4, yel, b, 1); }
+        std::vector<int> mine = shareList();
+        if (upl.on) ui.text(Wd / 2, Hd - 150, 3, V3(0.5f, 1, 0.6f), "SENDING YOUR TRACK TO THE SERVER...", 1);
+        else if (!shareOpen && nc.phase == net::LOBBY && !mine.empty()) ui.text(Wd / 2, Hd - 150, 2.5f, V3(0.75f, 0.8f, 0.9f), padUI ? "Y: SHARE ONE OF YOUR TRACKS" : "T: SHARE ONE OF YOUR TRACKS", 1);
+        if (shareOpen && !mine.empty()) {
+            int ns = (int)mine.size(), first = std::max(0, std::min(shareSel - 3, ns - 7)), shown = std::min(ns, 7);
+            panel(Wd / 2 - 300, 150, 600, 110 + 40 * shown, 0.94f); ui.text(Wd / 2, 165, 4, yel, "SHARE TRACK", 1);
+            for (int r = 0; r < shown; r++) { int i = first + r; ui.text(Wd / 2, 215 + r * 40, 3.5f, i == shareSel ? yel : white, TRACKS[mine[i]].name, 1); }
+            ui.text(Wd / 2, 225 + shown * 40, 2, V3(0.75f, 0.8f, 0.9f), "UP / DOWN: CHOOSE   ENTER: SHARE   ESC: CLOSE", 1);
+        }
         else if (nc.phase == net::LOBBY && nc.phaseT > 0) { snprintf(b, sizeof b, "AUTO START IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 3, yel, b, 1); }
         else if (nc.phase == net::RESULTS) ui.text(Wd / 2, yy + 40, 3, V3(0.75f, 0.8f, 0.9f), "RACE OVER - NEXT TRACK COMING UP", 1);
         if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, nc.ready ? P("YOU ARE READY   ENTER: NOT READY    ESC: BACK", "YOU ARE READY   {A} NOT READY    {B} BACK") : P("ENTER: READY    ESC: BACK", "{A} READY    {B} BACK"), 1);
@@ -2137,7 +2148,17 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (k == SDLK_DELETE && !servers.empty()) { servers.erase(servers.begin() + srvSel); if (srvSel >= (int)servers.size()) srvSel = std::max(0, (int)servers.size() - 1); saveCfg(); blip(); }
         if (k == SDLK_RETURN && !servers.empty()) { ok(); snprintf(nc.host, sizeof nc.host, "%s", servers[srvSel].host.c_str()); if (!nc.name[0]) snprintf(nc.name, sizeof nc.name, "PLAYER"); saveCfg(); netConnect(); }
         break;
-    case NETLOBBY: if (k == SDLK_RETURN && nc.phase == net::LOBBY) { nc.ready = !nc.ready; ok(); } if (k == SDLK_ESCAPE) { nc.ready = false; state = CARSEL; } break;
+    case NETLOBBY: {
+        std::vector<int> mine = shareList();
+        if (shareOpen) {   // the list of our own tracks: pick one to send to the server
+            int n = (int)mine.size(); if (n == 0 || k == SDLK_ESCAPE || k == SDLK_t) { shareOpen = false; break; }
+            shareSel = ((shareSel % n) + n) % n;
+            if (k == SDLK_UP) { shareSel = (shareSel + n - 1) % n; ok(); } if (k == SDLK_DOWN) { shareSel = (shareSel + 1) % n; ok(); }
+            if (k == SDLK_RETURN) { shareOpen = false; if (netShareTrack(mine[shareSel])) { ok(); say("SHARING YOUR TRACK", V3(0.5f, 1, 0.6f), 2); } else say("COULD NOT READ THAT TRACK", V3(1, 0.5f, 0.3f), 2); }
+            break;
+        }
+        if (k == SDLK_t && nc.phase == net::LOBBY && !mine.empty()) { shareOpen = true; nc.ready = false; ok(); break; }
+        if (k == SDLK_RETURN && nc.phase == net::LOBBY) { nc.ready = !nc.ready; ok(); } if (k == SDLK_ESCAPE) { nc.ready = false; state = CARSEL; } break; }
     }
 }
 
@@ -2167,6 +2188,7 @@ static void printJSON(FILE* o) {
     { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
       fprintf(o, "\"shortcuts\":\"%s\",\"tunnels\":%d,\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), (int)W.tuns.size(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
+    fprintf(o, "\"shared\":%d,", sharedCount);
     fprintf(o, "\"minis\":%d,\"miniSpawned\":%d,\"miniKilled\":%d,\"miniRams\":%d,\"roamFeet\":%d,\"remoteMinis\":%d,\"netTrackId\":%d,\"keysGot\":%u,\"jumps\":%d,\"miniPenalties\":%d,\"miniJets\":%d,\"miniRockets\":%d,\"roamFlowers\":%d,\"level\":%d,\"blooms\":%d,\"miniPos\":[%.1f,%.1f,%.1f,%.2f],\"carHp\":%.1f,\"footHp\":%.1f,\"footMaxHp\":%.0f,", mini::alive(), mini::spawned, mini::killed, mini::rams, (int)std::count_if(roamPeople, roamPeople + net::MAXP, [](const Fighter& f) { return f.on; }), (int)std::count_if(fighters + 1, fighters + NFIGHT, [](const Fighter& f) { return f.on && f.mini && f.remote && f.alive; }), (int)nc.trackId, keysGot[W.id], (int)W.def->jumps.size() / 5, mini::penalties, mini::jets, mini::rocketsFired, roamFlowers, mini::level(), (int)mini::blooms.size(), fighters[1].pos.x, fighters[1].pos.y, fighters[1].pos.z, fighters[1].yaw, player.hp, me.on ? me.hp : -1.0f, footMaxHp);
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
     fprintf(o, "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
@@ -2319,6 +2341,7 @@ int main(int argc, char** argv) {
         else if (a == "--connect") { snprintf(nc.host, sizeof nc.host, "%s", argv[++i]); netWanted = true; } else if (a == "--name") { snprintf(nc.name, sizeof nc.name, "%.16s", argv[++i]); for (char* c = nc.name; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--ready") nc.autoReady = true;
         else if (a == "--minisnow") mini::now = true; else if (a == "--minigroup") { mini::now = true; mini::group = atoi(argv[++i]); } else if (a == "--minishold") mini::hold = true; else if (a == "--outcar") mini::outcar = true; else if (a == "--flowers") mini::flowers = atoi(argv[++i]);   // tests: a mini Warden straight away (40 m ahead, on the road); as if that many flowers were picked up
+        else if (a == "--share") shareAuto = true;
         else if (a == "--tracksdir") tracksDirOverride = argv[++i];                        // where custom tracks (.fcft) are kept
         else if (a == "--trackfile") cliTrackFile = argv[++i];                             // load this custom track and pick it
         else if (a == "--exporttracks") { initTracks(); std::string dir = argv[++i]; trackMkdir(dir); for (int t = 0; t < NTRACKS; t++) { TrackDef d = TRACKS[t]; d.nameS = d.name; d.subS = d.sub; d.song = TRACK_SONG[t]; char num[8]; snprintf(num, sizeof num, "%d", t + 1); std::string f = dir + "/builtin-" + num + ".fcft"; if (!trackSave(d, f.c_str())) { fprintf(stderr, "cannot write %s\n", f.c_str()); return 1; } } return 0; }
@@ -2572,7 +2595,7 @@ int main(int argc, char** argv) {
             }
             if (e.type == plat::EV_PAD_DOWN) {
                 padUI = true; switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;
-                case SDL_CONTROLLER_BUTTON_B: if (state != RACE) onKey(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_Y: if (state == RACE) camMode = (camMode + 1) % 3; else onKey(state == TITLE ? SDLK_o : SDLK_q); break; case SDL_CONTROLLER_BUTTON_BACK: if (state == PAUSED) state = RACE; doReset(); break;
+                case SDL_CONTROLLER_BUTTON_B: if (state != RACE) onKey(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_Y: if (state == RACE) camMode = (camMode + 1) % 3; else onKey(state == TITLE ? SDLK_o : state == NETLOBBY ? SDLK_t : SDLK_q); break; case SDL_CONTROLLER_BUTTON_BACK: if (state == PAUSED) state = RACE; doReset(); break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (!me.on) fireRocket(); break; case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); break;
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break; case SDL_CONTROLLER_BUTTON_DPAD_UP: if (state == RACE && me.on) cycleGun(); else onKey(SDLK_UP); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: if (state == RACE) footToggle(); else onKey(SDLK_DOWN); break; }

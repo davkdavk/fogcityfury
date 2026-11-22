@@ -5,6 +5,7 @@
 #include "net.h"
 #include <vector>
 
+static bool shareOpen = false, shareAuto = false; static std::vector<int> shareList();
 static int netLocalTrack(int id);   // (netroam.h) the track in our list for a server track id, -1 if we have not got it yet
 struct Remote { uint8_t hitSeq = 0; bool seen = false;   // seen: we have looked at this player's state at least once
     bool bot = false;   // computer-driven (the host's game drives it; to everyone else it is one more car)

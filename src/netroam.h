@@ -43,6 +43,34 @@ static void netTrackPieces() {
     nc.track = netLocalTrack(nc.trackId);
 }
 
+// ---- sharing a track of our own (the lobby's SHARE TRACK list) ----
+// We send the track's file to the server in pieces (C_TRACK), round and round, until the server moves to it (it then
+// offers it to everyone like one of its own; we know its crc, so nothing is sent back to us) or eight seconds pass.
+static struct { bool on = false; std::string data; uint32_t crc = 0; float t = 0, sendT = 0; int k = 0, local = -1; } upl;
+static int shareSel = 0, sharedCount = 0;
+static std::vector<int> shareList() { std::vector<int> v; for (int i = NTRACKS; i < (int)TRACKS.size(); i++) if (!TRACKS[i].deleted && !TRACKS[i].file.empty()) v.push_back(i); return v; }
+static bool netShareTrack(int local) {
+    if (!nc.on || local < NTRACKS || local >= (int)TRACKS.size()) return false;
+    FILE* f = fopen(TRACKS[local].file.c_str(), "rb"); if (!f) return false;
+    std::string s; char b[1024]; size_t n; while ((n = fread(b, 1, sizeof b, f)) > 0 && s.size() <= (size_t)net::TRACKFILE_MAX) s.append(b, n); fclose(f);
+    if (s.empty() || s.size() > (size_t)net::TRACKFILE_MAX) return false;
+    upl.on = true; upl.data = s; upl.crc = net::crc32(s.data(), (int)s.size()); upl.t = upl.sendT = 0; upl.k = 0; upl.local = local; sharedCount++;
+    bool known = false; for (auto& c : trackByCrc) if (c.first == upl.crc) { c.second = local; known = true; }
+    if (!known) trackByCrc.push_back({ upl.crc, local });
+    return true;
+}
+static void netShareFrame(float dt) {
+    if (!nc.on) { upl.on = false; shareOpen = false; return; }
+    if (shareAuto && nc.phase == net::LOBBY && nc.snap.count > 0 && !shareList().empty()) { shareAuto = false; netShareTrack(shareList()[0]); }   // --share (tests)
+    if (!upl.on) return;
+    upl.t += dt; if (upl.t > 8 || (nc.trackId >= net::TRACKS && nc.track == upl.local)) { upl.on = false; return; }
+    upl.sendT -= dt; if (upl.sendT > 0) return; upl.sendT = 0.04f;
+    int total = (int)upl.data.size(), nch = (total + net::CHUNK - 1) / net::CHUNK, k = upl.k++ % nch;
+    net::TrackChunk m; memset(&m, 0, sizeof m); m.h = net::header(net::C_TRACK, (uint8_t)nc.id); m.chunk = (uint8_t)k; m.nchunks = (uint8_t)nch;
+    m.len = (uint16_t)std::min(total - k * net::CHUNK, (int)net::CHUNK); m.total = (uint16_t)total; m.crc = upl.crc; memcpy(m.data, upl.data.data() + k * net::CHUNK, m.len);
+    net::sendTo(nc.sock, nc.addr, &m, (int)(sizeof m - net::CHUNK + m.len));
+}
+
 // ---- online roam ----
 static Fighter roamPeople[net::MAXP];   // the other players, while they are on foot (drawn, nothing more)
 static struct RoamMini { uint16_t uid = 0; uint8_t fireSeq = 0; bool seen = false; V3 pos, vel; float yaw = 0; } rmini[NFIGHT];

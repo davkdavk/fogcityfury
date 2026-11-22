@@ -670,6 +670,31 @@ def net_server_sends_custom_tracks():
 
 
 @test
+def net_player_shares_a_track_from_the_lobby():
+    """SHARE TRACK in the lobby: one player sends a track of their own to the server; the server moves to it and sends
+    it on to the other player, and both race on it."""
+    import tempfile, shutil
+    mine, none = tempfile.mkdtemp(), tempfile.mkdtemp()
+    shutil.copy(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), mine)
+    try:
+        with Server("--laps", 1, "--countdown", 1) as srv:
+            def client(name, folder, *extra):
+                return subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", name, "--ready", "--auto", "--seconds", "16", "--tracksdir", folder] + list(extra), stdout=subprocess.PIPE, text=True)
+            procs = [client("alice", mine, "--share"), client("bob", none)]
+            a, b = [json.loads(p.communicate(timeout=60)[0].strip().splitlines()[-1]) for p in procs]
+    finally:
+        shutil.rmtree(mine); shutil.rmtree(none)
+    check(a["shared"] == 1 and "shared a track" in srv.log, "alice's game sent her track and the server took it", a["shared"])
+    for name, d in (("alice", a), ("bob", b)):
+        check(d["netTrackId"] == NTRACKS and d["netPhase"] == RACE and d["trackLen"] > 500 and d["dist"] > 100, "%s races on the shared track" % name, (d["netTrackId"], d["netPhase"], d["trackLen"], d["dist"]))
+
+    with Server("--no-uploads") as srv:   # a server that does not take them
+        c = FakeClient(srv.port, "mallory"); c.join(); body = open(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), "rb").read()
+        import zlib
+        c.send_raw(c.hdr(11) + struct.pack("<BBBBHHI", 0, 0, 1, 0, len(body), len(body), zlib.crc32(body)) + body); time.sleep(0.4)
+    check("shared a track" not in srv.log, "--no-uploads: the server ignores shared tracks")
+
+@test
 def net_server_list_shows_what_each_server_is_running():
     """The online screen asks every listed server what it is running, without joining, and joins the one picked."""
     dead = free_port()

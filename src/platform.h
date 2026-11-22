@@ -39,6 +39,7 @@ enum {
 #define SDLK_q 'q'
 #define SDLK_r 'r'
 #define SDLK_s 's'
+#define SDLK_t 't'
 #define SDLK_w 'w'
 #define SDLK_RETURN SDL_SCANCODE_TO_KEYCODE(SDL_SCANCODE_RETURN)
 #define SDLK_ESCAPE SDL_SCANCODE_TO_KEYCODE(SDL_SCANCODE_ESCAPE)
