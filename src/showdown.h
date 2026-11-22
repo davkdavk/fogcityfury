@@ -331,7 +331,7 @@ static void stepShowdown(float dt) {
     if (shdPhase == SH_DRIVE) {
         shdDriveBots(dt);
         shdDriveMe(); shdRide();
-        bool all = true; for (auto& f : fighters) if (!f.arrived) all = false;
+        bool all = true; for (int i = 0; i < NFIGHT; i++) if (!fighters[i].arrived) all = false;   // (the five: the places past them are free roam's)
         if (all || shdT > SH_DRIVE_MAX) {   // everyone is in (or has had long enough): out of the cars, and the countdown starts
             for (int i = 0; i < NFIGHT; i++) shdOut(i);
             shdPhase = SH_PREP; shdT = 0; shdPrepAt = T; say("ARM YOURSELF  -  20 SECONDS", V3(1, 0.85f, 0.3f), 2.5f); tone(520, 0.2f, 0.5f, 2);
@@ -423,7 +423,7 @@ static void footFrame(float dt) {
 }
 // a new race (or a trip back to the menus): everyone back in their cars, pockets refilled
 static void footReset() {
-    for (auto& f : fighters) f = Fighter(); for (int i = 0; i < NFIGHT; i++) fighters[i].id = i;
+    for (auto& f : fighters) f = Fighter(); for (int i = 0; i < NSLOT; i++) { fighters[i].id = i; if (i >= NFIGHT) fighters[i].alive = false; }   // (the places past the five are for free roam's mini Wardens: out of it here)
     netShd = shdSpectate = carHidden = false; shdWatch = 0;
     showdownOn = false; shdPhase = SH_OFF; shdCut = false; shdResult = false; shdWinner = -1; shdRacePlace = 0; drops.clear(); splats.clear(); gibs.clear(); shells.clear(); footMouseFire = false; tstick.on = false; hitFlash = hurtFlash = footKick = 0;
     roamHp = footMaxHp; roamCarTarget = false; for (int g = 0; g < NGUNS; g++) roamAmmo[g] = gunUnlocked(g) ? GUNS[g].clip * (g == G_SMG ? 2 : 1) : 0;
@@ -529,7 +529,7 @@ static void drawFootHUD(float Hb) {
         else if (!f.on) ui.text(266, y + 12, 2.0f, f.arrived ? white : dim, f.arrived ? "IN THE RING" : "DRIVING", 2);
         else { ui.rect(140, y + 13, 126, 10, V3(0.1f, 0.12f, 0.14f), 0.9f); ui.rect(140, y + 13, 126 * clampf(f.hp / 100, 0, 1), 10, hpCol(f.hp), 0.95f); if (f.armour > 0) ui.rect(140, y + 26, 126 * clampf(f.armour / 50, 0, 1), 3, V3(0.35f, 0.7f, 1), 0.95f); } }
     // where the match stands
-    if (shdPhase == SH_DRIVE) { int in = 0; for (auto& f : fighters) if (f.arrived) in++; snprintf(b, sizeof b, "%d OF %d IN THE RING", in, NFIGHT); ui.text(Wd / 2, 26, 4, yel, b, 1, 1, 0.12f); ui.text(Wd / 2, 74, 2.2f, white, "COLLECT WHAT YOU CAN  -  THE COUNTDOWN STARTS WHEN ALL ARE IN", 1); }
+    if (shdPhase == SH_DRIVE) { int in = 0; for (int i = 0; i < NFIGHT; i++) if (fighters[i].arrived) in++; snprintf(b, sizeof b, "%d OF %d IN THE RING", in, NFIGHT); ui.text(Wd / 2, 26, 4, yel, b, 1, 1, 0.12f); ui.text(Wd / 2, 74, 2.2f, white, "COLLECT WHAT YOU CAN  -  THE COUNTDOWN STARTS WHEN ALL ARE IN", 1); }
     else if (shdPhase == SH_PREP) { float left = SH_PREP_LEN - shdT;
         if (left > 3.4f) { snprintf(b, sizeof b, "%d", (int)ceilf(left)); ui.text(Wd / 2, 22, 8, yel, b, 1, 1, 0.12f); ui.text(Wd / 2, 86, 2.2f, white, "GUNS LIVE IN", 1); }
         else if (left > 0.3f) { snprintf(b, sizeof b, "%d", (int)ceilf(left - 0.4f)); ui.text(Wd / 2, 180, 26, yel, b, 1, 1, 0.12f); } }
@@ -547,7 +547,7 @@ static void drawShdDriveHUD() {
     float Wd = ui.W, Hd = ui.H, sx, sy, cw; char b[96]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f);
     if (shdSpectate) {   // watching somebody else drive there
         float a0 = clampf(shdT * 2, 0, 1) * clampf((3.5f - shdT) * 2, 0, 1); if (a0 > 0) { ui.text(Wd / 2, 150, 9, yel, "SHOWDOWN", 1, a0, 0.12f); ui.text(Wd / 2, 236, 3, white, "THE TOP FIVE SETTLE IT ON FOOT", 1, a0); }
-        int in = 0; for (auto& f : fighters) if (f.arrived) in++; snprintf(b, sizeof b, "%d OF %d IN THE RING", in, NFIGHT); ui.text(Wd / 2, 26, 4, yel, b, 1, 1, 0.12f);
+        int in = 0; for (int i = 0; i < NFIGHT; i++) if (fighters[i].arrived) in++; snprintf(b, sizeof b, "%d OF %d IN THE RING", in, NFIGHT); ui.text(Wd / 2, 26, 4, yel, b, 1, 1, 0.12f);
         snprintf(b, sizeof b, touchOn ? "RIDING WITH %s" : "RIDING WITH %s   -   %s: NEXT FIGHTER", fighters[shdWatch].name, keyName(binds[B_CAM][0])); ui.text(Wd / 2, Hd - 60, 2.6f, white, b, 1); return;
     }
     float dist = flatDist(player.pos, shdSite), a = clampf(shdT * 2, 0, 1) * clampf((3.5f - shdT) * 2, 0, 1);

@@ -5,7 +5,7 @@
 #include "net.h"
 #include <vector>
 
-static bool shareOpen = false, shareAuto = false; static std::vector<int> shareList(); static bool voteOpen(); static bool voteMine();   // (netroam.h)
+static int shareWhen = 1; static bool shareOpen = false, shareAuto = false; static std::vector<int> shareList(); static bool voteOpen(); static bool voteMine();   // (netroam.h)
 static int netLocalTrack(int id);   // (netroam.h) the track in our list for a server track id, -1 if we have not got it yet
 struct Remote { uint8_t hitSeq = 0; bool seen = false;   // seen: we have looked at this player's state at least once
     bool bot = false;   // computer-driven (the host's game drives it; to everyone else it is one more car)
@@ -28,6 +28,7 @@ static struct NetClient {
     net::Showdown sd; bool sdGot = false; uint32_t sdTick = 0;   // the showdown as the server last described it (netshd.h acts on it)
     int sdSlotOf(int id) const { if (sdGot) for (int k = 0; k < net::SD_FIGHT; k++) if (sd.fighter[k] == id) return k; return -1; }
 } nc;
+static int loadingNotices = 0;   // test metric
 
 static void netClose(const char* why) {
     if (nc.sock >= 0) { if (nc.connected) { net::Header h = net::header(net::C_LEAVE, (uint8_t)nc.id); for (int k = 0; k < 2; k++) net::sendTo(nc.sock, nc.addr, &h, sizeof h); } net::closeSock(nc.sock); }
@@ -42,6 +43,15 @@ static bool netConnect() {
 }
 static int netRacers() { int c = nc.racing ? 1 : 0; for (auto& r : nc.r) if (r.present && r.racing) c++; return std::max(c, 1); }
 
+// Building a track takes seconds on the 360, and nothing is sent meanwhile: say so first (a C_STATE with F_LOADING, three
+// times in case one is lost), and the server waits for us instead of dropping us. (Older servers ignore the bit.)
+static void netLoadingNotice() {
+    if (!nc.on || !nc.connected) return;
+    net::State st; memset(&st, 0, sizeof st); st.h = net::header(net::C_STATE, (uint8_t)nc.id); st.seq = ++nc.seq; st.have = 255;
+    st.s.x = player.pos.x; st.s.y = player.pos.y; st.s.z = player.pos.z; st.s.yaw = player.yaw; st.s.car = (uint8_t)player.type; st.s.paint = (uint8_t)player.paint; st.s.flags = net::F_LOADING;
+    for (int k = 0; k < 3; k++) net::sendTo(nc.sock, nc.addr, &st, sizeof st);
+    loadingNotices++;
+}
 // receive, send, and move the remote cars. Game-level reactions to phase changes are in netReact() in game.cpp.
 static void netPump(float dt, bool inLobby) {
 #ifdef FCF_GFX_XSDK

@@ -84,7 +84,7 @@ static void pushFromCars(V3& p, V3& vel, float rad) {
 }
 
 // ---- targets: another fighter, or (out of the car in a race) a racer ----
-static bool tgtAlive(int t) { if (t == 7) return roamCarTarget && !me.on && !player.dead; return t >= 8 ? (t - 8 < NAI && !ai[t - 8].dead && racersAreTargets()) : (t >= 0 && t < NFIGHT && fighters[t].on && fighters[t].alive); }
+static bool tgtAlive(int t) { if (t == 7) return roamCarTarget && !me.on && !player.dead; return t >= 8 ? (t - 8 < NAI && !ai[t - 8].dead && racersAreTargets()) : (t >= 0 && t < NSLOT && fighters[t].on && fighters[t].alive); }
 static V3 tgtPos(int t) { if (t == 7) return player.pos + V3(0, 0.7f, 0); return t >= 8 ? ai[t - 8].pos + V3(0, 0.7f, 0) : fighters[t].pos + V3(0, 1.1f, 0); }
 // the best target for f: close to the direction yawRef (the camera, for you), in range and in view. The one already held is preferred, so the lock does not flicker
 static int pickFoe(const Fighter& f, float yawRef, float cone) {
@@ -95,7 +95,7 @@ static int pickFoe(const Fighter& f, float yawRef, float cone) {
         float sc = ang + dist / range * 0.6f - (t == f.target ? 0.35f : 0.0f); if (sc >= bs || !canSee(eye, tgtPos(t), cars)) return;
         bs = sc; best = t;
     };
-    for (int i = 0; i < NFIGHT; i++) if (i != f.id && tgtAlive(i)) consider(i, true);
+    for (int i = 0; i < NSLOT; i++) if (i != f.id && tgtAlive(i)) consider(i, true);
     if (racersAreTargets()) for (int k = 0; k < NAI; k++) if (tgtAlive(8 + k)) consider(8 + k, false);
     return best;
 }
@@ -197,7 +197,7 @@ static void hurtCar(Car& c, float dmg, V3 at) {
 // ---- shooting ----
 static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
     bool racers = racersAreTargets(); int what = 0, tg = -1; float bt = rayWorld(o, d, g.range, !racers, &what);
-    for (int i = 0; i < NFIGHT; i++) {
+    for (int i = 0; i < NSLOT; i++) {
         const Fighter& t = fighters[i]; if (i == f.id || !t.on || !t.alive || t.rollT > 0.12f) continue;        // a roll goes under the shot
         for (float h : { 0.45f, 0.95f, 1.45f }) { V3 q = t.pos + V3(0, h, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 0.40f) { bt = tt; tg = i; } }
     }

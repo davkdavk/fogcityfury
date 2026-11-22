@@ -681,11 +681,11 @@ def net_player_shares_a_track_from_the_lobby():
     mine, none = tempfile.mkdtemp(), tempfile.mkdtemp()
     shutil.copy(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), mine)
     try:
-        with Server("--laps", 1, "--countdown", 1, "--results", 1, "--no-showdown") as srv:
+        with Server("--laps", 1, "--countdown", 1, "--results", 1, "--no-showdown", "--lobby", 3) as srv:   # (--lobby: nobody alone can start a race before the other is in)
             def client(name, folder, secs, *extra):
                 return subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", name, "--ready", "--auto", "--seconds", str(secs), "--tracksdir", folder] + list(extra), stdout=subprocess.PIPE, text=True)
-            procs = [client("alice", mine, 100, "--share"), client("bob", none, 100, "--vote", "yes")]
-            a, b = [json.loads(p.communicate(timeout=200)[0].strip().splitlines()[-1]) for p in procs]
+            procs = [client("alice", mine, 130, "--share", "--sharewhen", "2"), client("bob", none, 130, "--vote", "yes")]
+            a, b = [json.loads(p.communicate(timeout=260)[0].strip().splitlines()[-1]) for p in procs]
         kept = os.listdir(none)
     finally:
         shutil.rmtree(mine); shutil.rmtree(none)
@@ -700,7 +700,7 @@ def net_player_shares_a_track_from_the_lobby():
     try:
         with Server("--countdown", 1) as srv:
             procs = [subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", n, "--auto", "--seconds", "10", "--tracksdir", f] + x, stdout=subprocess.PIPE, text=True)
-                     for n, f, x in (("alice", mine, ["--share"]), ("bob", none, ["--vote", "no"]))]
+                     for n, f, x in (("alice", mine, ["--share", "--sharewhen", "2"]), ("bob", none, ["--vote", "no"]))]   # (alice waits until bob is in the lobby)
             b = [json.loads(p.communicate(timeout=60)[0].strip().splitlines()[-1]) for p in procs][1]
     finally:
         shutil.rmtree(mine); shutil.rmtree(none)
@@ -750,6 +750,16 @@ def net_server_holds_up_against_misbehaving_players():
     check(srv.log.count("shared a track") == 3 and "dropping the oldest shared track (FIRST)" in srv.log, "with two kept, the third pushes out the oldest", srv.log[-400:])
     check("track %d, BAD?NAME" % (NTRACKS + 0) in srv.log, "names from the file are cleaned (and the new one took the old one's place)", srv.log[-300:])
 
+
+
+@test
+def net_slow_track_build_is_not_a_timeout():
+    """A game that takes seconds to build the track (the 360) tells the server first, and is not dropped meanwhile."""
+    with Server("--timeout", 1.0, "--track", 2) as srv:
+        p = subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", "slow", "--loadstall", "3", "--seconds", "8"], stdout=subprocess.PIPE, text=True)
+        d = json.loads(p.communicate(timeout=60)[0].strip().splitlines()[-1])
+    check(d["loadingNotices"] >= 1 and d["net"] == 1 and d["netError"] == "", "it said it was loading, took 3 s, and is still connected", (d["loadingNotices"], d["net"], d["netError"]))
+    check("timed out" not in srv.log, "the server waited for it", srv.log[-300:])
 
 
 @test
@@ -1158,7 +1168,7 @@ def touch_buttons_drive_the_car_and_the_menus():
     d = sim("--state", 3, "--mode", 1, "--track", 1, seconds=1)
     check(d["touch"] == 0 and d["touchBtns"] == "", "no on-screen buttons unless the screen is touched", d["touchBtns"])
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 1, "--touchhold", "GAS", seconds=5)
-    check(d["touchBtns"].split(",")[:4] == ["<", ">", "GAS", "BRAKE"], "the race screen has steering, gas and brake buttons", d["touchBtns"])
+    check({"<", ">", "GAS", "BRAKE", "NITRO", "DRIFT", "II"} <= set(d["touchBtns"].split(",")) and "ROCKET" not in d["touchBtns"] and "WEAPON" not in d["touchBtns"], "the race screen has steering, gas, brake, nitro and drift buttons; ROCKET only with rockets, no WEAPON in the car", d["touchBtns"])
     check(d["dist"] > 40, "a finger held on GAS drives the car", d["dist"])
     left = sim("--touch", "--state", 3, "--mode", 1, "--track", 1, "--touchhold", "GAS", "--touchhold", "<", seconds=4)
     right = sim("--touch", "--state", 3, "--mode", 1, "--track", 1, "--touchhold", "GAS", "--touchhold", ">", seconds=4)
@@ -1171,15 +1181,15 @@ def touch_buttons_drive_the_car_and_the_menus():
     d = sim("--touch", "--tap", "0.3:OPTIONS", "--tap", "0.6:VIDEO", "--tap", "0.9:DOWN", "--tap", "1.2:DOWN", "--tap", "1.5:<", seconds=2)
     check(d["state"] == 8 and d["aa"] == 2, "so can the options", (d["state"], d["aa"]))
     d = sim("--touch", "--state", 3, "--mode", 0, "--track", 0, "--faceai", "--tap", "0.2:OUT", "--touchhold", "FIRE", seconds=2)
-    check(d["onFoot"] == 1 and d["touchBtns"] == "FIRE,ROLL,RUN,GUN,CAR,II", "OUT gets out of the car, and the buttons change to the fighter's", d["touchBtns"])
+    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "CAR", "II"}, "OUT gets out of the car, and the buttons change to the fighter's", d["touchBtns"])
     check(d["footShots"] >= 3, "a thumb held on FIRE shoots", d["footShots"])
     out = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", seconds=1)
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--stick", "0,1", seconds=3)
     check(math.hypot(d["walkX"] - out["walkX"], d["walkZ"] - out["walkZ"]) > 10, "the thumb-stick pushed forward runs", (d["walkX"], d["walkZ"]))
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--tap", "0.8:CAR", seconds=1.2)
-    check(d["onFoot"] == 0 and d["touchBtns"].startswith("<,>,GAS"), "CAR gets back in", (d["onFoot"], d["touchBtns"]))
+    check(d["onFoot"] == 0 and "GAS" in d["touchBtns"].split(","), "CAR gets back in", (d["onFoot"], d["touchBtns"]))
     d = sim("--touch", *SHOW, seconds=prep_at() + 2)
-    check(d["onFoot"] == 1 and d["touchBtns"] == "FIRE,ROLL,RUN,GUN,II,SKIP", "in the showdown there is no car to go back to", d["touchBtns"])
+    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "II", "SKIP"}, "in the showdown there is no car to go back to", d["touchBtns"])
 
 
 # ----------------------------------------------------------------------------- nitro
@@ -1632,7 +1642,7 @@ def mini_wardens_in_free_roam():
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--flowers", 300, seconds=1)
     check(d["level"] == 8 and d["footMaxHp"] == 125, "300 flowers: every level, and 125 health on foot", (d["level"], d["footMaxHp"]))
     d = sim("--track", 2, "--state", 3, "--mode", 1, "--auto", seconds=360)
-    check(2 <= d["miniSpawned"] <= 12, "they land on their own every minute or two", d["miniSpawned"])
+    check(9 <= d["miniSpawned"] <= 24 and d["miniSpawned"] % 3 == 0, "they land on their own, in threes, every minute or so", d["miniSpawned"])
     d = sim("--track", 1, "--state", 3, "--auto", "--minisnow", seconds=60)
     check(d["miniSpawned"] == 0, "never in a race", d["miniSpawned"])
 
@@ -1750,6 +1760,14 @@ def a_shortcut_can_be_a_tunnel():
         check(u["tunnels"] == 2, "right click: the causeway is back on the surface", u["tunnels"])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
+def keys_jingle_faintly_nearby():
+    """A key not yet found gives off a faint metal jingle within about 45 m; none from the start line."""
+    far = sim("--track", 0, "--state", 3, "--mode", 1, seconds=6)
+    near = sim("--track", 0, "--state", 3, "--mode", 1, "--pos", 0, 276, 0, seconds=6)   # 20 m short of the courtyard key
+    check(far["keyJingles"] == 0 and near["keyJingles"] >= 3, "jingles near a key, silence far from them", (far["keyJingles"], near["keyJingles"]))
 
 
 @test

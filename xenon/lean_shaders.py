@@ -81,7 +81,7 @@ WORLD_LOC = {'vP':0, 'vL':1, 'vC':2, 'vUV':3, 'vMat':4, 'vFx':5, 'vFog':6}
 #   road, wall, misc   one material class each, for when the props mesh is drawn in per-material ranges
 #   world   road + wall + misc picked by vMat: the whole props mesh in one draw, until it is split
 _HEAD = '''#version 330 core
-uniform vec3 uSkyHor; uniform float uNight, uWet, uBright;
+uniform vec3 uSkyHor, uHeadPos, uHeadDir; uniform float uNight, uWet, uBright, uHeadOn;
 uniform sampler2D uNoise;
 in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx; in vec4 vFog;
 out vec4 oCol;
@@ -93,7 +93,10 @@ void main(){
   float nz = texture(uNoise, vP.xz*0.026).r;
   vec3 alb = vC, lit = vL; vec3 glow = vec3(0.0);
 '''
-_TAIL = '''  oCol = vec4(tone(mix(vFog.rgb, alb*lit + glow, vFx.x)), 1.0);
+_TAIL = '''  if (uNight*uHeadOn > 0.01) {   // the player's headlights at night: the PC's cone and fall-off, without the surface's angle (no normal here)
+    vec3 L = vP - uHeadPos; float d = length(L); float cone = smoothstep(0.78, 0.97, dot(L, uHeadDir)/max(d, 0.001));
+    lit += vec3(1.0,0.93,0.78)*(uNight*uHeadOn*cone*13.0/(1.0 + 0.012*d*d)); }
+  oCol = vec4(tone(mix(vFog.rgb, alb*lit + glow, vFx.x)), 1.0);
 }
 '''
 _GROUND = '''  alb *= (0.72 + 0.56*nz)*(0.8 + 0.4*det);                    // grass, sand, rock; in town, paving with a backstreet every 27 m
@@ -146,7 +149,7 @@ _ROAD_WET = '''  {
 '''
 GROUND = _HEAD + _GROUND + _TAIL
 ROAD = _HEAD + _ROAD + _TAIL
-ROAD_WET = (_HEAD.replace('uniform vec3 uSkyHor;', 'uniform vec3 uSkyHor, uSkyTop, uCamPos; uniform float uRain, uTime; uniform sampler2D uHash;')
+ROAD_WET = (_HEAD.replace('uniform vec3 uSkyHor, uHeadPos, uHeadDir;', 'uniform vec3 uSkyHor, uHeadPos, uHeadDir, uSkyTop, uCamPos; uniform float uRain, uTime; uniform sampler2D uHash;')
             + _ROAD + _ROAD_WET + _TAIL)
 WALL = _HEAD + _WALL + _TAIL
 MISC = _HEAD + _MISC + _TAIL

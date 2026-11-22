@@ -1,8 +1,8 @@
 # Free roam: mini Wardens, flowers and levels
 
 In free roam (offline), **mini Wardens** land now and then: the Warden itself, shrunk to your size (about 2.3 m).
-The first landing comes after about 30 s, then one every 80-150 s while none are about: usually one, sometimes two
-or three together (60% / 30% / 10%). They come down 90-220 m from you, a little off the road, on dry open ground.
+The first landing comes after about 25 s, then a group of three every 45-80 s, with up to six about at once (two
+groups; online, one group at a time). They come down 90-220 m from you, a little off the road, on dry open ground.
 There is no announcement: each shows as a red dot on the minimap.
 
 They hunt you. Each has a jetpack: a short burst that carries it most of the way to you, then 12 s to recharge. On
@@ -13,7 +13,8 @@ and then). Each one beaten leaves 2-4 **flowers** where it fell; walk or drive o
 
 **Running one down is allowed, but it costs you.** It bursts into pieces of Warden, leaves no flowers, the flowers
 you had earned towards your next level are lost (you keep your level), and the nearest big Warden fires a rocket at
-your car (from the sky if there are none).
+your car from wherever it stands, seen or not: the rocket climbs over the town and comes down on you (from the sky if
+there are no Wardens).
 
 **Your car has health here.** Their shots wear it down (a bar under the flowers panel); under half it smokes from
 under the bonnet, at none it blows up. Back on the road after a wreck it is whole again; a hurt car stays hurt.
@@ -53,3 +54,6 @@ Levels and perks stay your own. See NETWORK.md for how it works.
   `--outcar` (on foot from the start), `--flowers N`; with `--footai` in free roam you hunt them with your fists (with `--gun N` as well, you shoot at them). Report fields:
   `minis`, `miniSpawned`, `miniKilled`, `miniRams`, `miniPenalties`, `miniJets`, `miniRockets`, `roamFlowers`, `level`, `blooms`, `carHp`, `footHp`, `footMaxHp`,
   `miniPos`. Test: `mini_wardens_in_free_roam`.
+
+
+Near a hidden key you have not found, you hear a faint metal jingle (from about 45 m, louder as you close in).

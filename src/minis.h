@@ -8,7 +8,8 @@ static bool netRoamNearest(V3 from, int& id, V3& pos, bool& onFoot); static V3 n
 namespace mini {
 static const int MAXN = 3;                                     // at most this many about at once
 static const float JET_CD = 12;                                // a jetpack burst, then this long to recharge
-static const float FIRST = 30, GAP_MIN = 80, GAP_MAX = 150;    // seconds to the first landing, then between landings (each one, two or three of them)
+static const float FIRST = 25, GAP_MIN = 45, GAP_MAX = 80;     // seconds to the first landing, then between landings: a group of three each time
+static const int GROUP = 3;
 struct Perk { int need; const char* name; const char* what; };
 static const int NPERK = 8;
 static const Perk PERKS[NPERK] = {
@@ -22,15 +23,15 @@ static const Perk PERKS[NPERK] = {
     { 250, "GREEN THUMB",    "MINI WARDENS DROP TWICE THE FLOWERS" } };
 struct Bloom { V3 p; int n; float age, yaw; int col; };
 static std::vector<Bloom> blooms;
-static int& flowers = roamFlowers; static int spawned = 0, killed = 0, picked = 0, rams = 0; static float spawnT = FIRST; static bool rammed[NFIGHT] = {}; static int penalties = 0;   // rammed: this one was run down (no flowers; the Wardens fire on you)
-static int jets = 0, group = 0; static bool outcar = false, hold = false, now = false, counted[NFIGHT] = {};   // now: --minisnow (tests)
+static int& flowers = roamFlowers; static int spawned = 0, killed = 0, picked = 0, rams = 0; static float spawnT = FIRST; static bool rammed[NSLOT] = {}; static int penalties = 0;   // rammed: this one was run down (no flowers; the Wardens fire on you)
+static int jets = 0, group = 0; static bool outcar = false, hold = false, now = false, counted[NSLOT] = {};   // now: --minisnow (tests)
 
 static int level() { int l = 0; for (const Perk& p : PERKS) if (flowers >= p.need) l++; return l; }
 static bool has(int k) { return !netRace && level() > k; }
-static uint16_t uid[NFIGHT] = {}, uidNext = 1; static int remoteTgt[NFIGHT] = { -1, -1, -1, -1, -1 };   // online roam: each one's id on the wire; the other player it is after (-1: you)
+static uint16_t uid[NSLOT] = {}, uidNext = 1; static int remoteTgt[NSLOT] = { -1, -1, -1, -1, -1, -1, -1 };   // online roam: each one's id on the wire; the other player it is after (-1: you)
 static bool active() { return state == RACE && exploreMode && !showdownOn && countdown <= 0 && (netRace ? nc.phase == net::ROAM : !nc.on); }   // offline free roam, or a roam server
 static bool authority() { return !netRace || nc.hosts; }   // this game runs them (offline; online, the host)
-static int alive() { int n = 0; for (int i = 1; i < NFIGHT; i++) if (fighters[i].on && fighters[i].mini && fighters[i].alive) n++; return n; }
+static int alive() { int n = 0; for (int i = 1; i < NSLOT; i++) if (fighters[i].on && fighters[i].mini && fighters[i].alive) n++; return n; }
 
 // the attributes the levels give: set every frame (and none of them online, where everyone is equal)
 static void applyPerks() {
@@ -38,7 +39,7 @@ static void applyPerks() {
     footDmgMul = has(4) ? 1.3f : 1.0f; carArmourMul = has(5) ? 0.7f : 1.0f; nitroMul = has(6) ? 0.67f : 1.0f;
 }
 
-static void reset() { blooms.clear(); spawnT = FIRST; for (bool& c : counted) c = false; for (int i = 1; i < NFIGHT; i++) if (fighters[i].mini) fighters[i] = Fighter(), fighters[i].id = i; }
+static void reset() { blooms.clear(); spawnT = FIRST; for (bool& c : counted) c = false; for (int i = 1; i < NSLOT; i++) if (fighters[i].mini) fighters[i] = Fighter(), fighters[i].id = i; }
 
 // somewhere near you to come down: a road 90-220 m away along the lap, a little off it, on dry open ground
 static bool findSpot(V3& out, const V3* near = nullptr) {
@@ -59,7 +60,7 @@ static bool findSpot(V3& out, const V3* near = nullptr) {
     return false;
 }
 static bool spawnOne(V3& where, bool next) {
-    int k = -1; for (int i = 1; i < NFIGHT; i++) if (!fighters[i].on) { k = i; break; } if (k < 0) return false;
+    int k = -1; for (int i = 1; i < NSLOT; i++) if (!fighters[i].on) { k = i; break; } if (k < 0) return false;
     V3 p; if (!findSpot(p, next ? &where : nullptr)) return false; where = p;
     Fighter& f = fighters[k]; V3 a = avatarPos();
     footSpawn(f, k, p, atan2f(a.x - p.x, a.z - p.z)); f.bot = true; f.mini = true; f.name = "MINI WARDEN"; f.paint = k % 2; f.hp = 70; f.gun = G_PISTOL; f.strafe = k % 2 ? 1.0f : -1.0f;
@@ -81,7 +82,8 @@ static void penalty() {
     char s[80]; snprintf(s, sizeof s, lost > 0 ? "YOU RAN IT DOWN: -%d FLOWERS. THE WARDENS FIRE ON YOU" : "YOU RAN IT DOWN. THE WARDENS FIRE ON YOU", lost); say(s, V3(1, 0.3f, 0.2f), 3.5f);
     V3 at = player.pos + V3(0, 140, 0), dir(0, -1, 0); float best = 1e9f;
     for (int u = 0; u < mech::count(); u++) { V3 a, d; mech::muzzle(mech::unit[u], mechT, a, d); float L = len(a - player.pos); if (L < best) { best = L; at = a; dir = norm(player.pos + V3(0, 1, 0) - a); } }
-    Rocket r{ at, dir * 45 + V3(0, 4, 0), 9.0f, TGT_ME }; r.owner = -2; rockets.push_back(r); rocketsFired++; tm.rocketsAtMe++;
+    // from the nearest Warden wherever it stands, seen or not: it lobs the rocket over the town (lobCruise) and down on you
+    Rocket r{ at, V3(dir.x * 12, 40, dir.z * 12), 25.0f, TGT_ME }; r.owner = -2; r.lob = 1; r.cruise = lobCruise(at, player.pos); rockets.push_back(r); rocketsFired++; tm.rocketsAtMe++;
     sfx(at, 160, 0.6f, 1.0f, 0, -60);
 }
 // one mini Warden's mind: close in to shooting range, circle you while it shoots in bursts
@@ -121,7 +123,7 @@ static FootIn think(Fighter& f, float dt) {
 // tests (--footai in free roam): you walk at the nearest mini Warden and shoot it
 static FootIn youThink(Fighter& f, float dt) {
     FootIn in; (void)dt; int best = -1; float bd = 1e9f;
-    for (int i = 1; i < NFIGHT; i++) if (fighters[i].on && fighters[i].mini && fighters[i].alive) { float d = flatDist(f.pos, fighters[i].pos); if (d < bd) { bd = d; best = i; } }
+    for (int i = 1; i < NSLOT; i++) if (fighters[i].on && fighters[i].mini && fighters[i].alive) { float d = flatDist(f.pos, fighters[i].pos); if (d < bd) { bd = d; best = i; } }
     if (best < 0) {   // none about: go and pick up the nearest flowers
         const Bloom* nb = nullptr; float nd = 1e9f; for (const Bloom& b : blooms) { float d = flatDist(f.pos, b.p); if (d < nd) { nd = d; nb = &b; } }
         if (nb) { V3 to(nb->p.x - f.pos.x, 0, nb->p.z - f.pos.z); to = to * (1 / std::max(nd, 0.01f)); in.mx = to.x; in.mz = to.z; }
@@ -152,20 +154,22 @@ static void step(float dt) {
         V3 hood = player.pos + yawDir(player.yaw) * 1.4f + V3(0, 0.9f, 0); float k = (50 - player.hp) / 50;
         spawn(hood, V3(grng.r(-0.6f, 0.6f), grng.r(1.5f, 3.0f), grng.r(-0.6f, 0.6f)) + player.vel * 0.3f, grng.r(0.9f, 1.6f), 0.35f + 0.4f * k, 1.6f + k, V3(0.30f, 0.30f, 0.32f) * (1 - 0.6f * k), 0.5f, 0, 0.4f);
     }
-    if (!active()) { if (state != RACE || !exploreMode) for (int i = 1; i < NFIGHT; i++) if (fighters[i].mini && !showdownOn) { fighters[i] = Fighter(); fighters[i].id = i; } return; }
+    if (!active()) { if (state != RACE || !exploreMode) for (int i = 1; i < NSLOT; i++) if (fighters[i].mini && !showdownOn) { fighters[i] = Fighter(); fighters[i].id = i; } return; }
     roamCarTarget = true; if (outcar && !me.on) { footLeaveCar(); outcar = false; }   // (--outcar, tests: on foot from the start)
     if (!authority()) {   // online, not the host: the host runs them; here only our bumper (reported to the host) and their jet flames
-        for (int i = 1; i < NFIGHT; i++) { Fighter& f = fighters[i]; if (!f.on || !f.mini || !f.remote) continue;
+        for (int i = 1; i < NSLOT; i++) { Fighter& f = fighters[i]; if (!f.on || !f.mini || !f.remote) continue;
             if (f.jetT > 0) for (int j = 0; j < 3; j++) spawn(f.pos + V3(grng.r(-0.2f, 0.2f), 1.0f, grng.r(-0.2f, 0.2f)) - yawDir(f.yaw) * 0.25f, V3(grng.r(-1, 1), grng.r(-9, -5), grng.r(-1, 1)), 0.25f, 0.12f, 0.2f, V3(5, 2.6f, 0.7f), 1, 1, 0);
-            static float sentT[NFIGHT] = {}; sentT[i] -= dt;
+            static float sentT[NSLOT] = {}; sentT[i] -= dt;
             if (f.alive && !me.on && !player.dead && sentT[i] <= 0) { float sp = len(player.vel); V3 d = f.pos - player.pos, fw = yawDir(player.yaw); float u = d.x * fw.x + d.z * fw.z, lat = fabsf(d.x * fw.z - d.z * fw.x);
                 if (sp > 7 && fabsf(d.y) < 2.2f && fabsf(u) < 3.0f && lat < 1.9f) { netRoamHit(i, 1, 999); sentT[i] = 1.0f; rams++; shake = std::max(shake, 0.3f); } }
         }
         pickUp(dt); return;
     }
     spawnT -= dt; if (now) { if (alive() == 0) land(group > 0 ? group : 1); now = false; spawnT = GAP_MAX; }
-    if (spawnT <= 0) { float r = grng.r(0, 1); if (alive() == 0) land(r < 0.6f ? 1 : r < 0.9f ? 2 : 3); spawnT = grng.r(GAP_MIN, GAP_MAX); }   // (60% one, 30% two, 10% three; none while some are still about)
-    for (int i = 1; i < NFIGHT; i++) {
+    // a group of three now and then, even with others still about, up to six at once (two groups); online, the protocol
+    // carries four, so one group at a time there
+    if (spawnT <= 0) { int cap = netRace ? 4 : NSLOT - 1; if (alive() + GROUP <= cap) land(GROUP); spawnT = grng.r(GAP_MIN, GAP_MAX); }
+    for (int i = 1; i < NSLOT; i++) {
         Fighter& f = fighters[i]; if (!f.on || !f.mini) continue;
         f.jetCD = std::max(0.0f, f.jetCD - dt);
         if (f.jetT > 0) for (int j = 0; j < 3; j++) spawn(f.pos + V3(grng.r(-0.2f, 0.2f), 1.0f, grng.r(-0.2f, 0.2f)) - yawDir(f.yaw) * 0.25f, V3(grng.r(-1, 1), grng.r(-9, -5), grng.r(-1, 1)), 0.25f, 0.12f, 0.2f, V3(5, 2.6f, 0.7f), 1, 1, 0);   // its jetpack's flame
@@ -188,7 +192,7 @@ static void step(float dt) {
 }
 
 // the minimap: a red dot for each one about (in place of any announcement)
-static void mapDots(float cx, float cy, float sc) { for (int i = 1; i < NFIGHT; i++) { const Fighter& f = fighters[i]; if (f.on && f.mini && f.alive) { ui.rect(cx + f.pos.x * sc - 3.5f, cy + f.pos.z * sc - 3.5f, 7, 7, V3(0, 0, 0)); ui.rect(cx + f.pos.x * sc - 2.5f, cy + f.pos.z * sc - 2.5f, 5, 5, V3(1, 0.25f, 0.15f)); } } }
+static void mapDots(float cx, float cy, float sc) { for (int i = 1; i < NSLOT; i++) { const Fighter& f = fighters[i]; if (f.on && f.mini && f.alive) { ui.rect(cx + f.pos.x * sc - 3.5f, cy + f.pos.z * sc - 3.5f, 7, 7, V3(0, 0, 0)); ui.rect(cx + f.pos.x * sc - 2.5f, cy + f.pos.z * sc - 2.5f, 5, 5, V3(1, 0.25f, 0.15f)); } } }
 static void drawBlooms(Prog& p, bool lit, float t) {
     if (!lit) return;
     for (const Bloom& b : blooms) {

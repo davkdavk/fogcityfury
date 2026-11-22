@@ -11,6 +11,8 @@ an endurance track across two islands. Runs on Linux, Windows, Android and the X
 
 C++17, SDL2, OpenGL 3.3 core, GLSL 3.30.
 
+**Just want to play?** Read the **[Player's Guide](docs/PLAYING.md)**: downloads, controls, modes, online play, the track editor and troubleshooting.
+
 ## The A12 Engine
 
 Fog City Fury runs on the **A12 Engine**, which is in this repository too: generated island worlds with roads,
@@ -87,6 +89,11 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
+
+## What's new in 1.74
+
+- Xbox 360: no longer dropped from online lobbies while it builds the track
+- Cleaner waterline where undersea tunnels meet the sea
 
 ## What's new in 1.73
 

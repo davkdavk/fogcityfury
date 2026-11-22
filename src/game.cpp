@@ -209,6 +209,13 @@ struct ServerEntry {
 static const char* DEFAULT_SERVERS[] = { "thadav.com:27015", "127.0.0.1:27015" }; static const size_t MAX_SERVERS = 9;
 static std::vector<ServerEntry> servers; static int srvSel = 0, srvMode = 0, qsock = -1;   // srvMode: 0 picking, 1 typing a new address, 2 typing our name
 static char srvNew[96] = ""; static float srvRefresh = 0; static bool srvSkipText = false;
+// Typing an address or a name with only a controller (the Xbox 360): a grid of letters picked with the d-pad, A types the
+// one picked. The last row: SPACE, DEL and DONE
+static const char* OSK_ROWS[4] = { "ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZ.-:_", "0123456789" }; static int oskX = 0, oskY = 0;
+static void srvType(const char* t) {   // add typed text to the address or name being typed
+    char* f = srvMode == 2 ? nc.name : srvNew; size_t cap = srvMode == 2 ? net::NAMELEN : sizeof srvNew - 1;
+    for (const char* c = t; *c; c++) { size_t n = strlen(f); char ch = srvMode == 2 ? (char)toupper((unsigned char)*c) : (char)tolower((unsigned char)*c); if (n < cap && ch >= 32 && ch < 127 && !(ch == ' ' && srvMode == 1)) { f[n] = ch; f[n + 1] = 0; } }
+}
 static int dnsThread(void* p) { std::shared_ptr<DnsJob>* sp = (std::shared_ptr<DnsJob>*)p; bool ok = net::resolve((*sp)->host.c_str(), (*sp)->addr); plat::atomicSet((*sp)->done, ok ? 1 : 2); delete sp; return 0; }
 // look the address up on another thread: a slow or dead DNS server must not freeze the menu
 static void srvLookup(ServerEntry& e) {
@@ -249,7 +256,11 @@ static const int BIND_DEF[NBIND][2] = { { SDL_SCANCODE_LEFT, SDL_SCANCODE_A }, {
 static std::vector<int> heldKeys; static int binds[NBIND][2];
 // ---- touch screens: on-screen buttons. Shown once a finger touches the screen (always on Android), or with --touch ----
 enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON };
-struct TouchBtn { const char* label; float x, y, w, h; int hold; int act; SDL_Keycode key; };   // hold: a Bind held while a finger is on it (-1: a tap button)
+// hold: a Bind held while a finger is on it (-1: a tap button). Drawn round (pill false: x, y, w, h is the circle's box) or as a pill;
+// icon: a symbol instead of the label (the label still names it, for tests); style: its colour
+enum TouchIcon { IC_NONE, IC_LEFT, IC_RIGHT, IC_UP, IC_DOWN, IC_PAUSE, IC_CAM, IC_RESET };
+enum TouchStyle { TS_PLAIN, TS_GO, TS_STOP, TS_NITRO, TS_FIRE };
+struct TouchBtn { const char* label; float x, y, w, h; int hold; int act; SDL_Keycode key; bool pill = false; int icon = IC_NONE, style = TS_PLAIN; };
 struct Finger { SDL_FingerID id; int btn; };
 // Prompts name controller buttons ("{A} OK", drawn as buttons by UI::text) once the last thing pressed was on a
 // controller, and keys after a key press; the Xbox 360 has only controllers.
@@ -286,60 +297,113 @@ static gfx::Tex noiseTex = 0, hashTex = 0;
 static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
 static int optPage = 0, optRow = 0, optCol = 0; static bool optCapture = false; static State optReturn = TITLE;
 static State viewState() { return state == OPTS ? optReturn : state; }        // what is on screen behind the options
-// which buttons the current screen needs, in HUD units (the screen is uiW x 720)
+// which buttons the current screen needs, in HUD units (the screen is uiW x 720). Round buttons where thumbs rest,
+// pills for words; spaced so a thumb never lands on two; only what the moment needs (ROCKET only with rockets on board);
+// and clear of the HUD's panels (speedometer right of middle, position top left, minimap left of middle)
+static bool touchHasAmmo();
 static void touchLayout() {
-    int sig = (int)state * 100 + srvMode * 10 + optPage + (me.on ? 2 : 0) + (showdownOn ? 4 : 0) + (nc.on ? 5000 : 0) + (int)(uiW) * 10000; if (sig == touchLaid) return;
-    touchLaid = sig; tbtn.clear(); fingers.clear(); float W = uiW, H = 720;
-    auto key = [&](const char* l, float x, float y, float w, float h, SDL_Keycode k) { tbtn.push_back({ l, x, y, w, h, -1, TA_KEY, k }); };
-    auto hold = [&](const char* l, float x, float y, float w, float h, int b) { tbtn.push_back({ l, x, y, w, h, b, TA_KEY, 0 }); };
-    auto act = [&](const char* l, float x, float y, float w, float h, int a) { tbtn.push_back({ l, x, y, w, h, -1, a, 0 }); };
-    // menus keep their panels along the bottom, so their buttons stand in a column at each edge, clear of the middle
-    auto arrows = [&]() { key("UP", 12, 128, 104, 66, SDLK_UP); key("<", 12, 200, 104, 66, SDLK_LEFT); key(">", 12, 272, 104, 66, SDLK_RIGHT); key("DOWN", 12, 344, 104, 66, SDLK_DOWN); };
-    auto side = [&](int row, const char* l, SDL_Keycode k) { key(l, W - 116, 128 + row * 72.0f, 104, 66, k); };
-    float bx = W - 150, by = H - 100;   // bottom right: the main button, others to its left
+    long long sig = (long long)state * 100 + srvMode * 10 + optPage + (me.on ? 2 : 0) + (showdownOn ? 4 : 0) + (nc.on ? 5000 : 0) + (long long)uiW * 10000
+                  + ((long long)touchHasAmmo() << 32) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35);
+    static long long laidSig = -1; if (sig == laidSig && touchLaid >= 0) return;
+    laidSig = sig; touchLaid = 1; tbtn.clear(); fingers.clear(); float W = uiW, H = 720;
+    auto push = [&](TouchBtn b) { tbtn.push_back(b); };
+    // round: centre and radius
+    auto cKey = [&](const char* l, float cx, float cy, float r, SDL_Keycode k, int ic = IC_NONE, int st = TS_PLAIN) { TouchBtn b{ l, cx - r, cy - r, 2 * r, 2 * r, -1, TA_KEY, k }; b.icon = ic; b.style = st; push(b); };
+    auto cHold = [&](const char* l, float cx, float cy, float r, int bind, int ic = IC_NONE, int st = TS_PLAIN) { TouchBtn b{ l, cx - r, cy - r, 2 * r, 2 * r, bind, TA_KEY, 0 }; b.icon = ic; b.style = st; push(b); };
+    auto cAct = [&](const char* l, float cx, float cy, float r, int a, int ic = IC_NONE, int st = TS_PLAIN) { TouchBtn b{ l, cx - r, cy - r, 2 * r, 2 * r, -1, a, 0 }; b.icon = ic; b.style = st; push(b); };
+    // pills: box
+    auto pKey = [&](const char* l, float x, float y, float w, SDL_Keycode k, int st = TS_PLAIN, float h = 72) { TouchBtn b{ l, x, y, w, h, -1, TA_KEY, k }; b.pill = true; b.style = st; push(b); };
+    auto pAct = [&](const char* l, float x, float y, float w, int a, int st = TS_PLAIN, float h = 72) { TouchBtn b{ l, x, y, w, h, -1, a, 0 }; b.pill = true; b.style = st; push(b); };
+    // menus: a d-pad on the left, OK and BACK on the right, both at mid height (the menus keep their panels low)
+    auto dpad = [&](bool upDown, bool leftRight) {
+        const float cx = 150, cy = 250, d = 88, r = 44;   // (above the menus' low panels)
+        if (upDown) { cKey("UP", cx, cy - d, r, SDLK_UP, IC_UP); cKey("DOWN", cx, cy + d, r, SDLK_DOWN, IC_DOWN); }
+        if (leftRight) { cKey("<", cx - d, cy, r, SDLK_LEFT, IC_LEFT); cKey(">", cx + d, cy, r, SDLK_RIGHT, IC_RIGHT); }
+    };
+    auto okBack = [&](const char* ok, const char* back, SDL_Keycode okK = SDLK_RETURN, SDL_Keycode backK = SDLK_ESCAPE) {
+        if (ok) cKey(ok, W - 130, 240, 66, okK, IC_NONE, TS_GO); if (back) cKey(back, W - 130, 375, 50, backK);
+    };
+    const float topY = 56;   // the row of small round buttons along the top, right of the position panel
     switch (state) {
-    case EDIT: break;   // (the editor is mouse and keyboard)
+    case EDIT: break;   // (the editor lays out its own: see editor.h)
     case RACE:
+        cKey("II", 300, topY, 36, SDLK_ESCAPE, IC_PAUSE);
         if (me.on) {   // on foot: the left thumb gets a stick wherever it lands (see touchDown); the right thumb gets the gun
-            hold("FIRE", W - 190, H - 190, 170, 170, B_FIRE); hold("ROLL", W - 335, H - 190, 135, 82, B_HB); hold("RUN", W - 335, H - 100, 135, 82, B_NITRO);
-            act("GUN", W - 480, H - 100, 135, 82, TA_WEAPON); if (!showdownOn) act("CAR", W - 480, H - 190, 135, 82, TA_EXIT);
-            key("II", 300, 20, 90, 62, SDLK_ESCAPE); if (showdownOn) key("SKIP", 400, 20, 110, 62, SDLK_RETURN); break;
+            cHold("FIRE", W - 125, H - 130, 92, B_FIRE, IC_NONE, TS_FIRE);
+            cHold("RUN", W - 300, H - 80, 58, B_NITRO, IC_NONE, TS_NITRO); cHold("ROLL", W - 420, H - 220, 52, B_HB);   // (left of the weapon panel)
+            cAct("GUN", W - 465, H - 80, 46, TA_WEAPON); if (!showdownOn) cAct("CAR", W - 420, 56, 36, TA_EXIT);
+            if (showdownOn) pKey("SKIP", 390, topY - 30, 120, SDLK_RETURN, TS_PLAIN, 60);
+            break;
         }
-        hold("<", 20, H - 180, 155, 165, B_LEFT); hold(">", 190, H - 180, 155, 165, B_RIGHT);
-        hold("GAS", W - 175, H - 180, 155, 165, B_GAS); hold("BRAKE", W - 345, H - 180, 155, 165, B_BRAKE);
-        hold("NITRO", W - 480, H - 180, 125, 78, B_NITRO); hold("DRIFT", W - 480, H - 93, 125, 78, B_HB);
-        act("ROCKET", W - 615, H - 180, 125, 78, TA_FIRE); act("RESET", W - 615, H - 93, 125, 78, TA_RESET);
-        act("OUT", W - 745, H - 180, 125, 78, TA_EXIT); act("WEAPON", W - 745, H - 93, 125, 78, TA_WEAPON);
-        key("II", 270, 20, 90, 62, SDLK_ESCAPE); act("CAM", 370, 20, 90, 62, TA_CAM); break;
-    case TITLE: key("RACE", bx, by, 130, 80, SDLK_RETURN); key("ONLINE", bx - 150, by, 140, 80, SDLK_o); key("OPTIONS", bx - 310, by, 150, 80, SDLK_F1); break;
-    case CARSEL: arrows(); side(0, "OK", SDLK_RETURN); side(1, "BACK", SDLK_ESCAPE); break;
-    case TRACKSEL: arrows(); side(0, "START", SDLK_RETURN); side(1, "BACK", SDLK_ESCAPE); break;
-    case PAUSED: key("RESUME", W / 2 - 290, 460, 140, 80, SDLK_ESCAPE); act("RESET", W / 2 - 140, 460, 140, 80, TA_RESET); key("OPTIONS", W / 2 + 10, 460, 140, 80, SDLK_F1); key("QUIT", W / 2 + 160, 460, 130, 80, SDLK_q); break;
-    case RESULTS: key("OK", bx, by, 130, 80, SDLK_RETURN); key("LEAVE", bx - 140, by, 130, 80, SDLK_ESCAPE); break;
-    case NETLOBBY: if (voteOpen() && !voteMine()) { key("ACCEPT", bx, by, 130, 80, SDLK_y); key("NO", bx - 140, by, 130, 80, SDLK_n); break; }
-        key(shareOpen ? "SHARE" : "READY", bx, by, 130, 80, SDLK_RETURN); key("BACK", bx - 140, by, 130, 80, SDLK_ESCAPE);
-        if (shareOpen) { key("UP", 20, by - 90, 130, 80, SDLK_UP); key("DOWN", 20, by, 130, 80, SDLK_DOWN); } else if (!shareList().empty()) key("SHARE TRACK", 20, by, 200, 80, SDLK_t);
+        cAct("CAM", 380, topY, 36, TA_CAM, IC_CAM); cAct("RESET", 460, topY, 36, TA_RESET, IC_RESET); cAct("OUT", 540, topY, 36, TA_EXIT);   // (left of the race clock)
+        cHold("<", 115, H - 120, 86, B_LEFT, IC_LEFT); cHold(">", 305, H - 120, 86, B_RIGHT, IC_RIGHT);
+        // the right thumb: GAS under it, BRAKE and NITRO along the bottom, DRIFT and ROCKET above them (left of the speedometer)
+        cHold("GAS", W - 125, H - 125, 95, B_GAS, IC_NONE, TS_GO); cHold("BRAKE", W - 305, H - 80, 62, B_BRAKE, IC_NONE, TS_STOP);
+        cHold("NITRO", W - 445, H - 92, 56, B_NITRO, IC_NONE, TS_NITRO); cHold("DRIFT", W - 370, H - 236, 50, B_HB);
+        if (touchHasAmmo()) cAct("ROCKET", W - 530, H - 250, 54, TA_FIRE, IC_NONE, TS_FIRE);   // only with rockets on board
+        break;
+    case TITLE: pKey("RACE", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey("ONLINE", W - 490, H - 110, 220, SDLK_o, TS_PLAIN, 84); pKey("OPTIONS", 30, H - 110, 200, SDLK_F1); break;
+    case CARSEL: dpad(true, true); okBack("OK", "BACK"); break;
+    case TRACKSEL: dpad(true, true); okBack("START", "BACK"); break;
+    case PAUSED: pKey("RESUME", W / 2 - 330, 460, 200, SDLK_ESCAPE, TS_GO); pAct("RESET", W / 2 - 110, 460, 200, TA_RESET); pKey("OPTIONS", W / 2 + 110, 460, 200, SDLK_F1); pKey("QUIT", W / 2 - 100, 560, 200, SDLK_q, TS_STOP); break;
+    case RESULTS: pKey("OK", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey("LEAVE", W - 490, H - 110, 220, SDLK_ESCAPE); break;
+    case NETLOBBY:
+        if (voteOpen() && !voteMine()) { pKey("ACCEPT", W - 250, H - 110, 220, SDLK_y, TS_GO, 84); pKey("NO", W - 490, H - 110, 220, SDLK_n, TS_STOP, 84); break; }
+        if (shareOpen) { dpad(true, false); okBack("SHARE", "CLOSE", SDLK_RETURN, SDLK_t); break; }
+        pKey("READY", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey("BACK", W - 490, H - 110, 220, SDLK_ESCAPE, TS_PLAIN, 84);
+        if (!shareList().empty() && nc.phase == net::LOBBY) pKey("SHARE TRACK", 30, H - 110, 260, SDLK_t, TS_PLAIN, 84);
         break;
     case NETJOIN:
-        if (nc.on) { key("CANCEL", bx, by, 130, 80, SDLK_ESCAPE); break; }
-        if (srvMode != 0) { key("OK", bx, by, 130, 80, SDLK_RETURN); key("CANCEL", bx - 140, by, 130, 80, SDLK_ESCAPE); key("<-", bx - 280, by, 130, 80, SDLK_BACKSPACE); break; }
-        key("UP", 20, by, 110, 80, SDLK_UP); key("DOWN", 140, by, 110, 80, SDLK_DOWN); key("JOIN", bx, by, 130, 80, SDLK_RETURN); key("BACK", bx - 140, by, 130, 80, SDLK_ESCAPE); key("ADD", bx - 280, by, 130, 80, SDLK_a); key("NAME", bx - 420, by, 130, 80, SDLK_n); key("REMOVE", bx - 570, by, 140, 80, SDLK_DELETE); break;
-    case OPTS: arrows(); side(0, "BACK", SDLK_ESCAPE); side(1, optPage ? "KEYS" : "VIDEO", SDLK_TAB); break;
+        if (nc.on) { pKey("CANCEL", W - 250, H - 110, 220, SDLK_ESCAPE, TS_PLAIN, 84); break; }
+        if (srvMode != 0) {   // typing: the phone's keyboard covers the bottom half, so these sit at the top
+            pKey("OK", W / 2 + 20, 236, 220, SDLK_RETURN, TS_GO); pKey("CANCEL", W / 2 - 240, 236, 220, SDLK_ESCAPE); break;   // (under the field)
+        }
+        // the list fills the width: its rows are tapped (once to pick, again to join: see touchDown); the buttons go underneath
+        pKey("JOIN", W - 250, H - 100, 220, SDLK_RETURN, TS_GO, 80); pKey("BACK", 30, H - 100, 170, SDLK_ESCAPE, TS_PLAIN, 80);
+        pKey("ADD", 220, H - 100, 160, SDLK_a, TS_PLAIN, 80); pKey("NAME", 400, H - 100, 160, SDLK_n, TS_PLAIN, 80); pKey("REMOVE", 580, H - 100, 190, SDLK_DELETE, TS_STOP, 80);
+        break;
+    case OPTS:   // the settings table is wide: slim columns at the very edges
+        cKey("UP", 52, 200, 40, SDLK_UP, IC_UP); cKey("DOWN", 52, 295, 40, SDLK_DOWN, IC_DOWN); cKey("<", 52, 410, 40, SDLK_LEFT, IC_LEFT); cKey(">", 52, 505, 40, SDLK_RIGHT, IC_RIGHT);
+        cKey(optPage ? "KEYS" : "VIDEO", W - 56, 220, 46, SDLK_TAB, IC_NONE, TS_GO); cKey("BACK", W - 56, 330, 44, SDLK_ESCAPE); break;
+    default: break;
     }
 }
 static void drawTouch() {
     if (!touchOn) return; touchLayout();
+    auto ring = [&](float cx, float cy, float r, float th, V3 c, float a) { const int N = 36; for (int i = 0; i < N; i++) { float a0 = i * 6.2831853f / N, a1 = (i + 1) * 6.2831853f / N; ui.line(cx + cosf(a0) * r, cy + sinf(a0) * r, cx + cosf(a1) * r, cy + sinf(a1) * r, th, c, a); } };
     for (size_t i = 0; i < tbtn.size(); i++) {
-        // clean and see-through: a faint tinted fill with no frame, brighter while a finger is on it
+        // glassy and see-through: a dark disc or pill with a bright rim in the button's colour, lit up while a finger is on it
         const TouchBtn& t = tbtn[i]; bool dn = false; for (auto& f : fingers) if (f.btn == (int)i) dn = true;
-        V3 tint = t.hold == B_GAS ? V3(0.3f, 1, 0.45f) : t.hold == B_BRAKE ? V3(1, 0.35f, 0.25f) : t.hold == B_NITRO ? V3(0.4f, 0.85f, 1) : t.act == TA_FIRE ? V3(1, 0.5f, 0.15f) : V3(0.85f, 0.9f, 1);
-        ui.rect(t.x, t.y, t.w, t.h, tint, dn ? 0.28f : 0.10f);
-        float sc = strlen(t.label) <= 2 ? (t.h > 100 ? 9.0f : 4.5f) : std::min(3.2f, t.w / (strlen(t.label) * 6.6f)); ui.text(t.x + t.w / 2, t.y + t.h / 2 - sc * 3.5f, sc, V3(1, 1, 1), t.label, 1, dn ? 0.9f : 0.5f);
+        V3 tint = t.style == TS_GO ? V3(0.35f, 1, 0.5f) : t.style == TS_STOP ? V3(1, 0.42f, 0.35f) : t.style == TS_NITRO ? V3(0.4f, 0.85f, 1) : t.style == TS_FIRE ? V3(1, 0.6f, 0.2f) : V3(0.9f, 0.93f, 1);
+        V3 fill = dn ? tint * 0.55f : V3(0.04f, 0.05f, 0.08f); float fa = dn ? 0.62f : 0.38f, ra = dn ? 1.0f : 0.7f;
+        float cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+        if (!t.pill) { float r = t.w / 2; ui.disc(cx, cy, r, fill, fa); ring(cx, cy, r - 1.5f, 3, tint, ra); if (dn) ring(cx, cy, r + 4, 2, tint, 0.35f); }
+        else {
+            float r = t.h / 2; ui.rect(t.x + r, t.y, t.w - 2 * r, t.h, fill, fa); ui.disc(t.x + r, cy, r, fill, fa); ui.disc(t.x + t.w - r, cy, r, fill, fa);
+            ui.line(t.x + r, t.y + 1.5f, t.x + t.w - r, t.y + 1.5f, 3, tint, ra); ui.line(t.x + r, t.y + t.h - 1.5f, t.x + t.w - r, t.y + t.h - 1.5f, 3, tint, ra);
+            const int N = 18; for (int k = 0; k < N; k++) { float a0 = 1.5708f + k * 3.14159f / N, a1 = 1.5708f + (k + 1) * 3.14159f / N;
+                ui.line(t.x + r + cosf(a0) * (r - 1.5f), cy + sinf(a0) * (r - 1.5f), t.x + r + cosf(a1) * (r - 1.5f), cy + sinf(a1) * (r - 1.5f), 3, tint, ra);
+                ui.line(t.x + t.w - r - cosf(a0) * (r - 1.5f), cy + sinf(a0) * (r - 1.5f), t.x + t.w - r - cosf(a1) * (r - 1.5f), cy + sinf(a1) * (r - 1.5f), 3, tint, ra); }
+        }
+        V3 ink = V3(1, 1, 1); float ia = dn ? 1.0f : 0.85f, s = std::min(t.w, t.h) * 0.24f;
+        switch (t.icon) {
+        case IC_LEFT: ui.tri(cx - s, cy, cx + s * 0.7f, cy - s, cx + s * 0.7f, cy + s, ink, ia); break;
+        case IC_RIGHT: ui.tri(cx + s, cy, cx - s * 0.7f, cy + s, cx - s * 0.7f, cy - s, ink, ia); break;
+        case IC_UP: ui.tri(cx, cy - s, cx - s, cy + s * 0.7f, cx + s, cy + s * 0.7f, ink, ia); break;
+        case IC_DOWN: ui.tri(cx, cy + s, cx + s, cy - s * 0.7f, cx - s, cy - s * 0.7f, ink, ia); break;
+        case IC_PAUSE: ui.rect(cx - s * 0.65f, cy - s * 0.8f, s * 0.45f, s * 1.6f, ink, ia); ui.rect(cx + s * 0.2f, cy - s * 0.8f, s * 0.45f, s * 1.6f, ink, ia); break;
+        case IC_CAM: ui.rect(cx - s, cy - s * 0.55f, s * 1.5f, s * 1.1f, ink, ia); ui.tri(cx + s * 0.5f, cy, cx + s * 1.05f, cy - s * 0.55f, cx + s * 1.05f, cy + s * 0.55f, ink, ia); break;
+        case IC_RESET: { const int N = 14; for (int k = 0; k < N; k++) { float a0 = -0.6f + k * 4.6f / N, a1 = -0.6f + (k + 1) * 4.6f / N; ui.line(cx + cosf(a0) * s * 0.85f, cy + sinf(a0) * s * 0.85f, cx + cosf(a1) * s * 0.85f, cy + sinf(a1) * s * 0.85f, 3, ink, ia); }
+            float ax = cx + cosf(-0.6f) * s * 0.85f, ay = cy + sinf(-0.6f) * s * 0.85f; ui.tri(ax - s * 0.45f, ay - s * 0.1f, ax + s * 0.4f, ay - s * 0.25f, ax + s * 0.05f, ay + s * 0.5f, ink, ia); } break;
+        default: {   // a word: as big as fits
+            size_t n = strlen(t.label); float sc = std::min(t.h * 0.05f, (t.w * (t.pill ? 0.82f : 0.74f)) / (n * 6.4f)); sc = std::max(sc, 1.6f);
+            ui.text(cx, cy - sc * 3.5f, sc, ink, t.label, 1, ia); }
+        }
     }
     if (me.on && state == RACE) {   // the thumb-stick: a ring where the thumb went down, a knob where it is now
-        float ox = tstick.on ? tstick.ox : 170, oy = tstick.on ? tstick.oy : 560, kx = tstick.on ? ox + clampf(tstick.x - ox, -70, 70) : ox, ky = tstick.on ? oy + clampf(tstick.y - oy, -70, 70) : oy;
-        for (int i = 0; i < 24; i++) { float a0 = i * 0.2618f, a1 = (i + 1) * 0.2618f; ui.line(ox + cosf(a0) * 80, oy + sinf(a0) * 80, ox + cosf(a1) * 80, oy + sinf(a1) * 80, 3, V3(0.85f, 0.9f, 1), tstick.on ? 0.5f : 0.22f); }
-        ui.rect(kx - 26, ky - 26, 52, 52, V3(0.85f, 0.9f, 1), tstick.on ? 0.45f : 0.18f);
+        float ox = tstick.on ? tstick.ox : 190, oy = tstick.on ? tstick.oy : 560, kx = tstick.on ? ox + clampf(tstick.x - ox, -70, 70) : ox, ky = tstick.on ? oy + clampf(tstick.y - oy, -70, 70) : oy;
+        ui.disc(ox, oy, 86, V3(0.04f, 0.05f, 0.08f), tstick.on ? 0.35f : 0.22f); ring(ox, oy, 84, 3, V3(0.9f, 0.93f, 1), tstick.on ? 0.7f : 0.4f);
+        ui.disc(kx, ky, 34, V3(0.9f, 0.93f, 1), tstick.on ? 0.55f : 0.25f);
     }
 }
 static std::string cfgPath() { std::string p = savePath(); return p.substr(0, p.size() - 3) + "cfg"; }
@@ -416,11 +480,21 @@ static void say(const char* s, V3 c = V3(1, 1, 1), float t = 2.2f) { snprintf(ms
 static const int NCRATES = 6, CRATE_ROCKETS = 2; static const float ROCKET_RANGE = 170, WRECK_R = 2.2f, WRECK_LIFE = 10, WRECK_FADE = 2.5f;   // a wreck lasts WRECK_LIFE seconds and fades over the last WRECK_FADE
 struct Wreck { V3 pos; float yaw, pitch, roll, age; int type; unsigned wheels; int si; float lat; };   // si, lat: where it lies along and across the road
 struct Debris { V3 p, v, rot, spin, sc; int kind; bool rest; float age = 0; };   // kind 0: a wheel, 1: a body panel
-struct Rocket { V3 p, v; float life; int target; int owner = -1; };          // target: 0..NAI-1 an opponent, TGT_ME us, 16+id another player, -1 none. owner: -1 us, 0.. a bot
+struct Rocket { V3 p, v; float life; int target; int owner = -1; int lob = 0; float cruise = 0; };   // lob: 1 climbing, 2 across at cruise height, 3 diving: a Warden's rocket that goes over the town (see wardenLob)          // target: 0..NAI-1 an opponent, TGT_ME us, 16+id another player, -1 none. owner: -1 us, 0.. a bot
 static const int TGT_ME = 15;
+static int lobHits = 0;   // test metric: Warden lob rockets that hit
+// A Warden's rocket fired from wherever it stands, seen or not: up above everything between it and the target, across,
+// then straight down on it. cruise: 30 m over the highest roof or hill on the way (and at least 45 m over either end)
+static float lobCruise(V3 a, V3 b) {
+    float top = std::max(a.y, b.y) + 45; V3 d = b - a; d.y = 0; float L = len(d); int n = std::max(2, (int)(L / 8));
+    for (int i = 0; i <= n; i++) { V3 q = a + d * ((float)i / n); top = std::max(top, W.ground(q.x, q.z, 900) + 30); }
+    return top;
+}
 struct Crate { V3 p; float cd; };
 static std::vector<Wreck> wrecks; static std::vector<Debris> debris; static std::vector<Rocket> rockets; static std::vector<Crate> crates;
-static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
+static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;
+static int keyJingles = 0;   // test metric: key jingles played
+static bool touchHasAmmo() { return ammo > 0; }   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
 static bool cratesOn() { return rocketLap != player.lap; }
 static float goneOf(float age) { return clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); }   // 0 solid .. 1 faded away
 static float fireCD = 0, resetCD = 0, resetHint = 0, ammoFlash = 0; static V3 boltDir(0, 0.5f, 1), rainRel;
@@ -457,7 +531,9 @@ static void setupCars(bool race) {
     mech::setup(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
     for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
-static void loadTrack(int t) { if (W.id != t) W.build(t); setupCars(false); }
+static void netLoadingNotice();   // (netclient.h) online: tell the server we are about to go quiet while the track builds
+static float loadStall = 0;   // --loadstall S (tests): online, each track build takes S seconds longer, as on a slow machine
+static void loadTrack(int t) { if (W.id != t) { netLoadingNotice(); W.build(t); if (loadStall > 0 && nc.on) net::sleepMs((int)(loadStall * 1000)); } setupCars(false); }
 // Track select builds the track you stop on, not every one you scroll past: building a city takes a moment (seconds on
 // the 360), so each left/right only marks it, and it is built once the choice has rested a moment, or at once on start.
 static const int TRACK_SONG[NTRACKS] = { 1, 2, 3, 4, 6, 7, 8 };
@@ -666,9 +742,16 @@ static void stepRockets(float dt) {
     for (size_t i = 0; i < rockets.size();) {
         Rocket& r = rockets[i]; Car* c = tgtCar(r.target); if (c && c->dead) c = nullptr;
         float sp = std::min(len(r.v) + 75 * dt, 115.0f); V3 dir = norm(r.v), tp; bool done = false;
-        if (c) {   // turn towards where the target will be, at up to 4.5 rad/s, shedding speed in a hard turn (so it can come about for a car behind us)
+        if (c && r.lob > 0 && r.lob < 3) {   // a lob: climb, then across at the cruise height, then down
+            tp = c->pos + V3(0, 0.6f, 0); V3 h(tp.x - r.p.x, 0, tp.z - r.p.z); float hd = len(h); h = hd > 0.01f ? h * (1 / hd) : V3(0, 0, 0);
+            if (r.lob == 1 && r.p.y >= r.cruise - 3) r.lob = 2;
+            if (r.lob == 2 && hd < (r.p.y - tp.y) * 0.55f + 8) r.lob = 3;
+            V3 want = r.lob == 1 ? norm(V3(0, 1, 0) + h * 0.45f) : norm(h + V3(0, clampf((r.cruise - r.p.y) * 0.08f, -0.4f, 0.4f), 0));
+            float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = 2.8f * dt; if (a <= th || a < 1e-3f) dir = want; else dir = norm(dir * sinf(a - th) + want * sinf(th));
+            sp = std::min(sp, 80.0f);
+        } else if (c) {   // turn towards where the target will be, at up to 4.5 rad/s, shedding speed in a hard turn (so it can come about for a car behind us)
             tp = c->pos + V3(0, 0.6f, 0); V3 want = norm(tp + c->vel * std::min(len(tp - r.p) / sp, 0.6f) - r.p);
-            float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = 4.5f * dt;
+            float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = (r.lob ? 7.0f : 4.5f) * dt;   // (a lob's dive turns hard: it comes down on the car)
             if (a > 3.0f) { want = norm(want + V3(dir.z, 0, -dir.x) * 0.3f); cs = clampf(dot(dir, want), -1, 1); a = acosf(cs); }
             if (a <= th || a < 1e-3f) dir = want; else dir = norm(dir * sinf(a - th) + want * sinf(th));
             sp = std::min(sp, 115.0f * (0.45f + 0.55f * std::max(cs, 0.0f)));
@@ -677,7 +760,7 @@ static void stepRockets(float dt) {
         if (getenv("FCF_TRACE")) fprintf(stderr, "rocket life %.2f p %.0f %.1f %.0f sp %.0f tgt %d dist %.1f ground %.1f\n", r.life, r.p.x, r.p.y, r.p.z, sp, r.target, c ? len(tp - r.p) : -1.0f, W.ground(r.p.x, r.p.z, r.p.y + 1.5f));
         spawn(r.p - dir * 0.6f, dir * -6 + V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1)), 0.12f, 0.22f, 0.5f, V3(6, 3.2f, 0.8f), 1, 1, 0);
         for (int k = 0; k < 2; k++) spawn(r.p - dir * (0.8f + k * 0.9f), V3(grng.r(-0.6f, 0.6f), grng.r(0.2f, 1.0f), grng.r(-0.6f, 0.6f)), grng.r(0.7f, 1.2f), 0.22f, 1.3f, V3(0.75f, 0.75f, 0.78f), 0.35f);
-        if (c && len(tp - r.p) < 2.9f) { rocketHit(r.target, r.p, r.owner); done = true; }
+        if (c && len(tp - r.p) < 2.9f) { if (r.lob) lobHits++; rocketHit(r.target, r.p, r.owner); done = true; }
         else {
             // it skims the ground like a cruise missile, so crests and dips do not stop it; walls and cliffs do
             V3 q = r.p, vv = r.v; float imp = 0, g = W.ground(r.p.x, r.p.z, r.p.y + 1.5f);
@@ -1135,6 +1218,13 @@ static void update(float dt) {
             writeSave();
         }
         if (grng.f() < dt * 6) { V3 kp = W.keys[k]; spawn(kp + V3(grng.r(-.8f, .8f), grng.r(-1, 1), grng.r(-.8f, .8f)), V3(0, 1.2f, 0), 0.8f, 0.12f, 0, V3(3, 2.4f, 0.5f), 0.9f, 1, 0); }
+        // a faint metal jingle near a key not yet found: a few quick bell-like tinkles (two inharmonic partials each) every
+        // second or two, louder the closer it is, from 45 m. Its own random numbers, so the race itself is not changed
+        { float dd = len(d); static float jingleT = 0; static uint32_t jr = 12345; auto jf = [&] { jr = jr * 1664525u + 1013904223u; return (jr >> 8) / 16777216.0f; };
+          if (dd < 45 && (jingleT -= dt) <= 0) {
+              float near = 1 - dd / 45, vol = 0.015f + 0.09f * near * near; jingleT = 0.9f + jf() * 1.1f - near * 0.5f; keyJingles++;
+              int n = 3 + (int)(jf() * 3); for (int i = 0; i < n; i++) { float f = 2300 + jf() * 1900, dl = i * (0.045f + jf() * 0.05f); tone(f, 0.22f, vol, 0, 0, dl); tone(f * 2.76f, 0.12f, vol * 0.45f, 0, 0, dl); }
+          } }
     }
     // --- effects ---
     if (driving && !player.dead) {
@@ -1838,7 +1928,7 @@ static void drawHUD() {
         panel(Wd / 2 - 580, 110, 1160, 430, 0.72f); float x0 = Wd / 2 - 560;
         ui.text(x0, 124, 2, dim, "SERVER"); ui.text(x0 + 330, 124, 2, dim, "NAME"); ui.text(x0 + 640, 124, 2, dim, "TRACK"); ui.text(x0 + 900, 124, 2, dim, "PLAYERS"); ui.text(x0 + 1120, 124, 2, dim, "PING", 2);
         static const char* PH[6] = { "LOBBY", "STARTING", "RACING", "RESULTS", "SHOWDOWN", "ROAM" };
-        for (size_t i = 0; i < servers.size(); i++) {
+        for (size_t i = 0; i < servers.size() && !(srvMode != 0 && (touchOn || padUI)); i++) {
             const ServerEntry& e = servers[i]; float y = 150 + i * 40.0f; bool sel = (int)i == srvSel && srvMode == 0;
             ui.rect(x0 - 10, y - 5, 1140, 36, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.95f : 0.5f);
             char hs[32]; snprintf(hs, sizeof hs, "%.26s", e.host.c_str()); for (char* c = hs; *c; c++) *c = (char)toupper((unsigned char)*c); ui.text(x0, y + 5, 2.4f, sel ? white : V3(0.8f, 0.85f, 0.95f), hs);
@@ -1850,11 +1940,32 @@ static void drawHUD() {
             } else ui.text(x0 + 330, y + 5, 2.4f, e.st == 3 || e.st == 4 ? bad : dim, e.st == 0 ? "LOOKING UP THE ADDRESS..." : e.st == 1 ? "ASKING..." : e.st == 3 ? "NO REPLY (OFFLINE, OR AN OLDER SERVER)" : "ADDRESS NOT FOUND (ARE YOU ONLINE?)");
         }
         if (servers.empty()) ui.text(Wd / 2, 300, 3, dim, P("NO SERVERS YET - PRESS A TO ADD ONE", "NO SERVERS YET"), 1);
-        if (srvMode == 1) { ui.rect(x0 - 10, 496, 1140, 36, hi, 0.95f); snprintf(b, sizeof b, "NEW SERVER ADDRESS:  %s%s", srvNew, blink ? "_" : ""); for (char* c = b; *c; c++) *c = (char)toupper((unsigned char)*c); ui.text(x0, 506, 2.4f, white, b); }
-        snprintf(b, sizeof b, "YOUR NAME:  %s%s", nc.name, srvMode == 2 && blink ? "_" : ""); ui.text(Wd / 2, 560, 3, srvMode == 2 ? yel : white, b, 1);
+        const bool typeTop = srvMode != 0 && (touchOn || (padUI && !touchOn));   // touch: above the phone's keyboard; pad: above the letter grid
+        if (typeTop) {
+            panel(Wd / 2 - 560, 110, 1120, 110, 0.97f);
+            ui.text(Wd / 2, 124, 2.6f, dim, srvMode == 1 ? "NEW SERVER ADDRESS (NAME OR IP, :PORT IS OPTIONAL)" : "YOUR NAME", 1);
+            snprintf(b, sizeof b, "%s", srvMode == 1 ? srvNew : nc.name); for (char* c = b; *c; c++) *c = (char)toupper((unsigned char)*c); ui.text(Wd / 2, 162, 4.2f, yel, b, 1);
+            if (blink) ui.rect(Wd / 2 + strlen(b) * 4.2f * 3.2f + 4, 160, 5, 34, yel, 0.9f);   // the cursor (half the text's width past the middle)
+            if (padUI && !touchOn) {   // the letter grid
+                panel(Wd / 2 - 330, 250, 660, 330, 0.95f);
+                for (int r = 0; r < 5; r++) {
+                    int cols = r == 4 ? 3 : 10; float cw = r == 4 ? 200 : 60;
+                    for (int c = 0; c < cols; c++) {
+                        float x = Wd / 2 - cols * cw / 2 + c * cw, y = 268 + r * 60; bool sel2 = r == oskY && c == std::min(oskX, cols - 1);
+                        ui.rect(x + 4, y, cw - 8, 50, sel2 ? hi : V3(0.08f, 0.09f, 0.13f), sel2 ? 0.95f : 0.7f);
+                        char cs[8]; if (r < 4) { cs[0] = OSK_ROWS[r][c]; cs[1] = 0; } else snprintf(cs, sizeof cs, "%s", c == 0 ? "SPACE" : c == 1 ? "DEL" : "DONE");
+                        ui.text(x + cw / 2, y + 12, 3.2f, sel2 ? white : V3(0.85f, 0.88f, 0.95f), cs, 1);
+                    }
+                }
+                ui.text(Wd / 2, 600, 2.4f, white, "{DPAD} PICK   {A} TYPE   {B} CANCEL", 1);
+            }
+        } else {
+            if (srvMode == 1) { ui.rect(x0 - 10, 496, 1140, 36, hi, 0.95f); snprintf(b, sizeof b, "NEW SERVER ADDRESS:  %s%s", srvNew, blink ? "_" : ""); for (char* c = b; *c; c++) *c = (char)toupper((unsigned char)*c); ui.text(x0, 506, 2.4f, white, b); }
+            snprintf(b, sizeof b, "YOUR NAME:  %s%s", nc.name, srvMode == 2 && blink ? "_" : ""); ui.text(Wd / 2, 560, 3, srvMode == 2 ? yel : white, b, 1);
+        }
         if (nc.on) ui.text(Wd / 2, 600, 3, good, P("CONNECTING...   ESC: CANCEL", "CONNECTING...   {B} CANCEL"), 1); else if (nc.error[0]) ui.text(Wd / 2, 600, 3, bad, nc.error, 1);
-        if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, srvMode == 1 ? "TYPE THE ADDRESS (NAME OR IP, :PORT IS OPTIONAL)    ENTER: ADD    ESC: CANCEL" : srvMode == 2 ? "TYPE YOUR NAME    ENTER: DONE    ESC: CANCEL" : P("UP/DOWN: PICK   ENTER: JOIN   A: ADD   DEL: REMOVE   N: YOUR NAME   R: REFRESH   ESC: BACK", "{DPAD} PICK   {A} JOIN   {X} REFRESH   {B} BACK"), 1);
-        if (!touchOn) ui.text(Wd / 2, 676, 2, V3(0.75f, 0.8f, 0.9f), "HOST A GAME WITH:  FOGCITYFURY-SERVER  (IT LISTENS ON UDP PORT 27015)", 1);
+        if (!touchOn && !typeTop) ui.text(Wd / 2, 640, 2.2f, white, srvMode == 1 ? "TYPE THE ADDRESS (NAME OR IP, :PORT IS OPTIONAL)    ENTER: ADD    ESC: CANCEL" : srvMode == 2 ? "TYPE YOUR NAME    ENTER: DONE    ESC: CANCEL" : P("UP/DOWN: PICK   ENTER: JOIN   A: ADD   DEL: REMOVE   N: YOUR NAME   R: REFRESH   ESC: BACK", "{DPAD} PICK   {A} JOIN   {X} REFRESH   {B} BACK"), 1);
+        if (!touchOn && !typeTop) ui.text(Wd / 2, 676, 2, V3(0.75f, 0.8f, 0.9f), "HOST A GAME WITH:  FOGCITYFURY-SERVER  (IT LISTENS ON UDP PORT 27015)", 1);
     } else if (state == TITLE) {
         ui.text(Wd / 2, 110, 14, yel, "FOG CITY", 1, 1, 0.12f); ui.text(Wd / 2, 225, 22, org, "FURY", 1, 1, 0.12f);
         ui.text(Wd / 2, 420, 3, white, "ARCADE HILL-JUMP STREET RACING", 1);
@@ -2184,6 +2295,14 @@ static void onKey(SDL_Keycode k, int sc = 0) {
     case RESULTS: if (netRace) { if (k == SDLK_ESCAPE) netLeave(""); } else if ((k == SDLK_RETURN || k == SDLK_ESCAPE) && resultsT > 1) { if (champOn) champAdvance(k == SDLK_ESCAPE); else { state = TRACKSEL; setupCars(false); } } break;
     case NETJOIN:
         if (nc.on) { if (k == SDLK_ESCAPE) netClose(""); break; }                       // connecting: Esc gives up
+        if (srvMode != 0 && padUI && !touchOn) {                                        // with a controller: the letter grid
+            if (k == SDLK_UP) { oskY = (oskY + 4) % 5; blip(); break; } if (k == SDLK_DOWN) { oskY = (oskY + 1) % 5; blip(); break; }
+            int cols = oskY == 4 ? 3 : 10; oskX = std::min(oskX, cols - 1);
+            if (k == SDLK_LEFT) { oskX = (oskX + cols - 1) % cols; blip(); break; } if (k == SDLK_RIGHT) { oskX = (oskX + 1) % cols; blip(); break; }
+            if (k == SDLK_RETURN && oskY < 4) { char c[2] = { OSK_ROWS[oskY][oskX], 0 }; srvType(c); blip(); break; }
+            if (k == SDLK_RETURN && oskY == 4 && oskX == 0) { srvType(" "); blip(); break; }
+            if (k == SDLK_RETURN && oskY == 4 && oskX == 1) k = SDLK_BACKSPACE;   // DEL; DONE falls through as Enter
+        }
         if (srvMode != 0) {                                                             // typing an address or our name
             char* f = srvMode == 1 ? srvNew : nc.name; size_t n = strlen(f);
             if (k == SDLK_BACKSPACE && n) f[n - 1] = 0;
@@ -2197,8 +2316,8 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         }
         if (k == SDLK_ESCAPE) { srvClose(); saveCfg(); state = TITLE; break; }
         if (k == SDLK_UP && !servers.empty()) { srvSel = (srvSel + (int)servers.size() - 1) % (int)servers.size(); blip(); } if (k == SDLK_DOWN && !servers.empty()) { srvSel = (srvSel + 1) % (int)servers.size(); blip(); }
-        if (k == SDLK_a && servers.size() < MAX_SERVERS) { srvMode = 1; srvNew[0] = 0; srvSkipText = true; plat::textInput(true); blip(); }
-        if (k == SDLK_n) { srvMode = 2; srvSkipText = true; plat::textInput(true); blip(); }
+        if (k == SDLK_a && servers.size() < MAX_SERVERS) { srvMode = 1; srvNew[0] = 0; srvSkipText = true; oskX = oskY = 0; plat::textInput(true); blip(); }
+        if (k == SDLK_n) { srvMode = 2; srvSkipText = true; oskX = oskY = 0; plat::textInput(true); blip(); }
         if (k == SDLK_r) { for (auto& e : servers) srvLookup(e); blip(); }
         if (k == SDLK_DELETE && !servers.empty()) { servers.erase(servers.begin() + srvSel); if (srvSel >= (int)servers.size()) srvSel = std::max(0, (int)servers.size() - 1); saveCfg(); blip(); }
         if (k == SDLK_RETURN && !servers.empty()) { ok(); snprintf(nc.host, sizeof nc.host, "%s", servers[srvSel].host.c_str()); if (!nc.name[0]) snprintf(nc.name, sizeof nc.name, "PLAYER"); saveCfg(); netConnect(); }
@@ -2235,18 +2354,21 @@ static int tubeDirt() {
 static void printJSON(FILE* o) {
     std::string srvStr; for (auto& e : servers) { char t[200]; snprintf(t, sizeof t, "%s%s|%d|%d|%d|%.20s", srvStr.empty() ? "" : ";", e.host.c_str(), e.st, e.st == 2 ? e.info.count : -1, e.st == 2 ? e.info.track : -1, e.st == 2 ? e.info.name : ""); srvStr += t; }   // host|status|players|track|name
     std::string tbStr; if (touchOn) { touchLayout(); for (auto& t : tbtn) { if (!tbStr.empty()) tbStr += ","; tbStr += t.label; } }
-    std::string fStr; for (auto& f : fighters) { char t[64]; snprintf(t, sizeof t, "%s%d|%d|%.0f|%d|%d|%d", fStr.empty() ? "" : ";", (int)f.on, (int)f.alive, f.hp, f.gun, f.kills, f.place); fStr += t; }   // on|alive|hp|gun|kills|place for each fighter
+    std::string fStr; for (int fi = 0; fi < NFIGHT; fi++) { const Fighter& f = fighters[fi]; char t[64]; snprintf(t, sizeof t, "%s%d|%d|%.0f|%d|%d|%d", fStr.empty() ? "" : ";", (int)f.on, (int)f.alive, f.hp, f.gun, f.kills, f.place); fStr += t; }   // on|alive|hp|gun|kills|place for each fighter
     float aiMinHp = -1; for (auto& a : ai) if (!a.dead && (aiMinHp < 0 || a.hp < aiMinHp)) aiMinHp = a.hp;
     float remoteMoved = nc.maxMoved; std::string bindStr; for (int i = 0; i < NBIND; i++) { char t[32]; snprintf(t, sizeof t, "%s%d,%d", i ? ";" : "", binds[i][0], binds[i][1]); bindStr += t; }
     int branchBlocked = 0;   // samples of the alternate route with a building or wall within its width (should be none)
     for (const World::Branch& br : W.brs) for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { branchBlocked++; break; } }
     float mechClear[2] = { mech::on && mech::planN ? mech::routeClearance(0) : 0, mech::on && mech::planN ? mech::routeClearance(1) : 0 };   // how near each route passes a building
     int onBrNow = -1; float loopNow = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &onBrNow);
-    { std::string fp; for (auto& f : fighters) { char b[96]; snprintf(b, sizeof b, "%s%.1f,%.1f,%.1f,%d,%d,%.1f", fp.empty() ? "" : ";", f.pos.x, f.pos.y, f.pos.z, (int)f.on, (int)f.alive, flatDist(f.pos, shdSite)); fp += b; }
+    { std::string fp; for (int fi = 0; fi < NFIGHT; fi++) { const Fighter& f = fighters[fi]; char b[96]; snprintf(b, sizeof b, "%s%.1f,%.1f,%.1f,%d,%d,%.1f", fp.empty() ? "" : ";", f.pos.x, f.pos.y, f.pos.z, (int)f.on, (int)f.alive, flatDist(f.pos, shdSite)); fp += b; }
       fprintf(o, "{\"fpos\":\"%s\",\"site\":[%.1f,%.1f,%.1f],", fp.c_str(), shdSite.x, shdSite.y, shdSite.z); }
     { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
       fprintf(o, "\"shortcuts\":\"%s\",\"tunnels\":%d,\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), (int)W.tuns.size(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
+    fprintf(o, "\"keyJingles\":%d,", keyJingles);
+    fprintf(o, "\"lobHits\":%d,", lobHits);
+    fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
     fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);
     fprintf(o, "\"minis\":%d,\"miniSpawned\":%d,\"miniKilled\":%d,\"miniRams\":%d,\"roamFeet\":%d,\"remoteMinis\":%d,\"netTrackId\":%d,\"keysGot\":%u,\"jumps\":%d,\"miniPenalties\":%d,\"miniJets\":%d,\"miniRockets\":%d,\"roamFlowers\":%d,\"level\":%d,\"blooms\":%d,\"miniPos\":[%.1f,%.1f,%.1f,%.2f],\"carHp\":%.1f,\"footHp\":%.1f,\"footMaxHp\":%.0f,", mini::alive(), mini::spawned, mini::killed, mini::rams, (int)std::count_if(roamPeople, roamPeople + net::MAXP, [](const Fighter& f) { return f.on; }), (int)std::count_if(fighters + 1, fighters + NFIGHT, [](const Fighter& f) { return f.on && f.mini && f.remote && f.alive; }), (int)nc.trackId, keysGot[W.id], (int)W.def->jumps.size() / 5, mini::penalties, mini::jets, mini::rocketsFired, roamFlowers, mini::level(), (int)mini::blooms.size(), fighters[1].pos.x, fighters[1].pos.y, fighters[1].pos.z, fighters[1].yaw, player.hp, me.on ? me.hp : -1.0f, footMaxHp);
@@ -2303,7 +2425,18 @@ static int touchHit(float x, float y) { for (size_t i = 0; i < tbtn.size(); i++)
 static void touchDown(SDL_FingerID id, float x, float y) {
     if (!touchOn) { touchOn = true; touchLaid = -1; touchLayout(); return; }           // the first touch only brings the buttons up
     touchLayout(); int b = touchHit(x, y);
-    if (b < 0) { if (me.on && state == RACE && !tstick.on && x < uiW * 0.5f && y > 150) { tstick.on = true; tstick.id = id; tstick.ox = tstick.x = x; tstick.oy = tstick.y = y; } return; }
+    if (b < 0) {
+        if (me.on && state == RACE && !tstick.on && x < uiW * 0.5f && y > 150) { tstick.on = true; tstick.id = id; tstick.ox = tstick.x = x; tstick.oy = tstick.y = y; }
+        // lists: tap a row to pick it, tap the picked one again to choose it
+        const float mx = x, Wd = uiW;   // (the menus are drawn in the same units)
+        if (state == NETJOIN && !nc.on && srvMode == 0 && y >= 145 && y < 145 + 40 * (float)servers.size() && fabsf(mx - Wd / 2) < 580) {
+            int r = (int)((y - 145) / 40); if (r == srvSel) handleKey(SDLK_RETURN, SDL_SCANCODE_RETURN); else { srvSel = r; tone(700, 0.08f, 0.3f, 2); } }
+        if (state == NETLOBBY && shareOpen) {
+            std::vector<int> mine = shareList(); int ns = (int)mine.size(), first = std::max(0, std::min(shareSel - 3, ns - 7)), shown = std::min(ns, 7);
+            if (fabsf(mx - Wd / 2) < 300 && y >= 208 && y < 208 + 40 * shown) { int r = first + (int)((y - 208) / 40); if (r == shareSel) handleKey(SDLK_RETURN, SDL_SCANCODE_RETURN); else { shareSel = r; tone(700, 0.08f, 0.3f, 2); } }
+        }
+        return;
+    }
     if (tbtn[b].hold >= 0) fingers.push_back({ id, b }); else { fingers.push_back({ id, b }); touchPress(b); }   // (touchPress may change the screen, which clears the fingers)
 }
 static void touchMove(SDL_FingerID id, float x, float y) {   // sliding a thumb from one held button to its neighbour (left to right) carries the hold across
@@ -2401,7 +2534,7 @@ int main(int argc, char** argv) {
         else if (a == "--connect") { snprintf(nc.host, sizeof nc.host, "%s", argv[++i]); netWanted = true; } else if (a == "--name") { snprintf(nc.name, sizeof nc.name, "%.16s", argv[++i]); for (char* c = nc.name; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--ready") nc.autoReady = true;
         else if (a == "--minisnow") mini::now = true; else if (a == "--minigroup") { mini::now = true; mini::group = atoi(argv[++i]); } else if (a == "--minishold") mini::hold = true; else if (a == "--outcar") mini::outcar = true; else if (a == "--flowers") mini::flowers = atoi(argv[++i]);   // tests: a mini Warden straight away (40 m ahead, on the road); as if that many flowers were picked up
-        else if (a == "--share") shareAuto = true; else if (a == "--vote") { std::string v = argv[++i]; autoVote = v == "yes" ? 1 : v == "no" ? 2 : 0; }
+        else if (a == "--share") shareAuto = true; else if (a == "--sharewhen") shareWhen = std::max(1, atoi(argv[++i])); else if (a == "--loadstall") loadStall = (float)atof(argv[++i]); else if (a == "--vote") { std::string v = argv[++i]; autoVote = v == "yes" ? 1 : v == "no" ? 2 : 0; }
         else if (a == "--tracksdir") tracksDirOverride = argv[++i];                        // where custom tracks (.fcft) are kept
         else if (a == "--trackfile") cliTrackFile = argv[++i];                             // load this custom track and pick it
         else if (a == "--exporttracks") { initTracks(); std::string dir = argv[++i]; trackMkdir(dir); for (int t = 0; t < NTRACKS; t++) { TrackDef d = TRACKS[t]; d.nameS = d.name; d.subS = d.sub; d.song = TRACK_SONG[t]; char num[8]; snprintf(num, sizeof num, "%d", t + 1); std::string f = dir + "/builtin-" + num + ".fcft"; if (!trackSave(d, f.c_str())) { fprintf(stderr, "cannot write %s\n", f.c_str()); return 1; } } return 0; }
@@ -2655,8 +2788,7 @@ int main(int argc, char** argv) {
                 if (!padOnly) padUI = false; handleKey(e.key, e.scancode);
             }
             if (e.type == plat::EV_TEXT && state == NETJOIN && !nc.on && srvMode != 0 && !srvSkipText) {   // typing a server address / our name
-                char* f = srvMode == 2 ? nc.name : srvNew; size_t cap = srvMode == 2 ? net::NAMELEN : sizeof srvNew - 1;
-                for (const char* c = e.text; *c; c++) { size_t n = strlen(f); char ch = srvMode == 2 ? (char)toupper((unsigned char)*c) : *c; if (n < cap && ch > 32 && ch < 127) { f[n] = ch; f[n + 1] = 0; } }
+                std::string tx; for (const char* c = e.text; *c; c++) if (*c > 32 || (*c == ' ' && srvMode == 2)) tx += *c; srvType(tx.c_str());
             }
             if (e.type == plat::EV_PAD_DOWN) {
                 padUI = true; switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;

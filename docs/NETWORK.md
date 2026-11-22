@@ -33,7 +33,7 @@ Server options:
 | `--no-showdown` | | end at the race results. By default the top five finishers then fight on foot (see "The showdown") |
 | `--bots N` | 4 | computer-driven cars added to each race (0-4, fewer if the server is nearly full). See "Bots" |
 | `--showdown-site U` | | always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race |
-| `--timeout S` | 5 | drop a player after this much silence |
+| `--timeout S` | 5 | drop a player after this much silence (30 s after its game says it is building a track: a `C_STATE` with `F_LOADING`, bit 32, which the 360 needs) |
 | `--tracks DIR` | | also offer every `.fcft` track file in DIR (made in the track editor). Players who have not got one are sent it |
 | `--custom-only` | | only the tracks from `--tracks` |
 | `--no-uploads` | | players may not share tracks of their own from the lobby |

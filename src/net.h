@@ -44,7 +44,10 @@ enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 }; 
 enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
 const uint8_t NOBODY = 255;
 const float SD_SITE_WAIT = 4, SD_DRIVE_MAX = 90, SD_PREP_LEN = 20, SD_OVER_LEN = 6.5f, SD_RESPAWN = 15, SD_RING0 = 52, SD_RING_MID = 30, SD_RING_END = 15, SD_SHRINK = 50, SD_MAX_FIGHT = 180, SD_CLOSE_MAX = 2.0f;   // SD_CLOSE_MAX: the fastest the ring may close (m/s), well under a runner's 5.2, so anyone can still make it in; how long the server waits for the winner's game to choose the place; the longest the drive may take, the countdown, the winner's moment, how long a taken pick-up stays away (seconds); ring radii in metres
-enum Flags : uint8_t { F_READY = 1, F_BRAKING = 2, F_DEAD = 4, F_FINISHED = 8, F_NITRO = 16, F_RACING = 32, F_BOT = 64, F_HOST = 128 };   // the last three are set by the server only. F_BOT: computer-driven. F_HOST: this player's game drives the bots
+enum Flags : uint8_t { F_READY = 1, F_BRAKING = 2, F_DEAD = 4, F_FINISHED = 8, F_NITRO = 16, F_RACING = 32, F_BOT = 64, F_HOST = 128 };
+// From a game (C_STATE) bit 32 means instead: about to build a track and go quiet for a while (seconds on the 360). The
+// server then waits LOAD_GRACE seconds for it rather than dropping it after --timeout
+const uint8_t F_LOADING = 32; const double LOAD_GRACE = 30;   // the last three are set by the server only. F_BOT: computer-driven. F_HOST: this player's game drives the bots
 enum RejectReason : uint8_t { R_FULL = 1, R_VERSION = 2 };
 
 // All integers little-endian, floats IEEE-754, structs packed. Every packet starts with Header. A big-endian host

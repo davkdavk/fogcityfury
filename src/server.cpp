@@ -25,6 +25,7 @@ template <class F> static void sortIdx(int* a, int n, F less) { for (int i = 1; 
 
 struct Player { bool bot = false;   // computer-driven: it has no address; the host's game reports it
     bool suspect = false;   // claimed an impossible finish this race
+    double loadNote = -99;  // when its game last said it was building a track (F_LOADING): it is given LOAD_GRACE seconds
     bool used = false; sockaddr_in addr; char name[NAMELEN + 1]; double lastHeard = 0; CarState s; bool ready = false, racing = false, finished = false; double finishT = 0; int finishOrder = 0; uint32_t seq = 0;
     uint8_t have = 255; int chunkNext = 0;                     // the custom track its game has; the next piece of the current one to send it
     bool footOn = false; FootState foot; uint32_t footSeq = 0; double footHeard = -9; };   // roam: its player on foot
@@ -198,7 +199,8 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         for (uint8_t g : u.got) if (!g) return;
         bool good = crc32(u.data.data(), u.total) == u.crc && u.data.compare(0, 5, "fcft ") == 0 && u.data.find("\nroad") != std::string::npos; int k = -1;
         uint32_t ip = from.sin_addr.s_addr; auto ls = lastShare.find(ip); int reuse = -1;
-        if (good && ls != lastShare.end() && t - ls->second < cfgShareGap) { say("%s shared again too soon: ignored", P[who].name); good = false; }
+        bool again = false; for (const CustomTrack& c : CT) if (c.shared && c.crc == u.crc && c.text == u.data) again = true;   // (its game sends it a few times over: the copies are not new shares)
+        if (good && ls != lastShare.end() && t - ls->second < cfgShareGap) { if (!again) say("%s shared again too soon: ignored", P[who].name); good = false; }   // (a copy of the one it just shared: quietly)
         if (good) { lastShare[ip] = t; if (lastShare.size() > 5000) lastShare.clear(); }
         if (good) { for (size_t i = 0; i < CT.size(); i++) if (CT[i].crc == u.crc && CT[i].text == u.data) k = (int)i;
             if (k < 0) {   // full: the oldest shared track that is not in play makes room (track ids are one byte: 255 at most)
@@ -216,6 +218,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         if (vote.open && m.track == vote.track && (m.answer == 1 || m.answer == 2) && who != vote.by) vote.ans[who] = m.answer;
     } else if (h.type == C_STATE && len >= (int)sizeof(State) && who >= 0 && h.id == who) {
         State st; memcpy(&st, buf, sizeof st); Player& p = P[who]; p.lastHeard = t;
+        if (st.s.flags & F_LOADING) p.loadNote = t;
         if (!sane(st.s)) return;   // garbled numbers: keep the last good state rather than pass them on
         if (st.seq < p.seq && p.seq - st.seq < 100000) return;   // out-of-order datagram
         p.seq = st.seq;
@@ -374,7 +377,7 @@ int main(int argc, char** argv) {
             uint64_t ip = from.sin_addr.s_addr; if (!allow(rateAddr, ip << 16 | ntohs(from.sin_port), cfgRate, t) || !allow(rateIp, ip, cfgRate * 4, t)) { dropped++; continue; }   // flood control
             handle(buf, n, from, t); }
         { static double lastNote = 0; static long noted = 0; if (dropped != noted && t - lastNote > 10) { say("flood control: %ld packets dropped", dropped - noted); noted = dropped; lastNote = t; } }
-        for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot && t - P[i].lastHeard > cfgTimeout) drop(i, "timed out");
+        for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot && t - P[i].lastHeard > (t - P[i].loadNote < LOAD_GRACE ? LOAD_GRACE : cfgTimeout)) drop(i, "timed out");   // (building a track: more time)
         int n = count(), ready = 0, racing = 0, done = 0;
         int people = 0;   // people still in the race: when the last one leaves, it is over, bots or no bots
         for (auto& p : P) if (p.used) { if (p.ready && !p.bot) ready++; if (p.racing) { racing++; if (!p.bot) people++; if (p.finished) done++; } }

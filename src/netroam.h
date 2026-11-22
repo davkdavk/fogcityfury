@@ -101,7 +101,7 @@ static bool netShareTrack(int local) {
 }
 static void netShareFrame(float dt) {
     if (!nc.on) { upl.on = false; shareOpen = false; return; }
-    if (shareAuto && nc.phase == net::LOBBY && nc.snap.count > 0 && !shareList().empty()) { shareAuto = false; netShareTrack(shareList()[0]); }   // --share (tests)
+    if (shareAuto && nc.phase == net::LOBBY && nc.snap.count >= shareWhen && !shareList().empty()) { shareAuto = false; netShareTrack(shareList()[0]); }   // --share (tests)
     if (!upl.on) return;
     upl.t += dt; if (upl.t > 8 || (nc.trackId >= net::TRACKS && nc.track == upl.local)) { upl.on = false; return; }
     upl.sendT -= dt; if (upl.sendT > 0) return; upl.sendT = 0.04f;
@@ -113,14 +113,14 @@ static void netShareFrame(float dt) {
 
 // ---- online roam ----
 static Fighter roamPeople[net::MAXP];   // the other players, while they are on foot (drawn, nothing more)
-static struct RoamMini { uint16_t uid = 0; uint8_t fireSeq = 0; bool seen = false; V3 pos, vel; float yaw = 0; } rmini[NFIGHT];
+static struct RoamMini { uint16_t uid = 0; uint8_t fireSeq = 0; bool seen = false; V3 pos, vel; float yaw = 0; } rmini[NSLOT];
 static uint16_t lastHitSeq = 0; static uint32_t roamFootSeq = 0, roamMiniSeq = 0; static float roamSendT = 0;
-static int killedByRemote[NFIGHT]; static bool rammedRemote[NFIGHT];
+static int killedByRemote[NSLOT]; static bool rammedRemote[NSLOT];
 
 static bool roamOnline() { return netRace && nc.on && nc.phase == net::ROAM; }
 static void netStartRoam() {
     footReset(); miniReset(); for (auto& f : roamPeople) f = Fighter(); for (auto& r : rmini) r = RoamMini(); lastHitSeq = 0;
-    for (int i = 0; i < NFIGHT; i++) { killedByRemote[i] = -1; rammedRemote[i] = false; }
+    for (int i = 0; i < NSLOT; i++) { killedByRemote[i] = -1; rammedRemote[i] = false; }
     exploreMode = true; rampage = false; raceLaps = 99; if (W.id != nc.track) W.build(nc.track);
     setupCars(true); int k = nc.id >= 0 ? nc.id : 0; placeOnGrid(player, gridS(k * 5), gridLat(k));   // spread out along the road, so nobody starts on top of anybody
     raceT = 0; countdown = 0.01f; timeLeft = 999; introT = 0; aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; netRace = true; nc.finished = false;
@@ -142,7 +142,7 @@ static V3 netRoamAnchor() {
 }
 // our punch, or our bumper, on a mini Warden someone else's game is running (foot.h, minis.h)
 static void netRoamHit(int slot, int kind, float dmg) {
-    if (!roamOnline() || slot <= 0 || slot >= NFIGHT) return;
+    if (!roamOnline() || slot <= 0 || slot >= NSLOT) return;
     net::MiniHitMsg m; memset(&m, 0, sizeof m); m.h = net::header(net::C_MINIHIT, (uint8_t)nc.id); m.hit.uid = rmini[slot].uid; m.hit.kind = (uint8_t)kind; m.hit.dmg = (uint16_t)clampf(dmg * 10, 0, 65000);
     for (int k = 0; k < (kind ? 3 : 1); k++) net::sendTo(nc.sock, nc.addr, &m, sizeof m);
 }
@@ -155,7 +155,7 @@ static void roamFootSend() {
 }
 static void roamMinisSend() {
     net::Minis m; memset(&m, 0, sizeof m); m.h = net::header(net::C_MINIS, (uint8_t)nc.id); m.seq = ++roamMiniSeq;
-    for (int i = 1; i < NFIGHT && m.n < net::MINIS; i++) {
+    for (int i = 1; i < NSLOT && m.n < net::MINIS; i++) {
         const Fighter& f = fighters[i]; if (!f.on || !f.mini || f.remote) continue; net::MiniState& s = m.m[m.n++];
         s.uid = mini::uid[i]; s.alive = f.alive; s.fireSeq = (uint8_t)(f.shots & 255);
         s.target = mini::remoteTgt[i] >= 0 ? (uint8_t)mini::remoteTgt[i] : f.target >= 0 ? (uint8_t)nc.id : net::NOBODY;
@@ -171,7 +171,7 @@ static void roamTakeHits() {
     for (int k = r.nhits - 1; k >= 0; k--) {
         const net::MiniHit& h = r.hits[k]; if (!h.seq || (uint16_t)(h.seq - lastHitSeq) > 30000 || h.seq == lastHitSeq) continue; lastHitSeq = h.seq;
         if (h.by == nc.id) continue;
-        for (int i = 1; i < NFIGHT; i++) { Fighter& f = fighters[i]; if (!f.on || !f.mini || f.remote || !f.alive || mini::uid[i] != h.uid) continue;
+        for (int i = 1; i < NSLOT; i++) { Fighter& f = fighters[i]; if (!f.on || !f.mini || f.remote || !f.alive || mini::uid[i] != h.uid) continue;
             if (h.kind == 1) { ramHit = true; damageFighter(f, 999, -1, V3(0, 0, 1)); ramHit = false; rammedRemote[i] = true; gibFighter(f, f.pos); }
             else { meleeHit = true; damageFighter(f, h.dmg / 10.0f, -1, yawDir(f.yaw + 3.14159f)); meleeHit = false; }
             if (!f.alive) { killedByRemote[i] = h.by; mini::counted[i] = true; mini::killed++; }   // theirs: no flowers or penalty here
@@ -180,11 +180,11 @@ static void roamTakeHits() {
 }
 // everyone but the host: the mini Wardens from the host's reports
 static void roamRemoteMinis(float dt) {
-    const net::Roam& r = nc.roam; bool have[NFIGHT] = {};
+    const net::Roam& r = nc.roam; bool have[NSLOT] = {};
     for (int k = 0; k < r.nminis; k++) {
         const net::MiniState& s = r.m[k]; int i = -1;
-        for (int j = 1; j < NFIGHT; j++) if (fighters[j].on && fighters[j].mini && fighters[j].remote && rmini[j].uid == s.uid) i = j;
-        if (i < 0) for (int j = 1; j < NFIGHT; j++) if (!fighters[j].on && !have[j]) { i = j; break; }
+        for (int j = 1; j < NSLOT; j++) if (fighters[j].on && fighters[j].mini && fighters[j].remote && rmini[j].uid == s.uid) i = j;
+        if (i < 0) for (int j = 1; j < NSLOT; j++) if (!fighters[j].on && !have[j]) { i = j; break; }
         if (i < 0) continue; have[i] = true; Fighter& f = fighters[i]; RoamMini& m = rmini[i]; V3 sp(s.x, s.y, s.z);
         if (!f.on || m.uid != s.uid) {   // a new one
             footSpawn(f, i, sp, s.yaw); f.mini = f.remote = f.bot = true; f.name = "MINI WARDEN"; f.paint = s.paint % 2; f.alive = s.alive; f.hp = s.hp;
@@ -207,8 +207,8 @@ static void roamRemoteMinis(float dt) {
             }
         }
     }
-    for (int j = 1; j < NFIGHT; j++) if (fighters[j].mini && fighters[j].remote && !have[j]) { fighters[j] = Fighter(); fighters[j].id = j; rmini[j] = RoamMini(); }
-    for (int j = 1; j < NFIGHT; j++) {   // and between reports: glide towards where it is
+    for (int j = 1; j < NSLOT; j++) if (fighters[j].mini && fighters[j].remote && !have[j]) { fighters[j] = Fighter(); fighters[j].id = j; rmini[j] = RoamMini(); }
+    for (int j = 1; j < NSLOT; j++) {   // and between reports: glide towards where it is
         Fighter& f = fighters[j]; if (!f.on || !f.mini || !f.remote) continue; RoamMini& m = rmini[j];
         if (!f.alive) { f.deadT += dt; f.run = 0; continue; }
         float k = 1 - expf(-12 * dt); V3 tgt = m.pos + m.vel * 0.05f; if (len(tgt - f.pos) > 15) f.pos = tgt; else f.pos = f.pos + (tgt - f.pos) * k;
@@ -230,7 +230,7 @@ static void roamPeopleStep(float dt) {
 static void netRoamFrame(float dt) {
     if (!roamOnline()) { roamCarTarget = false; return; }
     if (state != RACE && state != PAUSED) return;
-    if (!nc.hosts) for (int i = 1; i < NFIGHT; i++) if (fighters[i].mini && !fighters[i].remote) { fighters[i] = Fighter(); fighters[i].id = i; }   // no longer the host: our minis are someone else's to run
+    if (!nc.hosts) for (int i = 1; i < NSLOT; i++) if (fighters[i].mini && !fighters[i].remote) { fighters[i] = Fighter(); fighters[i].id = i; }   // no longer the host: our minis are someone else's to run
     if (nc.roamGot) { roamPeopleStep(dt); if (nc.hosts) roamTakeHits(); else roamRemoteMinis(dt); }
     roamSendT += dt;
     if (roamSendT >= 1 / 15.f) { roamSendT = 0; roamFootSend(); if (nc.hosts) roamMinisSend(); }
