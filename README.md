@@ -87,12 +87,6 @@ in the options.
 - Servers can host custom tracks: fogcityfury-server --tracks DIR (players download them on joining)
 - Mini Wardens can be hurt with fists, pistol, SMG and shotgun; fists are always selectable
 
-## What's new in 1.7
-
-- Online roam: fogcityfury-server --roam (everyone shares the same mini Wardens)
-- Servers can host custom tracks: fogcityfury-server --tracks DIR (players download them on joining)
-- Mini Wardens can be hurt with fists, pistol, SMG and shotgun; fists are always selectable
-
 ## What's new in 1.6
 
 - Free roam: mini Wardens drop in now and then (red dots on the map). Beat them with your fists for flowers that level you up and unlock attributes. Run one over and the Wardens fire back.
