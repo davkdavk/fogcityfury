@@ -1037,7 +1037,7 @@ static void update(float dt) {
     if (driving) {
         const int sub = std::max(1, (int)ceilf(dt / (1 / 120.f)));
         for (int s = 0; s < sub; s++) {
-            float h = dt / sub; Input pin = in; if (!go) pin.gas = 0;
+            float h = dt / sub; Input pin = in; if (!go) { pin.gas = 0; pin.nitro = false; }   // on the grid: no throttle and no nitro (nitro pushes the car with the throttle up)
             stepPlayer(player, pin, h);
             if (netRace) for (auto& r : nc.r) {   // other players: push our own car out of theirs
                 if (!r.present || !r.racing || r.car.dead || player.dead) continue; const Car& a = r.car;

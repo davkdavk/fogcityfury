@@ -255,6 +255,8 @@ def grid_cars_hold_their_slots_through_the_countdown():
     check(d["intro"] == 0 and d["countdown"] > 0 and d["raceT"] == 0, "then the countdown runs", (d["intro"], d["countdown"], d["raceT"]))
     check(d["gridDrift"] < 0.02, "no opponent has moved off its grid box", d["gridDrift"])
     check(d["dist"] < 0.5, "nor has the player", d["dist"])
+    d = sim("--track", 1, "--state", 3, "--countdown", "--hold", "Left Shift", seconds=6.5)
+    check(d["countdown"] > 0 and d["dist"] < 0.5 and d["nitro"] == 1, "holding nitro on the grid moves nothing and uses none", (d["countdown"], d["dist"], d["nitro"]))
     d = sim("--track", 1, "--state", 3, "--countdown", "--auto", seconds=12)
     check(d["countdown"] == 0 and d["dist"] > 50, "then the race starts", (d["countdown"], d["dist"]))
 
