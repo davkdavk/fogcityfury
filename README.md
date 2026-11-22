@@ -11,6 +11,13 @@ an endurance track across two islands. Runs on Linux, Windows, Android and the X
 
 C++17, SDL2, OpenGL 3.3 core, GLSL 3.30.
 
+## The A12 Engine
+
+Fog City Fury runs on the **A12 Engine**, which is in this repository too: generated island worlds with roads,
+towns and weather, a track editor, vehicle and on-foot physics, synthesised sound and music, online play, and
+a headless test harness. No dependencies beyond SDL2 and OpenGL, and it runs on Linux, Windows, Android and the
+Xbox 360. To make a different game from it, start with `docs/ENGINE.md`.
+
 ## Build and run
 
     # Debian / Ubuntu / Mint
