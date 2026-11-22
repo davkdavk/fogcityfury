@@ -1,0 +1,1125 @@
+log: game:\title145.log
+log: named after \Device\Harddisk0\Partition1\title145.xex
+log: no net_log.txt beside the .xex, so not over the network
+log: to DbgPrint too, as dbgprint.txt asks
+boot: loadCfg complete
+display: LUT autofill unavailable (0xC00000B5), continuing with the existing LUT
+display: 1280x720 shown 1:1 to the 1280x720 output
+display: the line counter reached 11520 after 0 us
+boot: game thread hardware_thread=0
+boot: openDisplay complete (1280 x 720)
+boot: gfx::init complete
+audio: thread hardware_thread=4
+gfx: world fragment slots=106 kill=0 loops=0
+gfx: world sampler uNoise unit=7 slot=0
+gfx: world vertex stride=48 elements=5
+gfx: world element 0 usage=0 index=0 format=2 offset=0
+gfx: world element 1 usage=10 index=0 format=2 offset=12
+gfx: world element 2 usage=5 index=0 format=2 offset=24
+gfx: world element 3 usage=5 index=1 format=1 offset=36
+gfx: world element 4 usage=5 index=2 format=0 offset=44
+boot: world registers v=14/256 p=2/252 literalEnds v=26 p=53
+boot: makeProg world complete
+gfx: car sampler uNoise unit=7 slot=0
+boot: car registers v=8/256 p=8/252 literalEnds v=9 p=43
+boot: makeProg car complete
+gfx: water fragment slots=92 kill=1 loops=0
+gfx: water sampler uNoise unit=7 slot=0
+gfx: water sampler uHeight unit=2 slot=1
+boot: water registers v=8/256 p=6/252 literalEnds v=9 p=44
+boot: makeProg water complete
+gfx: sky fragment slots=59 kill=0 loops=0
+gfx: sky sampler uNoise unit=7 slot=0
+boot: sky registers v=0/256 p=10/252 literalEnds v=7 p=39
+boot: makeProg sky complete
+gfx: part sampler uNoise unit=7 slot=0
+boot: part registers v=4/256 p=6/252 literalEnds v=5 p=26
+boot: makeProg part complete
+boot: depth registers v=14/256 p=0/252 literalEnds v=26 p=0
+boot: makeProg depth complete
+gfx: ui sampler uFont unit=3 slot=0
+boot: ui registers v=1/256 p=0/252 literalEnds v=6 p=6
+boot: makeProg ui complete
+gfx: mark sampler uNoise unit=7 slot=0
+boot: mark registers v=4/256 p=6/252 literalEnds v=5 p=21
+boot: makeProg mark complete
+gfx: ring sampler uNoise unit=7 slot=0
+boot: ring registers v=4/256 p=6/252 literalEnds v=5 p=32
+boot: makeProg ring complete
+gfx: post sampler uTex unit=4 slot=0
+gfx: post sampler uBloom unit=5 slot=1
+boot: post registers v=0/256 p=4/252 literalEnds v=6 p=61
+boot: makeProg post complete
+gfx: ground sampler uNoise unit=7 slot=0
+boot: ground registers v=14/256 p=2/252 literalEnds v=26 p=31
+boot: makeProg ground complete
+gfx: road sampler uNoise unit=7 slot=0
+boot: road registers v=14/256 p=2/252 literalEnds v=26 p=34
+boot: makeProg road complete
+gfx: roadwet sampler uNoise unit=7 slot=0
+boot: roadwet registers v=14/256 p=4/252 literalEnds v=26 p=55
+boot: makeProg roadwet complete
+gfx: wall sampler uNoise unit=7 slot=0
+boot: wall registers v=14/256 p=2/252 literalEnds v=26 p=22
+boot: makeProg wall complete
+gfx: misc sampler uNoise unit=7 slot=0
+boot: misc registers v=14/256 p=2/252 literalEnds v=26 p=22
+boot: makeProg misc complete
+gpu_alloc #1 tag=texture2d request=262144 rounded=262144 cpu=0xbf0d0000 gpu=0x1F0D0000 total=262144/536870912
+boot: ui.init complete
+gpu_alloc #2 tag=texture2d request=1048576 rounded=1048576 cpu=0xbefd0000 gpu=0x1EFD0000 total=1310720/536870912
+boot: shadow texture complete
+gpu_alloc #3 tag=texture-cube request=98304 rounded=131072 cpu=0xbefb0000 gpu=0x1EFB0000 total=1441792/536870912
+gpu_alloc #4 tag=texture2d request=16384 rounded=65536 cpu=0xbefa0000 gpu=0x1EFA0000 total=1507328/536870912
+boot: cube texture complete
+gpu_alloc #5 tag=texture2d request=1048576 rounded=1048576 cpu=0xbeea0000 gpu=0x1EEA0000 total=2555904/536870912
+gpu_alloc #6 tag=texture2d request=262144 rounded=262144 cpu=0xbee60000 gpu=0x1EE60000 total=2818048/536870912
+boot: perf noise texture complete
+boot: detail texture complete
+gpu_alloc #7 tag=mesh-chunk-vertices request=256128 rounded=262144 cpu=0xbee20000 gpu=0x1EE20000 total=3080192/536870912
+gpu_alloc #8 tag=mesh-chunk-indices request=31728 rounded=65536 cpu=0xbee10000 gpu=0x1EE10000 total=3145728/536870912
+gpu_alloc #9 tag=mesh-chunk-vertices request=259584 rounded=262144 cpu=0xbedd0000 gpu=0x1EDD0000 total=3407872/536870912
+gpu_alloc #10 tag=mesh-chunk-indices request=32160 rounded=65536 cpu=0xbedc0000 gpu=0x1EDC0000 total=3473408/536870912
+gpu_alloc #11 tag=mesh-chunk-vertices request=261888 rounded=262144 cpu=0xbed80000 gpu=0x1ED80000 total=3735552/536870912
+gpu_alloc #12 tag=mesh-chunk-indices request=32448 rounded=65536 cpu=0xbed70000 gpu=0x1ED70000 total=3801088/536870912
+gpu_alloc #13 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbed30000 gpu=0x1ED30000 total=4063232/536870912
+gpu_alloc #14 tag=mesh-chunk-indices request=32472 rounded=65536 cpu=0xbed20000 gpu=0x1ED20000 total=4128768/536870912
+gpu_alloc #15 tag=mesh-chunk-vertices request=20928 rounded=65536 cpu=0xbed10000 gpu=0x1ED10000 total=4194304/536870912
+gpu_alloc #16 tag=mesh-chunk-indices request=2616 rounded=65536 cpu=0xbed00000 gpu=0x1ED00000 total=4259840/536870912
+boot: car meshes complete
+gpu_alloc #17 tag=mesh-chunk-vertices request=61056 rounded=65536 cpu=0xbecf0000 gpu=0x1ECF0000 total=4325376/536870912
+gpu_alloc #18 tag=mesh-chunk-indices request=7056 rounded=65536 cpu=0xbece0000 gpu=0x1ECE0000 total=4390912/536870912
+gpu_alloc #19 tag=mesh-chunk-vertices request=12672 rounded=65536 cpu=0xbecd0000 gpu=0x1ECD0000 total=4456448/536870912
+gpu_alloc #20 tag=mesh-chunk-indices request=1584 rounded=65536 cpu=0xbecc0000 gpu=0x1ECC0000 total=4521984/536870912
+gpu_alloc #21 tag=mesh-chunk-vertices request=26880 rounded=65536 cpu=0xbecb0000 gpu=0x1ECB0000 total=4587520/536870912
+gpu_alloc #22 tag=mesh-chunk-indices request=3360 rounded=65536 cpu=0xbeca0000 gpu=0x1ECA0000 total=4653056/536870912
+gpu_alloc #23 tag=mesh-chunk-vertices request=18816 rounded=65536 cpu=0xbec90000 gpu=0x1EC90000 total=4718592/536870912
+gpu_alloc #24 tag=mesh-chunk-indices request=2352 rounded=65536 cpu=0xbec80000 gpu=0x1EC80000 total=4784128/536870912
+gpu_alloc #25 tag=mesh-chunk-vertices request=9600 rounded=65536 cpu=0xbec70000 gpu=0x1EC70000 total=4849664/536870912
+gpu_alloc #26 tag=mesh-chunk-indices request=1200 rounded=65536 cpu=0xbec60000 gpu=0x1EC60000 total=4915200/536870912
+gpu_alloc #27 tag=mesh-chunk-vertices request=13440 rounded=65536 cpu=0xbec50000 gpu=0x1EC50000 total=4980736/536870912
+gpu_alloc #28 tag=mesh-chunk-indices request=1680 rounded=65536 cpu=0xbec40000 gpu=0x1EC40000 total=5046272/536870912
+gpu_alloc #29 tag=mesh-chunk-vertices request=11520 rounded=65536 cpu=0xbec30000 gpu=0x1EC30000 total=5111808/536870912
+gpu_alloc #30 tag=mesh-chunk-indices request=1440 rounded=65536 cpu=0xbec20000 gpu=0x1EC20000 total=5177344/536870912
+gpu_alloc #31 tag=mesh-chunk-vertices request=18432 rounded=65536 cpu=0xbec10000 gpu=0x1EC10000 total=5242880/536870912
+gpu_alloc #32 tag=mesh-chunk-indices request=2304 rounded=65536 cpu=0xbec00000 gpu=0x1EC00000 total=5308416/536870912
+gpu_alloc #33 tag=mesh-chunk-vertices request=2304 rounded=65536 cpu=0xbebf0000 gpu=0x1EBF0000 total=5373952/536870912
+gpu_alloc #34 tag=mesh-chunk-indices request=288 rounded=65536 cpu=0xbebe0000 gpu=0x1EBE0000 total=5439488/536870912
+gpu_alloc #35 tag=mesh-chunk-vertices request=6912 rounded=65536 cpu=0xbebd0000 gpu=0x1EBD0000 total=5505024/536870912
+gpu_alloc #36 tag=mesh-chunk-indices request=864 rounded=65536 cpu=0xbebc0000 gpu=0x1EBC0000 total=5570560/536870912
+gpu_alloc #37 tag=mesh-chunk-vertices request=5760 rounded=65536 cpu=0xbebb0000 gpu=0x1EBB0000 total=5636096/536870912
+gpu_alloc #38 tag=mesh-chunk-indices request=720 rounded=65536 cpu=0xbeba0000 gpu=0x1EBA0000 total=5701632/536870912
+gpu_alloc #39 tag=mesh-chunk-vertices request=4608 rounded=65536 cpu=0xbeb90000 gpu=0x1EB90000 total=5767168/536870912
+gpu_alloc #40 tag=mesh-chunk-indices request=576 rounded=65536 cpu=0xbeb80000 gpu=0x1EB80000 total=5832704/536870912
+gpu_alloc #41 tag=mesh-chunk-vertices request=16128 rounded=65536 cpu=0xbeb70000 gpu=0x1EB70000 total=5898240/536870912
+gpu_alloc #42 tag=mesh-chunk-indices request=2016 rounded=65536 cpu=0xbeb60000 gpu=0x1EB60000 total=5963776/536870912
+gpu_alloc #43 tag=mesh-chunk-vertices request=6720 rounded=65536 cpu=0xbeb50000 gpu=0x1EB50000 total=6029312/536870912
+gpu_alloc #44 tag=mesh-chunk-indices request=720 rounded=65536 cpu=0xbeb40000 gpu=0x1EB40000 total=6094848/536870912
+gpu_alloc #45 tag=mesh-chunk-vertices request=6912 rounded=65536 cpu=0xbeb30000 gpu=0x1EB30000 total=6160384/536870912
+gpu_alloc #46 tag=mesh-chunk-indices request=864 rounded=65536 cpu=0xbeb20000 gpu=0x1EB20000 total=6225920/536870912
+gpu_alloc #47 tag=mesh-chunk-vertices request=12672 rounded=65536 cpu=0xbeb10000 gpu=0x1EB10000 total=6291456/536870912
+gpu_alloc #48 tag=mesh-chunk-indices request=1584 rounded=65536 cpu=0xbeb00000 gpu=0x1EB00000 total=6356992/536870912
+gpu_alloc #49 tag=mesh-chunk-vertices request=1152 rounded=65536 cpu=0xbeaf0000 gpu=0x1EAF0000 total=6422528/536870912
+gpu_alloc #50 tag=mesh-chunk-indices request=144 rounded=65536 cpu=0xbeae0000 gpu=0x1EAE0000 total=6488064/536870912
+gpu_alloc #51 tag=mesh-chunk-vertices request=3456 rounded=65536 cpu=0xbead0000 gpu=0x1EAD0000 total=6553600/536870912
+gpu_alloc #52 tag=mesh-chunk-indices request=432 rounded=65536 cpu=0xbeac0000 gpu=0x1EAC0000 total=6619136/536870912
+gpu_alloc #53 tag=mesh-chunk-vertices request=4608 rounded=65536 cpu=0xbeab0000 gpu=0x1EAB0000 total=6684672/536870912
+gpu_alloc #54 tag=mesh-chunk-indices request=576 rounded=65536 cpu=0xbeaa0000 gpu=0x1EAA0000 total=6750208/536870912
+gpu_alloc #55 tag=mesh-chunk-vertices request=16128 rounded=65536 cpu=0xbea90000 gpu=0x1EA90000 total=6815744/536870912
+gpu_alloc #56 tag=mesh-chunk-indices request=2016 rounded=65536 cpu=0xbea80000 gpu=0x1EA80000 total=6881280/536870912
+gpu_alloc #57 tag=mesh-chunk-vertices request=9696 rounded=65536 cpu=0xbea70000 gpu=0x1EA70000 total=6946816/536870912
+gpu_alloc #58 tag=mesh-chunk-indices request=1512 rounded=65536 cpu=0xbea60000 gpu=0x1EA60000 total=7012352/536870912
+bin: cross-chunk triangles=0 mesh=jet
+gpu_alloc #59 tag=mesh-chunk-vertices request=57216 rounded=65536 cpu=0xbea50000 gpu=0x1EA50000 total=7077888/536870912
+gpu_alloc #60 tag=mesh-chunk-indices request=7104 rounded=65536 cpu=0xbea40000 gpu=0x1EA40000 total=7143424/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #61 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbea00000 gpu=0x1EA00000 total=7405568/536870912
+gpu_alloc #62 tag=mesh-chunk-indices request=36888 rounded=65536 cpu=0xbe9f0000 gpu=0x1E9F0000 total=7471104/536870912
+gpu_alloc #63 tag=mesh-chunk-vertices request=40128 rounded=65536 cpu=0xbe9e0000 gpu=0x1E9E0000 total=7536640/536870912
+gpu_alloc #64 tag=mesh-chunk-indices request=5016 rounded=65536 cpu=0xbe9d0000 gpu=0x1E9D0000 total=7602176/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #65 tag=mesh-chunk-vertices request=52224 rounded=65536 cpu=0xbe9c0000 gpu=0x1E9C0000 total=7667712/536870912
+gpu_alloc #66 tag=mesh-chunk-indices request=6432 rounded=65536 cpu=0xbe9b0000 gpu=0x1E9B0000 total=7733248/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #67 tag=mesh-chunk-vertices request=52896 rounded=65536 cpu=0xbe9a0000 gpu=0x1E9A0000 total=7798784/536870912
+gpu_alloc #68 tag=mesh-chunk-indices request=6528 rounded=65536 cpu=0xbe990000 gpu=0x1E990000 total=7864320/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #69 tag=mesh-chunk-vertices request=31008 rounded=65536 cpu=0xbe980000 gpu=0x1E980000 total=7929856/536870912
+gpu_alloc #70 tag=mesh-chunk-indices request=3840 rounded=65536 cpu=0xbe970000 gpu=0x1E970000 total=7995392/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #71 tag=mesh-chunk-vertices request=9696 rounded=65536 cpu=0xbe960000 gpu=0x1E960000 total=8060928/536870912
+gpu_alloc #72 tag=mesh-chunk-indices request=1200 rounded=65536 cpu=0xbe950000 gpu=0x1E950000 total=8126464/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #73 tag=mesh-chunk-vertices request=12672 rounded=65536 cpu=0xbe940000 gpu=0x1E940000 total=8192000/536870912
+gpu_alloc #74 tag=mesh-chunk-indices request=1584 rounded=65536 cpu=0xbe930000 gpu=0x1E930000 total=8257536/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #75 tag=mesh-chunk-vertices request=23328 rounded=65536 cpu=0xbe920000 gpu=0x1E920000 total=8323072/536870912
+gpu_alloc #76 tag=mesh-chunk-indices request=2880 rounded=65536 cpu=0xbe910000 gpu=0x1E910000 total=8388608/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #77 tag=mesh-chunk-vertices request=37056 rounded=65536 cpu=0xbe900000 gpu=0x1E900000 total=8454144/536870912
+gpu_alloc #78 tag=mesh-chunk-indices request=4560 rounded=65536 cpu=0xbe8f0000 gpu=0x1E8F0000 total=8519680/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #79 tag=mesh-chunk-vertices request=6240 rounded=65536 cpu=0xbe8e0000 gpu=0x1E8E0000 total=8585216/536870912
+gpu_alloc #80 tag=mesh-chunk-indices request=768 rounded=65536 cpu=0xbe8d0000 gpu=0x1E8D0000 total=8650752/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #81 tag=mesh-chunk-vertices request=32256 rounded=65536 cpu=0xbe8c0000 gpu=0x1E8C0000 total=8716288/536870912
+gpu_alloc #82 tag=mesh-chunk-indices request=3984 rounded=65536 cpu=0xbe8b0000 gpu=0x1E8B0000 total=8781824/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #83 tag=mesh-chunk-vertices request=62976 rounded=65536 cpu=0xbe8a0000 gpu=0x1E8A0000 total=8847360/536870912
+gpu_alloc #84 tag=mesh-chunk-indices request=7872 rounded=65536 cpu=0xbe890000 gpu=0x1E890000 total=8912896/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #85 tag=mesh-chunk-vertices request=6336 rounded=65536 cpu=0xbe880000 gpu=0x1E880000 total=8978432/536870912
+gpu_alloc #86 tag=mesh-chunk-indices request=768 rounded=65536 cpu=0xbe870000 gpu=0x1E870000 total=9043968/536870912
+bin: cross-chunk triangles=0 mesh=mech
+gpu_alloc #87 tag=mesh-chunk-vertices request=34560 rounded=65536 cpu=0xbe860000 gpu=0x1E860000 total=9109504/536870912
+gpu_alloc #88 tag=mesh-chunk-indices request=4320 rounded=65536 cpu=0xbe850000 gpu=0x1E850000 total=9175040/536870912
+bin: cross-chunk triangles=0 mesh=mechnum
+gpu_alloc #89 tag=mesh-chunk-vertices request=27648 rounded=65536 cpu=0xbe840000 gpu=0x1E840000 total=9240576/536870912
+gpu_alloc #90 tag=mesh-chunk-indices request=3456 rounded=65536 cpu=0xbe830000 gpu=0x1E830000 total=9306112/536870912
+bin: cross-chunk triangles=0 mesh=mechnum
+gpu_alloc #91 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe7f0000 gpu=0x1E7F0000 total=9568256/536870912
+gpu_alloc #92 tag=mesh-chunk-indices request=32688 rounded=65536 cpu=0xbe7e0000 gpu=0x1E7E0000 total=9633792/536870912
+gpu_alloc #93 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe7a0000 gpu=0x1E7A0000 total=9895936/536870912
+gpu_alloc #94 tag=mesh-chunk-indices request=32640 rounded=65536 cpu=0xbe790000 gpu=0x1E790000 total=9961472/536870912
+gpu_alloc #95 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe750000 gpu=0x1E750000 total=10223616/536870912
+gpu_alloc #96 tag=mesh-chunk-indices request=32556 rounded=65536 cpu=0xbe740000 gpu=0x1E740000 total=10289152/536870912
+gpu_alloc #97 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe700000 gpu=0x1E700000 total=10551296/536870912
+gpu_alloc #98 tag=mesh-chunk-indices request=32544 rounded=65536 cpu=0xbe6f0000 gpu=0x1E6F0000 total=10616832/536870912
+gpu_alloc #99 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe6b0000 gpu=0x1E6B0000 total=10878976/536870912
+gpu_alloc #100 tag=mesh-chunk-indices request=32652 rounded=65536 cpu=0xbe6a0000 gpu=0x1E6A0000 total=10944512/536870912
+gpu_alloc #101 tag=mesh-chunk-vertices request=262032 rounded=262144 cpu=0xbe660000 gpu=0x1E660000 total=11206656/536870912
+gpu_alloc #102 tag=mesh-chunk-indices request=32652 rounded=65536 cpu=0xbe650000 gpu=0x1E650000 total=11272192/536870912
+gpu_alloc #103 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe610000 gpu=0x1E610000 total=11534336/536870912
+gpu_alloc #104 tag=mesh-chunk-indices request=32616 rounded=65536 cpu=0xbe600000 gpu=0x1E600000 total=11599872/536870912
+gpu_alloc #105 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe5c0000 gpu=0x1E5C0000 total=11862016/536870912
+gpu_alloc #106 tag=mesh-chunk-indices request=32628 rounded=65536 cpu=0xbe5b0000 gpu=0x1E5B0000 total=11927552/536870912
+gpu_alloc #107 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe570000 gpu=0x1E570000 total=12189696/536870912
+gpu_alloc #108 tag=mesh-chunk-indices request=32580 rounded=65536 cpu=0xbe560000 gpu=0x1E560000 total=12255232/536870912
+gpu_alloc #109 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe520000 gpu=0x1E520000 total=12517376/536870912
+gpu_alloc #110 tag=mesh-chunk-indices request=32532 rounded=65536 cpu=0xbe510000 gpu=0x1E510000 total=12582912/536870912
+gpu_alloc #111 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe4d0000 gpu=0x1E4D0000 total=12845056/536870912
+gpu_alloc #112 tag=mesh-chunk-indices request=32604 rounded=65536 cpu=0xbe4c0000 gpu=0x1E4C0000 total=12910592/536870912
+gpu_alloc #113 tag=mesh-chunk-vertices request=138192 rounded=196608 cpu=0xbe490000 gpu=0x1E490000 total=13107200/536870912
+gpu_alloc #114 tag=mesh-chunk-indices request=17220 rounded=65536 cpu=0xbe480000 gpu=0x1E480000 total=13172736/536870912
+bin: cross-chunk triangles=0 mesh=props
+gpu_alloc #115 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe440000 gpu=0x1E440000 total=13434880/536870912
+gpu_alloc #116 tag=mesh-chunk-indices request=27552 rounded=65536 cpu=0xbe430000 gpu=0x1E430000 total=13500416/536870912
+gpu_alloc #117 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe3f0000 gpu=0x1E3F0000 total=13762560/536870912
+gpu_alloc #118 tag=mesh-chunk-indices request=29064 rounded=65536 cpu=0xbe3e0000 gpu=0x1E3E0000 total=13828096/536870912
+gpu_alloc #119 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe3a0000 gpu=0x1E3A0000 total=14090240/536870912
+gpu_alloc #120 tag=mesh-chunk-indices request=29496 rounded=65536 cpu=0xbe390000 gpu=0x1E390000 total=14155776/536870912
+gpu_alloc #121 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe350000 gpu=0x1E350000 total=14417920/536870912
+gpu_alloc #122 tag=mesh-chunk-indices request=28512 rounded=65536 cpu=0xbe340000 gpu=0x1E340000 total=14483456/536870912
+gpu_alloc #123 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe300000 gpu=0x1E300000 total=14745600/536870912
+gpu_alloc #124 tag=mesh-chunk-indices request=27600 rounded=65536 cpu=0xbe2f0000 gpu=0x1E2F0000 total=14811136/536870912
+gpu_alloc #125 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe2b0000 gpu=0x1E2B0000 total=15073280/536870912
+gpu_alloc #126 tag=mesh-chunk-indices request=25824 rounded=65536 cpu=0xbe2a0000 gpu=0x1E2A0000 total=15138816/536870912
+gpu_alloc #127 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe260000 gpu=0x1E260000 total=15400960/536870912
+gpu_alloc #128 tag=mesh-chunk-indices request=27504 rounded=65536 cpu=0xbe250000 gpu=0x1E250000 total=15466496/536870912
+gpu_alloc #129 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe210000 gpu=0x1E210000 total=15728640/536870912
+gpu_alloc #130 tag=mesh-chunk-indices request=25788 rounded=65536 cpu=0xbe200000 gpu=0x1E200000 total=15794176/536870912
+gpu_alloc #131 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe1c0000 gpu=0x1E1C0000 total=16056320/536870912
+gpu_alloc #132 tag=mesh-chunk-indices request=26388 rounded=65536 cpu=0xbe1b0000 gpu=0x1E1B0000 total=16121856/536870912
+gpu_alloc #133 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe170000 gpu=0x1E170000 total=16384000/536870912
+gpu_alloc #134 tag=mesh-chunk-indices request=25968 rounded=65536 cpu=0xbe160000 gpu=0x1E160000 total=16449536/536870912
+gpu_alloc #135 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe120000 gpu=0x1E120000 total=16711680/536870912
+gpu_alloc #136 tag=mesh-chunk-indices request=27552 rounded=65536 cpu=0xbe110000 gpu=0x1E110000 total=16777216/536870912
+gpu_alloc #137 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe0d0000 gpu=0x1E0D0000 total=17039360/536870912
+gpu_alloc #138 tag=mesh-chunk-indices request=27444 rounded=65536 cpu=0xbe0c0000 gpu=0x1E0C0000 total=17104896/536870912
+gpu_alloc #139 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbe080000 gpu=0x1E080000 total=17367040/536870912
+gpu_alloc #140 tag=mesh-chunk-indices request=28620 rounded=65536 cpu=0xbe070000 gpu=0x1E070000 total=17432576/536870912
+gpu_alloc #141 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbe030000 gpu=0x1E030000 total=17694720/536870912
+gpu_alloc #142 tag=mesh-chunk-indices request=28800 rounded=65536 cpu=0xbe020000 gpu=0x1E020000 total=17760256/536870912
+gpu_alloc #143 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbdfe0000 gpu=0x1DFE0000 total=18022400/536870912
+gpu_alloc #144 tag=mesh-chunk-indices request=27840 rounded=65536 cpu=0xbdfd0000 gpu=0x1DFD0000 total=18087936/536870912
+gpu_alloc #145 tag=mesh-chunk-vertices request=262080 rounded=262144 cpu=0xbdf90000 gpu=0x1DF90000 total=18350080/536870912
+gpu_alloc #146 tag=mesh-chunk-indices request=28320 rounded=65536 cpu=0xbdf80000 gpu=0x1DF80000 total=18415616/536870912
+gpu_alloc #147 tag=mesh-chunk-vertices request=6912 rounded=65536 cpu=0xbdf70000 gpu=0x1DF70000 total=18481152/536870912
+gpu_alloc #148 tag=mesh-chunk-indices request=768 rounded=65536 cpu=0xbdf60000 gpu=0x1DF60000 total=18546688/536870912
+bin: cross-chunk triangles=0 mesh=small-props
+gpu_alloc #149 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdf20000 gpu=0x1DF20000 total=18808832/536870912
+gpu_alloc #150 tag=mesh-chunk-indices request=126060 rounded=131072 cpu=0xbdf00000 gpu=0x1DF00000 total=18939904/536870912
+gpu_alloc #151 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdec0000 gpu=0x1DEC0000 total=19202048/536870912
+gpu_alloc #152 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbdea0000 gpu=0x1DEA0000 total=19333120/536870912
+gpu_alloc #153 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbde60000 gpu=0x1DE60000 total=19595264/536870912
+gpu_alloc #154 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbde40000 gpu=0x1DE40000 total=19726336/536870912
+gpu_alloc #155 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbde00000 gpu=0x1DE00000 total=19988480/536870912
+gpu_alloc #156 tag=mesh-chunk-indices request=123168 rounded=131072 cpu=0xbdde0000 gpu=0x1DDE0000 total=20119552/536870912
+gpu_alloc #157 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdda0000 gpu=0x1DDA0000 total=20381696/536870912
+gpu_alloc #158 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbdd80000 gpu=0x1DD80000 total=20512768/536870912
+gpu_alloc #159 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdd40000 gpu=0x1DD40000 total=20774912/536870912
+gpu_alloc #160 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbdd20000 gpu=0x1DD20000 total=20905984/536870912
+gpu_alloc #161 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdce0000 gpu=0x1DCE0000 total=21168128/536870912
+gpu_alloc #162 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbdcc0000 gpu=0x1DCC0000 total=21299200/536870912
+gpu_alloc #163 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdc80000 gpu=0x1DC80000 total=21561344/536870912
+gpu_alloc #164 tag=mesh-chunk-indices request=123168 rounded=131072 cpu=0xbdc60000 gpu=0x1DC60000 total=21692416/536870912
+gpu_alloc #165 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdc20000 gpu=0x1DC20000 total=21954560/536870912
+gpu_alloc #166 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbdc00000 gpu=0x1DC00000 total=22085632/536870912
+gpu_alloc #167 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdbc0000 gpu=0x1DBC0000 total=22347776/536870912
+gpu_alloc #168 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbdba0000 gpu=0x1DBA0000 total=22478848/536870912
+gpu_alloc #169 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdb60000 gpu=0x1DB60000 total=22740992/536870912
+gpu_alloc #170 tag=mesh-chunk-indices request=124488 rounded=131072 cpu=0xbdb40000 gpu=0x1DB40000 total=22872064/536870912
+gpu_alloc #171 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdb00000 gpu=0x1DB00000 total=23134208/536870912
+gpu_alloc #172 tag=mesh-chunk-indices request=123984 rounded=131072 cpu=0xbdae0000 gpu=0x1DAE0000 total=23265280/536870912
+gpu_alloc #173 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbdaa0000 gpu=0x1DAA0000 total=23527424/536870912
+gpu_alloc #174 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbda80000 gpu=0x1DA80000 total=23658496/536870912
+gpu_alloc #175 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbda40000 gpu=0x1DA40000 total=23920640/536870912
+gpu_alloc #176 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbda20000 gpu=0x1DA20000 total=24051712/536870912
+gpu_alloc #177 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd9e0000 gpu=0x1D9E0000 total=24313856/536870912
+gpu_alloc #178 tag=mesh-chunk-indices request=124488 rounded=131072 cpu=0xbd9c0000 gpu=0x1D9C0000 total=24444928/536870912
+gpu_alloc #179 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd980000 gpu=0x1D980000 total=24707072/536870912
+gpu_alloc #180 tag=mesh-chunk-indices request=123984 rounded=131072 cpu=0xbd960000 gpu=0x1D960000 total=24838144/536870912
+gpu_alloc #181 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd920000 gpu=0x1D920000 total=25100288/536870912
+gpu_alloc #182 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd900000 gpu=0x1D900000 total=25231360/536870912
+gpu_alloc #183 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd8c0000 gpu=0x1D8C0000 total=25493504/536870912
+gpu_alloc #184 tag=mesh-chunk-indices request=123276 rounded=131072 cpu=0xbd8a0000 gpu=0x1D8A0000 total=25624576/536870912
+gpu_alloc #185 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd860000 gpu=0x1D860000 total=25886720/536870912
+gpu_alloc #186 tag=mesh-chunk-indices request=125412 rounded=131072 cpu=0xbd840000 gpu=0x1D840000 total=26017792/536870912
+gpu_alloc #187 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd800000 gpu=0x1D800000 total=26279936/536870912
+gpu_alloc #188 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbd7e0000 gpu=0x1D7E0000 total=26411008/536870912
+gpu_alloc #189 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd7a0000 gpu=0x1D7A0000 total=26673152/536870912
+gpu_alloc #190 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd780000 gpu=0x1D780000 total=26804224/536870912
+gpu_alloc #191 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd740000 gpu=0x1D740000 total=27066368/536870912
+gpu_alloc #192 tag=mesh-chunk-indices request=123168 rounded=131072 cpu=0xbd720000 gpu=0x1D720000 total=27197440/536870912
+gpu_alloc #193 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd6e0000 gpu=0x1D6E0000 total=27459584/536870912
+gpu_alloc #194 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd6c0000 gpu=0x1D6C0000 total=27590656/536870912
+gpu_alloc #195 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd680000 gpu=0x1D680000 total=27852800/536870912
+gpu_alloc #196 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbd660000 gpu=0x1D660000 total=27983872/536870912
+gpu_alloc #197 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd620000 gpu=0x1D620000 total=28246016/536870912
+gpu_alloc #198 tag=mesh-chunk-indices request=124752 rounded=131072 cpu=0xbd600000 gpu=0x1D600000 total=28377088/536870912
+gpu_alloc #199 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd5c0000 gpu=0x1D5C0000 total=28639232/536870912
+gpu_alloc #200 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbd5a0000 gpu=0x1D5A0000 total=28770304/536870912
+gpu_alloc #201 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd560000 gpu=0x1D560000 total=29032448/536870912
+gpu_alloc #202 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd540000 gpu=0x1D540000 total=29163520/536870912
+gpu_alloc #203 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd500000 gpu=0x1D500000 total=29425664/536870912
+gpu_alloc #204 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbd4e0000 gpu=0x1D4E0000 total=29556736/536870912
+gpu_alloc #205 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd4a0000 gpu=0x1D4A0000 total=29818880/536870912
+gpu_alloc #206 tag=mesh-chunk-indices request=124488 rounded=131072 cpu=0xbd480000 gpu=0x1D480000 total=29949952/536870912
+gpu_alloc #207 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd440000 gpu=0x1D440000 total=30212096/536870912
+gpu_alloc #208 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbd420000 gpu=0x1D420000 total=30343168/536870912
+gpu_alloc #209 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd3e0000 gpu=0x1D3E0000 total=30605312/536870912
+gpu_alloc #210 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd3c0000 gpu=0x1D3C0000 total=30736384/536870912
+gpu_alloc #211 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd380000 gpu=0x1D380000 total=30998528/536870912
+gpu_alloc #212 tag=mesh-chunk-indices request=123888 rounded=131072 cpu=0xbd360000 gpu=0x1D360000 total=31129600/536870912
+gpu_alloc #213 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd320000 gpu=0x1D320000 total=31391744/536870912
+gpu_alloc #214 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd300000 gpu=0x1D300000 total=31522816/536870912
+gpu_alloc #215 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd2c0000 gpu=0x1D2C0000 total=31784960/536870912
+gpu_alloc #216 tag=mesh-chunk-indices request=123936 rounded=131072 cpu=0xbd2a0000 gpu=0x1D2A0000 total=31916032/536870912
+gpu_alloc #217 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd260000 gpu=0x1D260000 total=32178176/536870912
+gpu_alloc #218 tag=mesh-chunk-indices request=125256 rounded=131072 cpu=0xbd240000 gpu=0x1D240000 total=32309248/536870912
+gpu_alloc #219 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd200000 gpu=0x1D200000 total=32571392/536870912
+gpu_alloc #220 tag=mesh-chunk-indices request=123144 rounded=131072 cpu=0xbd1e0000 gpu=0x1D1E0000 total=32702464/536870912
+gpu_alloc #221 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd1a0000 gpu=0x1D1A0000 total=32964608/536870912
+gpu_alloc #222 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd180000 gpu=0x1D180000 total=33095680/536870912
+gpu_alloc #223 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd140000 gpu=0x1D140000 total=33357824/536870912
+gpu_alloc #224 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbd120000 gpu=0x1D120000 total=33488896/536870912
+gpu_alloc #225 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd0e0000 gpu=0x1D0E0000 total=33751040/536870912
+gpu_alloc #226 tag=mesh-chunk-indices request=125256 rounded=131072 cpu=0xbd0c0000 gpu=0x1D0C0000 total=33882112/536870912
+gpu_alloc #227 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd080000 gpu=0x1D080000 total=34144256/536870912
+gpu_alloc #228 tag=mesh-chunk-indices request=123144 rounded=131072 cpu=0xbd060000 gpu=0x1D060000 total=34275328/536870912
+gpu_alloc #229 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbd020000 gpu=0x1D020000 total=34537472/536870912
+gpu_alloc #230 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbd000000 gpu=0x1D000000 total=34668544/536870912
+gpu_alloc #231 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcfc0000 gpu=0x1CFC0000 total=34930688/536870912
+gpu_alloc #232 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbcfa0000 gpu=0x1CFA0000 total=35061760/536870912
+gpu_alloc #233 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcf60000 gpu=0x1CF60000 total=35323904/536870912
+gpu_alloc #234 tag=mesh-chunk-indices request=124464 rounded=131072 cpu=0xbcf40000 gpu=0x1CF40000 total=35454976/536870912
+gpu_alloc #235 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcf00000 gpu=0x1CF00000 total=35717120/536870912
+gpu_alloc #236 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbcee0000 gpu=0x1CEE0000 total=35848192/536870912
+gpu_alloc #237 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcea0000 gpu=0x1CEA0000 total=36110336/536870912
+gpu_alloc #238 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbce80000 gpu=0x1CE80000 total=36241408/536870912
+gpu_alloc #239 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbce40000 gpu=0x1CE40000 total=36503552/536870912
+gpu_alloc #240 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbce20000 gpu=0x1CE20000 total=36634624/536870912
+gpu_alloc #241 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcde0000 gpu=0x1CDE0000 total=36896768/536870912
+gpu_alloc #242 tag=mesh-chunk-indices request=124464 rounded=131072 cpu=0xbcdc0000 gpu=0x1CDC0000 total=37027840/536870912
+gpu_alloc #243 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcd80000 gpu=0x1CD80000 total=37289984/536870912
+gpu_alloc #244 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbcd60000 gpu=0x1CD60000 total=37421056/536870912
+gpu_alloc #245 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcd20000 gpu=0x1CD20000 total=37683200/536870912
+gpu_alloc #246 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbcd00000 gpu=0x1CD00000 total=37814272/536870912
+gpu_alloc #247 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbccc0000 gpu=0x1CCC0000 total=38076416/536870912
+gpu_alloc #248 tag=mesh-chunk-indices request=123168 rounded=131072 cpu=0xbcca0000 gpu=0x1CCA0000 total=38207488/536870912
+gpu_alloc #249 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcc60000 gpu=0x1CC60000 total=38469632/536870912
+gpu_alloc #250 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbcc40000 gpu=0x1CC40000 total=38600704/536870912
+gpu_alloc #251 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcc00000 gpu=0x1CC00000 total=38862848/536870912
+gpu_alloc #252 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbcbe0000 gpu=0x1CBE0000 total=38993920/536870912
+gpu_alloc #253 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcba0000 gpu=0x1CBA0000 total=39256064/536870912
+gpu_alloc #254 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbcb80000 gpu=0x1CB80000 total=39387136/536870912
+gpu_alloc #255 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcb40000 gpu=0x1CB40000 total=39649280/536870912
+gpu_alloc #256 tag=mesh-chunk-indices request=123168 rounded=131072 cpu=0xbcb20000 gpu=0x1CB20000 total=39780352/536870912
+gpu_alloc #257 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbcae0000 gpu=0x1CAE0000 total=40042496/536870912
+gpu_alloc #258 tag=mesh-chunk-indices request=125280 rounded=131072 cpu=0xbcac0000 gpu=0x1CAC0000 total=40173568/536870912
+gpu_alloc #259 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbca80000 gpu=0x1CA80000 total=40435712/536870912
+gpu_alloc #260 tag=mesh-chunk-indices request=123960 rounded=131072 cpu=0xbca60000 gpu=0x1CA60000 total=40566784/536870912
+gpu_alloc #261 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbca20000 gpu=0x1CA20000 total=40828928/536870912
+gpu_alloc #262 tag=mesh-chunk-indices request=124596 rounded=131072 cpu=0xbca00000 gpu=0x1CA00000 total=40960000/536870912
+gpu_alloc #263 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc9c0000 gpu=0x1C9C0000 total=41222144/536870912
+gpu_alloc #264 tag=mesh-chunk-indices request=122532 rounded=131072 cpu=0xbc9a0000 gpu=0x1C9A0000 total=41353216/536870912
+gpu_alloc #265 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc960000 gpu=0x1C960000 total=41615360/536870912
+gpu_alloc #266 tag=mesh-chunk-indices request=122592 rounded=131072 cpu=0xbc940000 gpu=0x1C940000 total=41746432/536870912
+gpu_alloc #267 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc900000 gpu=0x1C900000 total=42008576/536870912
+gpu_alloc #268 tag=mesh-chunk-indices request=122424 rounded=131072 cpu=0xbc8e0000 gpu=0x1C8E0000 total=42139648/536870912
+gpu_alloc #269 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc8a0000 gpu=0x1C8A0000 total=42401792/536870912
+gpu_alloc #270 tag=mesh-chunk-indices request=122232 rounded=131072 cpu=0xbc880000 gpu=0x1C880000 total=42532864/536870912
+gpu_alloc #271 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc840000 gpu=0x1C840000 total=42795008/536870912
+gpu_alloc #272 tag=mesh-chunk-indices request=121872 rounded=131072 cpu=0xbc820000 gpu=0x1C820000 total=42926080/536870912
+gpu_alloc #273 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc7e0000 gpu=0x1C7E0000 total=43188224/536870912
+gpu_alloc #274 tag=mesh-chunk-indices request=121920 rounded=131072 cpu=0xbc7c0000 gpu=0x1C7C0000 total=43319296/536870912
+gpu_alloc #275 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc780000 gpu=0x1C780000 total=43581440/536870912
+gpu_alloc #276 tag=mesh-chunk-indices request=121992 rounded=131072 cpu=0xbc760000 gpu=0x1C760000 total=43712512/536870912
+gpu_alloc #277 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc720000 gpu=0x1C720000 total=43974656/536870912
+gpu_alloc #278 tag=mesh-chunk-indices request=122040 rounded=131072 cpu=0xbc700000 gpu=0x1C700000 total=44105728/536870912
+gpu_alloc #279 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc6c0000 gpu=0x1C6C0000 total=44367872/536870912
+gpu_alloc #280 tag=mesh-chunk-indices request=122088 rounded=131072 cpu=0xbc6a0000 gpu=0x1C6A0000 total=44498944/536870912
+gpu_alloc #281 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc660000 gpu=0x1C660000 total=44761088/536870912
+gpu_alloc #282 tag=mesh-chunk-indices request=122160 rounded=131072 cpu=0xbc640000 gpu=0x1C640000 total=44892160/536870912
+gpu_alloc #283 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc600000 gpu=0x1C600000 total=45154304/536870912
+gpu_alloc #284 tag=mesh-chunk-indices request=122184 rounded=131072 cpu=0xbc5e0000 gpu=0x1C5E0000 total=45285376/536870912
+gpu_alloc #285 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc5a0000 gpu=0x1C5A0000 total=45547520/536870912
+gpu_alloc #286 tag=mesh-chunk-indices request=122496 rounded=131072 cpu=0xbc580000 gpu=0x1C580000 total=45678592/536870912
+gpu_alloc #287 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc540000 gpu=0x1C540000 total=45940736/536870912
+gpu_alloc #288 tag=mesh-chunk-indices request=122592 rounded=131072 cpu=0xbc520000 gpu=0x1C520000 total=46071808/536870912
+gpu_alloc #289 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc4e0000 gpu=0x1C4E0000 total=46333952/536870912
+gpu_alloc #290 tag=mesh-chunk-indices request=122424 rounded=131072 cpu=0xbc4c0000 gpu=0x1C4C0000 total=46465024/536870912
+gpu_alloc #291 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc480000 gpu=0x1C480000 total=46727168/536870912
+gpu_alloc #292 tag=mesh-chunk-indices request=122232 rounded=131072 cpu=0xbc460000 gpu=0x1C460000 total=46858240/536870912
+gpu_alloc #293 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc420000 gpu=0x1C420000 total=47120384/536870912
+gpu_alloc #294 tag=mesh-chunk-indices request=121464 rounded=131072 cpu=0xbc400000 gpu=0x1C400000 total=47251456/536870912
+gpu_alloc #295 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc3c0000 gpu=0x1C3C0000 total=47513600/536870912
+gpu_alloc #296 tag=mesh-chunk-indices request=122088 rounded=131072 cpu=0xbc3a0000 gpu=0x1C3A0000 total=47644672/536870912
+gpu_alloc #297 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc360000 gpu=0x1C360000 total=47906816/536870912
+gpu_alloc #298 tag=mesh-chunk-indices request=122088 rounded=131072 cpu=0xbc340000 gpu=0x1C340000 total=48037888/536870912
+gpu_alloc #299 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc300000 gpu=0x1C300000 total=48300032/536870912
+gpu_alloc #300 tag=mesh-chunk-indices request=121920 rounded=131072 cpu=0xbc2e0000 gpu=0x1C2E0000 total=48431104/536870912
+gpu_alloc #301 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc2a0000 gpu=0x1C2A0000 total=48693248/536870912
+gpu_alloc #302 tag=mesh-chunk-indices request=122040 rounded=131072 cpu=0xbc280000 gpu=0x1C280000 total=48824320/536870912
+gpu_alloc #303 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc240000 gpu=0x1C240000 total=49086464/536870912
+gpu_alloc #304 tag=mesh-chunk-indices request=118752 rounded=131072 cpu=0xbc220000 gpu=0x1C220000 total=49217536/536870912
+gpu_alloc #305 tag=mesh-chunk-vertices request=262128 rounded=262144 cpu=0xbc1e0000 gpu=0x1C1E0000 total=49479680/536870912
+gpu_alloc #306 tag=mesh-chunk-indices request=114084 rounded=131072 cpu=0xbc1c0000 gpu=0x1C1C0000 total=49610752/536870912
+gpu_alloc #307 tag=mesh-chunk-vertices request=141264 rounded=196608 cpu=0xbc190000 gpu=0x1C190000 total=49807360/536870912
+gpu_alloc #308 tag=mesh-chunk-indices request=60864 rounded=65536 cpu=0xbc180000 gpu=0x1C180000 total=49872896/536870912
+bin: cross-chunk triangles=0 mesh=terrain
+gpu_alloc #309 tag=mesh-chunk-vertices request=192 rounded=65536 cpu=0xbc170000 gpu=0x1C170000 total=49938432/536870912
+gpu_alloc #310 tag=mesh-chunk-indices request=24 rounded=65536 cpu=0xbc160000 gpu=0x1C160000 total=50003968/536870912
+gpu_alloc #311 tag=texture2d request=593920 rounded=655360 cpu=0xbc0c0000 gpu=0x1C0C0000 total=50659328/536870912
+boot: startGame complete
+hardware-frame begin #1 present_begin=0x00000000
+gpu_alloc #312 tag=stream-arena-0 request=8388608 rounded=8388608 cpu=0xbb8c0000 gpu=0x1B8C0000 total=59047936/536870912
+hardware-frame end #1 fence=2 wait=0x00000000 complete=1
+boot: frame 1 complete
+hardware-frame begin #2 present_begin=0x00000000
+gpu_alloc #313 tag=stream-arena-1 request=8388608 rounded=8388608 cpu=0xbb0c0000 gpu=0x1B0C0000 total=67436544/536870912
+hardware-frame end #2 fence=4 wait=0x00000000 complete=1
+boot: frame 2 complete
+hardware-frame begin #3 present_begin=0x00000000
+hardware-frame end #3 fence=6 wait=0x00000000 complete=1
+boot: frame 3 complete
+hardware-frame begin #4 present_begin=0x00000000
+hardware-frame end #4 fence=8 wait=0x00000000 complete=1
+hardware-frame begin #5 present_begin=0x00000000
+hardware-frame end #5 fence=10 wait=0x00000000 complete=1
+hardware-frame begin #6 present_begin=0x00000000
+hardware-frame end #6 fence=12 wait=0x00000000 complete=1
+hardware-frame begin #7 present_begin=0x00000000
+hardware-frame end #7 fence=14 wait=0x00000000 complete=1
+hardware-frame begin #8 present_begin=0x00000000
+hardware-frame end #8 fence=16 wait=0x00000000 complete=1
+hardware-frame begin #9 present_begin=0x00000000
+hardware-frame end #9 fence=18 wait=0x00000000 complete=1
+hardware-frame begin #10 present_begin=0x00000000
+hardware-frame end #10 fence=20 wait=0x00000000 complete=1
+perf: fps=61.1 slow=4/62 update=0.21(max 2.04) render=0.45(max 0.76) gpu_wait=16.05 vsync_wait=0.38 worst_frame=17.75 state=0
+audio: played=537 silent=0
+perf: fps=60.5 slow=5/61 update=0.21(max 0.50) render=0.49(max 0.81) gpu_wait=15.82 vsync_wait=0.01 worst_frame=17.85 state=0
+audio: played=726 silent=0
+perf: fps=60.0 slow=2/61 update=0.23(max 1.05) render=1.03(max 1.73) gpu_wait=15.40 vsync_wait=0.01 worst_frame=17.71 state=0
+audio: played=917 silent=0
+perf: fps=60.0 slow=3/61 update=0.18(max 0.31) render=1.16(max 1.63) gpu_wait=15.31 vsync_wait=0.01 worst_frame=17.63 state=0
+audio: played=1107 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=98/256 lod=5,11,30,52 lodIdx=34560,21120,17280,9984 terrainIdx=82944 propsIdx=42867 smallCells=15
+gpu_alloc #314 tag=persistent-stream-buffer request=262144 rounded=262144 cpu=0xbb080000 gpu=0x1B080000 total=67698688/536870912
+perf: fps=54.1 slow=2/55 update=0.19(max 1.17) render=3.19(max 102.86) gpu_wait=15.09 vsync_wait=0.01 worst_frame=118.87 state=0
+audio: played=1298 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=102/256 lod=8,13,29,52 lodIdx=55296,24960,16704,9984 terrainIdx=106944 propsIdx=50718 smallCells=16
+perf: fps=60.0 slow=8/60 update=0.18(max 0.31) render=1.58(max 2.30) gpu_wait=14.90 vsync_wait=0.01 worst_frame=18.19 state=0
+audio: played=1485 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=108/256 lod=6,13,30,59 lodIdx=41472,24960,17280,11328 terrainIdx=95040 propsIdx=58734 smallCells=17
+perf: fps=60.0 slow=6/61 update=0.17(max 0.30) render=1.56(max 2.23) gpu_wait=14.92 vsync_wait=0.01 worst_frame=18.23 state=0
+audio: played=1676 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=134/256 lod=6,14,32,82 lodIdx=41472,26880,18432,15744 terrainIdx=102528 propsIdx=78129 smallCells=19
+perf: fps=60.0 slow=8/61 update=0.17(max 0.24) render=1.57(max 1.70) gpu_wait=14.91 vsync_wait=0.01 worst_frame=17.60 state=0
+audio: played=1867 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=155/256 lod=7,12,36,100 lodIdx=48384,23040,20736,19200 terrainIdx=111360 propsIdx=82794 smallCells=16
+perf: fps=60.0 slow=6/60 update=0.18(max 0.31) render=1.67(max 2.40) gpu_wait=14.81 vsync_wait=0.01 worst_frame=17.65 state=0
+audio: played=2054 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=155/256 lod=6,12,38,99 lodIdx=41472,23040,21888,19008 terrainIdx=105408 propsIdx=86916 smallCells=18
+perf: fps=60.0 slow=5/61 update=0.16(max 0.19) render=1.63(max 1.78) gpu_wait=14.86 vsync_wait=0.01 worst_frame=17.69 state=0
+audio: played=2245 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=149/256 lod=5,13,36,95 lodIdx=34560,24960,20736,18240 terrainIdx=98496 propsIdx=90729 smallCells=17
+perf: fps=60.0 slow=5/61 update=0.17(max 0.30) render=1.67(max 2.23) gpu_wait=14.81 vsync_wait=0.01 worst_frame=17.74 state=0
+audio: played=2436 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=141/256 lod=6,14,35,86 lodIdx=41472,26880,20160,16512 terrainIdx=105024 propsIdx=87528 smallCells=19
+perf: fps=60.0 slow=5/61 update=0.15(max 0.24) render=1.63(max 2.39) gpu_wait=14.86 vsync_wait=0.00 worst_frame=17.66 state=0
+audio: played=2626 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=131/256 lod=8,14,36,73 lodIdx=55296,26880,20736,14016 terrainIdx=116928 propsIdx=80025 smallCells=20
+perf: fps=60.0 slow=6/61 update=0.15(max 0.21) render=1.59(max 1.79) gpu_wait=14.91 vsync_wait=0.01 worst_frame=17.68 state=0
+audio: played=2817 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=121/256 lod=4,13,36,68 lodIdx=27648,24960,20736,13056 terrainIdx=86400 propsIdx=75495 smallCells=17
+perf: fps=60.0 slow=6/61 update=0.16(max 0.19) render=1.56(max 1.74) gpu_wait=14.93 vsync_wait=0.01 worst_frame=17.65 state=0
+audio: played=3007 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=112/256 lod=8,12,39,53 lodIdx=55296,23040,22464,10176 terrainIdx=110976 propsIdx=70932 smallCells=18
+perf: fps=60.0 slow=7/61 update=0.17(max 0.23) render=1.55(max 1.83) gpu_wait=14.93 vsync_wait=0.01 worst_frame=17.80 state=0
+audio: played=3199 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=103/256 lod=6,15,35,47 lodIdx=41472,28800,20160,9024 terrainIdx=99456 propsIdx=65448 smallCells=19
+perf: fps=60.2 slow=6/61 update=0.17(max 0.29) render=1.53(max 2.16) gpu_wait=14.91 vsync_wait=0.01 worst_frame=17.61 state=0
+audio: played=3389 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=92/256 lod=8,10,38,36 lodIdx=55296,19200,21888,6912 terrainIdx=103296 propsIdx=53232 smallCells=15
+perf: fps=60.0 slow=5/61 update=0.17(max 0.24) render=1.46(max 2.00) gpu_wait=15.02 vsync_wait=0.00 worst_frame=17.56 state=0
+audio: played=3579 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=85/256 lod=8,13,37,27 lodIdx=55296,24960,21312,5184 terrainIdx=106752 propsIdx=53328 smallCells=20
+perf: fps=60.0 slow=8/61 update=0.18(max 0.29) render=1.53(max 2.22) gpu_wait=14.94 vsync_wait=0.01 worst_frame=18.19 state=0
+audio: played=3770 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=74/256 lod=4,13,35,22 lodIdx=27648,24960,20160,4224 terrainIdx=76992 propsIdx=40929 smallCells=17
+perf: fps=60.0 slow=2/61 update=0.17(max 0.23) render=1.41(max 1.77) gpu_wait=15.07 vsync_wait=0.01 worst_frame=17.64 state=0
+audio: played=3960 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=69/256 lod=8,14,35,12 lodIdx=55296,26880,20160,2304 terrainIdx=104640 propsIdx=41346 smallCells=21
+perf: fps=60.0 slow=3/61 update=0.20(max 1.96) render=1.37(max 1.54) gpu_wait=15.08 vsync_wait=0.01 worst_frame=17.53 state=0
+audio: played=4151 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=59/256 lod=4,13,36,6 lodIdx=27648,24960,20736,1152 terrainIdx=74496 propsIdx=33378 smallCells=17
+perf: fps=60.0 slow=1/60 update=0.17(max 0.22) render=1.35(max 1.53) gpu_wait=15.14 vsync_wait=0.01 worst_frame=17.54 state=0
+audio: played=4339 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=54/256 lod=8,13,30,3 lodIdx=55296,24960,17280,576 terrainIdx=98112 propsIdx=31992 smallCells=18
+perf: fps=60.0 slow=0/61 update=0.16(max 0.23) render=1.32(max 1.47) gpu_wait=15.18 vsync_wait=0.01 worst_frame=17.45 state=0
+audio: played=4529 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=45/256 lod=6,13,25,1 lodIdx=41472,24960,14400,192 terrainIdx=81024 propsIdx=24804 smallCells=18
+perf: fps=60.0 slow=2/61 update=0.15(max 0.22) render=1.29(max 1.79) gpu_wait=15.21 vsync_wait=0.01 worst_frame=17.81 state=0
+audio: played=4720 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=38/256 lod=6,10,22,0 lodIdx=41472,19200,12672,0 terrainIdx=73344 propsIdx=19266 smallCells=13
+perf: fps=60.1 slow=3/61 update=0.21(max 1.68) render=1.35(max 1.95) gpu_wait=15.09 vsync_wait=0.01 worst_frame=17.95 state=0
+audio: played=4911 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=37/256 lod=8,9,20,0 lodIdx=55296,17280,11520,0 terrainIdx=84096 propsIdx=21306 smallCells=13
+perf: fps=60.0 slow=1/61 update=0.18(max 0.29) render=1.29(max 1.87) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.71 state=0
+audio: played=5101 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=37/256 lod=6,13,17,1 lodIdx=41472,24960,9792,192 terrainIdx=76416 propsIdx=18831 smallCells=11
+perf: fps=60.1 slow=0/61 update=0.18(max 0.25) render=1.27(max 1.44) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.46 state=0
+audio: played=5292 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=47/256 lod=5,13,18,11 lodIdx=34560,24960,10368,2112 terrainIdx=72000 propsIdx=23016 smallCells=11
+perf: fps=60.0 slow=0/60 update=0.17(max 0.24) render=1.30(max 1.68) gpu_wait=15.20 vsync_wait=0.01 worst_frame=17.41 state=0
+audio: played=5479 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=50/256 lod=5,12,15,18 lodIdx=34560,23040,8640,3456 terrainIdx=69696 propsIdx=22221 smallCells=8
+perf: fps=60.0 slow=1/61 update=0.19(max 0.27) render=1.29(max 1.75) gpu_wait=15.17 vsync_wait=0.01 worst_frame=17.62 state=0
+audio: played=5670 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=57/256 lod=5,14,15,23 lodIdx=34560,26880,8640,4416 terrainIdx=74496 propsIdx=27219 smallCells=11
+perf: fps=60.0 slow=1/61 update=0.19(max 0.29) render=1.26(max 1.64) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.66 state=0
+audio: played=5861 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=63/256 lod=6,11,17,29 lodIdx=41472,21120,9792,5568 terrainIdx=77952 propsIdx=31713 smallCells=10
+perf: fps=60.0 slow=0/60 update=0.18(max 0.22) render=1.23(max 1.37) gpu_wait=15.25 vsync_wait=0.01 worst_frame=17.39 state=0
+audio: played=6048 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=69/256 lod=6,11,22,30 lodIdx=41472,21120,12672,5760 terrainIdx=81024 propsIdx=34299 smallCells=12
+perf: fps=60.0 slow=0/61 update=0.17(max 0.25) render=1.24(max 1.37) gpu_wait=15.24 vsync_wait=0.01 worst_frame=17.37 state=0
+audio: played=6239 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=73/256 lod=6,10,25,32 lodIdx=41472,19200,14400,6144 terrainIdx=81216 propsIdx=33717 smallCells=11
+perf: fps=60.0 slow=4/61 update=0.18(max 0.27) render=1.30(max 1.77) gpu_wait=15.17 vsync_wait=0.01 worst_frame=17.74 state=0
+audio: played=6429 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=74/256 lod=6,13,23,32 lodIdx=41472,24960,13248,6144 terrainIdx=85824 propsIdx=35685 smallCells=14
+perf: fps=60.0 slow=1/61 update=0.18(max 0.27) render=1.29(max 1.84) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.77 state=0
+audio: played=6620 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=77/256 lod=7,12,27,31 lodIdx=48384,23040,15552,5952 terrainIdx=92928 propsIdx=34983 smallCells=13
+perf: fps=60.1 slow=0/61 update=0.17(max 0.22) render=1.32(max 1.47) gpu_wait=15.14 vsync_wait=0.01 worst_frame=17.47 state=0
+audio: played=6811 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=85/256 lod=6,14,27,38 lodIdx=41472,26880,15552,7296 terrainIdx=91200 propsIdx=35349 smallCells=15
+perf: fps=60.0 slow=5/60 update=0.18(max 0.30) render=1.41(max 1.86) gpu_wait=15.07 vsync_wait=0.01 worst_frame=17.91 state=0
+audio: played=6998 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=86/256 lod=7,13,31,35 lodIdx=48384,24960,17856,6720 terrainIdx=97920 propsIdx=33267 smallCells=13
+perf: fps=60.0 slow=0/60 update=0.19(max 0.31) render=1.46(max 2.08) gpu_wait=15.02 vsync_wait=0.01 worst_frame=17.49 state=0
+audio: played=7186 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=87/256 lod=7,11,34,35 lodIdx=48384,21120,19584,6720 terrainIdx=95808 propsIdx=33282 smallCells=12
+perf: fps=60.0 slow=4/61 update=0.18(max 0.26) render=1.45(max 2.01) gpu_wait=15.02 vsync_wait=0.01 worst_frame=18.06 state=0
+audio: played=7376 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=87/256 lod=6,13,31,37 lodIdx=41472,24960,17856,7104 terrainIdx=91392 propsIdx=31440 smallCells=11
+perf: fps=60.0 slow=3/61 update=0.18(max 0.21) render=1.43(max 1.58) gpu_wait=15.04 vsync_wait=0.01 worst_frame=17.54 state=0
+audio: played=7567 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=92/256 lod=8,11,28,45 lodIdx=55296,21120,16128,8640 terrainIdx=101184 propsIdx=43098 smallCells=15
+perf: fps=60.0 slow=2/61 update=0.18(max 0.23) render=1.45(max 1.59) gpu_wait=15.02 vsync_wait=0.01 worst_frame=17.57 state=0
+audio: played=7758 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=104/256 lod=6,13,28,57 lodIdx=41472,24960,16128,10944 terrainIdx=93504 propsIdx=55293 smallCells=16
+perf: fps=60.0 slow=6/61 update=0.17(max 0.21) render=1.48(max 1.63) gpu_wait=15.00 vsync_wait=0.01 worst_frame=17.58 state=0
+audio: played=7948 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=118/256 lod=7,13,31,67 lodIdx=48384,24960,17856,12864 terrainIdx=104064 propsIdx=67350 smallCells=18
+perf: fps=60.0 slow=4/61 update=0.18(max 0.34) render=1.57(max 1.90) gpu_wait=14.89 vsync_wait=0.01 worst_frame=17.71 state=0
+audio: played=8139 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=138/256 lod=6,14,31,87 lodIdx=41472,26880,17856,16704 terrainIdx=102912 propsIdx=79524 smallCells=19
+perf: fps=60.0 slow=5/61 update=0.18(max 0.24) render=1.61(max 1.78) gpu_wait=14.86 vsync_wait=0.01 worst_frame=17.68 state=0
+audio: played=8329 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=158/256 lod=7,11,38,102 lodIdx=48384,21120,21888,19584 terrainIdx=110976 propsIdx=86757 smallCells=18
+perf: fps=60.0 slow=3/61 update=0.17(max 0.23) render=1.65(max 1.80) gpu_wait=14.83 vsync_wait=0.01 worst_frame=17.68 state=0
+audio: played=8520 silent=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+cull: cells=157/256 lod=4,15,36,102 lodIdx=27648,28800,20736,19584 terrainIdx=96768 propsIdx=93348 smallCells=19
+perf: fps=60.0 slow=4/61 update=0.17(max 0.21) render=1.65(max 1.86) gpu_wait=14.83 vsync_wait=0.01 worst_frame=17.74 state=0
+audio: played=8711 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=154/256 lod=7,14,38,95 lodIdx=48384,26880,21888,18240 terrainIdx=115392 propsIdx=97881 smallCells=20
+perf: fps=60.0 slow=6/60 update=0.18(max 0.28) render=1.69(max 2.46) gpu_wait=14.79 vsync_wait=0.00 worst_frame=17.77 state=0
+audio: played=8898 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=143/256 lod=6,12,37,88 lodIdx=41472,23040,21312,16896 terrainIdx=102720 propsIdx=88386 smallCells=17
+perf: fps=60.0 slow=5/60 update=0.19(max 0.70) render=1.79(max 2.55) gpu_wait=14.68 vsync_wait=0.01 worst_frame=17.69 state=0
+audio: played=9086 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=135/256 lod=8,13,39,75 lodIdx=55296,24960,22464,14400 terrainIdx=117120 propsIdx=84027 smallCells=19
+perf: fps=60.0 slow=4/61 update=0.19(max 0.28) render=1.82(max 2.50) gpu_wait=14.64 vsync_wait=0.01 worst_frame=17.70 state=0
+audio: played=9277 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=120/256 lod=4,13,35,68 lodIdx=27648,24960,20160,13056 terrainIdx=85824 propsIdx=76488 smallCells=17
+perf: fps=60.0 slow=4/61 update=0.17(max 0.24) render=1.57(max 1.82) gpu_wait=14.91 vsync_wait=0.01 worst_frame=17.73 state=0
+audio: played=9467 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=111/256 lod=8,12,38,53 lodIdx=55296,23040,21888,10176 terrainIdx=110400 propsIdx=73515 smallCells=19
+perf: fps=60.0 slow=6/61 update=0.16(max 0.20) render=1.55(max 1.71) gpu_wait=14.93 vsync_wait=0.01 worst_frame=17.64 state=0
+audio: played=9658 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=103/256 lod=6,15,36,46 lodIdx=41472,28800,20736,8832 terrainIdx=99840 propsIdx=65253 smallCells=20
+perf: fps=60.0 slow=6/61 update=0.17(max 0.31) render=1.51(max 1.88) gpu_wait=14.96 vsync_wait=0.00 worst_frame=17.67 state=0
+audio: played=9848 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=91/256 lod=8,10,41,32 lodIdx=55296,19200,23616,6144 terrainIdx=104256 propsIdx=53046 smallCells=16
+perf: fps=60.0 slow=3/60 update=0.18(max 0.28) render=1.54(max 2.23) gpu_wait=14.93 vsync_wait=0.01 worst_frame=17.80 state=0
+audio: played=10036 silent=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+cull: cells=85/256 lod=8,13,37,27 lodIdx=55296,24960,21312,5184 terrainIdx=106752 propsIdx=53721 smallCells=21
+perf: fps=60.0 slow=3/61 update=0.17(max 0.21) render=1.42(max 1.60) gpu_wait=15.05 vsync_wait=0.00 worst_frame=17.55 state=0
+audio: played=10227 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=74/256 lod=4,13,35,22 lodIdx=27648,24960,20160,4224 terrainIdx=76992 propsIdx=43242 smallCells=17
+perf: fps=60.0 slow=3/60 update=0.17(max 0.22) render=1.40(max 1.54) gpu_wait=15.09 vsync_wait=0.00 worst_frame=17.53 state=0
+audio: played=10414 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=67/256 lod=8,13,38,8 lodIdx=55296,24960,21888,1536 terrainIdx=103680 propsIdx=41568 smallCells=21
+perf: fps=60.0 slow=0/61 update=0.17(max 0.25) render=1.37(max 1.76) gpu_wait=15.12 vsync_wait=0.00 worst_frame=17.42 state=0
+audio: played=10605 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=57/256 lod=5,12,34,6 lodIdx=34560,23040,19584,1152 terrainIdx=78336 propsIdx=31698 smallCells=17
+perf: fps=60.0 slow=3/61 update=0.17(max 0.29) render=1.37(max 1.97) gpu_wait=15.10 vsync_wait=0.00 worst_frame=17.94 state=0
+audio: played=10795 silent=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+cull: cells=52/256 lod=6,15,28,3 lodIdx=41472,28800,16128,576 terrainIdx=86976 propsIdx=29436 smallCells=19
+perf: fps=60.0 slow=2/60 update=0.18(max 0.29) render=1.40(max 2.09) gpu_wait=15.08 vsync_wait=0.01 worst_frame=17.66 state=0
+audio: played=10983 silent=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+cull: cells=43/256 lod=5,13,24,1 lodIdx=34560,24960,13824,192 terrainIdx=73536 propsIdx=21288 smallCells=16
+perf: fps=60.1 slow=4/61 update=0.19(max 0.34) render=1.48(max 2.06) gpu_wait=14.97 vsync_wait=0.01 worst_frame=17.85 state=0
+audio: played=11173 silent=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+cull: cells=38/256 lod=6,9,23,0 lodIdx=41472,17280,13248,0 terrainIdx=72000 propsIdx=18264 smallCells=13
+perf: fps=60.0 slow=0/60 update=0.17(max 0.20) render=1.26(max 1.43) gpu_wait=15.23 vsync_wait=0.01 worst_frame=17.43 state=0
+audio: played=11361 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=38/256 lod=8,10,20,0 lodIdx=55296,19200,11520,0 terrainIdx=86016 propsIdx=20586 smallCells=14
+perf: fps=60.1 slow=1/61 update=0.18(max 0.28) render=1.32(max 1.73) gpu_wait=15.14 vsync_wait=0.01 worst_frame=17.61 state=0
+audio: played=11552 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=36/256 lod=6,13,17,0 lodIdx=41472,24960,9792,0 terrainIdx=76224 propsIdx=17436 smallCells=11
+perf: fps=60.0 slow=2/61 update=0.18(max 0.28) render=1.29(max 1.65) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.74 state=0
+audio: played=11742 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=47/256 lod=5,13,18,11 lodIdx=34560,24960,10368,2112 terrainIdx=72000 propsIdx=22566 smallCells=11
+perf: fps=60.1 slow=2/61 update=0.19(max 0.27) render=1.33(max 1.75) gpu_wait=15.12 vsync_wait=0.01 worst_frame=17.75 state=0
+audio: played=11933 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=50/256 lod=5,13,14,18 lodIdx=34560,24960,8064,3456 terrainIdx=71040 propsIdx=22197 smallCells=8
+perf: fps=60.0 slow=5/60 update=0.20(max 0.35) render=1.33(max 1.87) gpu_wait=15.13 vsync_wait=0.01 worst_frame=17.79 state=0
+audio: played=12120 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=58/256 lod=5,14,16,23 lodIdx=34560,26880,9216,4416 terrainIdx=75072 propsIdx=25896 smallCells=10
+perf: fps=60.0 slow=3/61 update=0.17(max 0.29) render=1.25(max 1.77) gpu_wait=15.23 vsync_wait=0.01 worst_frame=17.78 state=0
+audio: played=12311 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=64/256 lod=6,12,17,29 lodIdx=41472,23040,9792,5568 terrainIdx=79872 propsIdx=32814 smallCells=10
+perf: fps=60.0 slow=2/61 update=0.18(max 0.29) render=1.26(max 1.69) gpu_wait=15.21 vsync_wait=0.01 worst_frame=17.78 state=0
+audio: played=12502 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=69/256 lod=6,11,22,30 lodIdx=41472,21120,12672,5760 terrainIdx=81024 propsIdx=28146 smallCells=9
+perf: fps=60.1 slow=2/61 update=0.18(max 0.30) render=1.32(max 2.00) gpu_wait=15.14 vsync_wait=0.01 worst_frame=17.87 state=0
+audio: played=12692 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=74/256 lod=6,10,25,33 lodIdx=41472,19200,14400,6336 terrainIdx=81408 propsIdx=28248 smallCells=9
+perf: fps=60.0 slow=0/60 update=0.17(max 0.29) render=1.29(max 1.82) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.36 state=0
+audio: played=12880 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=73/256 lod=6,13,23,31 lodIdx=41472,24960,13248,5952 terrainIdx=85632 propsIdx=27864 smallCells=12
+perf: fps=60.0 slow=0/61 update=0.17(max 0.21) render=1.25(max 1.68) gpu_wait=15.24 vsync_wait=0.00 worst_frame=17.38 state=0
+audio: played=13071 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=77/256 lod=7,12,27,31 lodIdx=48384,23040,15552,5952 terrainIdx=92928 propsIdx=26718 smallCells=11
+perf: fps=60.1 slow=0/61 update=0.17(max 0.27) render=1.26(max 1.42) gpu_wait=15.21 vsync_wait=0.01 worst_frame=17.43 state=0
+audio: played=13261 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=88/256 lod=6,14,27,41 lodIdx=41472,26880,15552,7872 terrainIdx=91776 propsIdx=28260 smallCells=12
+perf: fps=59.9 slow=2/60 update=0.17(max 0.31) render=1.32(max 1.79) gpu_wait=15.18 vsync_wait=0.01 worst_frame=17.79 state=0
+audio: played=13449 silent=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+cull: cells=92/256 lod=7,13,32,40 lodIdx=48384,24960,18432,7680 terrainIdx=99456 propsIdx=31989 smallCells=12
+perf: fps=60.1 slow=0/61 update=0.17(max 0.27) render=1.38(max 1.96) gpu_wait=15.09 vsync_wait=0.01 worst_frame=17.42 state=0
+audio: played=13639 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=94/256 lod=7,11,34,42 lodIdx=48384,21120,19584,8064 terrainIdx=97152 propsIdx=35340 smallCells=13
+perf: fps=60.0 slow=0/61 update=0.16(max 0.20) render=1.31(max 1.45) gpu_wait=15.18 vsync_wait=0.01 worst_frame=17.43 state=0
+audio: played=13830 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=97/256 lod=6,13,32,46 lodIdx=41472,24960,18432,8832 terrainIdx=93696 propsIdx=40149 smallCells=14
+perf: fps=60.0 slow=0/60 update=0.17(max 0.26) render=1.39(max 1.96) gpu_wait=15.11 vsync_wait=0.01 worst_frame=17.47 state=0
+audio: played=14018 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=99/256 lod=5,12,30,52 lodIdx=34560,23040,17280,9984 terrainIdx=84864 propsIdx=42867 smallCells=15
+perf: fps=60.1 slow=3/61 update=0.19(max 0.36) render=1.57(max 2.37) gpu_wait=14.88 vsync_wait=0.01 worst_frame=17.86 state=0
+audio: played=14208 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=101/256 lod=8,13,28,52 lodIdx=55296,24960,16128,9984 terrainIdx=106368 propsIdx=50718 smallCells=16
+perf: fps=60.0 slow=6/60 update=0.17(max 0.23) render=1.58(max 1.95) gpu_wait=14.91 vsync_wait=0.01 worst_frame=17.79 state=0
+audio: played=14396 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=110/256 lod=6,13,30,61 lodIdx=41472,24960,17280,11712 terrainIdx=95424 propsIdx=59022 smallCells=17
+perf: fps=60.0 slow=7/61 update=0.17(max 0.28) render=1.56(max 2.12) gpu_wait=14.92 vsync_wait=0.01 worst_frame=17.69 state=0
+audio: played=14586 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=136/256 lod=6,14,32,84 lodIdx=41472,26880,18432,16128 terrainIdx=102912 propsIdx=78417 smallCells=19
+perf: fps=60.1 slow=5/61 update=0.16(max 0.20) render=1.56(max 1.76) gpu_wait=14.91 vsync_wait=0.01 worst_frame=17.66 state=0
+audio: played=14777 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=156/256 lod=7,12,36,101 lodIdx=48384,23040,20736,19392 terrainIdx=111552 propsIdx=84834 smallCells=18
+perf: fps=60.0 slow=5/60 update=0.17(max 0.23) render=1.62(max 1.81) gpu_wait=14.87 vsync_wait=0.01 worst_frame=17.68 state=0
+audio: played=14964 silent=0
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+cull: cells=154/256 lod=6,11,39,98 lodIdx=41472,21120,22464,18816 terrainIdx=103872 propsIdx=85944 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=6/61 update=0.17(max 0.28) render=1.64(max 2.47) gpu_wait=14.85 vsync_wait=0.01 worst_frame=17.74 state=0
+audio: played=15155 silent=0
+cull: cells=149/256 lod=5,13,36,95 lodIdx=34560,24960,20736,18240 terrainIdx=98496 propsIdx=90729 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=6/61 update=0.18(max 0.28) render=1.88(max 2.53) gpu_wait=14.59 vsync_wait=0.01 worst_frame=18.38 state=0
+audio: played=15346 silent=0
+cull: cells=141/256 lod=6,14,36,85 lodIdx=41472,26880,20736,16320 terrainIdx=105408 propsIdx=87528 smallCells=19
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=6/61 update=0.17(max 0.26) render=1.82(max 2.42) gpu_wait=14.66 vsync_wait=0.01 worst_frame=18.36 state=0
+audio: played=15536 silent=0
+cull: cells=126/256 lod=7,12,36,71 lodIdx=48384,23040,20736,13632 terrainIdx=105792 propsIdx=74598 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=8/61 update=0.14(max 0.19) render=1.57(max 1.77) gpu_wait=14.93 vsync_wait=0.00 worst_frame=17.66 state=0
+audio: played=15727 silent=0
+cull: cells=120/256 lod=4,13,36,67 lodIdx=27648,24960,20736,12864 terrainIdx=86208 propsIdx=75495 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/61 update=0.19(max 0.29) render=1.76(max 2.46) gpu_wait=14.71 vsync_wait=0.01 worst_frame=17.62 state=0
+audio: played=15917 silent=0
+cull: cells=111/256 lod=8,12,38,53 lodIdx=55296,23040,21888,10176 terrainIdx=110400 propsIdx=71886 smallCells=19
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/60 update=0.18(max 0.29) render=1.67(max 2.27) gpu_wait=14.81 vsync_wait=0.01 worst_frame=17.66 state=0
+audio: played=16105 silent=0
+cull: cells=103/256 lod=6,15,35,47 lodIdx=41472,28800,20160,9024 terrainIdx=99456 propsIdx=65448 smallCells=19
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=2/61 update=0.19(max 0.29) render=1.72(max 2.32) gpu_wait=14.74 vsync_wait=0.01 worst_frame=17.64 state=0
+audio: played=16296 silent=0
+cull: cells=92/256 lod=8,10,38,36 lodIdx=55296,19200,21888,6912 terrainIdx=103296 propsIdx=53232 smallCells=15
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=5/61 update=0.17(max 0.22) render=1.48(max 2.14) gpu_wait=15.00 vsync_wait=0.00 worst_frame=17.56 state=0
+audio: played=16486 silent=0
+cull: cells=85/256 lod=8,13,37,27 lodIdx=55296,24960,21312,5184 terrainIdx=106752 propsIdx=53328 smallCells=20
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/60 update=0.17(max 0.32) render=1.45(max 2.09) gpu_wait=15.04 vsync_wait=0.00 worst_frame=18.00 state=0
+audio: played=16674 silent=0
+cull: cells=74/256 lod=4,13,35,22 lodIdx=27648,24960,20160,4224 terrainIdx=76992 propsIdx=40929 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/61 update=0.22(max 0.29) render=1.72(max 2.02) gpu_wait=14.72 vsync_wait=0.01 worst_frame=17.84 state=0
+audio: played=16865 silent=0
+cull: cells=69/256 lod=8,14,35,12 lodIdx=55296,26880,20160,2304 terrainIdx=104640 propsIdx=41346 smallCells=21
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=3/61 update=0.17(max 0.23) render=1.38(max 1.58) gpu_wait=15.09 vsync_wait=0.01 worst_frame=17.57 state=0
+audio: played=17055 silent=0
+cull: cells=60/256 lod=5,13,36,6 lodIdx=34560,24960,20736,1152 terrainIdx=81408 propsIdx=34212 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=2/60 update=0.17(max 0.19) render=1.35(max 1.52) gpu_wait=15.15 vsync_wait=0.01 worst_frame=17.54 state=0
+audio: played=17243 silent=0
+cull: cells=54/256 lod=8,13,30,3 lodIdx=55296,24960,17280,576 terrainIdx=98112 propsIdx=31992 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/61 update=0.16(max 0.23) render=1.34(max 1.50) gpu_wait=15.14 vsync_wait=0.01 worst_frame=17.50 state=0
+audio: played=17433 silent=0
+cull: cells=45/256 lod=6,13,25,1 lodIdx=41472,24960,14400,192 terrainIdx=81024 propsIdx=24804 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/61 update=0.15(max 0.17) render=1.31(max 1.47) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.42 state=0
+audio: played=17624 silent=0
+cull: cells=38/256 lod=6,11,21,0 lodIdx=41472,21120,12096,0 terrainIdx=74688 propsIdx=19266 smallCells=13
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/60 update=0.19(max 1.03) render=1.44(max 2.40) gpu_wait=15.04 vsync_wait=0.01 worst_frame=17.49 state=0
+audio: played=17811 silent=0
+cull: cells=37/256 lod=8,10,19,0 lodIdx=55296,19200,10944,0 terrainIdx=85440 propsIdx=21306 smallCells=13
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=1/61 update=0.17(max 0.26) render=1.27(max 1.67) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.69 state=0
+audio: played=18002 silent=0
+cull: cells=39/256 lod=6,13,19,1 lodIdx=41472,24960,10944,192 terrainIdx=77568 propsIdx=20670 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/60 update=0.17(max 0.22) render=1.23(max 1.40) gpu_wait=15.25 vsync_wait=0.01 worst_frame=17.41 state=0
+audio: played=18189 silent=0
+cull: cells=49/256 lod=6,12,19,12 lodIdx=41472,23040,10944,2304 terrainIdx=77760 propsIdx=23124 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/61 update=0.18(max 0.29) render=1.28(max 1.80) gpu_wait=15.19 vsync_wait=0.01 worst_frame=17.49 state=0
+audio: played=18380 silent=0
+cull: cells=50/256 lod=5,13,14,18 lodIdx=34560,24960,8064,3456 terrainIdx=71040 propsIdx=22221 smallCells=8
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/61 update=0.17(max 0.24) render=1.22(max 1.64) gpu_wait=15.26 vsync_wait=0.01 worst_frame=17.35 state=0
+audio: played=18571 silent=0
+cull: cells=58/256 lod=5,14,16,23 lodIdx=34560,26880,9216,4416 terrainIdx=75072 propsIdx=27399 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/60 update=0.21(max 0.35) render=1.37(max 1.84) gpu_wait=15.08 vsync_wait=0.01 worst_frame=17.85 state=0
+audio: played=18758 silent=0
+cull: cells=65/256 lod=7,11,17,30 lodIdx=48384,21120,9792,5760 terrainIdx=85056 propsIdx=33135 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=0/61 update=0.17(max 0.29) render=1.26(max 1.39) gpu_wait=15.20 vsync_wait=0.01 worst_frame=17.40 state=0
+audio: played=18949 silent=0
+cull: cells=69/256 lod=6,11,22,30 lodIdx=41472,21120,12672,5760 terrainIdx=81024 propsIdx=34299 smallCells=12
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/60 update=0.18(max 0.29) render=1.29(max 1.73) gpu_wait=15.20 vsync_wait=0.01 worst_frame=17.60 state=0
+audio: played=19136 silent=0
+cull: cells=74/256 lod=6,10,26,32 lodIdx=41472,19200,14976,6144 terrainIdx=81792 propsIdx=33717 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/61 update=0.18(max 0.28) render=1.34(max 1.88) gpu_wait=15.12 vsync_wait=0.01 worst_frame=17.43 state=0
+audio: played=19327 silent=0
+cull: cells=74/256 lod=6,13,23,32 lodIdx=41472,24960,13248,6144 terrainIdx=85824 propsIdx=35685 smallCells=14
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=2/61 update=0.19(max 0.29) render=1.37(max 1.89) gpu_wait=15.08 vsync_wait=0.01 worst_frame=17.65 state=0
+audio: played=19518 silent=0
+cull: cells=76/256 lod=6,12,27,31 lodIdx=41472,23040,15552,5952 terrainIdx=86016 propsIdx=33087 smallCells=13
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/60 update=0.18(max 0.30) render=1.32(max 1.75) gpu_wait=15.16 vsync_wait=0.01 worst_frame=17.66 state=0
+audio: played=19705 silent=0
+cull: cells=85/256 lod=6,14,27,38 lodIdx=41472,26880,15552,7296 terrainIdx=91200 propsIdx=35349 smallCells=15
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=0/61 update=0.17(max 0.20) render=1.30(max 1.49) gpu_wait=15.17 vsync_wait=0.01 worst_frame=17.44 state=0
+audio: played=19896 silent=0
+cull: cells=85/256 lod=6,14,30,35 lodIdx=41472,26880,17280,6720 terrainIdx=92352 propsIdx=30960 smallCells=12
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/60 update=0.18(max 0.23) render=1.32(max 1.47) gpu_wait=15.16 vsync_wait=0.01 worst_frame=17.44 state=0
+audio: played=20083 silent=0
+cull: cells=86/256 lod=7,11,33,35 lodIdx=48384,21120,19008,6720 terrainIdx=95232 propsIdx=33282 smallCells=12
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=2/60 update=0.18(max 0.26) render=1.35(max 1.58) gpu_wait=15.13 vsync_wait=0.01 worst_frame=17.52 state=0
+audio: played=20271 silent=0
+cull: cells=87/256 lod=6,13,30,38 lodIdx=41472,24960,17280,7296 terrainIdx=91008 propsIdx=34092 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=2/61 update=0.18(max 0.26) render=1.36(max 1.65) gpu_wait=15.09 vsync_wait=0.01 worst_frame=17.72 state=0
+audio: played=20461 silent=0
+cull: cells=93/256 lod=7,11,28,47 lodIdx=48384,21120,16128,9024 terrainIdx=94656 propsIdx=41757 smallCells=15
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/61 update=0.18(max 0.24) render=1.39(max 1.53) gpu_wait=15.10 vsync_wait=0.01 worst_frame=17.50 state=0
+audio: played=20652 silent=0
+cull: cells=105/256 lod=6,14,28,57 lodIdx=41472,26880,16128,10944 terrainIdx=95424 propsIdx=55293 smallCells=16
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=5/61 update=0.18(max 0.22) render=1.47(max 1.65) gpu_wait=15.00 vsync_wait=0.01 worst_frame=17.58 state=0
+audio: played=20843 silent=0
+cull: cells=120/256 lod=7,13,31,69 lodIdx=48384,24960,17856,13248 terrainIdx=104448 propsIdx=69834 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/61 update=0.18(max 0.28) render=1.61(max 2.23) gpu_wait=14.87 vsync_wait=0.01 worst_frame=17.69 state=0
+audio: played=21034 silent=0
+cull: cells=142/256 lod=6,14,32,90 lodIdx=41472,26880,18432,17280 terrainIdx=104064 propsIdx=80181 smallCells=19
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/61 update=0.18(max 0.73) render=1.62(max 1.79) gpu_wait=14.84 vsync_wait=0.00 worst_frame=17.66 state=0
+audio: played=21224 silent=0
+cull: cells=158/256 lod=7,10,37,104 lodIdx=48384,19200,21312,19968 terrainIdx=108864 propsIdx=86325 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/61 update=0.19(max 0.31) render=1.71(max 2.33) gpu_wait=14.76 vsync_wait=0.01 worst_frame=17.72 state=0
+audio: played=21415 silent=0
+cull: cells=156/256 lod=4,14,35,103 lodIdx=27648,26880,20160,19776 terrainIdx=94464 propsIdx=92376 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=2/61 update=0.18(max 0.30) render=1.72(max 2.30) gpu_wait=14.74 vsync_wait=0.01 worst_frame=18.05 state=0
+audio: played=21605 silent=0
+cull: cells=151/256 lod=5,14,37,95 lodIdx=34560,26880,21312,18240 terrainIdx=100992 propsIdx=93708 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/61 update=0.18(max 0.27) render=1.71(max 2.21) gpu_wait=14.76 vsync_wait=0.01 worst_frame=17.78 state=0
+audio: played=21796 silent=0
+cull: cells=142/256 lod=6,14,36,86 lodIdx=41472,26880,20736,16512 terrainIdx=105600 propsIdx=88704 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/61 update=0.17(max 0.30) render=1.68(max 2.37) gpu_wait=14.81 vsync_wait=0.01 worst_frame=18.32 state=0
+audio: played=21987 silent=0
+cull: cells=133/256 lod=7,14,38,74 lodIdx=48384,26880,21888,14208 terrainIdx=111360 propsIdx=82767 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=7/61 update=0.17(max 0.25) render=1.63(max 2.11) gpu_wait=14.83 vsync_wait=0.00 worst_frame=17.74 state=0
+audio: played=22177 silent=0
+cull: cells=119/256 lod=4,13,36,66 lodIdx=27648,24960,20736,12672 terrainIdx=86016 propsIdx=76488 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=5/61 update=0.17(max 0.21) render=1.60(max 1.77) gpu_wait=14.88 vsync_wait=0.01 worst_frame=17.70 state=0
+audio: played=22368 silent=0
+cull: cells=111/256 lod=8,13,37,53 lodIdx=55296,24960,21312,10176 terrainIdx=111744 propsIdx=73515 smallCells=19
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=5/60 update=0.18(max 0.24) render=1.61(max 1.76) gpu_wait=14.87 vsync_wait=0.01 worst_frame=17.66 state=0
+audio: played=22555 silent=0
+cull: cells=100/256 lod=5,15,34,46 lodIdx=34560,28800,19584,8832 terrainIdx=91776 propsIdx=62976 smallCells=20
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=8/61 update=0.17(max 0.30) render=1.55(max 2.22) gpu_wait=14.91 vsync_wait=0.00 worst_frame=18.22 state=0
+audio: played=22746 silent=0
+cull: cells=91/256 lod=8,10,42,31 lodIdx=55296,19200,24192,5952 terrainIdx=104640 propsIdx=53046 smallCells=16
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=8/60 update=0.19(max 0.29) render=1.57(max 2.22) gpu_wait=14.90 vsync_wait=0.01 worst_frame=17.61 state=0
+audio: played=22934 silent=0
+cull: cells=84/256 lod=7,13,37,27 lodIdx=48384,24960,21312,5184 terrainIdx=99840 propsIdx=50232 smallCells=20
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=7/61 update=0.17(max 0.20) render=1.44(max 1.62) gpu_wait=15.04 vsync_wait=0.00 worst_frame=17.63 state=0
+audio: played=23124 silent=0
+cull: cells=74/256 lod=4,13,35,22 lodIdx=27648,24960,20160,4224 terrainIdx=76992 propsIdx=43242 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/60 update=0.17(max 0.30) render=1.42(max 1.83) gpu_wait=15.07 vsync_wait=0.01 worst_frame=17.55 state=0
+audio: played=23312 silent=0
+cull: cells=67/256 lod=8,13,36,10 lodIdx=55296,24960,20736,1920 terrainIdx=102912 propsIdx=40338 smallCells=20
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=2/61 update=0.19(max 0.29) render=1.49(max 1.95) gpu_wait=14.97 vsync_wait=0.01 worst_frame=17.55 state=0
+audio: played=23502 silent=0
+cull: cells=59/256 lod=5,13,35,6 lodIdx=34560,24960,20160,1152 terrainIdx=80832 propsIdx=32346 smallCells=18
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/61 update=0.19(max 0.29) render=1.52(max 1.94) gpu_wait=14.93 vsync_wait=0.01 worst_frame=17.51 state=0
+audio: played=23693 silent=0
+cull: cells=54/256 lod=8,13,30,3 lodIdx=55296,24960,17280,576 terrainIdx=98112 propsIdx=32448 smallCells=19
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/60 update=0.17(max 0.28) render=1.41(max 1.92) gpu_wait=15.07 vsync_wait=0.01 worst_frame=17.55 state=0
+audio: played=23881 silent=0
+cull: cells=44/256 lod=6,12,25,1 lodIdx=41472,23040,14400,192 terrainIdx=79104 propsIdx=22704 smallCells=17
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=0/60 update=0.19(max 0.41) render=1.64(max 2.08) gpu_wait=14.83 vsync_wait=0.01 worst_frame=17.43 state=0
+audio: played=24068 silent=0
+cull: cells=39/256 lod=5,11,23,0 lodIdx=34560,21120,13248,0 terrainIdx=68928 propsIdx=19128 smallCells=14
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/61 update=0.19(max 0.29) render=1.47(max 1.90) gpu_wait=14.99 vsync_wait=0.01 worst_frame=17.77 state=0
+audio: played=24259 silent=0
+cull: cells=38/256 lod=8,10,20,0 lodIdx=55296,19200,11520,0 terrainIdx=86016 propsIdx=18264 smallCells=13
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/61 update=0.18(max 0.30) render=1.31(max 1.80) gpu_wait=15.16 vsync_wait=0.01 worst_frame=17.71 state=0
+audio: played=24449 silent=0
+cull: cells=37/256 lod=7,13,17,0 lodIdx=48384,24960,9792,0 terrainIdx=83136 propsIdx=19731 smallCells=13
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=57.2 slow=3/61 update=0.17(max 0.33) render=1.24(max 1.62) gpu_wait=16.06 vsync_wait=0.01 worst_frame=67.42 state=0
+audio: played=24649 silent=0
+cull: cells=43/256 lod=5,13,18,7 lodIdx=34560,24960,10368,1344 terrainIdx=71232 propsIdx=22026 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/61 update=0.22(max 0.39) render=1.35(max 1.92) gpu_wait=15.07 vsync_wait=0.01 worst_frame=17.57 state=0
+audio: played=24840 silent=0
+cull: cells=53/256 lod=7,11,17,18 lodIdx=48384,21120,9792,3456 terrainIdx=82752 propsIdx=26007 smallCells=10
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/60 update=0.21(max 0.34) render=1.37(max 1.93) gpu_wait=15.07 vsync_wait=0.01 worst_frame=17.90 state=0
+audio: played=25027 silent=0
+cull: cells=56/256 lod=6,12,17,21 lodIdx=41472,23040,9792,4032 terrainIdx=78336 propsIdx=26988 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=2/61 update=0.21(max 0.44) render=1.37(max 2.02) gpu_wait=15.05 vsync_wait=0.01 worst_frame=17.80 state=0
+audio: played=25218 silent=0
+cull: cells=59/256 lod=6,10,17,26 lodIdx=41472,19200,9792,4992 terrainIdx=75456 propsIdx=27558 smallCells=9
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/61 update=0.21(max 0.36) render=1.37(max 2.05) gpu_wait=15.06 vsync_wait=0.01 worst_frame=18.12 state=0
+audio: played=25409 silent=0
+cull: cells=67/256 lod=6,12,20,29 lodIdx=41472,23040,11520,5568 terrainIdx=81600 propsIdx=31593 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=1/61 update=0.20(max 0.37) render=1.39(max 1.78) gpu_wait=15.06 vsync_wait=0.01 worst_frame=17.57 state=0
+audio: played=25599 silent=0
+cull: cells=72/256 lod=6,12,22,32 lodIdx=41472,23040,12672,6144 terrainIdx=83328 propsIdx=29082 smallCells=10
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=5/61 update=0.20(max 0.33) render=1.46(max 2.15) gpu_wait=14.97 vsync_wait=0.01 worst_frame=17.90 state=0
+audio: played=25790 silent=0
+cull: cells=73/256 lod=7,12,24,30 lodIdx=48384,23040,13824,5760 terrainIdx=91008 propsIdx=29034 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/61 update=0.20(max 0.33) render=1.43(max 1.93) gpu_wait=15.03 vsync_wait=0.01 worst_frame=17.98 state=0
+audio: played=25981 silent=0
+cull: cells=75/256 lod=6,12,23,34 lodIdx=41472,23040,13248,6528 terrainIdx=84288 propsIdx=27456 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.1 slow=5/61 update=0.22(max 0.34) render=1.48(max 1.97) gpu_wait=14.93 vsync_wait=0.01 worst_frame=17.83 state=0
+audio: played=26171 silent=0
+cull: cells=82/256 lod=6,14,27,35 lodIdx=41472,26880,15552,6720 terrainIdx=90624 propsIdx=26025 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=3/61 update=0.22(max 0.36) render=1.49(max 2.07) gpu_wait=14.93 vsync_wait=0.01 worst_frame=18.07 state=0
+audio: played=26362 silent=0
+cull: cells=90/256 lod=7,12,32,39 lodIdx=48384,23040,18432,7488 terrainIdx=97344 propsIdx=29793 smallCells=12
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/60 update=0.22(max 0.42) render=1.54(max 2.29) gpu_wait=14.89 vsync_wait=0.01 worst_frame=17.67 state=0
+audio: played=26549 silent=0
+cull: cells=94/256 lod=5,15,32,42 lodIdx=34560,28800,18432,8064 terrainIdx=89856 propsIdx=32730 smallCells=13
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=4/61 update=0.23(max 0.40) render=1.58(max 2.25) gpu_wait=14.82 vsync_wait=0.01 worst_frame=17.73 state=0
+audio: played=26740 silent=0
+cull: cells=90/256 lod=5,13,29,43 lodIdx=34560,24960,16704,8256 terrainIdx=84480 propsIdx=31311 smallCells=11
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=7/60 update=0.21(max 0.37) render=1.53(max 2.00) gpu_wait=14.92 vsync_wait=0.01 worst_frame=18.04 state=0
+audio: played=26928 silent=0
+cull: cells=98/256 lod=5,14,29,50 lodIdx=34560,26880,16704,9600 terrainIdx=87744 propsIdx=41673 smallCells=15
+hiz: depth-write draw kept=1 greater=0 control=0x00000003 depth=0x00000036 pixel_depth=0
+hiz: depth-test draw kept=1 greater=0 control=0x00000002 depth=0x00000032 pixel_depth=0
+perf: fps=60.0 slow=5/61 update=0.20(max 0.26) render=1.48(max 2.14) gpu_wait=14.97 vsync_wait=0.01 worst_frame=17.76 state=0
+audio: played=27118 silent=0

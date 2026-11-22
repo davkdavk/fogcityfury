@@ -293,7 +293,8 @@ struct World {
                     unsigned a, b;
                     if (e < 2) { int z = z0 + (e ? 32 : 0); a = z * GN + x0 + k; b = a + step; }
                     else { int x = x0 + (e == 3 ? 32 : 0); a = (z0 + k) * GN + x; b = a + step * GN; }
-                    unsigned d = skirt[e * 33 + k], f = skirt[e * 33 + k + step]; t.idx.insert(t.idx.end(), { a, d, b, b, d, f });
+                    unsigned d = skirt[e * 33 + k], f = skirt[e * 33 + k + step];
+                    if (e == 0 || e == 3) t.idx.insert(t.idx.end(), { a, b, d, b, f, d }); else t.idx.insert(t.idx.end(), { a, d, b, b, d, f });   // each skirt faces out of its cell (the ground is drawn with back faces dropped)
                 }
                 r.count = (int)t.idx.size() - r.first;
             }

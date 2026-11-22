@@ -38,7 +38,7 @@ def add_locations(t, locmap):
         return ' '.join(out)
     return re.sub(r'(?<!layout\(location=\d\) )\b(in|out)\s+(vec[234]|float|int)\s+([A-Za-z_][\w, ]*);', repl, t)
 
-SAMPLER_UNITS = {'uShadow':0, 'uEnv':1, 'uHeight':2, 'uFont':3, 'uTex':4, 'uBloom':5, 'uDetail':6, 'uNoise':7}
+SAMPLER_UNITS = {'uShadow':0, 'uEnv':1, 'uHeight':2, 'uFont':3, 'uTex':4, 'uBloom':5, 'uDetail':6, 'uNoise':7, 'uHash':8}
 
 def uniforms_to_block(t):
     t = strip_comments(t)

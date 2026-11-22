@@ -1,0 +1,12 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen_lean_debug/ui.frag.bin (336 B)
+/*    0.0 */       exec
+/*    2   */          tfetch2D r2, r0.xy, tf0
+/*    0.1 */       alloc colors
+/*    1.0 */       exece
+/*    3   */          add r0.___w, c0, -r0.xxxx
+/*    4   */          serialize
+                      cndgt r0.__z_, r0.xywz, c1.xywz, r2.xxxx
+/*    5   */          max oC0.xyz_, r1, r1
+/*    6   */          mul oC0.___w, r1.wwww, r0.xywz
+/*    1.1 */       cnop
+

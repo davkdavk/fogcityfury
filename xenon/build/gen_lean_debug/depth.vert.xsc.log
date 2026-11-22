@@ -1,0 +1,57 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen_lean_debug/depth.vert.bin (1676 B)
+/*    0.0 */       exec
+/*    5   */          vfetch_full r1, r0.x, vf0
+/*    6   */          vfetch_full r2, r0.x, vf0
+/*    7   */          vfetch_full r3, r0.x, vf0
+/*    8   */          vfetch_full r4, r0.x, vf0
+/*    9   */          vfetch_full r0.xyz1, r0.x, vf0
+/*    0.1 */       alloc position
+/*    1.0 */       exec
+/*   10   */          serialize
+                      mul r5, c4, r0.xxxx
+/*   11   */          mad r5, c5, r0.yyyy, r5
+/*   12   */          mad r5, c6, r0.zzzz, r5
+/*   13   */          add r5, c7, r5
+/*   14   */          mul r0, c0, r5.xxxx
+/*   15   */          mad r0, c1, r5.yyyy, r0
+/*    1.1 */       exec
+/*   16   */          mad r0, c2, r5.zzzz, r0
+/*   17   */          mad oPos, c3, r5.wwww, r0
+/*    2.0 */       alloc interpolators
+/*    2.1 */       exec
+/*   18   */          max o0, r5, r5
+/*   19   */          mul r0, c11, c17.xxxx
+/*   20   */          add r6, r0, c18
+/*   21   */          mul r0, c11, c20.xxxx
+/*   22   */          mad r7, c10, c19.xxxx, r0
+/*   23   */          mul r0.xyz_, c4, r4.xxxx
+/*    3.0 */       exec
+/*   24   */          mad r0.xyz_, c5, r4.yyyy, r0
+/*   25   */          mad r0.xyz_, c6, r4.zzzz, r0
+/*   26   */          dp3 r0.___w, r0, r0
+/*   27   */          add r8, r7, -r6
+              +       rsq r4.xyz_, r0.w
+/*   28   */          mul r7.xyz_, r0, r4
+/*   29   */          mad r0, r7.yyyy, c21, c21
+/*    3.1 */       exec
+/*   30   */          mad r4, r8, r0, r6
+/*   31   */          dp3 r0.x___, r7, c8
+/*   32   */          max r0._y__, r0.yxzw, c22.yxzw
+/*   33   */          mad r6, c9, r0.yyyy, r4
+/*   34   */          mul r0.x___, c23, c13.xxxx
+/*   35   */          add r4.xyz_, c12, -r5
+              +       subsc r0._y__, c16.y, r0.x
+/*    4.0 */       exec
+/*   36   */          mul o1, r6, r0.yyyy
+/*   37   */          max o2, r3, r3
+/*   38   */          max o3, r2, r2
+/*   39   */          max o4, r1.xxxx, r1.xxxx
+/*   40   */          dp3 r0.___w, r4, r4
+/*   41   */          sqrt r0._yz_, r0.w
+/*    4.1 */       exece
+/*   42   */          mul r0.___w, -r0.xxxz, c12.wwww
+/*   43   */          mul r0.__z_, r0.xywz, c24.xywz
+/*   44   */          exp r0.x___, r0.z
+/*   45   */          mad_sat r0.__z_, -r0.xxyx, c25.xxyx, c16.xzyw
+/*   46   */          max o5, r0.xzyw, r0.xzyw
+

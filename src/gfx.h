@@ -50,7 +50,8 @@
 //   depthTest(on), depthWrite(on)      the depth test is less-or-equal
 //   blend(mode)                        B_OFF, B_ALPHA (src*a + dst*(1-a)), B_PREMUL (src + dst*(1-a)), B_ADD (src + dst)
 //   offset(factor, units)              polygon depth offset; offset(0, 0) turns it off
-//   No face culling, ever.
+//   cull(on)                           drop triangles facing away (counter-clockwise is the front). Off unless turned on;
+//                                      only the terrain and building walls are wound consistently enough for it.
 //
 // Shaders (Prog). makeProg(name, vs, fsCommon, fs) builds one of the game's ten programs: world, car, water, sky, part,
 // depth, ui, mark, ring, post. The sources are the GLSL in shaders.h; a backend that cannot compile at run time

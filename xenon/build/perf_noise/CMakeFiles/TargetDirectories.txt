@@ -1,0 +1,3 @@
+/home/davey/Documents/fogcityfurysrc/xenon/build/perf_noise/CMakeFiles/perf_noise.dir
+/home/davey/Documents/fogcityfurysrc/xenon/build/perf_noise/CMakeFiles/edit_cache.dir
+/home/davey/Documents/fogcityfurysrc/xenon/build/perf_noise/CMakeFiles/rebuild_cache.dir

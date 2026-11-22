@@ -1,0 +1,759 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen/post.frag.bin (11108 B)
+/*    0.0 */       exec
+/*   54   */          mul r1, r0, c4.xxxx
+/*   55   */          add r2, r1, c4
+/*   56   */          max r1, c0.zwzw, c0.zwzw
+/*   57   */          mul r3, r1, c5
+/*   58   */          add r1, r2, r3
+/*   59   */          serialize
+                      tfetch2D r3, r1.xy, tf0
+/*    0.1 */       exec
+/*   60   */          max r1, c0.zwzw, c0.zwzw
+/*   61   */          mul r4, r1, c6
+/*   62   */          add r1, r2, r4
+/*   63   */          serialize
+                      tfetch2D r4, r1.xy, tf0
+/*   64   */          max r1, c0.zwzw, c0.zwzw
+/*   65   */          mul r5, r1, c7
+/*    1.0 */       exec
+/*   66   */          add r1, r2, r5
+/*   67   */          serialize
+                      tfetch2D r5, r1.xy, tf0
+/*   68   */          max r1, c0.zwzw, c0.zwzw
+/*   69   */          mul r6, r1, c8
+/*   70   */          add r1, r2, r6
+/*   71   */          serialize
+                      tfetch2D r6, r1.xy, tf0
+/*    1.1 */       exec
+/*   72   */          tfetch2D r1, r2.xy, tf0
+/*   73   */          max r7, c0.zwzw, c0.zwzw
+/*   74   */          mul r8, r7, c9.xxxx
+/*   75   */          add r7, r2, r8
+/*   76   */          serialize
+                      tfetch2D r8, r7.xy, tf0
+/*   77   */          max r7, c0.zwzw, c0.zwzw
+/*    2.0 */       exec
+/*   78   */          mul r9, r7, c9.xxxx
+/*   79   */          add r7, r2, -r9
+/*   80   */          serialize
+                      tfetch2D r9, r7.xy, tf0
+/*   81   */          max r7, c0.zwzw, c0.zwzw
+/*   82   */          mul r10, r7, c10.xxxx
+/*   83   */          add r7, r2, r10
+/*    2.1 */       exec
+/*   84   */          serialize
+                      tfetch2D r10, r7.xy, tf0
+/*   85   */          max r7, c0.zwzw, c0.zwzw
+/*   86   */          mul r11, r7, c10.xxxx
+/*   87   */          add r7, r2, -r11
+/*   88   */          serialize
+                      tfetch2D r11, r7.xy, tf0
+/*   89   */          max r7, c11, c11
+/*    3.0 */       exec    // PredicateClean=false
+/*   90   */          add r12, c2.yyyy, -r7
+/*   91   */          setp_gt r0._, r12.x
+/*    3.1 */  (p0) exec
+/*   92   */     (p0) max r7, c12, c12
+/*   93   */     (p0) sgt r12, c4, r7
+/*   94   */     (p0) max r7, c13, c13
+/*   95   */     (p0) max r13, c14, c14
+/*   96   */     (p0) add r14, r7, -r13
+/*   97   */     (p0) mad r7, r14, r12, r13
+/*    4.0 */  (p0) exec
+/*   98   */     (p0) mul r12, r7, c15
+/*   99   */     (p0) max r13.x___, r12, r12
+/*  100   */     (p0) max r13._y__, r7, r7
+/*  101   */     (p0) mul r12, r2, r13
+/*  102   */     (p0) max r13.x___, r12, r12
+/*  103   */     (p0) max r14, c2.zzzz, c2.zzzz
+/*    4.1 */  (p0) exec
+/*  104   */     (p0) max r15, c12, c12
+/*  105   */     (p0) sgt r16, c4, r15
+/*  106   */     (p0) max r15, c16, c16
+/*  107   */     (p0) max r17, c17, c17
+/*  108   */     (p0) add r18, r15, -r17
+/*  109   */     (p0) mad r15, r18, r16, r17
+/*    5.0 */  (p0) exec
+/*  110   */     (p0) mul r16, r14, r15
+/*  111   */     (p0) add r13._y__, r12, r16
+/*  112   */     (p0) frc r12, r13
+/*  113   */     (p0) add r14, r12, -c4
+/*  114   */     (p0) floor r12, r13
+/*  115   */     (p0) max r13, c18, c18
+/*    5.1 */  (p0) exec
+/*  116   */     (p0) dp2add r15, r12, r13, c12
+/*  117   */     (p0) max r12, c19, c19
+/*  118   */     (p0) mad r13, r15, r12, c4
+/*  119   */     (p0) frc r13, r13
+/*  120   */     (p0) max r12, c21, c21
+/*  121   */     (p0) mad r13, r13, c20, r12
+/*    6.0 */  (p0) exec
+/*  122   */     (p0) sin r12, r13.w
+/*  123   */     (p0) mul r13, r12, c22
+/*  124   */     (p0) frc r12, r13
+/*  125   */     (p0) mul r13, r12, c23
+/*  126   */     (p0) frc r15, r13
+/*  127   */     (p0) mul r13, r12, c24
+/*    6.1 */  (p0) exec
+/*  128   */     (p0) frc r16, r13
+/*  129   */     (p0) max r13.x___, r15, r15
+/*  130   */     (p0) max r13._y__, r16, r16
+/*  131   */     (p0) add r15, r13, -c4
+/*  132   */     (p0) mul r13, r15, c25.xxxx
+/*  133   */     (p0) add r15, r14, -r13
+/*    7.0 */  (p0) exec
+/*  134   */     (p0) mul r13, c27, r12
+/*  135   */     (p0) add r14, c26, r13
+/*  136   */     (p0) max r13, c2.zzzz, c2.zzzz
+/*  137   */     (p0) mul r16, c29, r12
+/*  138   */     (p0) add r17, c27, r16
+/*  139   */     (p0) mul r16, r13, r17
+/*    7.1 */  (p0) exec
+/*  140   */     (p0) mul r13, r12, c30
+/*  141   */     (p0) add r17, r16, r13
+/*  142   */     (p0) frc r13, r17
+/*  143   */     (p0) mul r16, r13, c31
+/*  144   */     (p0) add r17, c28, -r16
+/*  145   */     (p0) mul r16, r14, r17
+/*    8.0 */  (p0) exec
+/*  146   */     (p0) max r14, c2.yyyy, c2.yyyy
+/*  147   */     (p0) mul r17, c32, r14
+/*  148   */     (p0) sge r14, r17, r12
+/*  149   */     (p0) mul r12, r16, r14
+/*  150   */     (p0) add r14, r12, -c12
+/*  151   */     (p0) mul r16, r12, c33
+/*    8.1 */  (p0) exec
+/*  152   */     (p0) dp4 r17, r15, r15
+/*  153   */     (p0) sqrt r18, r17.w
+/*  154   */     (p0) add r17, r18, -r16
+/*  155   */     (p0) add r18, r12, -r16
+/*  156   */     (p0) rcp r12, r18.x
+/*  157   */     (p0) mul_sat r16, r17, r12
+/*    9.0 */  (p0) exec
+/*  158   */     (p0) add r12, r16, r16
+/*  159   */     (p0) add r17, c34, -r12
+/*  160   */     (p0) mul r12, r16, r16
+/*  161   */     (p0) mul r16, r12, r17
+/*  162   */     (p0) add r12, c28, -r16
+/*  163   */     (p0) cndgt r16, r14, r12, c12
+/*    9.1 */  (p0) exec
+/*  164   */     (p0) mul r12, r15, r16.xxxx
+/*  165   */     (p0) mul r14, r12, c35.xxxx
+/*  166   */     (p0) rcp r12, r7.x
+/*  167   */     (p0) mul r7, r14, r12
+/*  168   */     (p0) add r12, r2, -r7
+/*  169   */     (p0) max r7, c28, c28
+/*   10.0 */  (p0) exec
+/*  170   */     (p0) sgt r14, c4, r7
+/*  171   */     (p0) max r7, c13, c13
+/*  172   */     (p0) max r15, c14, c14
+/*  173   */     (p0) add r17, r7, -r15
+/*  174   */     (p0) mad r7, r17, r14, r15
+/*  175   */     (p0) mul r14, r7, c15
+/*   10.1 */  (p0) exec
+/*  176   */     (p0) max r15.x___, r14, r14
+/*  177   */     (p0) max r15._y__, r7, r7
+/*  178   */     (p0) mul r14, r12, r15
+/*  179   */     (p0) max r15.x___, r14, r14
+/*  180   */     (p0) max r17, c2.zzzz, c2.zzzz
+/*  181   */     (p0) max r18, c28, c28
+/*   11.0 */  (p0) exec
+/*  182   */     (p0) sgt r19, c4, r18
+/*  183   */     (p0) max r18, c16, c16
+/*  184   */     (p0) max r20, c17, c17
+/*  185   */     (p0) add r21, r18, -r20
+/*  186   */     (p0) mad r18, r21, r19, r20
+/*  187   */     (p0) mul r19, r17, r18
+/*   11.1 */  (p0) exec
+/*  188   */     (p0) add r15._y__, r14, r19
+/*  189   */     (p0) frc r14, r15
+/*  190   */     (p0) add r17, r14, -c4
+/*  191   */     (p0) floor r14, r15
+/*  192   */     (p0) add r15, r14, c30
+/*  193   */     (p0) max r14, c18, c18
+/*   12.0 */  (p0) exec
+/*  194   */     (p0) dp2add r18, r15, r14, c12
+/*  195   */     (p0) max r14, c19, c19
+/*  196   */     (p0) mad r15, r18, r14, c4
+/*  197   */     (p0) frc r15, r15
+/*  198   */     (p0) max r14, c21, c21
+/*  199   */     (p0) mad r15, r15, c20, r14
+/*   12.1 */  (p0) exec
+/*  200   */     (p0) sin r14, r15.w
+/*  201   */     (p0) mul r15, r14, c22
+/*  202   */     (p0) frc r14, r15
+/*  203   */     (p0) mul r15, r14, c23
+/*  204   */     (p0) frc r18, r15
+/*  205   */     (p0) mul r15, r14, c24
+/*   13.0 */  (p0) exec
+/*  206   */     (p0) frc r19, r15
+/*  207   */     (p0) max r15.x___, r18, r18
+/*  208   */     (p0) max r15._y__, r19, r19
+/*  209   */     (p0) add r18, r15, -c4
+/*  210   */     (p0) mul r15, r18, c25.xxxx
+/*  211   */     (p0) add r18, r17, -r15
+/*   13.1 */  (p0) exec
+/*  212   */     (p0) mul r15, c27, r14
+/*  213   */     (p0) add r17, c26, r15
+/*  214   */     (p0) max r15, c2.zzzz, c2.zzzz
+/*  215   */     (p0) mul r19, c29, r14
+/*  216   */     (p0) add r20, c27, r19
+/*  217   */     (p0) mul r19, r15, r20
+/*   14.0 */  (p0) exec
+/*  218   */     (p0) mul r15, r14, c30
+/*  219   */     (p0) add r20, r19, r15
+/*  220   */     (p0) frc r15, r20
+/*  221   */     (p0) mul r19, r15, c31
+/*  222   */     (p0) add r20, c28, -r19
+/*  223   */     (p0) mul r19, r17, r20
+/*   14.1 */  (p0) exec
+/*  224   */     (p0) max r17, c2.yyyy, c2.yyyy
+/*  225   */     (p0) mul r20, c32, r17
+/*  226   */     (p0) sge r17, r20, r14
+/*  227   */     (p0) mul r14, r19, r17
+/*  228   */     (p0) add r17, r14, -c12
+/*  229   */     (p0) mul r19, r14, c33
+/*   15.0 */  (p0) exec
+/*  230   */     (p0) dp4 r20, r18, r18
+/*  231   */     (p0) sqrt r21, r20.w
+/*  232   */     (p0) add r20, r21, -r19
+/*  233   */     (p0) add r21, r14, -r19
+/*  234   */     (p0) rcp r14, r21.x
+/*  235   */     (p0) mul_sat r19, r20, r14
+/*   15.1 */  (p0) exec
+/*  236   */     (p0) add r14, r19, r19
+/*  237   */     (p0) add r20, c34, -r14
+/*  238   */     (p0) mul r14, r19, r19
+/*  239   */     (p0) mul r19, r14, r20
+/*  240   */     (p0) add r14, c28, -r19
+/*  241   */     (p0) cndgt r19, r17, r14, c12
+/*   16.0 */  (p0) exec
+/*  242   */     (p0) mul r14, r18, r19.xxxx
+/*  243   */     (p0) mul r17, r14, c35.xxxx
+/*  244   */     (p0) rcp r14, r7.x
+/*  245   */     (p0) mul r7, r17, r14
+/*  246   */     (p0) add r14, r12, -r7
+/*  247   */     (p0) add r7, c28, -r13
+/*   16.1 */  (p0) exec
+/*  248   */     (p0) mul r12, r16, r7
+/*  249   */     (p0) add r7, c28, -r15
+/*  250   */     (p0) mul r13, r19, r7
+/*  251   */     (p0) add r7, r12, r13
+/*   17.0 */ (!p0) exec
+/*  252   */    (!p0) max r14, r2, r2
+/*  253   */    (!p0) max r7, c12, c12
+/*   17.1 */       exec
+/*  254   */          add r2, r14, -c36
+/*  255   */          max r12, c1.xxxx, c1.xxxx
+/*  256   */          mul r13, r2, r12.xxxx
+/*  257   */          dp4 r12, r2, r2
+/*  258   */          sqrt r15, r12.w
+/*  259   */          max r12, c27, c27
+/*   18.0 */       exec
+/*  260   */          add r16, r15, -r12
+/*  261   */          add r15, c31, -r12
+/*  262   */          rcp r12, r15.x
+/*  263   */          mul_sat r15, r16, r12
+/*  264   */          add r12, r15, r15
+/*  265   */          add r16, c34, -r12
+/*   18.1 */       exec
+/*  266   */          mul r12, r15, r15
+/*  267   */          mul r15, r12, r16
+/*  268   */          mul r12, r13, r15.xxxx
+/*  269   */          mul r13, r12, c12.xxxx
+/*  270   */          add r12, r14, -r13
+/*  271   */          max r16, c1.yyyy, c1.yyyy
+/*   19.0 */       exec
+/*  272   */          mul r17, r2, r16.xxxx
+/*  273   */          add r16, r12, -r17
+/*  274   */          serialize
+                      tfetch2D r12, r16.xy, tf0
+/*  275   */          add r16, r14, -r13
+/*  276   */          serialize
+                      tfetch2D r17, r16.xy, tf0
+/*  277   */          add r16, r14, -r13
+/*   19.1 */       exec
+/*  278   */          max r13, c1.yyyy, c1.yyyy
+/*  279   */          mul r18, r2, r13.xxxx
+/*  280   */          add r13, r16, r18
+/*  281   */          serialize
+                      tfetch2D r16, r13.xy, tf0
+/*  282   */          max r13, c1.xxxx, c1.xxxx
+/*  283   */          mul r18, r2, r13.xxxx
+/*   20.0 */       exec
+/*  284   */          mul r13, r18, r15.xxxx
+/*  285   */          mul r18, r13, c37.xxxx
+/*  286   */          add r13, r14, -r18
+/*  287   */          max r19, c1.yyyy, c1.yyyy
+/*  288   */          mul r20, r2, r19.xxxx
+/*  289   */          add r19, r13, -r20
+/*   20.1 */       exec
+/*  290   */          serialize
+                      tfetch2D r13, r19.xy, tf0
+/*  291   */          add r19, r14, -r18
+/*  292   */          serialize
+                      tfetch2D r20, r19.xy, tf0
+/*  293   */          add r19, r14, -r18
+/*  294   */          max r18, c1.yyyy, c1.yyyy
+/*  295   */          mul r21, r2, r18.xxxx
+/*   21.0 */       exec
+/*  296   */          add r18, r19, r21
+/*  297   */          serialize
+                      tfetch2D r19, r18.xy, tf0
+/*  298   */          max r18, c1.xxxx, c1.xxxx
+/*  299   */          mul r21, r2, r18.xxxx
+/*  300   */          mul r18, r21, r15.xxxx
+/*  301   */          mul r21, r18, c38.xxxx
+/*   21.1 */       exec
+/*  302   */          add r18, r14, -r21
+/*  303   */          max r22, c1.yyyy, c1.yyyy
+/*  304   */          mul r23, r2, r22.xxxx
+/*  305   */          add r22, r18, -r23
+/*  306   */          serialize
+                      tfetch2D r18, r22.xy, tf0
+/*  307   */          add r22, r14, -r21
+/*   22.0 */       exec
+/*  308   */          serialize
+                      tfetch2D r23, r22.xy, tf0
+/*  309   */          add r22, r14, -r21
+/*  310   */          max r21, c1.yyyy, c1.yyyy
+/*  311   */          mul r24, r2, r21.xxxx
+/*  312   */          add r21, r22, r24
+/*  313   */          serialize
+                      tfetch2D r22, r21.xy, tf0
+/*   22.1 */       exec
+/*  314   */          max r21, c1.xxxx, c1.xxxx
+/*  315   */          mul r24, r2, r21.xxxx
+/*  316   */          mul r21, r24, r15.xxxx
+/*  317   */          mul r24, r21, c39.xxxx
+/*  318   */          add r21, r14, -r24
+/*  319   */          max r25, c1.yyyy, c1.yyyy
+/*   23.0 */       exec
+/*  320   */          mul r26, r2, r25.xxxx
+/*  321   */          add r25, r21, -r26
+/*  322   */          serialize
+                      tfetch2D r21, r25.xy, tf0
+/*  323   */          add r25, r14, -r24
+/*  324   */          serialize
+                      tfetch2D r26, r25.xy, tf0
+/*  325   */          add r25, r14, -r24
+/*   23.1 */       exec
+/*  326   */          max r24, c1.yyyy, c1.yyyy
+/*  327   */          mul r27, r2, r24.xxxx
+/*  328   */          add r24, r25, r27
+/*  329   */          serialize
+                      tfetch2D r25, r24.xy, tf0
+/*  330   */          max r24, c1.xxxx, c1.xxxx
+/*  331   */          mul r27, r2, r24.xxxx
+/*   24.0 */       exec
+/*  332   */          mul r24, r27, r15.xxxx
+/*  333   */          mul r27, r24, c40.xxxx
+/*  334   */          add r24, r14, -r27
+/*  335   */          max r28, c1.yyyy, c1.yyyy
+/*  336   */          mul r29, r2, r28.xxxx
+/*  337   */          add r28, r24, -r29
+/*   24.1 */       exec
+/*  338   */          serialize
+                      tfetch2D r24, r28.xy, tf0
+/*  339   */          add r28, r14, -r27
+/*  340   */          serialize
+                      tfetch2D r29, r28.xy, tf0
+/*  341   */          add r28, r14, -r27
+/*  342   */          max r27, c1.yyyy, c1.yyyy
+/*  343   */          mul r30, r2, r27.xxxx
+/*   25.0 */       exec
+/*  344   */          add r27, r28, r30
+/*  345   */          serialize
+                      tfetch2D r28, r27.xy, tf0
+/*  346   */          max r27, c1.xxxx, c1.xxxx
+/*  347   */          mul r30, r2, r27.xxxx
+/*  348   */          mul r27, r30, r15.xxxx
+/*  349   */          mul r30, r27, c41.xxxx
+/*   25.1 */       exec
+/*  350   */          add r27, r14, -r30
+/*  351   */          max r31, c1.yyyy, c1.yyyy
+/*  352   */          mul r32, r2, r31.xxxx
+/*  353   */          add r31, r27, -r32
+/*  354   */          serialize
+                      tfetch2D r27, r31.xy, tf0
+/*  355   */          add r31, r14, -r30
+/*   26.0 */       exec
+/*  356   */          serialize
+                      tfetch2D r32, r31.xy, tf0
+/*  357   */          add r31, r14, -r30
+/*  358   */          max r30, c1.yyyy, c1.yyyy
+/*  359   */          mul r33, r2, r30.xxxx
+/*  360   */          add r30, r31, r33
+/*  361   */          serialize
+                      tfetch2D r31, r30.xy, tf0
+/*   26.1 */       exec
+/*  362   */          max r30, c1.xxxx, c1.xxxx
+/*  363   */          mul r33, r2, r30.xxxx
+/*  364   */          mul r30, r33, r15.xxxx
+/*  365   */          mul r33, r30, c42.xxxx
+/*  366   */          add r30, r14, -r33
+/*  367   */          max r34, c1.yyyy, c1.yyyy
+/*   27.0 */       exec
+/*  368   */          mul r35, r2, r34.xxxx
+/*  369   */          add r34, r30, -r35
+/*  370   */          serialize
+                      tfetch2D r30, r34.xy, tf0
+/*  371   */          add r34, r14, -r33
+/*  372   */          serialize
+                      tfetch2D r35, r34.xy, tf0
+/*  373   */          add r34, r14, -r33
+/*   27.1 */       exec
+/*  374   */          max r33, c1.yyyy, c1.yyyy
+/*  375   */          mul r36, r2, r33.xxxx
+/*  376   */          add r33, r34, r36
+/*  377   */          serialize
+                      tfetch2D r34, r33.xy, tf0
+/*  378   */          max r33, c1.xxxx, c1.xxxx
+/*  379   */          mul r36, r2, r33.xxxx
+/*   28.0 */       exec
+/*  380   */          mul r33, r36, r15.xxxx
+/*  381   */          mul r36, r33, c43.xxxx
+/*  382   */          add r33, r14, -r36
+/*  383   */          max r37, c1.yyyy, c1.yyyy
+/*  384   */          mul r38, r2, r37.xxxx
+/*  385   */          add r37, r33, -r38
+/*   28.1 */       exec
+/*  386   */          serialize
+                      tfetch2D r33, r37.xy, tf0
+/*  387   */          add r37, r14, -r36
+/*  388   */          serialize
+                      tfetch2D r38, r37.xy, tf0
+/*  389   */          add r37, r14, -r36
+/*  390   */          max r36, c1.yyyy, c1.yyyy
+/*  391   */          mul r39, r2, r36.xxxx
+/*   29.0 */       exec
+/*  392   */          add r36, r37, r39
+/*  393   */          serialize
+                      tfetch2D r37, r36.xy, tf0
+/*  394   */          max r36, c1.xxxx, c1.xxxx
+/*  395   */          mul r39, r2, r36.xxxx
+/*  396   */          mul r36, r39, r15.xxxx
+/*  397   */          mul r39, r36, c44.xxxx
+/*   29.1 */       exec
+/*  398   */          add r36, r14, -r39
+/*  399   */          max r40, c1.yyyy, c1.yyyy
+/*  400   */          mul r41, r2, r40.xxxx
+/*  401   */          add r40, r36, -r41
+/*  402   */          serialize
+                      tfetch2D r36, r40.xy, tf0
+/*  403   */          add r40, r14, -r39
+/*   30.0 */       exec
+/*  404   */          serialize
+                      tfetch2D r41, r40.xy, tf0
+/*  405   */          add r40, r14, -r39
+/*  406   */          max r39, c1.yyyy, c1.yyyy
+/*  407   */          mul r42, r2, r39.xxxx
+/*  408   */          add r39, r40, r42
+/*  409   */          serialize
+                      tfetch2D r40, r39.xy, tf0
+/*   30.1 */       exec
+/*  410   */          max r39, c1.xxxx, c1.xxxx
+/*  411   */          mul r42, r2, r39.xxxx
+/*  412   */          mul r39, r42, r15.xxxx
+/*  413   */          add r15, r14, -r39
+/*  414   */          max r42, c1.yyyy, c1.yyyy
+/*  415   */          mul r43, r2, r42.xxxx
+/*   31.0 */       exec
+/*  416   */          add r42, r15, -r43
+/*  417   */          serialize
+                      tfetch2D r15, r42.xy, tf0
+/*  418   */          add r42, r14, -r39
+/*  419   */          serialize
+                      tfetch2D r43, r42.xy, tf0
+/*  420   */          add r42, r14, -r39
+/*  421   */          max r39, c1.yyyy, c1.yyyy
+/*   31.1 */       exec
+/*  422   */          mul r44, r2, r39.xxxx
+/*  423   */          add r39, r42, r44
+/*  424   */          serialize
+                      tfetch2D r42, r39.xy, tf0
+/*  425   */          tfetch2D r39, r14.xy, tf1
+/*   32.0 */       alloc colors
+/*   32.1 */       exec    // PredicateClean=false
+/*  426   */          max r14, c4, c4
+/*  427   */          add r44, r14, -c0.xxxx
+/*  428   */          setp_gt r0._, r44.x
+/*   33.0 */  (p0) exec
+/*  429   */     (p0) add r14, r3, r4
+/*  430   */     (p0) add r3, r14, r5
+/*  431   */     (p0) add r4, r3, r6
+/*  432   */     (p0) mul r3, r4, c45.xxxx
+/*  433   */     (p0) max r4, r3.xxxx, r3.xxxx
+/*  434   */     (p0) max r5, r3.yyyy, r3.yyyy
+/*   33.1 */  (p0) exec
+/*  435   */     (p0) max r6, r3.zzzz, r3.zzzz
+/*  436   */     (p0) max r14, r5, r6
+/*  437   */     (p0) max r5, r4, r14
+/*  438   */     (p0) max r4, c46, c46
+/*  439   */     (p0) add r6, r5, -r4
+/*  440   */     (p0) add r5, c47, -r4
+/*   34.0 */  (p0) exec
+/*  441   */     (p0) rcp r4, r5.x
+/*  442   */     (p0) mul_sat r5, r6, r4
+/*  443   */     (p0) add r4, r5, r5
+/*  444   */     (p0) add r6, c34, -r4
+/*  445   */     (p0) mul r4, r5, r5
+/*  446   */     (p0) mul r5, r4, r6
+/*   34.1 */  (p0) exec
+/*  447   */     (p0) mul r4, r3, r5.xxxx
+/*  448   */     (p0) min r3, r4, c48
+/*  449   */     (p0) max r4.xyz_, r3, r3
+/*  450   */     (p0) max r4.___w, c28, c28
+/*   35.0 */ (!p0) exec
+/*  451   */    (!p0) max r3, c49, c49
+/*  452   */    (!p0) add r5, r3, -c0.xxxx
+/*  453   */    (!p0) mul r3, r1, c50.xxxx
+/*  454   */    (!p0) add r1, r8, r9
+/*  455   */    (!p0) mul r6, r1, c51.xxxx
+/*  456   */    (!p0) add r1, r3, r6
+/*   35.1 */ (!p0) exec
+/*  457   */    (!p0) add r3, r10, r11
+/*  458   */    (!p0) mul r6, r3, c26.xxxx
+/*  459   */    (!p0) add r3, r1, r6
+/*  460   */    (!p0) max r1.xyz_, r3, r3
+/*  461   */    (!p0) max r1.___w, c28, c28
+/*  462   */    (!p0) max r3, c12, c12
+/*   36.0 */ (!p0) exec
+/*  463   */    (!p0) max r6, r3, r3
+/*  464   */    (!p0) max r3, c12.xxxx, c12.xxxx
+/*  465   */    (!p0) max r8, r12.xxxx, r12.xxxx
+/*  466   */    (!p0) add r9, r3, r8
+/*  467   */    (!p0) max r6.x___, r9, r9
+/*  468   */    (!p0) max r3, r6, r6
+/*   36.1 */ (!p0) exec
+/*  469   */    (!p0) max r8, r6.yyyy, r6.yyyy
+/*  470   */    (!p0) max r6, r17.yyyy, r17.yyyy
+/*  471   */    (!p0) add r9, r8, r6
+/*  472   */    (!p0) max r3._y__, r9, r9
+/*  473   */    (!p0) max r6, r3, r3
+/*  474   */    (!p0) max r8, r3.zzzz, r3.zzzz
+/*   37.0 */ (!p0) exec
+/*  475   */    (!p0) max r3, r16.zzzz, r16.zzzz
+/*  476   */    (!p0) add r9, r8, r3
+/*  477   */    (!p0) max r6.__z_, r9, r9
+/*  478   */    (!p0) max r3, r6, r6
+/*  479   */    (!p0) max r8, r6.xxxx, r6.xxxx
+/*  480   */    (!p0) max r6, r13.xxxx, r13.xxxx
+/*   37.1 */ (!p0) exec
+/*  481   */    (!p0) add r9, r8, r6
+/*  482   */    (!p0) max r3.x___, r9, r9
+/*  483   */    (!p0) max r6, r3, r3
+/*  484   */    (!p0) max r8, r3.yyyy, r3.yyyy
+/*  485   */    (!p0) max r3, r20.yyyy, r20.yyyy
+/*  486   */    (!p0) add r9, r8, r3
+/*   38.0 */ (!p0) exec
+/*  487   */    (!p0) max r6._y__, r9, r9
+/*  488   */    (!p0) max r3, r6, r6
+/*  489   */    (!p0) max r8, r6.zzzz, r6.zzzz
+/*  490   */    (!p0) max r6, r19.zzzz, r19.zzzz
+/*  491   */    (!p0) add r9, r8, r6
+/*  492   */    (!p0) max r3.__z_, r9, r9
+/*   38.1 */ (!p0) exec
+/*  493   */    (!p0) max r6, r3, r3
+/*  494   */    (!p0) max r8, r3.xxxx, r3.xxxx
+/*  495   */    (!p0) max r3, r18.xxxx, r18.xxxx
+/*  496   */    (!p0) add r9, r8, r3
+/*  497   */    (!p0) max r6.x___, r9, r9
+/*  498   */    (!p0) max r3, r6, r6
+/*   39.0 */ (!p0) exec
+/*  499   */    (!p0) max r8, r6.yyyy, r6.yyyy
+/*  500   */    (!p0) max r6, r23.yyyy, r23.yyyy
+/*  501   */    (!p0) add r9, r8, r6
+/*  502   */    (!p0) max r3._y__, r9, r9
+/*  503   */    (!p0) max r6, r3, r3
+/*  504   */    (!p0) max r8, r3.zzzz, r3.zzzz
+/*   39.1 */ (!p0) exec
+/*  505   */    (!p0) max r3, r22.zzzz, r22.zzzz
+/*  506   */    (!p0) add r9, r8, r3
+/*  507   */    (!p0) max r6.__z_, r9, r9
+/*  508   */    (!p0) max r3, r6, r6
+/*  509   */    (!p0) max r8, r6.xxxx, r6.xxxx
+/*  510   */    (!p0) max r6, r21.xxxx, r21.xxxx
+/*   40.0 */ (!p0) exec
+/*  511   */    (!p0) add r9, r8, r6
+/*  512   */    (!p0) max r3.x___, r9, r9
+/*  513   */    (!p0) max r6, r3, r3
+/*  514   */    (!p0) max r8, r3.yyyy, r3.yyyy
+/*  515   */    (!p0) max r3, r26.yyyy, r26.yyyy
+/*  516   */    (!p0) add r9, r8, r3
+/*   40.1 */ (!p0) exec
+/*  517   */    (!p0) max r6._y__, r9, r9
+/*  518   */    (!p0) max r3, r6, r6
+/*  519   */    (!p0) max r8, r6.zzzz, r6.zzzz
+/*  520   */    (!p0) max r6, r25.zzzz, r25.zzzz
+/*  521   */    (!p0) add r9, r8, r6
+/*  522   */    (!p0) max r3.__z_, r9, r9
+/*   41.0 */ (!p0) exec
+/*  523   */    (!p0) max r6, r3, r3
+/*  524   */    (!p0) max r8, r3.xxxx, r3.xxxx
+/*  525   */    (!p0) max r3, r24.xxxx, r24.xxxx
+/*  526   */    (!p0) add r9, r8, r3
+/*  527   */    (!p0) max r6.x___, r9, r9
+/*  528   */    (!p0) max r3, r6, r6
+/*   41.1 */ (!p0) exec
+/*  529   */    (!p0) max r8, r6.yyyy, r6.yyyy
+/*  530   */    (!p0) max r6, r29.yyyy, r29.yyyy
+/*  531   */    (!p0) add r9, r8, r6
+/*  532   */    (!p0) max r3._y__, r9, r9
+/*  533   */    (!p0) max r6, r3, r3
+/*  534   */    (!p0) max r8, r3.zzzz, r3.zzzz
+/*   42.0 */ (!p0) exec
+/*  535   */    (!p0) max r3, r28.zzzz, r28.zzzz
+/*  536   */    (!p0) add r9, r8, r3
+/*  537   */    (!p0) max r6.__z_, r9, r9
+/*  538   */    (!p0) max r3, r6, r6
+/*  539   */    (!p0) max r8, r6.xxxx, r6.xxxx
+/*  540   */    (!p0) max r6, r27.xxxx, r27.xxxx
+/*   42.1 */ (!p0) exec
+/*  541   */    (!p0) add r9, r8, r6
+/*  542   */    (!p0) max r3.x___, r9, r9
+/*  543   */    (!p0) max r6, r3, r3
+/*  544   */    (!p0) max r8, r3.yyyy, r3.yyyy
+/*  545   */    (!p0) max r3, r32.yyyy, r32.yyyy
+/*  546   */    (!p0) add r9, r8, r3
+/*   43.0 */ (!p0) exec
+/*  547   */    (!p0) max r6._y__, r9, r9
+/*  548   */    (!p0) max r3, r6, r6
+/*  549   */    (!p0) max r8, r6.zzzz, r6.zzzz
+/*  550   */    (!p0) max r6, r31.zzzz, r31.zzzz
+/*  551   */    (!p0) add r9, r8, r6
+/*  552   */    (!p0) max r3.__z_, r9, r9
+/*   43.1 */ (!p0) exec
+/*  553   */    (!p0) max r6, r3, r3
+/*  554   */    (!p0) max r8, r3.xxxx, r3.xxxx
+/*  555   */    (!p0) max r3, r30.xxxx, r30.xxxx
+/*  556   */    (!p0) add r9, r8, r3
+/*  557   */    (!p0) max r6.x___, r9, r9
+/*  558   */    (!p0) max r3, r6, r6
+/*   44.0 */ (!p0) exec
+/*  559   */    (!p0) max r8, r6.yyyy, r6.yyyy
+/*  560   */    (!p0) max r6, r35.yyyy, r35.yyyy
+/*  561   */    (!p0) add r9, r8, r6
+/*  562   */    (!p0) max r3._y__, r9, r9
+/*  563   */    (!p0) max r6, r3, r3
+/*  564   */    (!p0) max r8, r3.zzzz, r3.zzzz
+/*   44.1 */ (!p0) exec
+/*  565   */    (!p0) max r3, r34.zzzz, r34.zzzz
+/*  566   */    (!p0) add r9, r8, r3
+/*  567   */    (!p0) max r6.__z_, r9, r9
+/*  568   */    (!p0) max r3, r6, r6
+/*  569   */    (!p0) max r8, r6.xxxx, r6.xxxx
+/*  570   */    (!p0) max r6, r33.xxxx, r33.xxxx
+/*   45.0 */ (!p0) exec
+/*  571   */    (!p0) add r9, r8, r6
+/*  572   */    (!p0) max r3.x___, r9, r9
+/*  573   */    (!p0) max r6, r3, r3
+/*  574   */    (!p0) max r8, r3.yyyy, r3.yyyy
+/*  575   */    (!p0) max r3, r38.yyyy, r38.yyyy
+/*  576   */    (!p0) add r9, r8, r3
+/*   45.1 */ (!p0) exec
+/*  577   */    (!p0) max r6._y__, r9, r9
+/*  578   */    (!p0) max r3, r6, r6
+/*  579   */    (!p0) max r8, r6.zzzz, r6.zzzz
+/*  580   */    (!p0) max r6, r37.zzzz, r37.zzzz
+/*  581   */    (!p0) add r9, r8, r6
+/*  582   */    (!p0) max r3.__z_, r9, r9
+/*   46.0 */ (!p0) exec
+/*  583   */    (!p0) max r6, r3, r3
+/*  584   */    (!p0) max r8, r3.xxxx, r3.xxxx
+/*  585   */    (!p0) max r3, r36.xxxx, r36.xxxx
+/*  586   */    (!p0) add r9, r8, r3
+/*  587   */    (!p0) max r6.x___, r9, r9
+/*  588   */    (!p0) max r3, r6, r6
+/*   46.1 */ (!p0) exec
+/*  589   */    (!p0) max r8, r6.yyyy, r6.yyyy
+/*  590   */    (!p0) max r6, r41.yyyy, r41.yyyy
+/*  591   */    (!p0) add r9, r8, r6
+/*  592   */    (!p0) max r3._y__, r9, r9
+/*  593   */    (!p0) max r6, r3, r3
+/*  594   */    (!p0) max r8, r3.zzzz, r3.zzzz
+/*   47.0 */ (!p0) exec
+/*  595   */    (!p0) max r3, r40.zzzz, r40.zzzz
+/*  596   */    (!p0) add r9, r8, r3
+/*  597   */    (!p0) max r6.__z_, r9, r9
+/*  598   */    (!p0) max r3, r6, r6
+/*  599   */    (!p0) max r8, r6.xxxx, r6.xxxx
+/*  600   */    (!p0) max r6, r15.xxxx, r15.xxxx
+/*   47.1 */ (!p0) exec
+/*  601   */    (!p0) add r9, r8, r6
+/*  602   */    (!p0) max r3.x___, r9, r9
+/*  603   */    (!p0) max r6, r3, r3
+/*  604   */    (!p0) max r8, r3.yyyy, r3.yyyy
+/*  605   */    (!p0) max r3, r43.yyyy, r43.yyyy
+/*  606   */    (!p0) add r9, r8, r3
+/*   48.0 */ (!p0) exec
+/*  607   */    (!p0) max r6._y__, r9, r9
+/*  608   */    (!p0) max r3, r6, r6
+/*  609   */    (!p0) max r8, r6.zzzz, r6.zzzz
+/*  610   */          serialize
+                (!p0) max r6, r42.zzzz, r42.zzzz
+/*  611   */    (!p0) add r9, r8, r6
+/*  612   */    (!p0) max r3.__z_, r9, r9
+/*   48.1 */ (!p0) exec
+/*  613   */    (!p0) mul r6, r3, c27
+/*  614   */          serialize
+                (!p0) mul r3, r39, c52.xxxx
+/*  615   */    (!p0) add r8, r6, r3
+/*  616   */    (!p0) mul r3, c27, r7
+/*  617   */    (!p0) add r6, c28, r3
+/*  618   */    (!p0) mul r3, r8, r6.xxxx
+/*   49.0 */ (!p0) exec
+/*  619   */    (!p0) mul r6, r3, c53.xxxx
+/*  620   */    (!p0) mul r3, r6, c54.xxxx
+/*  621   */    (!p0) add r7, r3, c55
+/*  622   */    (!p0) mul r3, r6, r7
+/*  623   */    (!p0) mul r7, r6, c56.xxxx
+/*  624   */    (!p0) add r8, r7, c57
+/*   49.1 */ (!p0) exec
+/*  625   */    (!p0) mul r7, r6, r8
+/*  626   */    (!p0) add r6, r7, c58
+/*  627   */    (!p0) rcp r7, r6.x
+/*  628   */    (!p0) mul r8.x___, r3, r7
+/*  629   */    (!p0) rcp r7, r6.y
+/*  630   */    (!p0) mul r8._y__, r3, r7
+/*   50.0 */ (!p0) exec
+/*  631   */    (!p0) rcp r7, r6.z
+/*  632   */    (!p0) mul r8.__z_, r3, r7
+/*  633   */    (!p0) max_sat r3, r8, r8
+/*  634   */    (!p0) log r6, r3.x
+/*  635   */    (!p0) mul r7, r6, c59.xxxx
+/*  636   */    (!p0) exp r6, r7.w
+/*   50.1 */ (!p0) exec
+/*  637   */    (!p0) max r7.x___, r6, r6
+/*  638   */    (!p0) log r6, r3.y
+/*  639   */    (!p0) mul r8, r6, c59.yyyy
+/*  640   */    (!p0) exp r6, r8.w
+/*  641   */    (!p0) max r7._y__, r6, r6
+/*  642   */    (!p0) log r6, r3.z
+/*   51.0 */ (!p0) exec
+/*  643   */    (!p0) mul r3, r6, c59.zzzz
+/*  644   */    (!p0) exp r6, r3.w
+/*  645   */    (!p0) max r7.__z_, r6, r6
+/*  646   */    (!p0) max r3, c1.wwww, c1.wwww
+/*  647   */    (!p0) dp2add r6, r2, r2, c12
+/*  648   */    (!p0) mul r2, r3, r6
+/*   51.1 */ (!p0) exec
+/*  649   */    (!p0) mul r3, r2, c49
+/*  650   */    (!p0) add r2, c28, -r3
+/*  651   */    (!p0) mul r3, r7, r2.xxxx
+/*  652   */    (!p0) dp3 r2, r3, c60
+/*  653   */    (!p0) max r6, c2.xxxx, c2.xxxx
+/*  654   */    (!p0) add r7, r3, -r2
+/*   52.0 */ (!p0) exec
+/*  655   */    (!p0) mad r3, r7, r6, r2
+/*  656   */    (!p0) max r2, c1.zzzz, c1.zzzz
+/*  657   */    (!p0) add r6, c3, -r3
+/*  658   */    (!p0) mad r7, r6, r2, r3
+/*  659   */    (!p0) max r2.xyz_, r7, r7
+/*  660   */    (!p0) max r2.___w, c28, c28
+/*   52.1 */ (!p0) exec
+/*  661   */    (!p0) cndgt r4, r5, r1, r2
+/*   53.0 */       exece
+/*  662   */          max oC0, r4, r4
+/*   53.1 */       cnop
+

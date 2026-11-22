@@ -1,0 +1,14 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen_lean_debug/road.frag.bin (564 B)
+/*    0.0 */       alloc colors
+/*    0.1 */       exec
+/*    2   */          add r0.xyz_, c0, -r4.xxxx
+/*    3   */          add r1.xyz_, c2, -r4.xxxx
+/*    4   */          sgt r2.xyz_, c4, r4.xxxx
+/*    5   */          add r3.xyz_, c5.xyzx, -c6.xyzx
+/*    6   */          mad r4.xyz_, r3, r2, c6.xyzx
+/*    7   */          cndgt r2.xyz_, r1, c3, r4
+/*    1.0 */       exece
+/*    8   */          max oC0.___1, r0, r0
+/*    9   */          cndgt oC0.xyz_, r0, c1, r2
+/*    1.1 */       cnop
+

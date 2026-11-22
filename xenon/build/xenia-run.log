@@ -1,0 +1,716 @@
+/usr/lib/x86_64-linux-gnu/gvfs/libgvfscommon.so: undefined symbol: g_variant_builder_init_static
+Failed to load module: /usr/lib/x86_64-linux-gnu/gio/modules/libgvfsdbus.so
+i> 000855FD Storage root: /home/davey/.local/share/Xenia
+i> 000855FD ----------- CONFIG DUMP -----------
+
+[APU]
+apu = "any"                                       	
+enable_xmp = true                                 	
+ffmpeg_verbose = false                            	
+mute = false                                      	
+use_dedicated_xma_thread = true                   	
+xma_decoder = "new"                               	
+
+[CPU]
+break_condition_gpr = -1                          	
+break_condition_op = "eq"                         	
+break_condition_truncate = true                   	
+break_condition_value = 0                         	
+break_on_debugbreak = true                        	
+break_on_instruction = 0                          	
+break_on_start = false                            	
+break_on_unimplemented_instructions = true        	
+clock_no_scaling = false                          	
+clock_source_raw = false                          	
+cpu = "any"                                       	
+debugprint_trap_log = false                       	
+disable_context_promotion = false                 	
+disable_instruction_infocache = false             	
+disable_prefetch_and_cachecontrol = true          	
+disassemble_functions = false                     	
+dump_translated_hir_functions = false             	
+elide_e0_check = false                            	
+emit_inline_mmio_checks = false                   	
+emit_mmio_aware_stores_for_recorded_exception_addresses = true	
+emit_source_annotations = false                   	
+enable_early_precompilation = false               	
+full_optimization_even_with_debug = false         	
+ignore_trap_instructions = true                   	
+ignore_undefined_externs = true                   	
+inline_loadclock = false                          	
+inline_mmio_access = true                         	
+load_module_map = ""                              	
+no_reserved_ops = false                           	
+no_round_to_single = false                        	
+permit_float_constant_evaluation = false          	
+pvr = 7407360                                     	
+record_mmio_access_exceptions = true              	
+store_all_context_values = false                  	
+trace_function_coverage = false                   	
+trace_function_data = false                       	
+trace_function_data_path = ""                     	
+trace_function_references = false                 	
+trace_functions = false                           	
+use_fast_dot_product = true                       	
+validate_hir = false                              	
+writable_code_segments = false                    	
+
+[Config]
+defaults_date = 2026111212                        	
+
+[Content]
+license_mask = 0                                  	
+
+[Display]
+fullscreen = false                                	
+host_present_from_non_ui_thread = true            	
+postprocess_antialiasing = ""                     	
+postprocess_dither = true                         	
+postprocess_ffx_cas_additional_sharpness = 0      	
+postprocess_ffx_fsr_max_upsampling_passes = 4     	
+postprocess_ffx_fsr_sharpness_reduction = 0.20000000298023224	
+postprocess_scaling_and_sharpening = ""           	
+present_letterbox = true                          	
+present_render_pass_clear = true                  	
+present_safe_area_x = 100                         	
+present_safe_area_y = 100                         	
+
+[GPU]
+anisotropic_override = -1                         	
+async_shader_compilation = true                   	
+clear_memory_page_state = false                   	
+depth_bias_shader_offset = false                  	
+depth_float24_convert_in_pixel_shader = false     	
+depth_float24_round = false                       	
+draw_resolution_scale_threshold = 0               	
+draw_resolution_scale_x = 1                       	
+draw_resolution_scale_y = 1                       	
+draw_resolution_scaled_texture_offsets = true     	
+edram_tile_count = "standard"                     	
+force_depth_clamp = false                         	
+framerate_limit = 0                               	
+gpu = "any"                                       	
+gpu_3d_to_2d_texture = true                       	
+gpu_allow_invalid_fetch_constants = true          	
+gpu_allow_invalid_upload_range = false            	
+mulsc_round_toward_zero = false                   	
+native_stencil_value_output = true                	
+occlusion_query = "fast"                          	
+occlusion_query_fake_lower_threshold = 80         	
+occlusion_query_fake_upper_threshold = 100        	
+occlusion_query_full_counters = false             	
+occlusion_query_viz = false                       	
+readback_memexport = false                        	
+readback_resolve = "none"                         	
+readback_resolve_half_pixel_offset = false        	
+render_target_path_vulkan = ""                    	
+resolve_resolution_scale_fill_half_pixel_offset = true	
+spirv_disable_rounding_mode_rte = false           	
+texture_point_snap = false                        	
+vsync = true                                      	
+window_offset_in_edram = true                     	
+xenos_sample_positions = false                    	
+
+[GPU.Debug]
+aliased_depth_read_only = true                    	
+debug_msaa_2x_as_4x = false                       	
+depth_transfer_not_equal_test = true              	
+dump_shaders = ""                                 	
+execute_unclipped_draw_vs_on_cpu = true           	
+execute_unclipped_draw_vs_on_cpu_for_psi_render_backend = true	
+execute_unclipped_draw_vs_on_cpu_with_scissor = false	
+force_convert_line_loops_to_strips = false        	
+force_convert_quad_lists_to_triangle_lists = false	
+force_convert_triangle_fans_to_lists = false      	
+gamma_render_target_as_unorm16 = true             	
+half_pixel_offset = true                          	
+ignore_32bit_vertex_index_support = false         	
+mrt_edram_used_range_clamp_to_min = true          	
+no_discard_stencil_in_transfer_pipelines = false  	
+non_seamless_cube_map = true                      	
+primitive_processor_cache_min_indices = 4096      	
+snorm16_render_target_full_range = true           	
+store_shaders = true                              	
+target_trace_file = ""                            	
+texture_cache_memory_limit_hard = 768             	
+texture_cache_memory_limit_render_to_texture = 24 	
+texture_cache_memory_limit_soft = 384             	
+texture_cache_memory_limit_soft_lifetime = 30     	
+tiled_shared_memory = true                        	
+trace_dump_path = ""                              	
+trace_gpu_frames = ""                             	
+trace_gpu_prefix = "scratch/gpu/"                 	
+trace_gpu_stream = false                          	
+
+[General]
+allow_game_relative_writes = true                 	
+allow_plugins = false                             	
+apply_patches = true                              	
+controller_hotkeys = false                        	
+debug = false                                     	
+disable_doubleclick_fullscreen = false            	
+discord = true                                    	
+launch_module = ""                                	
+notification_sound_path = ""                      	
+priority_class = 0                                	
+recent_titles_entry_amount = 10                   	
+time_scalar = 1                                   	
+
+[HID]
+controller_subtypes = ""                          	
+guide_button = true                               	
+guitar_whammy_on_stick = ""                       	
+hid = "any"                                       	
+keyboard_mode = 0                                 	
+keyboard_user_index = 0                           	
+left_stick_deadzone_percentage = 0                	
+right_stick_deadzone_percentage = 0               	
+vibration = true                                  	
+
+[HID.Key]
+keybind_a = "0xBA"                                	
+keybind_b = "0xDE"                                	
+keybind_back = "Z"                                	
+keybind_dpad_down = "^S"                          	
+keybind_dpad_left = "^A"                          	
+keybind_dpad_right = "^D"                         	
+keybind_dpad_up = "^W"                            	
+keybind_guide = "0x08"                            	
+keybind_left_shoulder = "1"                       	
+keybind_left_thumb = "F"                          	
+keybind_left_thumb_down = "_S"                    	
+keybind_left_thumb_left = "_A"                    	
+keybind_left_thumb_right = "_D"                   	
+keybind_left_thumb_up = "_W"                      	
+keybind_left_trigger = "Q I"                      	
+keybind_right_shoulder = "3"                      	
+keybind_right_thumb = "K"                         	
+keybind_right_thumb_down = "0x28"                 	
+keybind_right_thumb_left = "0x25"                 	
+keybind_right_thumb_right = "0x27"                	
+keybind_right_thumb_up = "0x26"                   	
+keybind_right_trigger = "E O"                     	
+keybind_start = "X"                               	
+keybind_x = "L"                                   	
+keybind_y = "P"                                   	
+
+[Kernel]
+allow_avatar_initialization = false               	
+allow_incompatible_title_update = false           	
+allow_mic_initialization = false                  	
+apply_title_update = true                         	
+cl = ""                                           	
+console_type = -1                                 	
+default_achievements_backend = "GPD"              	
+ignore_thread_affinities = true                   	
+ignore_thread_priorities = false                  	
+kernel_build_version = 1888                       	
+kernel_cert_monitor = false                       	
+kernel_debug_monitor = false                      	
+kernel_display_gamma_power = 2.22222233           	
+kernel_display_gamma_type = 2                     	
+kernel_pix = false                                	
+staging_mode = false                              	
+
+[Linux]
+use_shm_open = false                              	
+
+[Logging]
+disassemble_pm4 = false                           	
+flush_log = true                                  	
+log_file = ""                                     	
+log_guest_driven_gpu_register_written_values = false	
+log_high_frequency_kernel_calls = false           	
+log_level = 2                                     	
+log_mask = 0                                      	
+log_ringbuffer_kickoff_initiator_bts = false      	
+log_string_format_kernel_calls = false            	
+log_to_debugprint = false                         	
+log_to_stdout = true                              	
+
+[Memory]
+ignore_offset_for_ranged_allocations = false      	
+protect_on_release = false                        	
+protect_zero = true                               	
+scribble_heap = false                             	
+scribble_heap_value = 0                           	
+writable_executable_memory = true                 	
+
+[Profiles]
+logged_profile_slot_0_xuid = "E03000001FC6DA69"   	
+logged_profile_slot_1_xuid = ""                   	
+logged_profile_slot_2_xuid = ""                   	
+logged_profile_slot_3_xuid = ""                   	
+
+[SDL]
+mappings_file = "gamecontrollerdb.txt"            	
+
+[Storage]
+cache_root = ""                                   	
+content_root = ""                                 	
+force_mount_devkit = false                        	
+mount_cache = true                                	
+mount_memory_unit = false                         	
+mount_scratch = false                             	
+storage_root = ""                                 	
+
+[UI]
+custom_font_path = ""                             	
+font_size = 14                                    	
+headless = false                                  	
+imgui_debug = false                               	
+profiler_dpi_scaling = false                      	
+show_achievement_notification = false             	
+show_profiler = false                             	
+storage_selection_dialog = false                  	
+window_size_x = 960                               	
+window_size_y = 755                               	
+
+[Video]
+avpack = 8                                        	
+custom_internal_display_resolution_x = 0          	
+custom_internal_display_resolution_y = 0          	
+enable_3d_mode = false                            	
+interlaced = false                                	
+
+[Vulkan]
+vulkan_allow_present_mode_fifo_relaxed = true     	
+vulkan_allow_present_mode_immediate = true        	
+vulkan_allow_present_mode_mailbox = true          	
+vulkan_depth_bias_force_unorm = true              	
+vulkan_device = -1                                	
+vulkan_log_debug_messages = true                  	
+vulkan_pipeline_creation_threads = -1             	
+vulkan_semaphore_reuse_workaround = false         	
+vulkan_sparse_shared_memory = true                	
+vulkan_validation = false                         	
+
+[x64]
+align_all_basic_blocks = 0                        	
+delay_via_maybeyield = false                      	
+enable_host_guest_stack_synchronization = true    	
+enable_incorrect_roundingmode_behavior = false    	
+enable_rmw_context_merging = false                	
+max_stackpoints = 65536                           	
+x64_extension_mask = -1                           	
+xop_arithmetic_right_shifts = false               	
+xop_compares = true                               	
+xop_left_shifts = false                           	
+xop_right_shifts = false                          	
+xop_rotates = false                               	
+----------- END OF CONFIG DUMP ----
+i> 000855FD Loaded config: /home/davey/.local/share/Xenia/xenia-canary.config.toml
+i> 000855FD Content root: /home/davey/.local/share/Xenia/content
+i> 000855FD Host cache root: /home/davey/.local/share/Xenia/cache_host
+i> 000855FD Using font /usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf
+i> 00085609 Setup: Initializing Memory...
+i> 00085609 Setup: Initializing Exports...
+i> 00085609 Setup: Initializing Processor...
+i> 00085609 Setup: Initializing Audio...
+i> 00085609 Setup: Initializing Graphics...
+i> 00085609 Setup: Initializing HID...
+i> 00085609 keyboard: "0x08" binds key 0x8 to controller input GUIDE.
+i> 00085609 keyboard: "^A" binds key 0x41 to controller input DPAD_LEFT.
+i> 00085609 keyboard: "^D" binds key 0x44 to controller input DPAD_RIGHT.
+i> 00085609 keyboard: "^S" binds key 0x53 to controller input DPAD_DOWN.
+i> 00085609 keyboard: "^W" binds key 0x57 to controller input DPAD_UP.
+i> 00085609 keyboard: "_A" binds key 0x41 to controller input LEFT_THUMB_LEFT.
+i> 00085609 keyboard: "_D" binds key 0x44 to controller input LEFT_THUMB_RIGHT.
+i> 00085609 keyboard: "_S" binds key 0x53 to controller input LEFT_THUMB_DOWN.
+i> 00085609 keyboard: "_W" binds key 0x57 to controller input LEFT_THUMB_UP.
+i> 00085609 keyboard: "F" binds key 0x46 to controller input LEFT_THUMB_PRESSED.
+i> 00085609 keyboard: "0x26" binds key 0x26 to controller input RIGHT_THUMB_UP.
+i> 00085609 keyboard: "0x28" binds key 0x28 to controller input RIGHT_THUMB_DOWN.
+i> 00085609 keyboard: "0x27" binds key 0x27 to controller input RIGHT_THUMB_RIGHT.
+i> 00085609 keyboard: "0x25" binds key 0x25 to controller input RIGHT_THUMB_LEFT.
+i> 00085609 keyboard: "K" binds key 0x4B to controller input RIGHT_THUMB_PRESSED.
+i> 00085609 keyboard: "L" binds key 0x4C to controller input X.
+i> 00085609 keyboard: "0xDE" binds key 0xDE to controller input B.
+i> 00085609 keyboard: "0xBA" binds key 0xBA to controller input A.
+i> 00085609 keyboard: "P" binds key 0x50 to controller input Y.
+i> 00085609 keyboard: "Q" binds key 0x51 to controller input LEFT_TRIGGER.
+i> 00085609 keyboard: "I" binds key 0x49 to controller input LEFT_TRIGGER.
+i> 00085609 keyboard: "E" binds key 0x45 to controller input RIGHT_TRIGGER.
+i> 00085609 keyboard: "O" binds key 0x4F to controller input RIGHT_TRIGGER.
+i> 00085609 keyboard: "Z" binds key 0x5A to controller input BACK.
+i> 00085609 keyboard: "X" binds key 0x58 to controller input START.
+i> 00085609 keyboard: "1" binds key 0x31 to controller input LEFT_SHOULDER.
+i> 00085609 keyboard: "3" binds key 0x33 to controller input RIGHT_SHOULDER.
+i> 000855FD SDL Version 3.4.20 initialized.
+i> 000855FD SDL: App name: Xenia
+i> 000855FD SDL: App version: <unspecified>
+i> 000855FD SDL: App ID: <unspecified>
+i> 000855FD SDL: SDL revision: SDL-3.4.20-f00dc91
+w> 000855FD SDL GameControllerDB: file 'gamecontrollerdb.txt' does not exist.
+i> 00085609 Setup: Initializing VFS...
+i> 00085609 PatchDB: Loaded patches for 0 titles
+i> 00085609 Setup: Initializing Kernel...
+i> 00085609 FindProfiles: Adding profile E03000001FC6DA69 to profile list
+i> 00085609 ProfileManager: Found 1 Profiles
+i> 00085609 LoadAccount: Loading Account: E03000001FC6DA69
+F> 00085609 HostPathDevice::ResolvePath()
+i> 00085609 ~ContentPackage: Closing package: User_E03000001FC6DA69 (Device: \Device\Content\1\) Device mounted: Yes
+i> 00085609 Loaded Samgribles (GUID: E03000001FC6DA69) to slot 0
+F> 00085609 HostPathDevice::ResolvePath(FFFE07D1.gpd)
+F> 00085609 HostPathDevice::ResolvePath(302F475A.gpd)
+F> 00085609 HostPathDevice::ResolvePath(400EB75D.gpd)
+F> 00085609 HostPathDevice::ResolvePath(C0EE4AC5.gpd)
+F> 00085609 HostPathDevice::ResolvePath()
+F> 00085609 HostPathDevice::ResolvePath()
+w> 00085609 BaseHeap::AllocFixed attempting commit on unreserved page
+w> 00085609 BaseHeap::AllocFixed attempting commit on unreserved page
+w> 00085609 BaseHeap::AllocFixed attempting commit on unreserved page
+i> 00085609 Setup: Starting graphics_system...
+i> 00085609 Vulkan instance API version 1.4.309. Enabled layers and extensions:
+i> 00085609 * VK_KHR_surface
+i> 00085609 * VK_KHR_xcb_surface
+i> 00085609 * VK_EXT_debug_utils
+i> 00085609 * VK_KHR_portability_enumeration
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): linux_read_sorted_physical_devices: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Original order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] llvmpipe (LLVM 19.1.7, 256 bits) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] AMD Radeon RX 7800 XT (RADV NAVI32) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Sorted order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] AMD Radeon RX 7800 XT (RADV NAVI32)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] llvmpipe (LLVM 19.1.7, 256 bits)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): linux_read_sorted_physical_devices: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Original order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] llvmpipe (LLVM 19.1.7, 256 bits) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] AMD Radeon RX 7800 XT (RADV NAVI32) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Sorted order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] AMD Radeon RX 7800 XT (RADV NAVI32)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] llvmpipe (LLVM 19.1.7, 256 bits)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): linux_read_sorted_physical_devices: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Original order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] llvmpipe (LLVM 19.1.7, 256 bits) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] AMD Radeon RX 7800 XT (RADV NAVI32) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Sorted order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] AMD Radeon RX 7800 XT (RADV NAVI32)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] llvmpipe (LLVM 19.1.7, 256 bits)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): linux_read_sorted_physical_devices: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Original order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] llvmpipe (LLVM 19.1.7, 256 bits) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] AMD Radeon RX 7800 XT (RADV NAVI32) (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      Sorted order: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [0] AMD Radeon RX 7800 XT (RADV NAVI32)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):            [1] llvmpipe (LLVM 19.1.7, 256 bits)   (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): Removing driver libvulkan_virtio.so due to not having any physical devices (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): Removing driver libvulkan_nouveau.so due to not having any physical devices (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): Removing driver libvulkan_gfxstream.so due to not having any physical devices (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): Removing driver libvulkan_intel_hasvk.so due to not having any physical devices (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): Removing driver libvulkan_intel.so due to not having any physical devices (object 0: Instance 0x7f207414a5c0)
+w> 00085609 Available Vulkan physical devices (use the 'vulkan_device' configuration variable to force a specific device):
+w> 00085609 * 0: AMD Radeon RX 7800 XT (RADV NAVI32)
+w> 00085609 * 1: llvmpipe (LLVM 19.1.7, 256 bits)
+i> 00085609 Vulkan device 'AMD Radeon RX 7800 XT (RADV NAVI32)': API 1.4.305 (1.3 used), vendor 0x1002, device 0x747E, driver version 0x6400007
+i> 00085609 Enabled Vulkan device extensions:
+i> 00085609 * VK_KHR_swapchain
+i> 00085609 * VK_EXT_conditional_rendering
+i> 00085609 * VK_EXT_custom_border_color
+i> 00085609 * VK_EXT_depth_bias_control
+i> 00085609 * VK_EXT_fragment_shader_interlock
+i> 00085609 * VK_EXT_memory_budget
+i> 00085609 * VK_EXT_non_seamless_cube_map
+i> 00085609 * VK_EXT_shader_stencil_export
+i> 00085609 Vulkan device properties and enabled features:
+i> 00085609 * driverID: MesaRadv
+i> 00085609 * driverName: radv
+i> 00085609 * driverInfo: Mesa 25.0.7-2+deb13u1
+i> 00085609 * conformanceVersion: 1.4.0.0
+i> 00085609 * maxImageDimension2D: 16384
+i> 00085609 * maxImageDimension3D: 2048
+i> 00085609 * maxImageDimensionCube: 16384
+i> 00085609 * maxImageArrayLayers: 2048
+i> 00085609 * maxStorageBufferRange: 4294967295
+i> 00085609 * maxSamplerAllocationCount: 65536
+i> 00085609 * maxPerStageDescriptorSamplers: 8388606
+i> 00085609 * maxPerStageDescriptorStorageBuffers: 8388606
+i> 00085609 * maxPerStageDescriptorSampledImages: 8388606
+i> 00085609 * maxPerStageResources: 8388606
+i> 00085609 * maxVertexOutputComponents: 128
+i> 00085609 * maxTessellationEvaluationOutputComponents: 128
+i> 00085609 * maxGeometryInputComponents: 64
+i> 00085609 * maxGeometryOutputComponents: 128
+i> 00085609 * maxFragmentInputComponents: 128
+i> 00085609 * maxFragmentCombinedOutputResources: 8388606
+i> 00085609 * maxSamplerAnisotropy: 16
+i> 00085609 * maxViewportDimensions[0]: 16384
+i> 00085609 * maxViewportDimensions[1]: 16384
+i> 00085609 * minUniformBufferOffsetAlignment: 4
+i> 00085609 * minStorageBufferOffsetAlignment: 4
+i> 00085609 * maxFramebufferWidth: 16384
+i> 00085609 * maxFramebufferHeight: 16384
+i> 00085609 * framebufferColorSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * framebufferDepthSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * framebufferStencilSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * framebufferNoAttachmentsSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * sampledImageColorSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * sampledImageIntegerSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * sampledImageDepthSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * sampledImageStencilSampleCounts: { 1 | 2 | 4 | 8 }
+i> 00085609 * standardSampleLocations: 1
+i> 00085609 * optimalBufferCopyOffsetAlignment: 1
+i> 00085609 * optimalBufferCopyRowPitchAlignment: 1
+i> 00085609 * nonCoherentAtomSize: 64
+i> 00085609 * robustBufferAccess
+i> 00085609 * fullDrawIndexUint32
+i> 00085609 * independentBlend
+i> 00085609 * geometryShader
+i> 00085609 * tessellationShader
+i> 00085609 * sampleRateShading
+i> 00085609 * depthClamp
+i> 00085609 * fillModeNonSolid
+i> 00085609 * samplerAnisotropy
+i> 00085609 * occlusionQueryPrecise
+i> 00085609 * vertexPipelineStoresAndAtomics
+i> 00085609 * fragmentStoresAndAtomics
+i> 00085609 * shaderClipDistance
+i> 00085609 * shaderCullDistance
+i> 00085609 * sparseBinding
+i> 00085609 * sparseResidencyBuffer
+i> 00085609 * samplerMirrorClampToEdge
+i> 00085609 * uniformBufferStandardLayout
+i> 00085609 * scalarBlockLayout
+i> 00085609 * hostQueryReset
+i> 00085609 * shaderDemoteToHelperInvocation
+i> 00085609 * constantAlphaColorBlendFactors
+i> 00085609 * imageViewFormatReinterpretation
+i> 00085609 * imageViewFormatSwizzle
+i> 00085609 * pointPolygons
+i> 00085609 * separateStencilMaskRef
+i> 00085609 * shaderSampleRateInterpolationFunctions
+i> 00085609 * triangleFans
+i> 00085609 * shaderSignedZeroInfNanPreserveFloat32: 1
+i> 00085609 * shaderDenormFlushToZeroFloat32: 1
+i> 00085609 * shaderRoundingModeRTEFloat32: 1
+i> 00085609 * fragmentShaderSampleInterlock
+i> 00085609 * fragmentShaderPixelInterlock
+i> 00085609 * nonSeamlessCubeMap
+i> 00085609 * customBorderColors
+i> 00085609 * customBorderColorWithoutFormat
+i> 00085609 * conditionalRendering
+i> 00085609 * depthBiasControl
+i> 00085609 * leastRepresentableValueForceUnormRepresentation
+i> 00085609 * depthBiasExact
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): Failed to find vkGetDeviceProcAddr in layer "libVkLayer_MESA_device_select.so" (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message): vkCreateDevice layer callstack setup to: (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):    <Application> (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      || (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):    <Loader> (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):      || (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):    <Device> (object 0: Instance 0x7f207414a5c0)
+i> 00085609 Vulkan Info ({ General }, ID 0: Loader Message):        Using "AMD Radeon RX 7800 XT (RADV NAVI32)" with driver: "libvulkan_radeon.so" (object 0: Instance 0x7f207414a5c0)
+i> 00085609 XThread0100000C (1) Stack: 70010000-70030000
+K> 0100000C XThread::Execute thid 1 (handle=0100000C, 'GPU Commands (0100000C)', native=6C1FF6C0, <host>)
+i> 00085609 XThread01000010 (2) Stack: 70050000-70070000
+i> 00085609 Setup: Starting audio_system...
+K> 01000010 XThread::Execute thid 2 (handle=01000010, 'GPU Frame limiter (01000010)', native=5BFFF6C0, <host>)
+i> 00085609 XThread01000014 (3) Stack: 70090000-700B0000
+K> 01000014 XThread::Execute thid 3 (handle=01000014, 'XMA Decoder (01000014)', native=59F736C0, <host>)
+i> 00085609 XThread01000018 (4) Stack: 700D0000-700F0000
+K> 01000018 XThread::Execute thid 4 (handle=01000018, 'Audio Worker (01000018)', native=3FFFF6C0, <host>)
+i> 000855FD VulkanPresenter: Created 960x755 swapchain with format 44, color space 0, presentation mode 0
+i> 000855FD Loading module GAME:\cpp_probe.xex
+F> 000855FD HostPathDevice::ResolvePath(\cpp_probe.xex)
+i> 000855FD Module \Device\Harddisk0\Partition1\cpp_probe.xex:
+Module Hash: D0117B3DEFC82334
+    Module Flags: 00000001
+      XEX_MODULE_TITLE
+Security Header:
+     Image Flags: 00000000
+    Load Address: 82000000
+      Image Size: 000C0000
+    Export Table: 00000000
+Optional Header Count: 9
+  XEX_HEADER_RESOURCE_INFO:
+    46435052 820001B0-82000223, 115b
+  XEX_HEADER_FILE_FORMAT_INFO:
+           Info Size: 32
+     Encryption Type: None
+    Compression Type: Basic
+          Data Size: 217088
+          Zero Size: 45056
+  XEX_HEADER_ENTRY_POINT: 8205F270
+  XEX_HEADER_IMAGE_BASE_ADDRESS: 82000000
+  XEX_HEADER_IMPORT_LIBRARIES:
+    xam.xex - 52 imports
+      Version: 2.0.21256.0
+      Min Version: 2.0.1861.0
+    xboxkrnl.exe - 103 imports
+      Version: 2.0.21256.0
+      Min Version: 2.0.1861.0
+  XEX_HEADER_TLS_INFO:
+          Slot Count: 64
+    Raw Data Address: 00000000
+           Data Size: 0
+       Raw Data Size: 0
+  XEX_HEADER_DEFAULT_STACK_SIZE: 1048576
+  XEX_HEADER_SYSTEM_FLAGS: 00000021
+    XEX_SYSTEM_HANDLE_GAMEPAD_DISCONNECT
+    XEX_SYSTEM_NO_FORCED_REBOOT
+  XEX_HEADER_EXECUTION_INFO:
+       Media ID: 00000000
+       Title ID: 46435052
+    Savegame ID: 46435052
+    Disc Number / Total: 1 / 1
+Sections:
+    0 RODATA    1 pages    82000000 - 82010000 (65536 bytes)
+    1 RODATA    1 pages    82010000 - 82020000 (65536 bytes)
+    2 RODATA    1 pages    82020000 - 82030000 (65536 bytes)
+    3 RODATA    1 pages    82030000 - 82040000 (65536 bytes)
+    4 CODE      1 pages    82040000 - 82050000 (65536 bytes)
+    5 CODE      1 pages    82050000 - 82060000 (65536 bytes)
+    6 CODE      1 pages    82060000 - 82070000 (65536 bytes)
+    7 CODE      1 pages    82070000 - 82080000 (65536 bytes)
+    8 CODE      1 pages    82080000 - 82090000 (65536 bytes)
+    9 CODE      1 pages    82090000 - 820A0000 (65536 bytes)
+   10 RWDATA    1 pages    820A0000 - 820B0000 (65536 bytes)
+   11 RWDATA    1 pages    820B0000 - 820C0000 (65536 bytes)
+Imports:
+ xam - 26 imports
+   Version: 0.0.21256.32
+   Min Version: 0.0.1861.32
+
+         Total:   26
+         Known:  100% (26 known, 0 unknown)
+   Implemented:   96% (25 implemented, 1 unimplemented)
+
+   F 82007B7C 82040210 001 (   1)    NetDll_WSAStartup
+   F 82007B80 82040220 003 (   3)    NetDll_socket
+   F 82007B84 82040230 004 (   4)    NetDll_closesocket
+   F 82007B88 82040240 005 (   5)    NetDll_shutdown
+   F 82007B8C 82040250 006 (   6)    NetDll_ioctlsocket
+   F 82007B90 82040260 007 (   7)    NetDll_setsockopt
+   F 82007B94 82040270 008 (   8)    NetDll_getsockopt
+   F 82007B98 82040280 009 (   9)    NetDll_getsockname
+   F 82007B9C 82040290 00A (  10) !! NetDll_getpeername
+   F 82007BA0 820402A0 00B (  11)    NetDll_bind
+   F 82007BA4 820402B0 00C (  12)    NetDll_connect
+   F 82007BA8 820402C0 00D (  13)    NetDll_listen
+   F 82007BAC 820402D0 00E (  14)    NetDll_accept
+   F 82007BB0 820402E0 00F (  15)    NetDll_select
+   F 82007BB4 820402F0 012 (  18)    NetDll_recv
+   F 82007BB8 82040300 014 (  20)    NetDll_recvfrom
+   F 82007BBC 82040310 016 (  22)    NetDll_send
+   F 82007BC0 82040320 018 (  24)    NetDll_sendto
+   F 82007BC4 82040330 01B (  27)    NetDll_WSAGetLastError
+   F 82007BC8 82040340 033 (  51)    NetDll_XNetStartup
+   F 82007BCC 82040350 043 (  67)    NetDll_XNetDnsLookup
+   F 82007BD0 82040360 044 (  68)    NetDll_XNetDnsRelease
+   F 82007BD4 82040370 049 (  73)    NetDll_XNetGetTitleXnAddr
+   F 82007BD8 82040380 04B (  75)    NetDll_XNetGetEthernetLinkStatus
+   F 82024630 820404A0 1A4 ( 420)    XamLoaderLaunchTitle
+   F 82024634 820404B0 1A9 ( 425)    XamLoaderTerminateTitle
+
+ xboxkrnl - 53 imports
+   Version: 0.0.21256.32
+   Min Version: 0.0.1861.32
+
+         Total:   53
+         Known:  100% (53 known, 0 unknown)
+   Implemented:  100% (53 implemented, 0 unimplemented)
+
+   F 82007AEC 82040000 003 (   3)    DbgPrint
+   F 82007AF0 82040010 00D (  13)    ExCreateThread
+   F 82024614 82040430 015 (  21)    ExRegisterTitleTerminateNotification
+   F 82007AF4 82040020 019 (  25)    ExTerminateThread
+   V 82007B64          01B (  27)    ExThreadObjectType
+   F 82007AF8 82040030 05A (  90)    KeDelayExecutionThread
+   F 82007B68 820401C0 081 ( 129)    KeQueryBasePriorityThread
+   F 82007AFC 82040040 084 ( 132)    KeQuerySystemTime
+   F 82007B00 82040050 097 ( 151)    KeSetAffinityThread
+   F 82007B6C 820401D0 099 ( 153)    KeSetBasePriorityThread
+   F 82008598 82040390 0BA ( 186)    MmAllocatePhysicalMemoryEx
+   F 8200859C 820403A0 0BD ( 189)    MmFreePhysicalMemory
+   F 820085A0 820403B0 0BE ( 190)    MmGetPhysicalAddress
+   F 82024618 82040440 0C6 ( 198)    MmQueryStatistics
+   F 8202461C 82040450 0CC ( 204)    NtAllocateVirtualMemory
+   F 82007B04 82040060 0CF ( 207)    NtClose
+   F 82007B08 82040070 0D1 ( 209)    NtCreateEvent
+   F 82007B0C 82040080 0D2 ( 210)    NtCreateFile
+   F 82007B70 820401E0 0DA ( 218)    NtDuplicateObject
+   F 82007B10 82040090 0DB ( 219)    NtFlushBuffersFile
+   F 8202462C 82040490 0DC ( 220)    NtFreeVirtualMemory
+   F 82007B14 820400A0 0E7 ( 231)    NtQueryFullAttributesFile
+   F 82007B18 820400B0 0E8 ( 232)    NtQueryInformationFile
+   F 82007B1C 820400C0 0EF ( 239)    NtQueryVolumeInformationFile
+   F 82007B20 820400D0 0F0 ( 240)    NtReadFile
+   F 82007B24 820400E0 0F6 ( 246)    NtSetEvent
+   F 82007B28 820400F0 0F7 ( 247)    NtSetInformationFile
+   F 82007B2C 82040100 0FD ( 253)    NtWaitForSingleObjectEx
+   F 82007B30 82040110 0FF ( 255)    NtWriteFile
+   F 82007B34 82040120 101 ( 257)    NtYieldExecution
+   F 82007B74 820401F0 105 ( 261)    ObDereferenceObject
+   F 82007B78 82040200 110 ( 272)    ObReferenceObjectByHandle
+   F 82007B38 82040130 125 ( 293)    RtlEnterCriticalSection
+   F 82007B3C 82040140 12E ( 302)    RtlInitializeCriticalSection
+   F 82007B40 82040150 130 ( 304)    RtlLeaveCriticalSection
+   F 82007B44 82040160 141 ( 321)    RtlTryEnterCriticalSection
+   F 82007B48 82040170 152 ( 338)    KeTlsAlloc
+   F 82007B4C 82040180 153 ( 339)    KeTlsFree
+   F 82007B50 82040190 154 ( 340)    KeTlsGetValue
+   F 82007B54 820401A0 155 ( 341)    KeTlsSetValue
+   F 82007B58 820401B0 18A ( 394)    XeCryptRandom
+   V 82007B5C          1AE ( 430)    ExLoadedCommandLine
+   V 82007B60          1AF ( 431)    ExLoadedImageName
+   F 82024620 82040460 1B1 ( 433)    VdCallGraphicsNotificationRoutines
+   F 820085A4 820403C0 1B6 ( 438)    VdEnableRingBufferRPtrWriteBack
+   F 820085A8 820403D0 1BD ( 445)    VdGetSystemCommandBuffer
+   F 820085AC 820403E0 1C2 ( 450)    VdInitializeEngines
+   F 820085B0 820403F0 1C3 ( 451)    VdInitializeRingBuffer
+   F 82024624 82040470 1CA ( 458)    VdQueryVideoMode
+   F 82024628 82040480 1D5 ( 469)    VdSetGraphicsInterruptCallback
+   F 820085B4 82040400 1D9 ( 473)    VdSetSystemCommandBufferGpuIdentifierAddress
+   F 820085B8 82040410 1DC ( 476)    VdShutdownEngines
+   F 820085BC 82040420 25B ( 603)    VdSwap
+
+w> 000855FD GameDatabase: Title doesn't contain XLAST data! Multiplayer functionality might be limited.
+i> 000855FD Title name: FCF C++ Probe
+i> 000855FD 
+-------------------- ACHIEVEMENTS --------------------
++----+-------+-------------+------+------------+
+| ID | Title | Description | Type | Gamerscore |
++----+-------+-------------+------+------------+
+i> 000855FD 
+-------------------- PROPERTIES --------------------
++----+------+-------------+-----------+
+| ID | Name | Matchmaking | Data Size |
++----+------+-------------+-----------+
+i> 000855FD 
+-------------------- CONTEXTS --------------------
++----+------+-------------+---------------+-----------+
+| ID | Name | Matchmaking | Default Value | Max Value |
++----+------+-------------+---------------+-----------+
+i> 000855FD 
+-------------------- STATS VIEWS --------------------
++----+-----------+------+---------+------------+--------+-----------+-------------+
+| ID | View Type | Name | Skilled | Arbitrated | Hidden | Team View | Online Only |
++----+-----------+------+---------+------------+--------+-----------+-------------+
+i> 000855FD 
+-------------------- PRESENCE MODES --------------------
++---------------+----------------+------------------+
+| Context Value | Contexts Count | Properties Count |
++---------------+----------------+------------------+
+i> 000855FD XThread0100001C (5) Stack: 70110000-70130000
+i> 000855FD KernelState: Launching module...
+K> 0100001C XThread::Execute thid 5 (handle=0100001C, 'Kernel Dispatch (0100001C)', native=3E7FD6C0, <host>)
+i> 000855FD XThreadF8000008 (6) Stack: 70150000-70250000
+K> F8000008 XThread::Execute thid 6 (handle=F8000008, 'Main XThread (F8000008)', native=3D7FC6C0)
+i> 0100000C Loaded 0 shaders from storage
+i> 0100000C Loaded 0 pipeline descriptions, 0 shader translations needed
+F> F8000008 HostPathDevice::ResolvePath()
+F> F8000008 HostPathDevice::ResolvePath()
+i> F8000008 (DbgPrint) open: NtCreateFile(game:\net_log.txt) failed: 0xC0000034
+F> F8000008 HostPathDevice::ResolvePath()
+i> F8000008 (DbgPrint) log: game:\cpp_probe.log
+i> F8000008 (DbgPrint) log: named after \Device\Harddisk0\Partition1\cpp_probe.xex
+i> F8000008 (DbgPrint) log: no net_log.txt beside the .xex, so not over the network
+i> F8000008 (DbgPrint) log: to DbgPrint too, as dbgprint.txt asks
+i> F8000008 (DbgPrint) cpp-probe: global constructor
+i> F8000008 (DbgPrint) cpp-probe: new int[1000]
+i> F8000008 (DbgPrint) cpp-probe: vector 64 MiB
+i> F8000008 (DbgPrint) cpp-probe: string
+i> F8000008 (DbgPrint) cpp-probe: exception caught
+F> F8000008 HostPathDevice::ResolvePath()
+i> F8000008 (DbgPrint) open: NtCreateFile(game:\test.txt) failed: 0xC0000034
+i> F8000008 (DbgPrint) cpp-probe: fopen returned null

@@ -1,0 +1,31 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen/car.vert.bin (604 B)
+/*    0.0 */       exec
+/*    4   */          vfetch_full r1, r0.x, vf0
+/*    5   */          vfetch_full r2, r0.x, vf0
+/*    6   */          vfetch_full r3, r0.x, vf0
+/*    7   */          vfetch_full r4, r0.x, vf0
+/*    8   */          vfetch_full r0.xyz1, r0.x, vf0
+/*    0.1 */       alloc position
+/*    1.0 */       exec
+/*    9   */          serialize
+                      mul r5, c4, r0.xxxx
+/*   10   */          mad r5, c5, r0.yyyy, r5
+/*   11   */          mad r5, c6, r0.zzzz, r5
+/*   12   */          add r5, c7, r5
+/*   13   */          mul r0, c0, r5.xxxx
+/*   14   */          mad r0, c1, r5.yyyy, r0
+/*    1.1 */       exec
+/*   15   */          mad r0, c2, r5.zzzz, r0
+/*   16   */          mad oPos, c3, r5.wwww, r0
+/*    2.0 */       alloc interpolators
+/*    2.1 */       exec
+/*   17   */          max o0, r5, r5
+/*   18   */          mul r0, c4, r4.xxxx
+/*   19   */          mad r0, c5, r4.yyyy, r0
+/*   20   */          mad o1, c6, r4.zzzz, r0
+/*   21   */          max o2, r3, r3
+/*   22   */          max o3, r2, r2
+/*    3.0 */       exece
+/*   23   */          max o4, r1.xxxx, r1.xxxx
+/*    3.1 */       cnop
+

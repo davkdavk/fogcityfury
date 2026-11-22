@@ -1,0 +1,80 @@
+{
+  "program": "post",
+  "vertex": [],
+  "fragment": [
+    {
+      "name": "uMode",
+      "type": "float",
+      "offset": 0,
+      "size": 4
+    },
+    {
+      "name": "uDir",
+      "type": "vec2",
+      "offset": 8,
+      "size": 8
+    },
+    {
+      "name": "uBlur",
+      "type": "float",
+      "offset": 16,
+      "size": 4
+    },
+    {
+      "name": "uCA",
+      "type": "float",
+      "offset": 20,
+      "size": 4
+    },
+    {
+      "name": "uFlash",
+      "type": "float",
+      "offset": 24,
+      "size": 4
+    },
+    {
+      "name": "uVig",
+      "type": "float",
+      "offset": 28,
+      "size": 4
+    },
+    {
+      "name": "uSat",
+      "type": "float",
+      "offset": 32,
+      "size": 4
+    },
+    {
+      "name": "uRain",
+      "type": "float",
+      "offset": 36,
+      "size": 4
+    },
+    {
+      "name": "uTime",
+      "type": "float",
+      "offset": 40,
+      "size": 4
+    },
+    {
+      "name": "uFlashCol",
+      "type": "vec3",
+      "offset": 48,
+      "size": 12
+    }
+  ],
+  "samplers": [
+    {
+      "name": "uTex",
+      "type": "sampler2D",
+      "unit": 4,
+      "slot": 0
+    },
+    {
+      "name": "uBloom",
+      "type": "sampler2D",
+      "unit": 5,
+      "slot": 1
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+/home/davey/Documents/fogcityfurysrc/xenon/build/perf_lean/CMakeFiles/lean.dir
+/home/davey/Documents/fogcityfurysrc/xenon/build/perf_lean/CMakeFiles/edit_cache.dir
+/home/davey/Documents/fogcityfurysrc/xenon/build/perf_lean/CMakeFiles/rebuild_cache.dir

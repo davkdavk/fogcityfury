@@ -1,0 +1,22 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen/ui.frag.bin (596 B)
+/*    0.0 */       exec
+/*    2   */          add r0.__zw, r0.yyyy, c0.xzyw
+/*    3   */          floor r2._y_w, r0.xzyw
+/*    4   */          add r3._y__, r0.yyyy, -r2
+/*    5   */          max r2.x___, r0, r0
+              +       mulsc r2._y__, c1.x, r3.y
+/*    6   */          serialize
+                      tfetch2D r3, r2.xy, tf0
+/*    0.1 */       alloc colors
+/*    1.0 */       exec
+/*    7   */          serialize
+                      add r0.___w, r3.xxxx, -c4
+              +       subsc r0.__z_, c2.w, r0.x
+/*    8   */          mul r0._y__, r0.xwyz, c1.xwyz
+/*    9   */          mul r0.___w, r0.xzwy, r2
+/*   10   */          mad_sat r0._y__, r0.xwxx, c5.xwxx, c4.xwyz
+/*   11   */          cndgt r0.___w, r0.xywz, c3, r0.xzwy
+/*   12   */          max oC0.xyz_, r1, r1
+/*    1.1 */       exece
+/*   13   */          mul oC0.___w, r1.wwww, r0
+

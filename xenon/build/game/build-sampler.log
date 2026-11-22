@@ -1,0 +1,78 @@
+generated 10 programs into /home/davey/Documents/fogcityfurysrc/xenon/build/gen
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/world.vert
+world.vert OK (604B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/world.frag
+world.frag OK (19076B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/car.vert
+car.vert OK (604B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/car.frag
+car.frag OK (23524B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/water.vert
+water.vert OK (604B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/water.frag
+water.frag OK (41360B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/sky.vert
+sky.vert OK (576B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/sky.frag
+sky.frag OK (16164B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/part.vert
+part.vert OK (432B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/part.frag
+part.frag OK (7348B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/depth.vert
+depth.vert OK (604B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/depth.frag
+depth.frag OK (1132B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/ui.vert
+ui.vert OK (448B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/ui.frag
+ui.frag OK (336B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/mark.vert
+mark.vert OK (432B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/mark.frag
+mark.frag OK (7564B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/ring.vert
+ring.vert OK (432B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/ring.frag
+ring.frag OK (4068B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/post.vert
+post.vert OK (576B)
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/post.frag
+post.frag OK (11108B)
+ALL 20 STAGES COMPILED
+/home/davey/Documents/fogcityfurysrc/xenon/build/gen/gfx_shader_data.h
+-- The CXX compiler identification is GNU 15.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /home/davey/xsdk-gcc/bin/powerpc-xsdk-elf-g++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/davey/Documents/fogcityfurysrc/xenon/build/game
+[1/3] Building CXX object CMakeFiles/fogcityfury.dir/runtime_compat.cpp.obj
+[2/3] Building CXX object CMakeFiles/fogcityfury.dir/home/davey/Documents/fogcityfurysrc/src/game.cpp.obj
+[3/3] Linking CXX executable fogcityfury
+xenia_scan: _ZSt16__introsort_loopIPiiN9__gnu_cxx5__ops15_Iter_comp_iterIZL13showdownStartiEUliiE_EEEvT_S6_T0_T1_.isra.0: 820756e0 mcrf cr1,cr0
+xenia_scan: _ZN2UI4textEfff2V3PKciffb.constprop.0: 82088bbc rldic r10,r10,3,57
+xenia_scan: _ZL8champBarv: 8208a4f4 rldic r10,r10,3,57
+xenia_scan: _ZL9champDrawv: 8208b5e4 rldic r10,r10,3,57
+xenia_scan: _ZL19drawShowdownResultsv: 8209aaf4 rldic r10,r10,3,57
+xenia_scan: _ZL19drawShowdownResultsv: 8209b434 rldic r10,r10,3,57
+xenia_scan: _ZN5World8decorateEv: 820c4c54 rldic r4,r4,47,1
+xenia_scan: _ZL6updatef: 820f173c rldic r19,r30,8,48
+xenia_scan: _ZL6updatef: 820f1740 rldic r27,r27,24,32
+xenia_scan: _ZL6updatef: 820f1744 rldic r26,r26,16,40
+xenia_scan: has_return_type: 8211a08c rldic r10,r10,51,58
+xenia_scan: d_source_name: 8211a350 rldic r6,r6,59,53
+xenia_scan: d_encoding: 8211decc rldic r7,r7,51,58
+xenia_scan: d_encoding: 8211df10 rldic r7,r7,51,58
+xenia_scan: d_print_comp_inner: 82121038 rldic r8,r8,51,58
+xenia_scan: d_print_comp_inner: 82122e44 rldic r6,r6,51,58
+xenia_scan: d_print_mod_list.part.0: 82124ec0 rldic r10,r10,51,58
+xenia_scan: d_print_mod_list.part.0: 82125050 rldic r8,r8,51,58
+xenia_scan: d_demangle_callback.constprop.0: 82125800 rldic r9,r9,59,53
+xenia_scan: plan_values: 8214ad0c rldic r9,r4,24,8
+xenia_scan: plan_values: 8214ad1c rldic r10,r3,24,8
+xenia_scan: _dtoa_r: 82166558 rldic r10,r9,32,1
+xenia_scan: 22 instructions Xenia skips; Xenia results through these functions are unreliable

@@ -1,0 +1,67 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen/road.frag.bin (2308 B)
+/*    0.0 */       exec
+/*    6   */          mul r1, r0.xzzw, c4.xxxx
+/*    7   */          mul r4, r0.xzzw, c5.xxxx
+/*    0.1 */       exec
+/*    8   */          serialize
+                      tfetch2D r0, r1.xy, tf0
+/*    9   */          tfetch2D r7, r4.xy, tf0
+/*    1.0 */       alloc colors
+/*    1.1 */       exec
+/*   10   */          serialize
+                      max r1._yzw, r3.xxxx, -r3.xxxx
+              +       subsc r1.x___, -c9.x, -r0.z
+/*   11   */          mad r0.x___, r1, r5.yyyy, c9
+/*   12   */          mad r0._y__, c8.xxxx, r0.xxxx, c7.yxzw
+/*   13   */          mul r0.x_zw, c6.xwyz, r0.yyyy
+/*   14   */          mad r0._y__, c11.xxxx, r7.xxxx, c10.yxzw
+/*   15   */          mul r2.xy_w, r0.xzyw, r0.yyyy
+/*    2.0 */       exec
+/*   16   */          add r0.xyz_, r1.yzwx, -c14
+/*   17   */          max r3.x_zw, r0.xwyz, -r0.xwyz
+/*   18   */          mad_sat r0.xyz_, -r3.xzwx, c15.xxxx, c13
+/*   19   */          mul r3.x_zw, r0.xxxx, c16.xwyz
+/*   20   */          add r4.xyz_, c12, -r2.xywz
+/*   21   */          mad r5._yzw, r4.wxyz, r3.yxzw, r2.zxyw
+/*    2.1 */       exec
+/*   22   */          mul r2.xy_w, r3.yyyy, c18.xywz
+/*   23   */          frc r3.x_zw, r2.xzyw
+/*   24   */          sge r2.xy_w, c19.xyxz, r3.xzyw
+/*   25   */          mul r3.x_zw, r0.yyyy, r2.xzyw
+/*   26   */          max r0.xy_w, r3.xzyw, r0.zzzz
+/*   27   */          mul r2.xy_w, r0, c20.xywz
+/*    3.0 */       exec
+/*   28   */          add r0.xyz_, c17, -r5.yzwx
+/*   29   */          mad r3.x_zw, r0.xwyz, r2.xzyw, r5.yxzw
+/*   30   */          mul r0.xyz_, r3.yyyy, c23
+/*   31   */          frc r2.xy_w, r0.xywz
+/*   32   */          sge r0.xyz_, r2.xywz, c9
+/*   33   */          add r2.xy_w, c22.xyxz, -c21.xywz
+/*    3.1 */       exec
+/*   34   */          mad r4.xyz_, r2.xywz, r0, c21
+/*   35   */          sge r0.xyz_, r1.yzwx, c24
+/*   36   */          add r1.xyz_, r4, -r3.xzwy
+/*   37   */          mad r2.xy_w, r1.xywz, r0.xywz, r3.xzyw
+/*   38   */          mul r0.xyz_, c0, c25.xxxx
+/*   39   */          add r1.xyz_, r0, c26
+/*    4.0 */       exec
+/*   40   */          mul r0.x___, c1.xxxx, c27
+/*   41   */          mul r0._y__, r0.yxzw, r2.zzzz
+/*   42   */          mul r0.x_zw, c0.xwyz, r0.yyyy
+/*   43   */          mad r3.xyz_, r2.xywx, r1.xyzx, r0.xzwy
+/*   44   */          add r0.xyz_, r3, -r6
+/*   45   */          mad r1.xyz_, r0, r5.xxxx, r6
+/*    4.1 */       exec
+/*   46   */          min r0.xyz_, r1, c28
+/*   47   */          mad r1.xyz_, r0.xyzx, c30.xxxx, -c31
+/*   48   */          mad r2.xyz_, r0.xyzx, r1.xyzx, c29
+/*   49   */          mad r1.xyz_, r0.xyzx, r2.xyzx, -c32
+/*   50   */          max r0.xyz_, r1, c33
+/*   51   */          sqrt r0.___w, r0.x
+/*    5.0 */       exece
+/*   52   */          sqrt r0.x___, r0.y
+/*   53   */          sqrt r0._y__, r0.z
+/*   54   */          max oC0.___1, r0, r0
+/*   55   */          max oC0.xyz_, r0.wxyz, r0.wxyz
+/*    5.1 */       cnop
+

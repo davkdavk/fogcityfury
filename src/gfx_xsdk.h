@@ -41,7 +41,7 @@ static std::vector<TexObj> textures(1);
 static std::vector<BufObj> buffers(1);
 static std::vector<TargetObj> targets(1);  // handle 0 is the present buffer
 static std::vector<XsdkSamplerState> samplerStates(1);
-static std::array<Tex,8> bound = {};
+static std::array<Tex,9> bound = {};   // (unit 8: uHash, the noise texture without mip maps)
 static Target activeTarget = 0;
 static int activeW = 0, activeH = 0;
 static bool dirty = false;
@@ -129,6 +129,21 @@ static XsdkSamplerState makeSampler(Sampler s) {
     in.max_anisotropy = 1; in.level_count = 1;
     XsdkSamplerState out; xsdk_texture_sampler_state(&out, &in); return out;
 }
+static void upload(TexObj& o, int w, int h, const void* px);
+// RGBA8 mip levels below the first: each texel the average of four above. Stops at 32 texels a side (Xenos packs
+// smaller levels together, which this does not attempt). Level 0 must already be uploaded.
+static void uploadMips(TexObj& o, int w, int h, const void* px, int levels) {
+    std::vector<uint8_t> a((const uint8_t*)px, (const uint8_t*)px + (size_t)w*h*4), b;
+    for (int l = 1; l < levels; l++) {
+        int nw = w/2, nh = h/2; b.resize((size_t)nw*nh*4);
+        for (int y = 0; y < nh; y++) for (int x = 0; x < nw; x++) for (int c = 0; c < 4; c++)
+            b[((size_t)y*nw + x)*4 + c] = (uint8_t)((a[((size_t)(2*y)*w + 2*x)*4 + c] + a[((size_t)(2*y)*w + 2*x + 1)*4 + c] + a[((size_t)(2*y + 1)*w + 2*x)*4 + c] + a[((size_t)(2*y + 1)*w + 2*x + 1)*4 + c] + 2)/4);
+        for (int y = 0; y < nh; y++) xsdk_texture_upload_rows(&o.tex,(uint32_t)l,(uint32_t)y,1,b.data() + (size_t)y*nw*4,(uint32_t)nw*4);
+        a.swap(b); w = nw; h = nh;
+    }
+    xsdk_gpu_invalidate(o.tex.address,o.tex.size_bytes);
+}
+static int mipLevels(Fmt f, int w, int h, bool want) { if (!want || f != RGBA8 || w != h || (w & (w - 1))) return 1; int n = 1; while ((w >> n) >= 32) n++; return n; }
 static void upload(TexObj& o, int w, int h, const void* px) {
     if (!px || o.fmt == DEPTH24) return;
     const uint8_t* src = (const uint8_t*)px;
@@ -276,11 +291,12 @@ static int maxAniso() { return 1; }
 static void tex2D(Tex& t,Fmt f,int w,int h,const void* px,Sampler s) {
     if(!t){ t=(Tex)xs::textures.size(); xs::textures.push_back({}); xs::samplerStates.push_back({}); }
     auto& o=xs::textures[t]; o.fmt=f; o.sampler=s;
-    int levels=s.mips?1:1;
-    xs::makeTexture(t,w,h,true,levels); xs::upload(o,w,h,px); XsdkSampler sampler={
+    int levels=px?xs::mipLevels(f,w,h,s.mips):1;   // (only square power-of-two RGBA8 textures get a mip chain here: the lean build's noise texture)
+    xs::makeTexture(t,w,h,true,levels); xs::upload(o,w,h,px); if(levels>1) xs::uploadMips(o,w,h,px,levels);
+    XsdkSampler sampler={
         .mag_filter=s.linear?XSDK_FILTER_LINEAR:XSDK_FILTER_POINT,.min_filter=s.linear?XSDK_FILTER_LINEAR:XSDK_FILTER_POINT,
-        .mip_filter=XSDK_FILTER_POINT,.address_u=s.repeat?XSDK_ADDRESS_WRAP:XSDK_ADDRESS_CLAMP,
-        .address_v=s.repeat?XSDK_ADDRESS_WRAP:XSDK_ADDRESS_CLAMP,.max_anisotropy=1,.level_count=1 };
+        .mip_filter=levels>1?XSDK_FILTER_LINEAR:XSDK_FILTER_POINT,.address_u=s.repeat?XSDK_ADDRESS_WRAP:XSDK_ADDRESS_CLAMP,
+        .address_v=s.repeat?XSDK_ADDRESS_WRAP:XSDK_ADDRESS_CLAMP,.max_anisotropy=1,.level_count=(uint32_t)levels };
     xsdk_texture_sampler_state(&xs::samplerStates[t],&sampler);
 }
 static void texCube(Tex& t,Fmt f,int size,Sampler s) {
@@ -496,7 +512,19 @@ static void colorWrite(bool on){
     if(!ready[i]){ uint32_t mask=on?XSDK_WRITE_ALL:0; XsdkBlend b={.color_source=XSDK_BLEND_ONE,.color_dest=XSDK_BLEND_ZERO,.color_op=XSDK_BLEND_OP_ADD,.alpha_source=XSDK_BLEND_ONE,.alpha_dest=XSDK_BLEND_ZERO,.alpha_op=XSDK_BLEND_OP_ADD,.write_mask=mask}; xsdk_gpu_blend_state(&states[i],&b); ready[i]=true; }
     xsdk_gpu_set_blend(&states[i]);
 }
-static void offset(float factor,float units){ XsdkRaster r={.cull=XSDK_CULL_NONE,.front_clockwise=false,.depth_bias=units*0.00001f,.depth_bias_slope=factor*0.00001f,.fill=XSDK_FILL_SOLID}; XsdkRasterState s; xsdk_gpu_raster_state(&s,&r); xsdk_gpu_set_raster(&s); }
+// Raster state: face culling and the depth offset share one xsdk state, so each change sends both.
+// FCF_XSDK_CULL_FLIP: build with it if culled surfaces (terrain, building walls) vanish - the front face is then clockwise here.
+static bool cullOn=false; static float offFactor=0, offUnits=0;
+static void applyRaster(){
+#ifdef FCF_XSDK_CULL_FLIP
+    const bool cw=true;
+#else
+    const bool cw=false;
+#endif
+    XsdkRaster r={.cull=cullOn?XSDK_CULL_BACK:XSDK_CULL_NONE,.front_clockwise=cw,.depth_bias=offUnits*0.00001f,.depth_bias_slope=offFactor*0.00001f,.fill=XSDK_FILL_SOLID}; XsdkRasterState s; xsdk_gpu_raster_state(&s,&r); xsdk_gpu_set_raster(&s);
+}
+static void offset(float factor,float units){ offFactor=factor; offUnits=units; applyRaster(); }
+static void cull(bool on){ if(on==cullOn) return; cullOn=on; applyRaster(); }
 static void readRGBA(int w,int h,unsigned char* out){
     XsdkTexture fb; if(!NT_SUCCESS(xsdk_texture_init(&fb,XSDK_FORMAT_R8G8B8A8,(uint32_t)w,(uint32_t)h,1,true))) return;
     xsdk_texture_attach(&fb,xsdk_present_pixels(xs::screenAddress)); xsdk_texture_download_rows(&fb,0,0,(uint32_t)h,out,(uint32_t)w*4);

@@ -1,0 +1,7 @@
+# ninja log v6
+2	16	1795052121228842654	CMakeFiles/perf_flat.dir/runtime_compat.cpp.obj	18bde04917318a03
+13382	13683	1795052134604637903	perf_flat	c4ef2f13540411fb
+2	13382	1795052121228425934	CMakeFiles/perf_flat.dir/home/davey/Documents/fogcityfurysrc/src/game.cpp.obj	cc4499f33f0ca415
+1	14	1795053141836512105	CMakeFiles/perf_flat.dir/runtime_compat.cpp.obj	18bde04917318a03
+1	12896	1795053141828819017	CMakeFiles/perf_flat.dir/home/davey/Documents/fogcityfurysrc/src/game.cpp.obj	cc4499f33f0ca415
+12896	13199	1795053154725033686	perf_flat	c4ef2f13540411fb

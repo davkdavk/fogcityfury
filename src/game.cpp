@@ -280,7 +280,7 @@ static int maxAA = 8, maxAF = 16, deskW = 1 << 20, deskH = 1 << 20;           //
 static int renderH = 0, lastRW = 0, lastRH = 0;                               // --renderh (tests); size the scene was last drawn at
 static plat::Display display; static gfx::Tex detailTex = 0;
 #ifdef FCF_PERF_NOISE
-static gfx::Tex noiseTex = 0;
+static gfx::Tex noiseTex = 0, hashTex = 0;
 #endif
 static bool touchMouse = false, forceLDR = false, hdrOK = true;   // hdrOK: half-float render targets work (else 8-bit ones are used)
 static int optPage = 0, optRow = 0, optCol = 0; static bool optCapture = false; static State optReturn = TITLE;
@@ -1490,10 +1490,11 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
 #ifdef FCF_XENOS_CULL
         int terrainIndices = 0, propIndices = 0;
 #ifdef FCF_XENOS_LEAN
-        if (DRAW_MASK & DM_TERRAIN) { setCommon(pGround, VP, cam, hdr); drawWorldCells(true, false, cam, &terrainIndices, nullptr); }
+        // back faces are dropped on the terrain and on building walls (both wound one way throughout; the road and the other props are not)
+        if (DRAW_MASK & DM_TERRAIN) { setCommon(pGround, VP, cam, hdr); gfx::cull(true); drawWorldCells(true, false, cam, &terrainIndices, nullptr); gfx::cull(false); }
         if (DRAW_MASK & DM_PROPS) {   // a program per material class: each pixel pays only for its own material (pWorld paid for all three)
             setCommon(wx().wet > 0.01f ? pRoadWet : pRoad, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices, 0);
-            setCommon(pWall, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices, 1);
+            setCommon(pWall, VP, cam, hdr); gfx::cull(true); drawWorldCells(false, true, cam, nullptr, &propIndices, 1); gfx::cull(false);
             setCommon(pMisc, VP, cam, hdr); drawWorldCells(false, true, cam, nullptr, &propIndices, 2);
         }
 #else
@@ -1518,7 +1519,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         // the terrain mesh is all one material and has its own program; "world" here is road + walls + the rest, picked by
         // vMat, for the whole props mesh (pRoad, pWall, pMisc are for drawing it in per-material ranges)
         setCommon(pGround, VP, cam, hdr);
-        if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
+        if(DRAW_MASK & DM_TERRAIN) { gfx::cull(true); W.terrain.draw(); gfx::cull(false); }
         setCommon(pWorld, VP, cam, hdr);
         if(DRAW_MASK & DM_PROPS) W.props.draw();
 #else
@@ -2521,7 +2522,12 @@ int main(int argc, char** argv) {
       Rng nr; nr.s = 0x4E4F4953u;
       for (size_t i = 0; i < 256u * 256u; i++) { unsigned char v = (unsigned char)(nr.f() * 256.0f); px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = px[i * 4 + 3] = v; }
 #endif
-      gfx::Sampler s; s.linear = true; s.repeat = true; gfx::tex2D(noiseTex, gfx::RGBA8, 256, 256, px.data(), s); gfx::bind(7, noiseTex); }
+      gfx::Sampler s; s.linear = true; s.repeat = true;
+#ifdef FCF_XENOS_LEAN
+      gfx::tex2D(hashTex, gfx::RGBA8, 256, 256, px.data(), s); gfx::bind(8, hashTex);   // without mip maps, for lookups that jump from cell to cell (rain rings)
+      s.mips = true;                                                                    // with them, for everything else: quicker for the GPU far away, and no shimmer
+#endif
+      gfx::tex2D(noiseTex, gfx::RGBA8, 256, 256, px.data(), s); gfx::bind(7, noiseTex); }
     xsdk_log_write("boot: perf noise texture complete");
 #endif
 #ifdef FCF_GFX_XSDK

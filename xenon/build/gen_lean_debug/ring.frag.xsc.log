@@ -1,0 +1,58 @@
+wrote /home/davey/Documents/fogcityfurysrc/xenon/build/gen_lean_debug/ring.frag.bin (2144 B)
+/*    0.0 */       alloc colors
+/*    0.1 */       exec
+/*    4   */          mad_sat r0.___w, -r1.yyyy, c10.xxxx, c8.yzwx
+/*    5   */          mul r1.__z_, c4.wwww, c12.yzxw
+              +       muls r1.___w, r0.ww
+/*    6   */          mad r0.___w, c9.xxxx, r1.wwww, c8.yzwx
+/*    7   */          mul r4.xyz_, r2, r0.wwww
+              +       mulsc r3.x___, c11.x, r3.y
+/*    8   */          frc r0.___w, r1.xywz
+/*    9   */          add r1.__z_, r0.xywz, -c13.yzxw
+/*    1.0 */       exec
+/*   10   */          max r0.___w, r1.xywz, -r1.xywz
+/*   11   */          mad r1.__z_, r0.wwww, c14.xxxx, -c8.yzxw
+/*   12   */          mad r0.___w, r3.xxxx, r1.zzzz, c8.yzwx
+/*   13   */          mul r2.xyz_, r4, r0.wwww
+/*   14   */          min r3.xyz_, r2, c15
+/*   15   */          mad r2.xyz_, r3.xyzx, c17.xxxx, -c18
+/*    1.1 */       exec
+/*   16   */          mad r4.xyz_, r3.xyzx, r2.xyzx, c16
+/*   17   */          mad r2.xyz_, r3.xyzx, r4.xyzx, -c19
+/*   18   */          max r3.xyz_, r2, c20
+/*   19   */          mul r0.___w, c4.wwww, c13.yzwx
+              +       sqrt r2.__z_, r3.z
+/*   20   */          mad r1.__z_, r1.xxxx, c11.xxxx, -r0.xywz
+/*   21   */          mad r0.___w, r1.yyyy, c12.xxxx, r1.xywz
+/*    2.0 */       exec
+/*   22   */          frc r1.x___, r0.wxyz
+              +       sqrt r2.x___, r3.x
+/*   23   */          add r0.___w, r1.yzwx, -c13.yzwx
+              +       sqrt r2._y__, r3.y
+/*   24   */          max r1.x___, r0.wxyz, -r0.wxyz
+/*   25   */          mul r1.__z_, c4.wwww, c23.yzxw
+              +       subsc r0.___w, -c23.y, -r1.x
+/*   26   */          mul_sat r1.x___, r0.wxyz, c24
+/*   27   */          mad r0.___w, c22.xxxx, r1.xxxx, c21.yzwx
+/*    2.1 */       exec
+/*   28   */          mad r1.x___, r1.yyyy, c24.xxxx, -r1.zxyw
+/*   29   */          frc r3.x___, r1
+/*   30   */          add r3._yzw, r0.wxyz, -c4.wxyz
+              +       subsc r1.x___, -c25.y, -r3.x
+/*   31   */          add_sat r0._y__, c8.yxzw, -r1.yyyy
+              +       mulsc_sat r0.x___, c26.y, r1.x
+/*   32   */          mad r0.__z_, c23.xxxx, r0.xxxx, r0.xywz
+/*   33   */          mad r0.x___, c27.xxxx, r1.wwww, r0.zxyw
+/*    3.0 */       exec
+/*   34   */          mul r0.__z_, r0.yzxw, r0.xzyw
+/*   35   */          dp3 r0.___w, r3.yzwx, r3.yzwx
+/*   36   */          mul r0._y__, r0.xzyw, r2.wwww
+              +       sqrt r0.x___, r0.w
+/*   37   */          add r0.__z_, c30.yzxw, -r0.yzxw
+/*   38   */          mul_sat r0.x___, r0.zxyw, c31
+/*   39   */          mad r0.__z_, c29.xxxx, r0.xxxx, c28.yzxw
+/*    3.1 */       exece
+/*   40   */          mul r0.x___, r0.yxzw, r0.zxyw
+/*   41   */          max oC0.0000, r0, r0
+/*   42   */          mul oC0.xyz_, r2, r0.xxxx
+

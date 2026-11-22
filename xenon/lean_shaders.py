@@ -9,7 +9,7 @@ Noise comes from uNoise (unit 7, made in game.cpp under FCF_XENOS_LEAN), 256 x 2
   r, g  two different four-octave value noises (8 lattice cells across the texture, so
         texture(uNoise, p/8).r stands in for fbm(p))
   b     white noise          a  one smooth octave (16 cells across)
-This backend has no mip maps, so fine detail is faded out with distance instead.
+The noise texture has mip maps (four levels); fine detail is also faded out with distance.
 
 Everything is written to the 8-bit screen target (pass level 0), so every shader tone maps.
 Uniform names are the game's own; ones a shader does not declare are skipped by Prog.
@@ -55,14 +55,24 @@ WORLD_VS = '''#version 330 core
 layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC;
 layout(location=3) in vec2 aUV; layout(location=4) in float aM;
 uniform mat4 uVP, uModel;
-uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCamPos; uniform float uFogDen, uWet;
-out vec3 vP, vL, vC; out vec2 vUV; out float vMat; out vec2 vFx;
+uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCamPos; uniform float uFogDen, uWet, uOvercast;
+out vec3 vP, vL, vC; out vec2 vUV; out float vMat; out vec2 vFx; out vec4 vFog;
 void main(){ vec4 w = uModel*vec4(aP,1.0); vP = w.xyz; vec3 n = normalize(mat3(uModel)*aN);
-  vL = (mix(uSkyHor*0.55 + vec3(0.05,0.045,0.04), uSkyTop*0.6 + uSkyHor*0.35, n.y*0.5+0.5) + uSunCol*max(dot(n, uSunDir), 0.0))*(1.0 - 0.3*uWet);
-  float d = length(uCamPos - w.xyz); vFx = vec2(exp(-d*uFogDen), clamp(1.0 - d*0.007, 0.0, 1.0));
+  float clear = 1.0 - 0.92*uOvercast, up = max(uSunDir.y, 0.0);
+  // sky light from above, the sun, and sunlight bounced warm off the ground onto whatever faces down or sideways
+  vL = (mix(uSkyHor*0.55 + vec3(0.05,0.045,0.04), uSkyTop*0.6 + uSkyHor*0.35, n.y*0.5+0.5) + uSunCol*max(dot(n, uSunDir), 0.0)
+        + uSunCol*vec3(0.10,0.085,0.06)*((0.5 - 0.5*n.y)*up))*(1.0 - 0.3*uWet);
+  float wall = step(1.5, aM)*step(aM, 2.5);
+  vL *= mix(1.0, clamp(0.66 + aUV.y*0.04, 0.66, 1.0), wall);                    // buildings darken towards the street
+  vec3 toCam = uCamPos - w.xyz; float d = length(toCam); vec3 V = toCam/max(d, 0.001);
+  vFx = vec2(exp(-d*uFogDen), clamp(1.0 - d*0.007, 0.0, 1.0));
+  // the fog glows towards the sun, as the sky does at the horizon; w: the sun glinting off this wall's windows
+  float sd = max(-dot(V, uSunDir), 0.0), s4 = sd*sd; s4 *= s4;
+  float nh = max(dot(n, normalize(V + uSunDir)), 0.0), g = nh*nh; g *= g; g *= g;
+  vFog = vec4(uSkyHor + uSunCol*(s4*0.10*clear), g*wall*clear*up*dot(uSunCol, vec3(0.3)));
   vC = aC; vUV = aUV; vMat = aM; gl_Position = uVP*w; }
 '''
-WORLD_LOC = {'vP':0, 'vL':1, 'vC':2, 'vUV':3, 'vMat':4, 'vFx':5}
+WORLD_LOC = {'vP':0, 'vL':1, 'vC':2, 'vUV':3, 'vMat':4, 'vFx':5, 'vFog':6}
 
 # vMat: 0 terrain (vUV.x = how much town) 1 road 2 building wall 3 flat 4 checker 5 hazard stripes 6 lamp
 # One program per kind of surface. The compiler turns a test on vMat into "work out every material, then
@@ -73,7 +83,7 @@ WORLD_LOC = {'vP':0, 'vL':1, 'vC':2, 'vUV':3, 'vMat':4, 'vFx':5}
 _HEAD = '''#version 330 core
 uniform vec3 uSkyHor; uniform float uNight, uWet;
 uniform sampler2D uNoise;
-in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx;
+in vec3 vP, vL, vC; in vec2 vUV; in float vMat; in vec2 vFx; in vec4 vFog;
 out vec4 oCol;
 vec3 tone(vec3 c){ c = min(c, vec3(2.5)); return sqrt(max(c*(1.3246 + c*(c*0.1284 - 0.6999)) - 0.0257, 0.0)); }
 void main(){
@@ -83,7 +93,7 @@ void main(){
   float nz = texture(uNoise, vP.xz*0.026).r;
   vec3 alb = vC, lit = vL; vec3 glow = vec3(0.0);
 '''
-_TAIL = '''  oCol = vec4(tone(mix(uSkyHor, alb*lit + glow, vFx.x)), 1.0);
+_TAIL = '''  oCol = vec4(tone(mix(vFog.rgb, alb*lit + glow, vFx.x)), 1.0);
 }
 '''
 _GROUND = '''  alb *= (0.72 + 0.56*nz)*(0.8 + 0.4*det);                    // grass, sand, rock; in town, paving with a backstreet every 27 m
@@ -105,7 +115,7 @@ _ROAD = '''  { float u = abs(vUV.x);                                        // t
 _WALL = '''  { vec2 q = vUV*vec2(0.2941, 0.3030), f = abs(fract(q) - vec2(0.5, 0.55));   // windows 3.4 m apart, a floor every 3.3 m; some lit at night
     float win = step(f.x, 0.3)*step(f.y, 0.27)*step(0.0, vUV.y);
     alb = mix(alb*(0.8 + 0.4*nz), vec3(0.06,0.08,0.11) + uSkyHor*0.25, win);
-    glow = vec3(2.0,1.56,0.9)*(uNight*win*step(0.55, fract(dot(floor(q), vec2(0.37, 0.71))))); }
+    glow = vec3(2.0,1.56,0.9)*(uNight*win*step(0.55, fract(dot(floor(q), vec2(0.37, 0.71))))) + vec3(1.0,0.9,0.72)*(vFog.w*win); }
 '''
 _MISC = '''  { vec2 c = floor(vUV*1.4286);                                  // plain (3), checker (4), hazard stripes (5), lamps (6)
     if(vMat > 3.5) alb = mix(vec3(0.03), vec3(0.95), fract((c.x + c.y)*0.5)*2.0);
@@ -123,7 +133,7 @@ _ROAD_WET = '''  {
     float pud = clamp((texture(uNoise, vP.xz*0.0101 + 0.37).g - 0.55 + 0.15*uRain)*10.0, 0.0, 1.0)*step(0.2, uRain)*step(u, 8.0)*vC.b;
     // raindrop rings: one a 70 cm cell, its place and timing from the noise texture's white noise
     vec2 q = vP.xz*1.43, f = fract(q) - 0.5;
-    vec2 h = texture(uNoise, (floor(q) + 0.5)*0.00390625).br;
+    vec2 h = texture(uHash, (floor(q) + 0.5)*0.00390625).br;   // (uHash: the same texture without mip maps - this lookup jumps from cell to cell, which a mip-mapped one would blur along the cell edges)
     vec2 d = f - (h - 0.5)*0.5; float r = max(length(d), 0.001), t = fract(uTime*(0.8 + 0.7*h.y) + h.x), x = r - t*0.42;
     float ring = (abs(fract(x*8.28) - 0.5)*4.0 - 1.0)*clamp(1.0 - abs(x)*14.3, 0.0, 1.0)*(1.0 - t);   // a ripple's crest and trough
     vec2 bump = d*(ring*0.42*pud*min(uRain, 1.3)*vFx.y/r);
@@ -136,7 +146,7 @@ _ROAD_WET = '''  {
 '''
 GROUND = _HEAD + _GROUND + _TAIL
 ROAD = _HEAD + _ROAD + _TAIL
-ROAD_WET = (_HEAD.replace('uniform vec3 uSkyHor;', 'uniform vec3 uSkyHor, uSkyTop, uCamPos; uniform float uRain, uTime;')
+ROAD_WET = (_HEAD.replace('uniform vec3 uSkyHor;', 'uniform vec3 uSkyHor, uSkyTop, uCamPos; uniform float uRain, uTime; uniform sampler2D uHash;')
             + _ROAD + _ROAD_WET + _TAIL)
 WALL = _HEAD + _WALL + _TAIL
 MISC = _HEAD + _MISC + _TAIL

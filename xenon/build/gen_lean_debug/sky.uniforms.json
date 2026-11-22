@@ -1,0 +1,98 @@
+{
+  "program": "sky",
+  "vertex": [],
+  "fragment": [
+    {
+      "name": "uSunDir",
+      "type": "vec3",
+      "offset": 0,
+      "size": 12
+    },
+    {
+      "name": "uSunCol",
+      "type": "vec3",
+      "offset": 16,
+      "size": 12
+    },
+    {
+      "name": "uSkyTop",
+      "type": "vec3",
+      "offset": 32,
+      "size": 12
+    },
+    {
+      "name": "uSkyHor",
+      "type": "vec3",
+      "offset": 48,
+      "size": 12
+    },
+    {
+      "name": "uCamPos",
+      "type": "vec3",
+      "offset": 64,
+      "size": 12
+    },
+    {
+      "name": "uTime",
+      "type": "float",
+      "offset": 76,
+      "size": 4
+    },
+    {
+      "name": "uFogDen",
+      "type": "float",
+      "offset": 80,
+      "size": 4
+    },
+    {
+      "name": "uNight",
+      "type": "float",
+      "offset": 84,
+      "size": 4
+    },
+    {
+      "name": "uOvercast",
+      "type": "float",
+      "offset": 88,
+      "size": 4
+    },
+    {
+      "name": "uWet",
+      "type": "float",
+      "offset": 92,
+      "size": 4
+    },
+    {
+      "name": "uCamR",
+      "type": "vec3",
+      "offset": 96,
+      "size": 12
+    },
+    {
+      "name": "uCamU",
+      "type": "vec3",
+      "offset": 112,
+      "size": 12
+    },
+    {
+      "name": "uCamF",
+      "type": "vec3",
+      "offset": 128,
+      "size": 12
+    },
+    {
+      "name": "uTan",
+      "type": "vec2",
+      "offset": 144,
+      "size": 8
+    }
+  ],
+  "samplers": [
+    {
+      "name": "uNoise",
+      "type": "sampler2D",
+      "unit": 7,
+      "slot": 0
+    }
+  ]
+}
