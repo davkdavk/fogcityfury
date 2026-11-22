@@ -1,4 +1,6 @@
-// The track editor (PC: mouse and keyboard). F4 on the track screen edits the track shown (a built-in one is copied
+// The track editor: mouse and keyboard, touch (one finger works the tool, two move and zoom the map; buttons for the
+// rest: see touchLayout), or a controller (a pointer on the left stick: see edPadFrame in game.cpp).
+// With the mouse and keyboard: F4 on the track screen edits the track shown (a built-in one is copied
 // first), F6 starts a new one. It edits the track's description (TrackDef: road points, hills, a tunnel, shortcuts,
 // sky, weather, song) seen from straight above; the world is rebuilt a moment after every change, Enter drives it and
 // F4 comes back. Tracks are saved as .fcft files (trackfile.h) on every rebuild.
@@ -137,6 +139,7 @@ static void mouseDown(int button) {
         if (ck >= 0) {   // on a shortcut: it becomes a tunnel (right click: back on the surface)
             int t = cutTunOf(ck);
             if (right) { if (t >= 0) { push(); d.cutTun.erase(d.cutTun.begin() + t, d.cutTun.begin() + t + 2); touch(0); tell("SHORTCUT BACK ON THE SURFACE"); } return; }
+            if (t >= 0 && (touchOn || padUI)) { push(); d.cutTun.erase(d.cutTun.begin() + t, d.cutTun.begin() + t + 2); touch(0); tell("SHORTCUT BACK ON THE SURFACE"); return; }   // (no right click there: a second press takes it out)
             if (t >= 0) { tell("THAT SHORTCUT IS A TUNNEL ALREADY: RIGHT CLICK TO TAKE IT OUT"); return; }
             int bi = -1; for (size_t k = 0; k < W.brs.size(); k++) if (W.brs[k].def == ck) bi = (int)k;
             if (bi >= 0 && W.brs[bi].ts.size() < 260) { tell("TOO SHORT: A TUNNEL NEEDS 260 M TO GET DOWN AND UP"); return; }
@@ -305,8 +308,9 @@ static void draw(float Wd) {
     { float x = Wd - 18 - ui.textW(b, 2.8f) - 28, w[NTOOL]; char nb[24]; for (int t = NTOOL - 1; t >= 0; t--) { snprintf(nb, sizeof nb, "%d %s", t + 1, TOOL_NAME[t]); w[t] = ui.textW(nb, 2.4f); x -= w[t] + 26; }
       for (int t = 0; t < NTOOL; t++) { snprintf(nb, sizeof nb, "%d %s", t + 1, TOOL_NAME[t]); if (t == tool) ui.rect(x - 8, 8, w[t] + 16, 38, V3(1, 0.55f, 0.1f), 0.9f); ui.text(x, 17, 2.4f, t == tool ? V3(0.05f, 0.05f, 0.08f) : WHT, nb, 0, 1, 0, t != tool); x += w[t] + 26; } }
     // left: the settings
+    const bool keys = !touchOn && !padUI;   // the keyboard's letters only when there is one
     panel(12, 66, 300, 196, 0.6f); float y = 78;
-    auto row = [&](const char* k, const char* name, const char* val) { ui.text(24, y, 2.2f, YEL, k); ui.text(64, y, 2.2f, GREY, name); ui.text(300, y, 2.2f, WHT, val, 2); y += 26; };
+    auto row = [&](const char* k, const char* name, const char* val) { if (keys) ui.text(24, y, 2.2f, YEL, k); ui.text(keys ? 64 : 24, y, 2.2f, GREY, name); ui.text(300, y, 2.2f, WHT, val, 2); y += 26; };
     row("F2", "NAME", naming ? "TYPE, THEN ENTER" : ""); row("K", "SKY", SKY_NAME[sky]); row("X", "WEATHER", WX[d.wx % NWX].name);
     snprintf(b, sizeof b, "%d", d.song > 0 ? d.song : TRACK_SONG[slot % NTRACKS]); row("M", "SONG", b);
     snprintf(b, sizeof b, "%d%%", (int)lroundf((0.8f - d.cityThr) / 0.55f * 100)); row("C", "CITY", b); row("G", "NEW CITY LAYOUT", ""); row("Z", "UNDO", undo.empty() ? "-" : "");
@@ -318,8 +322,20 @@ static void draw(float Wd) {
         "CLICK THE ROAD WHERE THE SHORTCUT LEAVES, THEN WHERE IT REJOINS   -   DRAG THE ENDS",
         "CLICK BY THE ROAD   -   DRAG IT   -   + AND - HEIGHT   -   9 AND 0 LENGTH   -   R TURNS IT ROUND",
         "CLICK TO HIDE A KEY (UP TO 5)   -   DRAG IT   -   + AND - RAISE IT INTO THE AIR" };
-    panel(0, 720 - 62, Wd, 62, 0.72f); ui.text(Wd / 2, 720 - 54, 2.1f, WHT, HELP[tool], 1);
-    ui.text(Wd / 2, 720 - 28, 2.1f, GREY, "ENTER DRIVE IT   T RACE IT   TAB TOOL   WHEEL ZOOM   RIGHT-DRAG MOVE THE MAP   DEL REMOVE   ESC DONE", 1);
+    static const char* const HELP_TOUCH[NTOOL] = {
+        "DRAG A POINT   -   TAP THE YELLOW LINE TO ADD ONE   -   TAP A POINT, THEN DEL, TO REMOVE IT",
+        "TAP TO ADD A HILL   -   DRAG IT   -   + AND - HEIGHT (UNDER 0 MAKES WATER)   -   WIDE AND SLIM",
+        "TAP THE ROAD WHERE IT GOES DOWN, THEN WHERE IT COMES UP   -   TAP A SHORTCUT TO PUT IT IN A TUNNEL",
+        "TAP THE ROAD WHERE THE SHORTCUT LEAVES, THEN WHERE IT REJOINS   -   DRAG THE ENDS",
+        "TAP BY THE ROAD   -   DRAG IT   -   + AND - HEIGHT   -   WIDE AND SLIM LENGTH",
+        "TAP TO HIDE A KEY (UP TO 5)   -   DRAG IT   -   + AND - RAISE IT INTO THE AIR" };
+    if (touchOn) { panel(Wd / 2 - 470, 720 - 118, 940, 34, 0.6f); ui.text(Wd / 2, 720 - 110, 2.0f, WHT, HELP_TOUCH[tool], 1); }   // (the buttons have the bottom of the screen)
+    else {
+        panel(0, 720 - 62, Wd, 62, 0.72f); ui.text(Wd / 2, 720 - 54, 2.1f, WHT, padUI ? HELP_TOUCH[tool] : HELP[tool], 1);
+        ui.text(Wd / 2, 720 - 28, 2.1f, GREY, padUI ? "{A} PLACE / DRAG   {X} REMOVE   {Y} DRIVE IT   {LB} {RB} TOOL   {DPAD} SIZE   {LT} {RT} ZOOM   {RS} MOVE THE MAP   {BACK} UNDO   {B} DONE"
+                                                    : "ENTER DRIVE IT   T RACE IT   TAB TOOL   WHEEL ZOOM   RIGHT-DRAG MOVE THE MAP   DEL REMOVE   ESC DONE", 1);
+    }
+    if (padUI && !touchOn) { ui.line(mx - 16, my, mx + 16, my, 3, WHT, 0.95f); ui.line(mx, my - 16, mx, my + 16, 3, WHT, 0.95f); ring(mx, my, 9, drag ? YEL : WHT, 0.9f, 2); }   // the controller's pointer
     if (tool == TUNNEL && nTun() > 0) { snprintf(b, sizeof b, "DEPTH %d M", (int)-d.tunnel[(sel >= 0 && sel / 2 < nTun() ? sel / 2 : 0) * 5 + 2]); ui.text(Wd / 2, 720 - 92, 2.6f, CYA, b, 1); }
     // right: what is wrong
     if (!warn.empty() && !dirty) { float h = 20 + 26 * warn.size(); panel(Wd - 452, 66, 440, h, 0.6f); for (size_t i = 0; i < warn.size(); i++) ui.text(Wd - 440, 78 + 26 * i, 2.2f, RED, warn[i].c_str()); }

@@ -26,6 +26,32 @@ Everywhere: wheel (or PgUp/PgDn) zooms, right-drag or the arrow keys move the ma
 **F2** renames, **K** sky, **X** weather, **M** song, **C** how much city, **G** a new city layout,
 **Enter** drives the track (free roam), **T** races it, **F4** comes back from the drive, **Esc** is done.
 
+### On a touch screen (Android)
+
+On the track screen tap **EDIT** or **NEW** (and **DELETE** for one of your own). In the editor the tools are the
+row of buttons along the bottom; the rest are down the sides: **DRIVE**, **UNDO**, **DEL**, **+**, **-**,
+**WIDE**, **SLIM**, **TURN** and **DONE** on the right, **NAME**, **SKY**, **WEATHER**, **SONG**, **CITY** and
+**LAYOUT** on the left. One finger does what the left mouse button does: drag a point, tap the road to add one.
+Dragging on empty map moves the map; two fingers move it and pinch to zoom. Tap a tunnelled shortcut again
+with the TUNNEL tool to bring it back up. While test-driving, pause and tap **EDITOR** to come back.
+
+### With a gamepad
+
+On the track screen **X** edits and **Back** starts a new track. In the editor the left stick moves a pointer
+and **A** is the mouse button (hold it to drag). The right stick, or pushing the pointer against an edge,
+moves the map; the triggers zoom. **LB/RB** change tool, the d-pad is + and - (up/down) and narrower/wider
+(left/right), **X** deletes, **Back** undoes, **Y** or **Start** drives the track, **B** is done. Click the
+sticks for sky (left) and weather (right). While test-driving, pause and press **Y** to come back.
+
+The editor is not in the Xbox 360 version: tracks cannot be saved there.
+
+### Ground
+
+The editor decides the ground from the finished shape, every time it rebuilds: road, kerb and shoulder along
+the road, paving and buildings in town, grass in the fields, rock on steep slopes, and sand for about 13 m
+back from any water (the sea or a lagoon you dug). Town paving and buildings keep off the beach. Moving a road
+or digging a lagoon therefore never leaves the old ground behind.
+
 The panel on the right lists what is wrong with the track as built (tight corners, very steep
 slopes, a tunnel that never goes under, a shortcut that could not be built); red rings mark the
 places. A track with warnings can still be driven.

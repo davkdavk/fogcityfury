@@ -190,6 +190,11 @@ changed) or **F6** to start a new one. Number keys pick the tool:
 | 5 Jumps | Place ramps by the road |
 | 6 Keys | Hide up to five keys for others to find |
 
+On a phone, tap **EDIT** or **NEW** on the track screen: the tools are buttons along the bottom, one finger
+drags and taps, two fingers move the map and pinch to zoom. With a gamepad, **X** edits and **Back** starts a
+new track; the left stick moves a pointer and **A** clicks. The full list is in
+[EDITOR.md](EDITOR.md). (The Xbox 360 version has no editor.)
+
 Press **Enter** to drive your track at once and **F4** to come back to the editor. You can also pick the sky,
 the weather and the song. Your tracks save automatically and appear in the track list. **Del** on the track
 screen deletes one of your own tracks.

@@ -204,6 +204,7 @@ static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
     if (racers) for (int k = 0; k < NAI; k++) { if (ai[k].dead) continue; V3 q = ai[k].pos + V3(0, 0.7f, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 1.5f) { bt = std::max(tt - 1.2f, 0.5f); tg = 8 + k; } }
     if (roamCarTarget && f.mini && !me.on && !player.dead) { V3 q = player.pos + V3(0, 0.7f, 0) - o; float tt = dot(q, d); if (tt > 0 && tt < bt && len(q - d * tt) < 1.5f) { bt = std::max(tt - 1.2f, 0.5f); tg = 7; } }   // a mini Warden shooting at your car
     V3 end = o + d * bt;
+    if (o.y > 0 && end.y < 0.05f && d.y < -0.001f) { V3 w = o + d * (o.y / -d.y); ripple::add(w.x, w.z, 0.5f); }   // into the water: a ring where it went in
     spawn(o + d * std::min(2.0f, bt * 0.5f), d * 150, clampf(bt / 150, 0.035f, 0.13f), 0.55f, 0, V3(3.2f, 2.5f, 1.2f), 0.9f, 1, 0, 3.2f);   // tracer
     if (tg >= 8) hurtCar(ai[tg - 8], g.carDmg, end);
     else if (tg == 7) hurtCar(player, g.carDmg * 0.25f, end);

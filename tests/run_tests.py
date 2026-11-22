@@ -1744,6 +1744,40 @@ def the_editor_makes_a_track_you_can_race():
 
 
 @test
+def grass_grows_in_the_fields_only():
+    """Open grassland has tufts of grass; the town, the road and its verge have none; --nograss turns it off."""
+    field = sim("--track", 3, "--state", 3, "--mode", 1, "--pos", -420, -285, 0, seconds=1)
+    off = sim("--track", 3, "--state", 3, "--mode", 1, "--pos", -420, -285, 0, "--nograss", seconds=1)
+    flat_ = sim("--flat", "--state", 3, "--mode", 1, seconds=1)
+    check(field["grassNear"] > 300, "tufts in the park", field["grassNear"])
+    check(off["grassNear"] == 0 and flat_["grassNear"] == 0, "none with --nograss or on the test plane", (off["grassNear"], flat_["grassNear"]))
+
+
+@test
+def splashes_ring_the_water():
+    """Something hitting the sea leaves spreading rings; nothing on dry land does."""
+    sea = sim("--track", 0, "--state", 3, "--mode", 1, "--ripat", -700, 0, seconds=3)
+    land = sim("--track", 0, "--state", 3, "--mode", 1, "--ripat", 0, 0, seconds=3)
+    check(sea["ripples"] >= 3 and land["ripples"] == 0, "rings on the sea, none on land", (sea["ripples"], land["ripples"]))
+
+
+@test
+def custom_tracks_get_a_beach_and_the_editor_works_by_touch():
+    """A track of your own has sand along its shore (the built-in ones keep theirs as drawn). In the editor a finger
+    drags a point, two fingers pinch to zoom and pan the map, and a tap with the ROAD tool adds a point."""
+    tmp = tempfile.mkdtemp()
+    try:
+        shutil.copy(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), tmp)
+        c = sim("--tracksdir", tmp, "--trackfile", os.path.join(tmp, "test-loop.fcft"), "--state", 3, "--mode", 1, seconds=1)
+        b = sim("--track", 0, "--state", 3, "--mode", 1, seconds=1)
+        check(c["beachLand"] > 50 and b["beachLand"] == 0, "sand along a custom track's shore only", (c["beachLand"], b["beachLand"]))
+        e = sim("--tracksdir", tmp, "--trackfile", os.path.join(tmp, "test-loop.fcft"), "--state", 2, "--edit", "--edtouch", seconds=1)
+        check(e["edTouch"].split(" ")[0] == "1,1,1,1", "drag, pinch, pan and tap all work", e["edTouch"])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
 def a_shortcut_can_be_a_tunnel():
     """The TUNNEL tool on a shortcut makes it dive under the sea (in the editor: on Twin Isles, the causeway between the
     islands). The file keeps it; a car takes it end to end, down in the tube and out the far side; right click undoes it."""

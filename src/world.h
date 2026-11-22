@@ -145,6 +145,22 @@ static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
 struct World {
     int id = -1, gen = 0; const TrackDef* def = nullptr;   // gen: counts builds (the editor rebuilds the same track: anything cached per track goes by this)
     std::vector<float> h, hr, rd; std::vector<TS> ts; int n = 0;
+    // Custom tracks: metres from each point of the ground to the nearest water (up to 30), so the ground types agree
+    // with the land as it was shaped: a beach of sand along every shore and lagoon, however high the bank, with no
+    // paving, buildings or grass tufts on it. Empty on the built-in tracks (their sand goes by height alone)
+    std::vector<float> shoreD; static constexpr float BEACH = 13;
+    int beachLand() const { int n = 0; for (size_t i = 0; i < shoreD.size(); i++) if (shoreD[i] > 0 && shoreD[i] < BEACH) n++; return n; }   // cells of beach (custom tracks only)
+    bool beach(float x, float z) const { return !shoreD.empty() && sampleGrid(shoreD, x, z) < BEACH; }
+    void buildShore() {
+        shoreD.clear(); if (id < NTRACKS || flat) return;
+        shoreD.assign(GN * GN, 30.0f); std::vector<int> q;
+        for (int i = 0; i < GN * GN; i++) if (h[i] < 0.25f) { shoreD[i] = 0; q.push_back(i); }
+        for (size_t k = 0; k < q.size(); k++) {   // spread outwards, straight and diagonal steps
+            int c = q[k], x = c % GN, y = c / GN;
+            for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { int nx = x + dx, ny = y + dy; if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= GN || ny >= GN) continue;
+                float d = shoreD[c] + CELL * (dx && dy ? 1.4142f : 1.0f); int n2 = ny * GN + nx; if (d < shoreD[n2] - 0.01f && d < 30) { shoreD[n2] = d; q.push_back(n2); } }
+        }
+    }
     struct Branch {
         std::vector<TS> ts; int a = -1, b = -1, def = -1;   // def: its place in the track's list of shortcuts
         float len = 0, scale = 1;
@@ -616,7 +632,48 @@ struct World {
     static float alleyDist(float v) { float c = fmodf(v - GRID0, GRID); if (c < 0) c += GRID; return fabsf(c - GRID * 0.5f); }   // distance from v to the nearest centre line
     // where the terrain shader paves town: right up to the main road's kerb (cityGround's backstreets stop short of it,
     // in the shader: see vUV.y on the terrain)
-    bool pavedGround(float x, float z) const { return city(x, z) && RD(x, z) > ROADW + 0.4f && H(x, z) > 1.5f && !excluded(x, z, 4); }
+    // Grass: is this spot open grassland (not road, shoulder, town, sand, rock or water)? col: the ground's colour there
+    bool grassAt(float x, float z, V3& col, float& y) const {
+        if (flat || fabsf(x) > HALF - 8 || fabsf(z) > HALF - 8) return false;
+        y = H(x, z); if (y < 2.3f || RD(x, z) < ROADW + 8 || city(x, z) || excluded(x, z, 3) || (!shoreD.empty() && sampleGrid(shoreD, x, z) < BEACH + 3)) return false;
+        float sx = H(x + 1.5f, z) - H(x - 1.5f, z), sz = H(x, z + 1.5f) - H(x, z - 1.5f); if (sx * sx + sz * sz > 1.1f) return false;   // steeper than about 19 degrees: rock
+        float nz = fbm(x * 0.02f, z * 0.02f, 3); col = V3(0.20f, 0.36f, 0.12f) * (1 - nz) + V3(0.42f, 0.40f, 0.18f) * nz; return true;
+    }
+    // one tuft: three blades leaning apart, dark at the root and light at the tip, lit like the ground under it (normal
+    // up). k: a number for this tuft, which fixes its shape. Plain colour (material 3). curved: each blade bends over in
+    // two steps (three triangles) and carries how far up the blade each corner is (u) and a number of its own (v), which
+    // the grass program sways it by; otherwise one flat triangle a blade (Xbox 360: a third of the triangles, no sway)
+    static void grassTuft(MB& m, V3 p, V3 col, uint32_t k, float size, bool curved, int blades = 3) {
+        auto rnd = [&k] { k = k * 1664525u + 1013904223u; return (k >> 8) / 16777216.0f; };
+        V3 up(0, 1, 0);
+        for (int b = 0; b < blades; b++) {
+            float a = rnd() * 6.2832f, h = size * (0.30f + 0.38f * rnd()), w = size * (0.07f + 0.05f * rnd()), lean = size * (0.10f + 0.22f * rnd());
+            V3 dir(sinf(a), 0, cosf(a)), side(dir.z, 0, -dir.x), base = p + dir * (size * 0.12f * rnd()) + V3(0, -0.04f, 0); float t = 0.85f + 0.3f * rnd(), ph = rnd() * 6.2832f;
+            V3 c0 = col * (0.78f * t), c1 = (col * 1.4f + V3(0.06f, 0.08f, 0.01f)) * t, tip = base + dir * lean + V3(0, h, 0);
+            unsigned i = m.add(base - side * w, up, c0, 0, ph, 3); m.add(base + side * w, up, c0, 0, ph, 3);
+            if (curved) {
+                V3 mid = base + dir * (lean * 0.28f) + V3(0, h * 0.58f, 0), cm = c0 * 0.45f + c1 * 0.55f;   // (most of the lean is in the top half: a blade bending over)
+                m.add(mid - side * (w * 0.62f), up, cm, 0.34f, ph, 3); m.add(mid + side * (w * 0.62f), up, cm, 0.34f, ph, 3); m.add(tip, up, c1, 1, ph, 3);
+                unsigned q[9] = { i, i + 1, i + 2, i + 1, i + 3, i + 2, i + 2, i + 3, i + 4 }; for (unsigned v : q) m.idx.push_back(v);
+            } else { m.add(tip, up, c1, 0, 0, 3); m.idx.push_back(i); m.idx.push_back(i + 1); m.idx.push_back(i + 2); }
+#ifdef FCF_XENOS_CULL
+            for (int n = curved ? 3 : 1; n > 0; n--) m.triTags.push_back(m.cellTag);
+#endif
+        }
+    }
+    // the tufts of one square of ground (x0, z0, side long), a jittered grid `step` apart, thinned in patches
+    int grassSquare(MB& m, float x0, float z0, float side, float step, float size, bool curved, float maxRD = 1e9f, int blades = 3) const {
+        int n = (int)(side / step), made = 0;
+        for (int j = 0; j < n; j++) for (int i = 0; i < n; i++) {
+            float gx = x0 + i * step, gz = z0 + j * step; uint32_t k = (uint32_t)((int)floorf(gx * 8) * 73856093) ^ (uint32_t)((int)floorf(gz * 8) * 19349663) ^ (def->seed * 83492791u);
+            auto rnd = [&k] { k = k * 1664525u + 1013904223u; return (k >> 8) / 16777216.0f; };
+            float x = gx + rnd() * step, z = gz + rnd() * step; if (rnd() > 0.35f + 0.9f * vnoise(x * 0.11f, z * 0.11f)) continue;   // patchy
+            V3 c; float y; if (!grassAt(x, z, c, y) || RD(x, z) > maxRD) continue;
+            grassTuft(m, V3(x, y, z), c, k, size * (0.8f + 0.5f * rnd()), curved, blades); made++;
+        }
+        return made;
+    }
+    bool pavedGround(float x, float z) const { return city(x, z) && RD(x, z) > ROADW + 0.4f && H(x, z) > 1.5f && !excluded(x, z, 4) && !beach(x, z); }
     bool cityGround(float x, float z) const { return city(x, z) && RD(x, z) > ROADW + 8 && H(x, z) > 1.5f && !excluded(x, z, 4); }   // where the terrain shader paves blocks and backstreets
     // The open strip along the main road: nearby lots and backstreets become a grass verge and brick promenade.
     bool openStrip(float x, float z) const {
@@ -1068,7 +1125,7 @@ struct World {
             Q(s + 2.55f, lat - 1.45f, s + 2.80f, lat + 1.45f);                                            // the line the nose stops at
             Q(s + 0.4f, lat - 1.45f, s + 2.55f, lat - 1.27f); Q(s + 0.4f, lat + 1.27f, s + 2.55f, lat + 1.45f);   // and a short bracket down each side
         }
-        decorate();
+        buildShore(); decorate();
         // --- random buildings ---
         static const V3 pal[8] = { {0.62f,0.52f,0.38f},{0.40f,0.46f,0.55f},{0.66f,0.36f,0.26f},{0.36f,0.44f,0.38f},{0.70f,0.64f,0.52f},{0.30f,0.28f,0.29f},{0.55f,0.34f,0.22f},{0.36f,0.50f,0.66f} };
         Rng fr; fr.s = def->seed * 977u + 5;   // street furniture has its own random stream, so adding some never moves a building or a tree
@@ -1077,7 +1134,7 @@ struct World {
             // every building stands square in the middle of its lot, so its walls are parallel to the kerb with an even pavement all round (some are set back a little further)
             float d = RD(x, z); bool ct = city(x, z);
             if (!((d < 75 && r1 < 0.62f) || (ct && r1 < 0.85f))) continue;
-            if (!ct && !townBlk.empty()) continue;   // custom tracks: buildings only in town (out in the fields they stood on bare grass, no paving)
+            if (!townBlk.empty() && (!ct || (!shoreD.empty() && sampleGrid(shoreD, x, z) < BEACH + 14))) continue;   // custom tracks: buildings only in town (out in the fields they stood on bare grass, no paving)
             if (d < ROADW + 5 + std::max(hx, hz) * 1.25f || excluded(x, z, 13)) continue;
             float mn = 1e9f, mx = -1e9f; for (int k = 0; k < 4; k++) { float hh = H(x + (k & 1 ? hx : -hx), z + (k & 2 ? hz : -hz)); mn = std::min(mn, hh); mx = std::max(mx, hh); }
             if (mn < 2.6f || mx - mn > 7) continue;
@@ -1117,6 +1174,13 @@ struct World {
             if (!in) tree(x, z, s);
         }
  #ifdef FCF_XENOS_CULL
+        // grass for the cell renderer (the Xbox 360): sparse, bigger tufts, only in the band beside the road where they are
+        // seen from the car, as part of the small props (drawn within 300 m, culled by cell). About 20,000 tufts a track
+        for (float gz = -HALF; gz < HALF; gz += 24) for (float gx = -HALF; gx < HALF; gx += 24) {
+            float d = RD(gx + 12, gz + 12); if (d > ROADW + 8 + 26 + 17) continue;
+            int oldTag = setCellTag(smallMb, gx + 12, gz + 12); grassSquare(smallMb, gx, gz, 24, 2.4f, 1.5f, false, ROADW + 8 + 26);
+            smallMb.cellTag = oldTag;
+        }
         arrangeProps(mb, false); arrangeProps(smallMb, true);
  #endif
 #ifdef FCF_XENOS_CULL
@@ -1132,10 +1196,11 @@ struct World {
             V3 nrm = norm(V3(-(hr[j * GN + i1] - hr[j * GN + i0]) / ((i1 - i0) * CELL), 1, -(hr[j1 * GN + i] - hr[j0 * GN + i]) / ((j1 - j0) * CELL)));
             float hh = h[j * GN + i], d = rd[j * GN + i], slope = 1 - nrm.y; bool paved = pavedGround(x, z), open = paved && openStrip(x, z); float nz = fbm(x * 0.02f, z * 0.02f, 3);
             V3 c = V3(0.20f, 0.36f, 0.12f) * (1 - nz) + V3(0.42f, 0.40f, 0.18f) * nz;
-            if (city(x, z) && !open) c = V3(0.21f, 0.21f, 0.225f);
+            if (city(x, z) && !open && !beach(x, z)) c = V3(0.21f, 0.21f, 0.225f);
             float sw = open ? 0.0f : 1 - smooth(ROADW + 3, ROADW + 7, d); c = c * (1 - sw) + V3(0.27f, 0.265f, 0.26f) * sw;
             float rk = smooth(0.10f, 0.22f, slope) * (1 - sw); c = c * (1 - rk) + V3(0.36f, 0.33f, 0.30f) * rk;
-            float sn = 1 - smooth(0.8f, 2.0f, hh); c = c * (1 - sn) + V3(0.52f, 0.45f, 0.31f) * sn;
+            float sn = 1 - smooth(0.8f, 2.0f, hh); if (!shoreD.empty() && d > ROADW + 3) sn = std::max(sn, 1 - smooth(BEACH - 5, BEACH + 2, shoreD[j * GN + i]));   // (custom tracks: a beach along every shore)
+            c = c * (1 - sn) + V3(0.52f, 0.45f, 0.31f) * sn;
             if (hh < 0) c = c * clampf(1 + hh * 0.12f, 0.35f, 1);
             t.add(V3(x, hr[j * GN + i], z), nrm, c, open ? 2.0f : paved ? 1.0f : 0.0f, std::min(d, 60.0f), 0);   // u: 1 town, 2 the open strip along the road; v = metres to the road
         }

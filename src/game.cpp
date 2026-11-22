@@ -93,7 +93,7 @@ static State state = TITLE;
 static World W;
 static Car player, ai[NAI];
 static Mesh carMesh[NCARS], wheelMesh, keyMesh;
-static Prog pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
+static Prog pGrass, pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
 #ifdef FCF_XENOS_LEAN
 static Prog pGround, pRoad, pRoadWet, pWall, pMisc;   // the 360's own world shaders, one per kind of surface (xenon/lean_shaders.py)
 #endif
@@ -300,10 +300,10 @@ static State viewState() { return state == OPTS ? optReturn : state; }        //
 // which buttons the current screen needs, in HUD units (the screen is uiW x 720). Round buttons where thumbs rest,
 // pills for words; spaced so a thumb never lands on two; only what the moment needs (ROCKET only with rockets on board);
 // and clear of the HUD's panels (speedometer right of middle, position top left, minimap left of middle)
-static bool touchHasAmmo();
+static bool touchHasAmmo(); static bool edTesting(); static int edToolNow(); static bool selIsCustom();
 static void touchLayout() {
     long long sig = (long long)state * 100 + srvMode * 10 + optPage + (me.on ? 2 : 0) + (showdownOn ? 4 : 0) + (nc.on ? 5000 : 0) + (long long)uiW * 10000
-                  + ((long long)touchHasAmmo() << 32) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35);
+                  + ((long long)touchHasAmmo() << 32) + ((long long)edTesting() << 36) + ((long long)edToolNow() << 37) + ((long long)selIsCustom() << 41) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35);
     static long long laidSig = -1; if (sig == laidSig && touchLaid >= 0) return;
     laidSig = sig; touchLaid = 1; tbtn.clear(); fingers.clear(); float W = uiW, H = 720;
     auto push = [&](TouchBtn b) { tbtn.push_back(b); };
@@ -325,7 +325,19 @@ static void touchLayout() {
     };
     const float topY = 56;   // the row of small round buttons along the top, right of the position panel
     switch (state) {
-    case EDIT: break;   // (the editor lays out its own: see editor.h)
+#ifdef FCF_EDITOR
+    case EDIT: {   // the editor: tools along the bottom, actions down the right, the track's settings on the left. The map itself takes one finger for the tool and two to move and zoom (edTouch)
+        static const char* TN[6] = { "ROAD", "HILLS", "TUNNEL", "CUTS", "JUMPS", "KEYS" };
+        for (int t = 0; t < 6; t++) pKey(TN[t], 16 + t * 128.0f, H - 68, 120, (SDL_Keycode)(SDLK_1 + t), t == edToolNow() ? TS_FIRE : TS_PLAIN, 58);
+        float rx = W - 150; pKey("DRIVE", rx, 100, 136, SDLK_RETURN, TS_GO, 60); pKey("UNDO", rx, 170, 136, SDLK_z, TS_PLAIN, 54); pKey("DEL", rx, 232, 136, SDLK_DELETE, TS_STOP, 54);
+        cKey("+", rx + 34, 326, 30, SDLK_EQUALS); cKey("-", rx + 102, 326, 30, SDLK_MINUS);
+        if (edToolNow() == 1 || edToolNow() == 4) { pKey("WIDE", rx, 366, 136, SDLK_0, TS_PLAIN, 50); pKey("SLIM", rx, 422, 136, SDLK_9, TS_PLAIN, 50); }
+        if (edToolNow() == 4) pKey("TURN", rx, 478, 136, SDLK_r, TS_PLAIN, 50);
+        pKey("DONE", rx, H - 68, 136, SDLK_ESCAPE, TS_PLAIN, 58);
+        pKey("NAME", 16, 272, 142, SDLK_F2, TS_PLAIN, 50); pKey("SKY", 166, 272, 142, SDLK_k, TS_PLAIN, 50); pKey("WEATHER", 16, 328, 142, SDLK_x, TS_PLAIN, 50); pKey("SONG", 166, 328, 142, SDLK_m, TS_PLAIN, 50);
+        pKey("CITY", 16, 384, 142, SDLK_c, TS_PLAIN, 50); pKey("LAYOUT", 166, 384, 142, SDLK_g, TS_PLAIN, 50);
+        break; }
+#endif
     case RACE:
         cKey("II", 300, topY, 36, SDLK_ESCAPE, IC_PAUSE);
         if (me.on) {   // on foot: the left thumb gets a stick wherever it lands (see touchDown); the right thumb gets the gun
@@ -344,8 +356,16 @@ static void touchLayout() {
         break;
     case TITLE: pKey("RACE", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey("ONLINE", W - 490, H - 110, 220, SDLK_o, TS_PLAIN, 84); pKey("OPTIONS", 30, H - 110, 200, SDLK_F1); break;
     case CARSEL: dpad(true, true); okBack("OK", "BACK"); break;
-    case TRACKSEL: dpad(true, true); okBack("START", "BACK"); break;
-    case PAUSED: pKey("RESUME", W / 2 - 330, 460, 200, SDLK_ESCAPE, TS_GO); pAct("RESET", W / 2 - 110, 460, 200, TA_RESET); pKey("OPTIONS", W / 2 + 110, 460, 200, SDLK_F1); pKey("QUIT", W / 2 - 100, 560, 200, SDLK_q, TS_STOP); break;
+    case TRACKSEL: dpad(true, true); okBack("START", "BACK");
+#ifdef FCF_EDITOR
+        pKey("EDIT", W - 300, 20, 130, SDLK_F4, TS_PLAIN, 58); pKey("NEW", W - 160, 20, 140, SDLK_F6, TS_PLAIN, 58); if (selIsCustom()) pKey("DELETE", 20, 20, 170, SDLK_DELETE, TS_STOP, 58);   // the track editor
+#endif
+        break;
+    case PAUSED: pKey("RESUME", W / 2 - 330, 460, 200, SDLK_ESCAPE, TS_GO); pAct("RESET", W / 2 - 110, 460, 200, TA_RESET); pKey("OPTIONS", W / 2 + 110, 460, 200, SDLK_F1); pKey("QUIT", W / 2 - 100, 560, 200, SDLK_q, TS_STOP);
+#ifdef FCF_EDITOR
+        if (edTesting()) pKey("EDITOR", W / 2 + 120, 560, 200, SDLK_F4);
+#endif
+        break;
     case RESULTS: pKey("OK", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey("LEAVE", W - 490, H - 110, 220, SDLK_ESCAPE); break;
     case NETLOBBY:
         if (voteOpen() && !voteMine()) { pKey("ACCEPT", W - 250, H - 110, 220, SDLK_y, TS_GO, 84); pKey("NO", W - 490, H - 110, 220, SDLK_n, TS_STOP, 84); break; }
@@ -494,7 +514,9 @@ struct Crate { V3 p; float cd; };
 static std::vector<Wreck> wrecks; static std::vector<Debris> debris; static std::vector<Rocket> rockets; static std::vector<Crate> crates;
 static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;
 static int keyJingles = 0;   // test metric: key jingles played
-static bool touchHasAmmo() { return ammo > 0; }   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
+static bool grassOff = false, ripAt = false; static float ripX = 0, ripZ = 0; static int grassTufts(); static bool cliEdTouch = false; static std::string edTouchResult;
+static bool touchHasAmmo() { return ammo > 0; }
+static bool selIsCustom();   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
 static bool cratesOn() { return rocketLap != player.lap; }
 static float goneOf(float age) { return clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); }   // 0 solid .. 1 faded away
 static float fireCD = 0, resetCD = 0, resetHint = 0, ammoFlash = 0; static V3 boltDir(0, 0.5f, 1), rainRel;
@@ -583,8 +605,14 @@ static void fireball(V3 p, V3 vel) {
     for (int i = 0; i < 26; i++) { V3 d = norm(V3(grng.r(-1, 1), grng.r(0.2f, 1.5f), grng.r(-1, 1))); spawn(p + d, d * grng.r(1, 6) + vel * 0.15f, grng.r(1.4f, 2.6f), grng.r(1.2f, 2.2f), 2.8f, V3(0.05f, 0.05f, 0.05f), 0.8f, 0, 2.0f); }
 }
 // an explosion at p, as loud and as violent as it is close (k = 1 is our own car)
+// Rings on the water: where something hits or moves through it, a ring spreads out and fades (the water shader bends
+// its surface by them). The newest eight are kept. amp: about 0.4 for a wading car, 1.5 for a blast
+namespace ripple {
+struct R { float x = 0, z = 0, t0 = -99, amp = 0; }; static R rs[8]; static int next = 0, made = 0; static const float LIFE = 2.6f;
+static void add(float x, float z, float amp) { if (W.HW(x, z) > -0.03f) return; rs[next] = { x, z, T, amp }; next = (next + 1) % 8; made++; }
+}
 static void blast(V3 p, V3 vel, float k) {
-    fireball(p, vel); tone(900, 0.9f, 0.9f * k, 1, -700); tone(70, 0.6f, 0.8f * k, 0, -40);
+    fireball(p, vel); if (p.y < 2.5f) ripple::add(p.x, p.z, 1.5f); tone(900, 0.9f, 0.9f * k, 1, -700); tone(70, 0.6f, 0.8f * k, 0, -40);
     shake = std::max(shake, k); flashT = std::max(flashT, 0.7f * k * k); flashCol = V3(1, 0.8f, 0.5f); caT = std::max(caT, k); rumble(k, (int)(600 * k));
 }
 static float nearK(V3 p) { return clampf(1.3f - len(p - player.pos) / 80, 0.12f, 1); }
@@ -888,7 +916,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
     }
     c.pos = np;
     if (W.HW(np.x, np.z) < -1.1f && np.y < -0.85f) {   // sunk (not in the tunnel: it is dry)
-        tm.sinks++; c.dead = true; c.sunk = true; c.deadT = 1.4f; tone(500, 0.7f, 0.8f, 1, -300);
+        tm.sinks++; c.dead = true; c.sunk = true; c.deadT = 1.4f; tone(500, 0.7f, 0.8f, 1, -300); ripple::add(np.x, np.z, 1.5f);
         for (int i = 0; i < 40; i++) spawn(V3(np.x, 0.1f, np.z) + V3(grng.r(-1.5f, 1.5f), 0, grng.r(-1.5f, 1.5f)), V3(grng.r(-4, 4), grng.r(5, 14), grng.r(-4, 4)), grng.r(0.6f, 1.2f), 0.6f, 1.5f, V3(0.85f, 0.92f, 1), 0.7f, 0, -14);
         return;
     }
@@ -1081,8 +1109,73 @@ static void finishRace(bool tu) {
 #ifndef FCF_GFX_XSDK
 #define FCF_EDITOR 1
 #include "editor.h"
+static bool selIsCustom() { return state == TRACKSEL && selTrack >= NTRACKS; }
+static bool edTesting() { return ed::testing; } static int edToolNow() { return state == EDIT ? ed::tool : -1; }
+// the editor by touch: one finger is the mouse (on empty map it moves the map); a second finger turns it into moving and
+// zooming (pinch) until every finger is up
+static struct { SDL_FingerID id[2]; float x[2], y[2]; int n = 0; bool gesture = false; } edt;
+static int edPinches = 0;   // test metric
+static void edTouchDown(SDL_FingerID id, float x, float y) {
+    if (edt.n >= 2) return; int k = edt.n++; edt.id[k] = id; edt.x[k] = x; edt.y[k] = y;
+    if (edt.n == 1 && !edt.gesture) { ed::mouseMove(x, y); ed::mouseDown(SDL_BUTTON_LEFT); if (!ed::drag) ed::pan = true; }
+    else { ed::mouseUp(); edt.gesture = true; edPinches++; ed::mouseMove((edt.x[0] + edt.x[1]) / 2, (edt.y[0] + edt.y[1]) / 2); }
+}
+static void edTouchMove(SDL_FingerID id, float x, float y) {
+    int k = -1; for (int i = 0; i < edt.n; i++) if (edt.id[i] == id) k = i; if (k < 0) return;
+    if (edt.n == 1) { edt.x[0] = x; edt.y[0] = y; if (!edt.gesture) ed::mouseMove(x, y); return; }
+    float d0 = hypotf(edt.x[0] - edt.x[1], edt.y[0] - edt.y[1]); edt.x[k] = x; edt.y[k] = y; float d1 = hypotf(edt.x[0] - edt.x[1], edt.y[0] - edt.y[1]);
+    ed::pan = true; ed::mouseMove((edt.x[0] + edt.x[1]) / 2, (edt.y[0] + edt.y[1]) / 2); ed::pan = false;
+    if (d0 > 20 && d1 > 20) ed::zoom(logf(d1 / d0) / 0.1278f);   // (zoom's step is a factor 0.88: ln(1 / 0.88))
+}
+static bool edTouchUp(SDL_FingerID id) {
+    int k = -1; for (int i = 0; i < edt.n; i++) if (edt.id[i] == id) k = i; if (k < 0) return false;
+    if (k == 0 && edt.n == 2) { edt.id[0] = edt.id[1]; edt.x[0] = edt.x[1]; edt.y[0] = edt.y[1]; } edt.n--;
+    if (!edt.gesture) ed::mouseUp(); if (edt.n == 0) edt.gesture = false; return true;
+}
+// --edtouch (tests): fingers on the map. One finger drags the road's first point 60 px right; two pinch out (zoom in)
+// and slide (the map moves); a tap on the yellow line adds a point. Returns what happened as "moved,zoomed,panned,added"
+static std::string edTouchTest() {
+    TrackDef& d = ed::def(); float sx, sy, x0 = d.ctrl[0]; int n0 = (int)d.ctrl.size(); ed::screenXZ(d.ctrl[0], d.ctrl[1], sx, sy);
+    edTouchDown(1, sx, sy); edTouchMove(1, sx + 30, sy); edTouchMove(1, sx + 60, sy); edTouchUp(1); bool moved = d.ctrl[0] > x0 + 5 && (int)d.ctrl.size() == n0;
+    float h0 = topH; V3 c0 = camTgt; edTouchDown(1, 500, 360); edTouchDown(2, 700, 360); edTouchMove(1, 400, 360); edTouchMove(2, 800, 360); bool zoomed = topH < h0 * 0.8f;
+    edTouchMove(1, 400, 460); edTouchMove(2, 800, 460); bool panned = fabsf(camTgt.z - c0.z) > 5; edTouchUp(1); edTouchUp(2);
+    std::vector<V3> sp; ed::spline(d, sp, 12); V3 m = sp[6]; ed::screenXZ(m.x, m.z, sx, sy); edTouchDown(3, sx, sy); edTouchUp(3); bool added = (int)d.ctrl.size() == n0 + 2;
+    char b[32]; snprintf(b, sizeof b, "%d,%d,%d,%d", (int)moved, (int)zoomed, (int)panned, (int)added); return b;
+}
+// the editor with a controller: the left stick moves a pointer (the map follows at the edges), A is the mouse button,
+// the right stick moves the map and the triggers zoom. The buttons: see the event loop
+static void edPadFrame(float dt) {
+    if (state != EDIT || !pad || ed::naming) return;
+    auto ax = [](plat::PadAxis a) { float v = plat::padAxisRaw(pad, a) / 32767.f; return fabsf(v) < 0.18f ? 0.0f : v; };
+    float lx = ax(plat::AX_LX), ly = ax(plat::AX_LY), rx = ax(plat::AX_RX), ry = ax(plat::AX_RY), zt = plat::padAxisRaw(pad, plat::AX_TRIG_R) / 32767.f - plat::padAxisRaw(pad, plat::AX_TRIG_L) / 32767.f;
+    static bool held = false; bool a = plat::padButton(pad, plat::BT_A);
+    if (lx || ly || rx || ry || fabsf(zt) > 0.1f || a != held) padUI = true;
+    float sp = 380 + 520 * (lx * lx + ly * ly), nx = clampf(ed::mx + lx * sp * dt, 4, uiW - 4), ny = clampf(ed::my + ly * sp * dt, 60, 716);
+    float ex = (nx < 60 ? -1.0f : nx > uiW - 60 ? 1.0f : 0.0f) * fabsf(lx) + rx, ez = (ny < 110 ? -1.0f : ny > 660 ? 1.0f : 0.0f) * fabsf(ly) + ry;   // at the edges the map moves under the pointer
+    if (ex || ez) { camTgt.x = clampf(camTgt.x + ex * topH * 0.8f * dt, -800, 800); camTgt.z = clampf(camTgt.z + ez * topH * 0.8f * dt, -800, 800); }
+    if (nx != ed::mx || ny != ed::my || ex || ez) ed::mouseMove(nx, ny);
+    if (fabsf(zt) > 0.1f) ed::zoom(zt * 9 * dt);
+    if (a && !held) ed::mouseDown(SDL_BUTTON_LEFT); if (!a && held) ed::mouseUp(); held = a;
+}
 #endif
+#ifndef FCF_EDITOR
+// the editor is PC-only; these keep the shared HUD / touch code linking on the 360
+static bool selIsCustom() { return false; }
+static bool edTesting() { return false; }
+static int edToolNow() { return -1; }
+#endif
+// wakes: every car in the shallows, and you on foot, leave a ring behind about five times a second
+static int grassNear() { if (grassOff || W.flat) return 0; MB b; V3 a = avatarPos(); return W.grassSquare(b, a.x - 48, a.z - 48, 96, 2.0f, 1.0f, false); }   // (tufts within 48 m of you: for the tests)
+static void rippleWakes() {
+    static float wakeT = 0; if (fabsf(T - wakeT) <= 0.22f) return;
+    wakeT = T; if (ripAt) { static int n = 0; if (n++ % 3 == 0) ripple::add(ripX, ripZ, n % 2 ? 1.5f : 0.45f); }
+    if (state != RACE) return;
+    auto wake = [](const Car& c) { if (!c.dead && c.pos.y < 0.9f && len(c.vel) > 1.5f) ripple::add(c.pos.x, c.pos.z, 0.45f); };
+    wake(player); for (auto& c : ai) wake(c);
+    V3 a = avatarPos(); if (me.on && a.y < 0.6f) ripple::add(a.x, a.z, 0.3f);
+}
 static void update(float dt) {
+    rippleWakes();
     T += dt; frameNo++;
     if (logoT >= 0) { float t0 = logoT; logoT += dt; logoSounds(t0, logoT); if (logoT >= LOGO_LEN) logoT = -1; }
     if (pendingTrack >= 0 && (pendingT -= dt) <= 0) flushPendingTrack();
@@ -1092,7 +1185,7 @@ static void update(float dt) {
     else if (state == TRACKSEL || state == CARSEL) weather = selWeather;
     else if (state == TITLE || state == EDIT) weather = W_CLEAR;
 #ifdef FCF_EDITOR
-    if (state == EDIT) ed::update(dt);
+    if (state == EDIT) { edPadFrame(dt); ed::update(dt); static bool wasNaming = false; if (ed::naming != wasNaming) { wasNaming = ed::naming; plat::textInput(ed::naming); } }   // (naming: the phone's keyboard comes up)
 #endif
     bool driving = state == RACE || state == RESULTS || state == TITLE || (netRace && state == PAUSED);
     snd.musicDuck = state == PAUSED ? 0.35f : (state == RACE || state == RESULTS ? 0.85f : 1.0f);
@@ -1549,6 +1642,38 @@ static void drawWorldMerged(bool terrain, bool props, V3 cam) {
 }
 #endif
 #endif
+// ---- grass (PC and Android): tufts on the grassland round the camera, built a 16 m square at a time as you move and
+// kept while near (the Xbox 360's cell renderer has its own, built with the track: see World::build) ----
+#ifndef FCF_XENOS_CULL
+namespace grass {
+#ifdef FCF_MOBILE
+static const int R = 2, BLADES = 3; static const float STEP = 1.25f;
+#else
+static const int R = 3, BLADES = 5; static const float STEP = 0.6f;
+#endif
+static const float TILE = 16; static int built = 0, tufts = 0;
+struct Tile { int x = 1 << 30, z = 0, gen = -1; Mesh m; };
+static Tile tiles[(2 * R + 1) * (2 * R + 1)];
+static void draw(V3 cam) {
+    if (grassOff || W.flat) return;
+    int cx = (int)floorf(cam.x / TILE), cz = (int)floorf(cam.z / TILE), budget = 2; const int N = 2 * R + 1;
+    for (int dz = -R; dz <= R; dz++) for (int dx = -R; dx <= R; dx++) {
+        int tx = cx + dx, tz = cz + dz; Tile& t = tiles[(((tz % N) + N) % N) * N + (((tx % N) + N) % N)];   // (each square has its place in the ring, so moving on only rebuilds the new edge)
+        if (t.x != tx || t.z != tz || t.gen != W.gen) {
+            if (budget <= 0) { t.m.n = 0; t.x = 1 << 30; continue; }   // (two a frame: the rest next frame)
+            budget--; MB b; tufts += W.grassSquare(b, tx * TILE, tz * TILE, TILE, STEP, 1.0f, true, 1e9f, BLADES); t.x = tx; t.z = tz; t.gen = W.gen; built++;
+            if (b.idx.empty()) t.m.n = 0; else t.m.upload(b);
+        }
+        t.m.draw();
+    }
+}
+}
+#endif
+#ifndef FCF_XENOS_CULL
+static int grassTufts() { return grass::tufts; }
+#else
+static int grassTufts() { return 0; }
+#endif
 static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     M4 VP = mul(P, V); float hdr = 1;
 #ifdef FCF_XENOS_CULL
@@ -1646,6 +1771,9 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         setCommon(pWorld, VP, cam, hdr);
         if(DRAW_MASK & DM_TERRAIN) W.terrain.draw();
         if(DRAW_MASK & DM_PROPS) W.props.draw();
+#ifndef FCF_XENOS_CULL
+        if (mainPass && (DRAW_MASK & DM_PROPS) && !grassOff) { setCommon(pGrass, VP, cam, hdr); grass::draw(cam); }
+#endif
 #endif
     }
     if (skyBehind) drawSky(true);
@@ -1697,7 +1825,11 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         pCar.v3("uPaint", PAINTS[7]); pCar.f1("uChrome", 1); pCar.f1("uBrake", 0);
         for (size_t k = 0; k < W.keys.size(); k++) if (!(keysGot[W.id] >> k & 1)) { pCar.m4("uModel", mul(translate(W.keys[k] + V3(0, 0.25f * sinf(T * 2 + k), 0)), mul(rotY(T * 2.2f + k), scale(1.9f, 1.9f, 1.9f)))); keyMesh.draw(); }
     }
-    if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2); W.water.draw(); }
+    if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2);
+#ifndef FCF_GFX_XSDK
+        for (int i = 0; i < 8; i++) { const ripple::R& r = ripple::rs[i]; float age = T - r.t0; bool on = age >= 0 && age < ripple::LIFE; char nm[8]; snprintf(nm, sizeof nm, "uRip%d", i); pWater.v4(nm, r.x, r.z, on ? age : 0.0f, on ? r.amp : 0.0f); }
+#endif
+        W.water.draw(); }
     if ((DRAW_MASK & DM_WATER) && mainPass && !W.glassV.empty() && len(cam - glassMid()) < 900) {   // the tunnel's glass, over the sea and the fish outside it
         traceDraw("glass"); setCommon(pGlass, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
         gfx::data(partBuf, W.glassV.data(), W.glassV.size() * 4, true); gfx::draw(partBuf, 0, (int)(W.glassV.size() / 11)); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
@@ -1995,7 +2127,7 @@ static void drawHUD() {
 #ifdef FCF_EDITOR
         panel(Wd - 700, 358, 640, 30, 0.5f);
         if (delAsk) ui.text(Wd - 72, 364, 2.3f, V3(1, 0.4f, 0.3f), "DELETE THIS TRACK FOR GOOD?   ENTER = YES   ANY OTHER KEY = NO", 2);
-        else ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), W.id >= NTRACKS ? "F4 EDIT   F6 NEW TRACK   DEL DELETE" : "F4 EDIT A COPY OF THIS TRACK    F6 NEW TRACK", 2);
+        else if (!touchOn) ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), padUI ? "{X} EDIT   {BACK} NEW TRACK" : W.id >= NTRACKS ? "F4 EDIT   F6 NEW TRACK   DEL DELETE" : "F4 EDIT A COPY OF THIS TRACK    F6 NEW TRACK", 2);
 #endif
         if (!W.keys.empty()) ui.text(96, ry[0] + 120, 2.5f, yel, "HIDDEN KEYS"); else ui.text(96, ry[0] + 120, 2.5f, V3(0.4f, 1, 0.6f), W.id >= NTRACKS ? "YOUR OWN TRACK" : "NO HIDDEN KEYS - JUST RACE"); for (int k = 0; k < (int)W.keys.size(); k++) keyIcon(262 + k * 46, ry[0] + 118, 4, (keysGot[W.id] >> k & 1) ? yel : V3(0.3f, 0.3f, 0.35f), 1);
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
@@ -2367,6 +2499,12 @@ static void printJSON(FILE* o) {
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
       fprintf(o, "\"shortcuts\":\"%s\",\"tunnels\":%d,\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), (int)W.tuns.size(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
     fprintf(o, "\"keyJingles\":%d,", keyJingles);
+#ifdef FCF_EDITOR
+    fprintf(o, "\"edPinches\":%d,\"edTool\":%d,\"edTouch\":\"%s\",", edPinches, edToolNow(), edTouchResult.c_str());
+#else
+    fprintf(o, "\"edPinches\":0,\"edTool\":-1,\"edTouch\":\"\",");
+#endif
+    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
@@ -2426,6 +2564,9 @@ static void touchDown(SDL_FingerID id, float x, float y) {
     if (!touchOn) { touchOn = true; touchLaid = -1; touchLayout(); return; }           // the first touch only brings the buttons up
     touchLayout(); int b = touchHit(x, y);
     if (b < 0) {
+#ifdef FCF_EDITOR
+        if (state == EDIT) { edTouchDown(id, x, y); return; }
+#endif
         if (me.on && state == RACE && !tstick.on && x < uiW * 0.5f && y > 150) { tstick.on = true; tstick.id = id; tstick.ox = tstick.x = x; tstick.oy = tstick.y = y; }
         // lists: tap a row to pick it, tap the picked one again to choose it
         const float mx = x, Wd = uiW;   // (the menus are drawn in the same units)
@@ -2440,10 +2581,17 @@ static void touchDown(SDL_FingerID id, float x, float y) {
     if (tbtn[b].hold >= 0) fingers.push_back({ id, b }); else { fingers.push_back({ id, b }); touchPress(b); }   // (touchPress may change the screen, which clears the fingers)
 }
 static void touchMove(SDL_FingerID id, float x, float y) {   // sliding a thumb from one held button to its neighbour (left to right) carries the hold across
+#ifdef FCF_EDITOR
+    if (state == EDIT) { edTouchMove(id, x, y); return; }
+#endif
     if (tstick.on && tstick.id == id) { tstick.x = x; tstick.y = y; return; }
     for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold >= 0) { int b = touchHit(x, y); if (b >= 0 && tbtn[b].hold >= 0) f.btn = b; }
 }
-static void touchUp(SDL_FingerID id) { if (tstick.on && tstick.id == id) tstick.on = false; for (size_t i = 0; i < fingers.size();) if (fingers[i].id == id) fingers.erase(fingers.begin() + i); else i++; }
+static void touchUp(SDL_FingerID id) {
+#ifdef FCF_EDITOR
+    if (edt.n && edTouchUp(id)) return;
+#endif
+    if (tstick.on && tstick.id == id) tstick.on = false; for (size_t i = 0; i < fingers.size();) if (fingers[i].id == id) fingers.erase(fingers.begin() + i); else i++; }
 static int touchFind(const std::string& label) { touchLayout(); for (size_t i = 0; i < tbtn.size(); i++) if (label == tbtn[i].label) return (int)i; return -1; }
 static std::vector<std::string> touchHoldLabels;   // --touchhold LABEL (tests): a finger that never lets go
 struct Press { float t; std::string name; }; static std::vector<Press> presses, taps; static float fixedT = 0;   // --press T:KEY, --tap T:LABEL
@@ -2525,7 +2673,7 @@ int main(int argc, char** argv) {
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
         else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--bright") vidBright = std::max(50, std::min(150, atoi(argv[++i]))); else if (a == "--autocut") { autoDrive = true; autoCut = atoi(argv[++i]); } else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
-        else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
+        else if (a == "--ripat") { ripAt = true; ripX = F(1); ripZ = F(2); i += 2; } else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
         else if (a == "--hold") { int sc = SDL_GetScancodeFromName(argv[++i]); if (sc) heldKeys.push_back(sc); }
@@ -2534,7 +2682,7 @@ int main(int argc, char** argv) {
         else if (a == "--connect") { snprintf(nc.host, sizeof nc.host, "%s", argv[++i]); netWanted = true; } else if (a == "--name") { snprintf(nc.name, sizeof nc.name, "%.16s", argv[++i]); for (char* c = nc.name; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--ready") nc.autoReady = true;
         else if (a == "--minisnow") mini::now = true; else if (a == "--minigroup") { mini::now = true; mini::group = atoi(argv[++i]); } else if (a == "--minishold") mini::hold = true; else if (a == "--outcar") mini::outcar = true; else if (a == "--flowers") mini::flowers = atoi(argv[++i]);   // tests: a mini Warden straight away (40 m ahead, on the road); as if that many flowers were picked up
-        else if (a == "--share") shareAuto = true; else if (a == "--sharewhen") shareWhen = std::max(1, atoi(argv[++i])); else if (a == "--loadstall") loadStall = (float)atof(argv[++i]); else if (a == "--vote") { std::string v = argv[++i]; autoVote = v == "yes" ? 1 : v == "no" ? 2 : 0; }
+        else if (a == "--share") shareAuto = true; else if (a == "--sharewhen") shareWhen = std::max(1, atoi(argv[++i])); else if (a == "--nograss") grassOff = true; else if (a == "--edtouch") cliEdTouch = true; else if (a == "--loadstall") loadStall = (float)atof(argv[++i]); else if (a == "--vote") { std::string v = argv[++i]; autoVote = v == "yes" ? 1 : v == "no" ? 2 : 0; }
         else if (a == "--tracksdir") tracksDirOverride = argv[++i];                        // where custom tracks (.fcft) are kept
         else if (a == "--trackfile") cliTrackFile = argv[++i];                             // load this custom track and pick it
         else if (a == "--exporttracks") { initTracks(); std::string dir = argv[++i]; trackMkdir(dir); for (int t = 0; t < NTRACKS; t++) { TrackDef d = TRACKS[t]; d.nameS = d.name; d.subS = d.sub; d.song = TRACK_SONG[t]; char num[8]; snprintf(num, sizeof num, "%d", t + 1); std::string f = dir + "/builtin-" + num + ".fcft"; if (!trackSave(d, f.c_str())) { fprintf(stderr, "cannot write %s\n", f.c_str()); return 1; } } return 0; }
@@ -2584,7 +2732,7 @@ int main(int argc, char** argv) {
         if (startState == 8) { state = OPTS; optReturn = TITLE; }
         if (startState == 1) { state = CARSEL; setupCars(false); } if (startState == 2) { state = TRACKSEL; setupCars(false); } if (startState == 3) { if (cliChamp) champBegin(); else startRace(); if (!fullCountdown) { countdown = 0.01f; introT = 0; } }
 #ifdef FCF_EDITOR
-        if (cliEdit) { ed::open(cliEdNew ? -1 : selTrack); if (state == EDIT && !cliEdScript.empty()) ed::script(cliEdScript.c_str()); ed::tool = ((cliEdTool % ed::NTOOL) + ed::NTOOL) % ed::NTOOL; ed::noteT = 0; }   // --edit: straight into the editor (for screenshots)
+        if (cliEdit) { ed::open(cliEdNew ? -1 : selTrack); if (state == EDIT && cliEdTouch) edTouchResult = edTouchTest(); if (state == EDIT && !cliEdScript.empty()) ed::script(cliEdScript.c_str()); ed::tool = ((cliEdTool % ed::NTOOL) + ed::NTOOL) % ed::NTOOL; ed::noteT = 0; }   // --edit: straight into the editor (for screenshots)
 #endif
         if (keyrun >= 0 && keyrun < (int)W.recipes.size()) {   // drive the scripted route to hidden key number `keyrun`
             const Recipe& r = W.recipes[keyrun]; posSet = true; px = r.x; pz = r.z; pyaw = r.yaw;
@@ -2650,8 +2798,16 @@ int main(int argc, char** argv) {
 #define FCF_XSDK_PROG_LOG(name) ((void)0)
 #endif
     FCF_MAKE_PROG(pWorld, "world", VS_MESH, FS_COMMON, FS_WORLD);
+#ifndef FCF_GFX_XSDK
+    FCF_MAKE_PROG(pGrass, "grass", VS_GRASS, FS_COMMON, FS_WORLD);
+#endif
     FCF_MAKE_PROG(pCar, "car", VS_MESH, FS_COMMON, FS_CAR);
+#ifndef FCF_GFX_XSDK
+    static const std::string FS_WATER_RIP = std::string("#define FCF_RIPPLE 1\n") + FS_WATER;
+    FCF_MAKE_PROG(pWater, "water", VS_MESH, FS_COMMON, FS_WATER_RIP.c_str());
+#else
     FCF_MAKE_PROG(pWater, "water", VS_MESH, FS_COMMON, FS_WATER);
+#endif
     FCF_MAKE_PROG(pSky, "sky", VS_SKY, FS_COMMON, FS_SKY);
     FCF_MAKE_PROG(pPart, "part", VS_PART, FS_COMMON, FS_PART);
     FCF_MAKE_PROG(pDepth, "depth", VS_MESH, FS_COMMON, FS_DEPTH);
@@ -2790,6 +2946,24 @@ int main(int argc, char** argv) {
             if (e.type == plat::EV_TEXT && state == NETJOIN && !nc.on && srvMode != 0 && !srvSkipText) {   // typing a server address / our name
                 std::string tx; for (const char* c = e.text; *c; c++) if (*c > 32 || (*c == ' ' && srvMode == 2)) tx += *c; srvType(tx.c_str());
             }
+#ifdef FCF_EDITOR
+            if (e.type == plat::EV_PAD_DOWN && (state == EDIT || (state == TRACKSEL && (e.button == SDL_CONTROLLER_BUTTON_X || e.button == SDL_CONTROLLER_BUTTON_BACK)) || (ed::testing && state == PAUSED && e.button == SDL_CONTROLLER_BUTTON_Y))) {
+                padUI = true; int b = e.button;
+                if (state == TRACKSEL) { onKey(b == SDL_CONTROLLER_BUTTON_X ? SDLK_F4 : SDLK_F6); continue; }   // X: edit this track; BACK: a new one
+                if (state == PAUSED) { onKey(SDLK_F4); continue; }                                              // Y in a test drive's pause menu: back to the editor
+                if (ed::naming) { if (b == SDL_CONTROLLER_BUTTON_A || b == SDL_CONTROLLER_BUTTON_B || b == SDL_CONTROLLER_BUTTON_START) ed::key(SDLK_RETURN); continue; }
+                switch (b) {
+                case SDL_CONTROLLER_BUTTON_B: ed::key(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_X: ed::key(SDLK_DELETE); break;
+                case SDL_CONTROLLER_BUTTON_Y: case SDL_CONTROLLER_BUTTON_START: ed::key(SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_BACK: ed::key(SDLK_z); break;
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: ed::key((SDL_Keycode)(SDLK_1 + (ed::tool + ed::NTOOL - 1) % ed::NTOOL)); break; case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: ed::key(SDLK_TAB); break;
+                case SDL_CONTROLLER_BUTTON_DPAD_UP: ed::key(SDLK_EQUALS); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: ed::key(SDLK_MINUS); break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: ed::key(SDLK_0); break; case SDL_CONTROLLER_BUTTON_DPAD_LEFT: ed::key(SDLK_9); break;
+                case SDL_CONTROLLER_BUTTON_LEFTSTICK: ed::key(SDLK_k); break; case SDL_CONTROLLER_BUTTON_RIGHTSTICK: ed::key(SDLK_x); break;
+                default: break;   // (A is read held, in edPadFrame)
+                }
+                continue;
+            }
+#endif
             if (e.type == plat::EV_PAD_DOWN) {
                 padUI = true; switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;
                 case SDL_CONTROLLER_BUTTON_B: if (state != RACE) onKey(SDLK_ESCAPE); break; case SDL_CONTROLLER_BUTTON_Y: if (state == RACE) camMode = (camMode + 1) % 3; else onKey(state == TITLE ? SDLK_o : state == NETLOBBY ? SDLK_t : SDLK_q); break; case SDL_CONTROLLER_BUTTON_BACK: if (state == PAUSED) state = RACE; doReset(); break;

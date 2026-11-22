@@ -9,6 +9,19 @@ out vec3 vP, vN, vC; out vec2 vUV; out float vMat;
 void main(){ vec4 w = uModel*vec4(aP,1.0); vP = w.xyz; vN = mat3(uModel)*aN; vC = aC; vUV = aUV; vMat = aM; gl_Position = uVP*w; }
 )";
 
+// Grass: the mesh shader, plus the wind. aUV.x: how far up its blade this corner is (the root stays put, the tip moves
+// most); aUV.y: a number of the blade's own. Gusts roll across the field (the slow wave), each blade flutters in them.
+static const char* VS_GRASS = R"(#version 330 core
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC;
+layout(location=3) in vec2 aUV; layout(location=4) in float aM;
+uniform mat4 uVP, uModel; uniform float uTime;
+out vec3 vP, vN, vC; out vec2 vUV; out float vMat;
+void main(){
+  float gust = 0.55 + 0.45*sin(uTime*0.9 + aP.x*0.07 + aP.z*0.05), k = aUV.x*aUV.x;
+  vec3 p = aP + vec3(sin(uTime*2.3 + aP.x*0.6 + aUV.y), 0.0, cos(uTime*1.9 + aP.z*0.6 + aUV.y*1.7))*(0.07*gust*k) + vec3(0.16*gust*k, -0.03*gust*k, 0.07*gust*k);
+  vec4 w = uModel*vec4(p,1.0); vP = w.xyz; vN = mat3(uModel)*aN; vC = aC*(0.92 + 0.16*gust*aUV.x); vUV = vec2(0.0); vMat = aM; gl_Position = uVP*w; }
+)";
+
 static const char* VS_SKY = R"(#version 330 core
 out vec2 vNdc;
 void main(){ vec2 p = vec2((gl_VertexID<<1)&2, gl_VertexID&2)*2.0-1.0; vNdc = p; gl_Position = vec4(p,1.0,1.0); }
@@ -300,6 +313,16 @@ in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
 uniform sampler2D uHeight;
 float wh(vec2 p){ float t = uTime;
   return fbm(p*0.09 + vec2(t*0.11, t*0.07))*1.4 + vnoise(p*0.55 + vec2(-t*0.5, t*0.33))*0.35 + vnoise(p*1.7 + vec2(t*0.9, -t*0.6))*0.10; }
+#ifdef FCF_RIPPLE
+// Rings from splashes (x, z, age in seconds, strength; strength 0: none). Each is one band of waves that spreads and
+// fades. Returns the slope of the water in x and z, and its height
+uniform vec4 uRip0, uRip1, uRip2, uRip3, uRip4, uRip5, uRip6, uRip7;
+vec3 rip(vec4 r, vec2 p){
+  if(r.w <= 0.0) return vec3(0.0);
+  vec2 dv = p - r.xy; float d = length(dv) + 0.001, rad = r.z*(3.0 + 1.6*r.w), life = clamp(1.0 - r.z/2.6, 0.0, 1.0);
+  float w = exp(-(d-rad)*(d-rad)/(1.0 + r.z*1.4))*life*life*r.w, ph = (d-rad)*4.2;
+  return vec3(dv/d*cos(ph)*w, sin(ph)*w); }
+#endif
 void main(){
   vec2 huv = (vP.xz+768.0)/1536.0;
 #if FCF_WATER_TEST == 1
@@ -321,7 +344,12 @@ void main(){
   float h0 = wh(vP.xz), hx = wh(vP.xz+vec2(e,0.0)), hz = wh(vP.xz+vec2(0.0,e));
 #endif
   float k = 0.9/(1.0+dist*0.012);
-  vec3 n = normalize(vec3(-(hx-h0)/e*k, 1.0, -(hz-h0)/e*k));
+  vec3 n = vec3(-(hx-h0)/e*k, 1.0, -(hz-h0)/e*k); float crest = 0.0;
+#ifdef FCF_RIPPLE
+  vec3 rp = rip(uRip0, vP.xz) + rip(uRip1, vP.xz) + rip(uRip2, vP.xz) + rip(uRip3, vP.xz) + rip(uRip4, vP.xz) + rip(uRip5, vP.xz) + rip(uRip6, vP.xz) + rip(uRip7, vP.xz);
+  n.xz -= rp.xy*1.3; crest = max(rp.z, 0.0);
+#endif
+  n = normalize(n);
   vec3 V = normalize(uCamPos-vP);
   vec3 R = reflect(-V, n); R.y = abs(R.y)+0.02; R = normalize(R);
   float F = 0.03+0.97*pow(1.0-max(dot(n,V),0.0), 5.0);
@@ -333,7 +361,7 @@ void main(){
   // shoreline foam, animated
   float fo = 1.0-smoothstep(0.0, 0.45, depth);
   float foam = fo*smoothstep(0.42, 0.75, vnoise(vP.xz*1.6 + vec2(uTime*0.4,0.0)) + fo*0.5 + 0.15*sin(depth*9.0 - uTime*2.5));
-  col = mix(col, vec3(0.9)*(ambient(n)+uSunCol*0.6*sh), clamp(foam,0.0,1.0)*0.85);
+  col = mix(col, vec3(0.9)*(ambient(n)+uSunCol*0.6*sh), clamp(foam + crest*crest*0.6,0.0,1.0)*0.85);
   float a = clamp(depth*1.1+0.25, 0.0, 1.0);
 #if FCF_WATER_TEST == 2
   if(depth < -0.02) a = 0.0;

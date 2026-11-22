@@ -90,6 +90,17 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.0
+
+- Track editor on phones (touch) and with a gamepad
+- Grass in the fields that sways in the wind (PC and Android); roadside grass on the Xbox 360
+- Splashes: cars, bullets and blasts leave rings on the water (PC and Android)
+- Custom tracks get a sandy beach along every shore, and town keeps off it
+- New touch controls: round buttons with icons, tappable server and track lists
+- Keys jingle faintly when you are near one
+- Wardens lob rockets over buildings; mini Wardens come in groups of three
+- Xbox 360: headlights on the night circuit
+
 ## What's new in 1.74
 
 - Xbox 360: no longer dropped from online lobbies while it builds the track
