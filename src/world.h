@@ -808,20 +808,30 @@ struct World {
             for (int i = std::max(runTun[k].a, runs[k].first - 20); i <= std::min(runTun[k].b, runs[k].second + 20); i++) { float dx = ts[i].x - cx, dz = ts[i].z - cz, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } }
             bool inside = false; for (size_t q = 0; q < rx0.size(); q++) if (q < k && cx > rx0[q] && cx < rx1[q] && cz > rz0[q] && cz < rz1[q]) inside = true;   // (overlapping patches: laid once)
             if (inside) continue;
-            // the edge: the tube's inside at the waterline (half an ellipse above the sills), clipped exactly so the sea meets
-            // the arch in a clean line instead of in 1.5 m steps
-            const TS& t = ts[bi]; float e = 0, hgt = -t.y;
-            if (t.tun) { if (hgt <= TUBE_SILL) e = TUBE_W; else if (hgt < TUBE_TOP) { float r = (hgt - TUBE_SILL) / (TUBE_TOP - TUBE_SILL); e = TUBE_W * sqrtf(1 - r * r); } }
-            V3 c[4] = { V3(x, 0, z), V3(x, 0, z + 1.5f), V3(x + 1.5f, 0, z + 1.5f), V3(x + 1.5f, 0, z) };
-            if (e <= 0) { w.quad(c[0], c[1], c[2], c[3], V3(1, 1, 1), 0); continue; }
-            e += 0.02f; auto lat = [&](V3 q) { return (q.x - t.x) * t.tz - (q.z - t.z) * t.tx; };
-            float sd = lat(V3(cx, 0, cz)) >= 0 ? 1.0f : -1.0f;   // which side of the tube this square is on: keep sd*lat >= e
-            auto keep = [&](V3 q) { return sd * lat(q) - e; };
-            std::vector<V3> poly;
-            for (int k = 0; k < 4; k++) { V3 a = c[k], b = c[(k + 1) % 4]; float ka = keep(a), kb = keep(b);
-                if (ka >= 0) poly.push_back(a);
-                if ((ka >= 0) != (kb >= 0)) { float u = ka / (ka - kb); poly.push_back(a + (b - a) * u); } }
-            for (size_t k = 1; k + 1 < poly.size(); k++) w.tri(poly[0], poly[k], poly[k + 1], V3(1, 1, 1), 0);
+            // the edge: the tube's inside at the waterline (half an ellipse above the sills). Where the sea crosses the arch
+            // near its crown that width changes fast along the tube, so the square is cut in 0.375 m cells, and each corner
+            // is measured against its own nearest sample: the sea meets the arch in a clean line, never inside it
+            auto edgeAt = [&](V3 q, float& lat) {   // the tube's half-width at the waterline beside q (0: none), and q's offset
+                int b2 = bi; float d2 = 1e18f; for (int i = std::max(runTun[k].a, bi - 8); i <= std::min(runTun[k].b, bi + 8); i++) { float dx = ts[i].x - q.x, dz = ts[i].z - q.z, d = dx * dx + dz * dz; if (d < d2) { d2 = d; b2 = i; } }
+                const TS& t = ts[b2]; lat = (q.x - t.x) * t.tz - (q.z - t.z) * t.tx; float hgt = -t.y, e = 0;
+                if (t.tun) { if (hgt <= TUBE_SILL) e = TUBE_W; else if (hgt < TUBE_TOP) { float r = (hgt - TUBE_SILL) / (TUBE_TOP - TUBE_SILL); e = TUBE_W * sqrtf(1 - r * r); } }
+                return e > 0 ? e + 0.08f : 0.0f;
+            };
+            float latC; float eC = edgeAt(V3(cx, 0, cz), latC);
+            if (eC <= 0 && fabsf(latC) > TUBE_W + 3) { w.quad(V3(x, 0, z), V3(x, 0, z + 1.5f), V3(x + 1.5f, 0, z + 1.5f), V3(x + 1.5f, 0, z), V3(1, 1, 1), 0); continue; }
+            const int NS = 4; const float cs = 1.5f / NS;
+            for (int sj = 0; sj < NS; sj++) for (int si = 0; si < NS; si++) {
+                float x0 = x + si * cs, z0 = z + sj * cs; V3 c[4] = { V3(x0, 0, z0), V3(x0, 0, z0 + cs), V3(x0 + cs, 0, z0 + cs), V3(x0 + cs, 0, z0) };
+                float kv[4]; bool any = false, all = true; float lm; edgeAt(V3(x0 + cs * 0.5f, 0, z0 + cs * 0.5f), lm); float sd = lm >= 0 ? 1.0f : -1.0f;   // which side of the tube this cell is on: keep sd*lat >= e
+                for (int q = 0; q < 4; q++) { float la, e = edgeAt(c[q], la); kv[q] = sd * la - e; if (kv[q] >= 0) any = true; else all = false; }
+                if (all) { w.quad(c[0], c[1], c[2], c[3], V3(1, 1, 1), 0); continue; }
+                if (!any) continue;
+                std::vector<V3> poly;
+                for (int q = 0; q < 4; q++) { V3 a = c[q], b = c[(q + 1) % 4]; float ka = kv[q], kb = kv[(q + 1) % 4];
+                    if (ka >= 0) poly.push_back(a);
+                    if ((ka >= 0) != (kb >= 0)) { float u = ka / (ka - kb); poly.push_back(a + (b - a) * u); } }
+                for (size_t q = 1; q + 1 < poly.size(); q++) w.tri(poly[0], poly[q], poly[q + 1], V3(1, 1, 1), 0);
+            }
         }
     }
     void decorate();
