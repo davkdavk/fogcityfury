@@ -1,0 +1,17 @@
+fcft 1
+name    MY TRACK
+sub     CUSTOM TRACK
+seed    100
+land    base 8  noise 2.5  radius 580  city 0.45
+sky     top 0.07 0.22 0.62  horizon 0.4 0.56 0.8  fog 0.0008
+sun     dir 0.526217 0.72501 0.444361  colour 2.5 2.3 1.95
+night   0
+weather clear
+road    -380 -60  -330 -270  -90 -360  50 -345  190 -330  390 -170 
+road    400 90  250 300  -20 360  -280 250 
+hill    0 0 22 150
+hill    -330 -270 10 45
+hill    250 300 12 50
+jump    0.254479 -15.7903  length 16  height 5
+key     88 -340  height 5.3
+key     300 99.9999  height 1.3

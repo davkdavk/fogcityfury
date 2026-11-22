@@ -31,13 +31,15 @@
 
 namespace net {
 const uint32_t MAGIC = 0x59464346;   // bytes "FCFY"
-const uint16_t PROTO = 9;            // bump when any struct below changes, or a flag bit gains a meaning
+const uint16_t PROTO = 10;           // bump when any struct below changes, or a flag bit gains a meaning
 const int MAXP = 10, DEFPORT = 27015, NAMELEN = 16, TRACKS = 7, CARS = 4, PAINTS = 8;
+const int MAXCT = 24, TRACKFILE_MAX = 8192, CHUNK = 1024;   // custom tracks a server can rotate (track ids TRACKS and up); a track file's size limit; bytes in one S_TRACK piece
+const int MINIS = 4, HITS = 8;                               // online roam: mini Wardens at most; hits on them the server keeps re-sending
 const int BOTS = 4;   // computer-driven cars the server adds to a race, at most. The server has no map: one player's game (the host) drives them
 const int SD_FIGHT = 5, SD_DROPS = 12, SD_SLOW_KIND = 5;   // the showdown: fighters (the podium), pick-ups at most, the kind of pick-up (the grenade launcher) that takes three times as long to come back
 
-enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20 };
-enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4 };   // SHOWDOWN comes between RACE and RESULTS
+enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, C_MINIS = 9, C_MINIHIT = 10, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20, S_TRACK = 21, S_ROAM = 22 };
+enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4, ROAM = 5 };   // ROAM: a roam server (--roam): everyone drives and walks the island together, no laps   // SHOWDOWN comes between RACE and RESULTS
 enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
 enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
 const uint8_t NOBODY = 255;
@@ -65,7 +67,7 @@ inline bool sane(const CarState& s) {
 }
 #pragma pack(push, 1)
 struct Join { Header h; char name[NAMELEN]; uint8_t car, paint; };
-struct State { Header h; uint32_t seq; CarState s; };
+struct State { Header h; uint32_t seq; CarState s; uint8_t have, pad[3]; };   // have: the custom track this game has (its id), 255 none
 struct Welcome { Header h; uint8_t yourId, track, laps, phase, weather; };
 struct PlayerSnap { uint8_t id, place; char name[NAMELEN]; CarState s; };                // place: 1-based, by the server
 struct Snapshot { Header h; uint32_t tick; uint8_t phase, track, laps, count, weather; float phaseT; PlayerSnap p[MAXP]; };
@@ -96,6 +98,19 @@ struct Showdown {                                                               
 };
 // Server browser: anyone may ask a server what it is running, without joining. The question is padded to be longer
 // than the answer, so a server cannot be used to flood a forged address. Answered whatever the asker's protocol.
+// Custom tracks: the server sends the track file (the .fcft text) in pieces to every game that does not have it yet
+// (State::have). The game puts it together, checks crc, and builds it like a track of its own.
+struct TrackChunk { Header h; uint8_t track, chunk, nchunks, pad; uint16_t len, total; uint32_t crc; char data[CHUNK]; };   // S_TRACK
+// Online roam. One game (the host, like the bots' driver) runs the mini Wardens and reports them; anyone who hits one
+// reports the hit (the server keeps re-sending the last HITS to everyone; the host takes each once, by seq). Every game
+// reports its player on foot (C_FOOT); the server sends all of it 15 times a second (S_ROAM).
+struct MiniState { uint16_t uid; uint8_t alive, target, fireSeq, killedBy, rammed, flags; float x, y, z, yaw, vx, vy, vz; uint8_t hp, gun, paint, pad; };   // 40 bytes. target/killedBy: a player id or NOBODY. flags: 1 jetting, 2 aiming
+struct MiniHit { uint16_t seq, uid; uint8_t by, kind; uint16_t dmg; };                                  // kind: 0 a punch, 1 run down (dmg in tenths)
+struct Minis { Header h; uint32_t seq; uint8_t n, pad[3]; MiniState m[MINIS]; };                       // C_MINIS
+struct MiniHitMsg { Header h; MiniHit hit; };                                                          // C_MINIHIT
+struct RoamFoot { uint8_t id, on, pad[2]; FootState s; };                                               // on: 1 if that player is out of the car
+struct Roam { Header h; uint32_t tick; uint8_t nfeet, nminis, nhits, pad; RoamFoot f[MAXP]; MiniState m[MINIS]; MiniHit hits[HITS]; };   // S_ROAM
+inline uint32_t crc32(const void* data, int n) { const uint8_t* p = (const uint8_t*)data; uint32_t c = 0xFFFFFFFFu; for (int i = 0; i < n; i++) { c ^= p[i]; for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1))); } return ~c; }
 struct Query { Header h; uint32_t nonce; uint8_t pad[36]; };                             // 48 bytes
 struct Info { Header h; uint32_t nonce; uint8_t track, laps, phase, weather, count, maxp; char name[24]; };   // 42 bytes; h.proto is the server's
 #pragma pack(pop)
@@ -198,6 +213,8 @@ inline void turnFoot(uint8_t* p) {
     turn16(p + FCF_AT(FootState, claim));
 }
 inline void turnDrop(uint8_t* p) { turn32s(p + FCF_AT(SdDrop, x), 3); }
+inline void turnMini(uint8_t* p) { turn16(p + FCF_AT(MiniState, uid)); turn32s(p + FCF_AT(MiniState, x), 7); }
+inline void turnHit(uint8_t* p) { turn16(p + FCF_AT(MiniHit, seq)); turn16(p + FCF_AT(MiniHit, uid)); turn16(p + FCF_AT(MiniHit, dmg)); }
 // each element of an array at `at`, `size` bytes apart, as many as fit in the packet's len and `most`
 template <class F> inline void turnEach(uint8_t* p, int len, int at, int size, int most, F f) {
     for (int i = 0; i < most && at + (i + 1) * size <= len; i++) f(p + at + i * size);
@@ -228,6 +245,16 @@ inline void turnPacket(uint8_t* p, int len) {
         if (has(FCF_AT(Showdown, siteKind))) { turn32(p + FCF_AT(Showdown, tick)); turn32(p + FCF_AT(Showdown, stageT)); turn32(p + FCF_AT(Showdown, ring)); turn32s(p + FCF_AT(Showdown, site), 3); }
         turnEach(p, len, FCF_AT(Showdown, f), sizeof(FootState), SD_FIGHT, turnFoot);
         turnEach(p, len, FCF_AT(Showdown, d), sizeof(SdDrop), SD_DROPS, turnDrop); break;
+    case S_TRACK: if (has(FCF_AT(TrackChunk, data))) { turn16(p + FCF_AT(TrackChunk, len)); turn16(p + FCF_AT(TrackChunk, total)); turn32(p + FCF_AT(TrackChunk, crc)); } break;
+    case C_MINIS:
+        if (has(FCF_AT(Minis, n))) turn32(p + FCF_AT(Minis, seq));
+        turnEach(p, len, FCF_AT(Minis, m), sizeof(MiniState), MINIS, turnMini); break;
+    case C_MINIHIT: if (has(sizeof(MiniHitMsg))) turnHit(p + FCF_AT(MiniHitMsg, hit)); break;
+    case S_ROAM:
+        if (has(FCF_AT(Roam, nfeet))) turn32(p + FCF_AT(Roam, tick));
+        turnEach(p, len, FCF_AT(Roam, f), sizeof(RoamFoot), MAXP, [](uint8_t* e) { turnFoot(e + FCF_AT(RoamFoot, s)); });
+        turnEach(p, len, FCF_AT(Roam, m), sizeof(MiniState), MINIS, turnMini);
+        turnEach(p, len, FCF_AT(Roam, hits), sizeof(MiniHit), HITS, turnHit); break;
     default: break;   // C_JOIN, C_LEAVE, S_WELCOME, S_REJECT: bytes and the header only
     }
 }

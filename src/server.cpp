@@ -14,18 +14,42 @@
 #include <chrono>
 #include <string>
 #include <algorithm>
+#include <vector>
+#ifndef _WIN32
+#include <dirent.h>
+#endif
 using namespace net;
 
 template <class F> static void sortIdx(int* a, int n, F less) { for (int i = 1; i < n; i++) { int v = a[i], j = i - 1; while (j >= 0 && less(v, a[j])) { a[j + 1] = a[j]; j--; } a[j + 1] = v; } }
 
 struct Player { bool bot = false;   // computer-driven: it has no address; the host's game reports it
-    bool used = false; sockaddr_in addr; char name[NAMELEN + 1]; double lastHeard = 0; CarState s; bool ready = false, racing = false, finished = false; double finishT = 0; int finishOrder = 0; uint32_t seq = 0; };
+    bool used = false; sockaddr_in addr; char name[NAMELEN + 1]; double lastHeard = 0; CarState s; bool ready = false, racing = false, finished = false; double finishT = 0; int finishOrder = 0; uint32_t seq = 0;
+    uint8_t have = 255; int chunkNext = 0;                     // the custom track its game has; the next piece of the current one to send it
+    bool footOn = false; FootState foot; uint32_t footSeq = 0; double footHeard = -9; };   // roam: its player on foot
 static Player P[MAXP];
 // wxMode 1: a new random weather for every race
 static int sock = -1, track = 0, laps = 3, weather = 0, wxMode = 0, finishCount = 0; static Phase phase = LOBBY; static double phaseT = -1, raceT = 0, firstFinish = -1, readySince = -1;
 static double cfgCountdown = 5, cfgResults = 12, cfgLobby = 0, cfgFinish = 45, cfgTimeout = 5; static double cfgSite = -1; static int cfgBots = BOTS, sdHost = -1; static bool quiet = false, fixedTrack = false, cfgShowdown = true; static volatile bool running = true;
 // the showdown: slots are in podium order
 struct Slot { int player = -1; bool heard = false, alive = false; int place = 0, kills = 0; uint32_t seq = 0; FootState s; };
+// custom tracks (--tracks DIR): their files' text, sent to the games that need them. Track ids TRACKS and up
+struct CustomTrack { std::string name, text; uint32_t crc = 0; }; static std::vector<CustomTrack> CT;
+static int nTracks() { return TRACKS + (int)CT.size(); }
+static void loadTracks(const char* dir) {
+#ifndef _WIN32
+    std::vector<std::string> names; if (DIR* dp = opendir(dir)) { while (dirent* e = readdir(dp)) { std::string n = e->d_name; if (n.size() > 5 && n.compare(n.size() - 5, 5, ".fcft") == 0) names.push_back(n); } closedir(dp); }
+    std::sort(names.begin(), names.end());
+    for (const std::string& n : names) { if ((int)CT.size() >= MAXCT) break; FILE* f = fopen((std::string(dir) + "/" + n).c_str(), "rb"); if (!f) continue;
+        CustomTrack t; t.name = n; char b[1024]; size_t k; while ((k = fread(b, 1, sizeof b, f)) > 0 && t.text.size() <= (size_t)TRACKFILE_MAX) t.text.append(b, k); fclose(f);
+        if (t.text.size() > (size_t)TRACKFILE_MAX || t.text.compare(0, 4, "fcft") != 0) { printf("skipping %s: not a track file, or over %d bytes\n", n.c_str(), TRACKFILE_MAX); continue; }
+        t.crc = crc32(t.text.data(), (int)t.text.size()); CT.push_back(t); }
+#else
+    (void)dir; printf("--tracks: not on Windows yet\n");
+#endif
+}
+static const char* trackName(int t) { static const char* B[TRACKS] = { "HILLTOP HEIGHTS", "BAYSIDE BREAKER", "SUMMIT SWITCHBACKS", "MIDNIGHT MILE", "HARBOUR DEEP", "LAGOON LOOP", "TWIN ISLES" }; return t < TRACKS ? B[t] : CT[t - TRACKS].name.c_str(); }
+// roam (--roam): the mini Wardens as the host's game last reported them, and the last hits on them
+static bool cfgRoam = false; static double cfgRoamMinutes = 0, roamT = 0; static MiniState M[MINIS]; static int nMinis = 0; static MiniHit H[HITS]; static uint16_t hitSeq = 0;
 static Slot S[SD_FIGHT]; static SdStage sdStage = SD_DRIVE; static double sdT = 0, sdRing = SD_RING0, Dback[SD_DROPS]; static float sdSite[3] = {}; static SiteKind sdSiteKind = SITE_UNKNOWN; static int sdFighters = 0, sdWinner = -1, sdDrops = 0; static SdDrop D[SD_DROPS];
 static int sdAlive() { int n = 0; for (auto& q : S) if (q.player >= 0 && q.alive) n++; return n; }
 static int slotOf(int player) { for (int k = 0; k < SD_FIGHT; k++) if (S[k].player == player) return k; return -1; }
@@ -42,10 +66,11 @@ static void addBots() {   // fill the grid with up to cfgBots computer-driven ca
     for (int k = 0, i = 0; k < cfgBots && k < MAXP - people; k++) { while (i < MAXP && P[i].used) i++; if (i >= MAXP) break;
         Player& p = P[i]; p = Player(); p.used = true; p.bot = true; memset(&p.addr, 0, sizeof p.addr); snprintf(p.name, sizeof p.name, "%s", NAME[k]); memset(&p.s, 0, sizeof p.s); p.s.car = (uint8_t)((k + 1) % CARS); p.s.paint = (uint8_t)((k * 2 + 3) % PAINTS); }
 }
-static const char* phaseName(Phase p) { static const char* n[5] = { "LOBBY", "COUNTDOWN", "RACE", "RESULTS", "SHOWDOWN" }; return n[p]; }
+static const char* phaseName(Phase p) { static const char* n[6] = { "LOBBY", "COUNTDOWN", "RACE", "RESULTS", "SHOWDOWN", "ROAM" }; return n[p]; }
 
 static void setPhase(Phase p, double t) {
-    phase = p; phaseT = t; say("phase %s  track %d  weather %d  players %d", phaseName(p), track, weather, count());
+    phase = p; phaseT = t; say("phase %s  track %d (%s)  weather %d  players %d", phaseName(p), track, trackName(track), weather, count());
+    if (p == ROAM) { removeBots(); roamT = 0; nMinis = 0; for (auto& q : P) { q.racing = q.used; q.footOn = false; } }
     if (p == LOBBY) { removeBots(); readySince = -1; for (auto& q : P) { q.ready = false; q.racing = false; q.finished = false; } }
     if (p == COUNTDOWN) { addBots(); sdFighters = 0; finishCount = 0; firstFinish = -1; raceT = 0; for (auto& q : P) { q.racing = q.used; q.finished = false; q.finishT = 0; q.finishOrder = 0; } }
     if (p == RESULTS) {
@@ -132,7 +157,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
             for (char* c = p.name; *c; c++) if (*c < 32 || *c > 126) *c = '?';
             if (!p.name[0]) snprintf(p.name, sizeof p.name, "PLAYER %d", who + 1);
             memset(&p.s, 0, sizeof p.s); p.s.car = j.car % CARS; p.s.paint = j.paint % PAINTS;
-            p.racing = phase == COUNTDOWN;   // joining during the countdown still makes the grid
+            p.racing = phase == COUNTDOWN || phase == ROAM;   // joining during the countdown still makes the grid; roam: you are straight in
             say("player %d (%s) joined from %s:%d", who, p.name, inet_ntoa(from.sin_addr), ntohs(from.sin_port));
         }
         P[who].lastHeard = t;
@@ -144,7 +169,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         p.seq = st.seq;
         const float* f = &st.s.x; for (int k = 0; k < 10; k++) if (!std::isfinite(f[k])) return;   // refuse NaN / inf positions
         if (!std::isfinite(st.s.progress) || !std::isfinite(st.s.finishT)) return;
-        uint8_t flags = st.s.flags & (F_READY | F_BRAKING | F_DEAD | F_FINISHED | F_NITRO); p.s = st.s; p.s.car %= CARS; p.s.paint %= PAINTS;
+        uint8_t flags = st.s.flags & (F_READY | F_BRAKING | F_DEAD | F_FINISHED | F_NITRO); p.s = st.s; p.s.car %= CARS; p.s.paint %= PAINTS; p.have = st.have;
         if (phase == LOBBY) p.ready = flags & F_READY;
         stampFinish(p, who, flags); p.s.flags = flags;
     } else if (h.type == C_BOTS && len >= (int)sizeof(Bots) && who >= 0 && h.id == who && who == host()) {   // the host's game reports the bots' cars
@@ -162,6 +187,17 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
             const float* f = &m.f[j].s.x; bool ok = true; for (int i = 0; i < 6; i++) if (!std::isfinite(f[i])) ok = false; if (!ok) continue;
             if (S[k].heard && m.seq < S[k].seq && S[k].seq - m.seq < 100000) continue; S[k].seq = m.seq; S[k].s = m.f[j].s; S[k].heard = true;
         }
+    } else if (h.type == C_FOOT && len >= (int)sizeof(Foot) && who >= 0 && h.id == who && phase == ROAM) {   // roam: their player on foot
+        Foot ft; memcpy(&ft, buf, sizeof ft); Player& p = P[who]; p.lastHeard = t;
+        if (ft.seq < p.footSeq && p.footSeq - ft.seq < 100000) return; const float* f = &ft.s.x; for (int i = 0; i < 6; i++) if (!std::isfinite(f[i])) return;
+        p.footSeq = ft.seq; p.foot = ft.s; p.footOn = ft.s.flags & FF_ON; p.footHeard = t;
+    } else if (h.type == C_MINIS && len >= (int)sizeof(Minis) && who >= 0 && h.id == who && who == host() && phase == ROAM) {   // the host's game: the mini Wardens
+        Minis m; memcpy(&m, buf, sizeof m); P[who].lastHeard = t; if (m.n > MINIS) return;
+        for (int k = 0; k < m.n; k++) { const float* f = &m.m[k].x; for (int i = 0; i < 7; i++) if (!std::isfinite(f[i])) return; }
+        memcpy(M, m.m, sizeof M); nMinis = m.n;
+    } else if (h.type == C_MINIHIT && len >= (int)sizeof(MiniHitMsg) && who >= 0 && h.id == who && phase == ROAM) {   // somebody hit one: keep it to pass on to the host
+        MiniHitMsg m; memcpy(&m, buf, sizeof m); P[who].lastHeard = t;
+        for (int k = HITS - 1; k > 0; k--) H[k] = H[k - 1]; H[0] = m.hit; H[0].by = (uint8_t)who; H[0].seq = ++hitSeq; if (!hitSeq) H[0].seq = hitSeq = 1;
     } else if (h.type == C_FOOT && len >= (int)sizeof(Foot) && who >= 0 && h.id == who && phase == SHOWDOWN) {
         Foot ft; memcpy(&ft, buf, sizeof ft); int k = slotOf(who); P[who].lastHeard = t; if (k < 0) return;
         if (S[k].heard && ft.seq < S[k].seq && S[k].seq - ft.seq < 100000) return;
@@ -177,6 +213,20 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
     } else if (h.type == C_LEAVE && who >= 0) drop(who, "quit");
 }
 
+// the current custom track's file, a piece at a time, to every game that has not got it yet
+static void sendTrackPieces() {
+    if (track < TRACKS) return; const CustomTrack& c = CT[track - TRACKS]; int n = (int)((c.text.size() + CHUNK - 1) / CHUNK);
+    for (int i = 0; i < MAXP; i++) { Player& p = P[i]; if (!p.used || p.bot || p.have == track) continue;
+        int k = p.chunkNext++ % n; TrackChunk m; memset(&m, 0, sizeof m); m.h = header(S_TRACK, 0xFF); m.track = (uint8_t)track; m.chunk = (uint8_t)k; m.nchunks = (uint8_t)n;
+        m.len = (uint16_t)std::min((int)c.text.size() - k * CHUNK, CHUNK); m.total = (uint16_t)c.text.size(); m.crc = c.crc; memcpy(m.data, c.text.data() + k * CHUNK, m.len);
+        sendTo(sock, p.addr, &m, (int)(sizeof m - CHUNK + m.len)); }
+}
+static void sendRoam(uint32_t tick) {
+    Roam m; memset(&m, 0, sizeof m); m.h = header(S_ROAM, 0xFF); m.tick = tick; int n = 0; double t = now();
+    for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot && t - P[i].footHeard < 2) { RoamFoot& f = m.f[n++]; f.id = (uint8_t)i; f.on = P[i].footOn; f.s = P[i].foot; }
+    m.nfeet = (uint8_t)n; m.nminis = (uint8_t)nMinis; memcpy(m.m, M, sizeof M); m.nhits = HITS; memcpy(m.hits, H, sizeof H);
+    for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot) sendTo(sock, P[i].addr, &m, sizeof m);
+}
 static void sendSnapshots(uint32_t tick) {
     Snapshot sn; memset(&sn, 0, sizeof sn); sn.h = header(S_SNAPSHOT, 0xFF); sn.tick = tick; sn.phase = phase; sn.track = (uint8_t)track; sn.laps = (uint8_t)laps; sn.weather = (uint8_t)weather;
     sn.phaseT = (float)(phase == RACE ? raceT : phase == SHOWDOWN ? sdT : phaseT);
@@ -197,10 +247,11 @@ static void sendSnapshots(uint32_t tick) {
 }
 
 int main(int argc, char** argv) {
-    int port = DEFPORT;
+    int port = DEFPORT, trackArg = 0; const char* tracksDir = nullptr; bool customOnly = false;
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto next = [&] { return i + 1 < argc ? argv[++i] : (char*)"0"; };
-        if (a == "--port") port = atoi(next()); else if (a == "--laps") laps = std::max(1, std::min(20, atoi(next()))); else if (a == "--track") { track = ((atoi(next()) % TRACKS) + TRACKS) % TRACKS; }
+        if (a == "--port") port = atoi(next()); else if (a == "--laps") laps = std::max(1, std::min(20, atoi(next()))); else if (a == "--track") trackArg = atoi(next()); else if (a == "--tracks") tracksDir = next(); else if (a == "--custom-only") customOnly = true;
+        else if (a == "--roam") cfgRoam = true; else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
         else if (a == "--weather") { const char* v = next(); if (!strcmp(v, "random")) { wxMode = 1; weather = 1; } else weather = ((atoi(v) % 4) + 4) % 4; }
         else if (a == "--name") { snprintf(serverName, sizeof serverName, "%s", next()); for (char* c = serverName; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--fixed-track") fixedTrack = true; else if (a == "--countdown") cfgCountdown = atof(next()); else if (a == "--results") cfgResults = atof(next());
@@ -215,14 +266,21 @@ int main(int argc, char** argv) {
                    "  --fixed-track      stay on the same track instead of rotating\n"
                    "  --bots N           computer-driven cars added to each race, 0-4 (default 4; fewer if the server is full). One player's game drives them\n"
                    "  --no-showdown      end at the race results (by default the top three finishers then fight it out on foot)\n"
-                   "  --showdown-site U  always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race\n", DEFPORT, TRACKS - 1);
+                   "  --showdown-site U  always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race\n"
+                   "  --tracks DIR       also rotate through the custom tracks (.fcft files) in DIR (track ids %d and up); players' games are sent them\n"
+                   "  --custom-only      only the custom tracks from --tracks\n"
+                   "  --roam             a roam server: no laps, everyone drives and walks the island together (mini Wardens included)\n"
+                   "  --roam-minutes M   roam: move on to the next track every M minutes (default: stay)\n", DEFPORT, TRACKS - 1, TRACKS);
             return a == "--help" ? 0 : 2;
         }
     }
+    if (tracksDir) { loadTracks(tracksDir); printf("%d custom track(s) from %s\n", (int)CT.size(), tracksDir); for (size_t k = 0; k < CT.size(); k++) printf("  %d: %s\n", TRACKS + (int)k, CT[k].name.c_str()); }
+    if (customOnly && CT.empty()) { fprintf(stderr, "--custom-only: no custom tracks\n"); return 2; }
+    track = ((trackArg % nTracks()) + nTracks()) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS;
     sock = openUdp(port); if (sock < 0) { fprintf(stderr, "cannot bind UDP port %d\n", port); return 1; }
     signal(SIGINT, [](int) { running = false; }); signal(SIGTERM, [](int) { running = false; });
     say("Fog City Fury server: UDP port %d, protocol %d, %d laps, up to %d players", port, PROTO, laps, MAXP);
-    srand((unsigned)time(nullptr)); setPhase(LOBBY, -1);
+    srand((unsigned)time(nullptr)); setPhase(cfgRoam ? ROAM : LOBBY, -1);
     double last = now(), lastSnap = 0; uint32_t tick = 0;
     while (running) {
         double t = now(), dt = t - last; last = t;
@@ -245,9 +303,13 @@ int main(int argc, char** argv) {
             else if (done == racing || (cfgShowdown && done >= SD_FIGHT) || (firstFinish >= 0 && raceT - firstFinish > cfgFinish) || raceT > 1200) { if (!startShowdown()) setPhase(RESULTS, cfgResults); }   // (with a showdown, the podium ends the race)
             break;
         case SHOWDOWN: if (people == 0) setPhase(LOBBY, -1); else stepShowdown(dt); break;
-        case RESULTS: phaseT -= dt; if (phaseT <= 0) { if (!fixedTrack) track = (track + 1) % TRACKS; if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
+        case ROAM:   // nothing to finish; with --roam-minutes, on to the next track now and then
+            roamT += dt; for (auto& p : P) if (p.used) p.racing = true;
+            if (cfgRoamMinutes > 0 && roamT > cfgRoamMinutes * 60) { if (!fixedTrack) { track = (track + 1) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS; } setPhase(ROAM, -1); }
+            break;
+        case RESULTS: phaseT -= dt; if (phaseT <= 0) { if (!fixedTrack) { track = (track + 1) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS; } if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
         }
-        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); }
+        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); }   // (roam: 15 times a second)
         sleepMs(4);
     }
     say("shutting down"); closeSock(sock); return 0;

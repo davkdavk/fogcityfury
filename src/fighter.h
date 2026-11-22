@@ -44,7 +44,8 @@ struct Fighter {
 static Fighter fighters[NFIGHT]; static Fighter& me = fighters[0];   // fighters[0] is always the player
 // your attributes, from the levels earned in free roam (minis.h sets them every frame; online they stay at these)
 static float footMaxHp = 100, footLungs = 4.5f, footAimMul = 1, footStartArmour = 0, footDmgMul = 1, carArmourMul = 1, nitroMul = 1;
-static bool roamCarTarget = false, meleeHit = false, ramHit = false; static int roamFlowers = 0;   // meleeHit, ramHit: the damage being dealt is a punch / a car running someone down (a mini Warden takes only those)   // roamFlowers: free roam flowers picked up (saved with the settings)   // free roam: the mini Wardens shoot at your car (target 7)
+static void netRoamHit(int slot, int kind, float dmg);   // (netroam.h) our punch or bumper on a mini Warden another game runs
+static bool roamCarTarget = false, meleeHit = false, ramHit = false; static int shotGun = -1; static int roamFlowers = 0;   // shotGun: the gun whose bullet is landing (shootLine), -1 none.   // meleeHit, ramHit: the damage being dealt is a punch / a car running someone down (a mini Warden takes only those)   // roamFlowers: free roam flowers picked up (saved with the settings)   // free roam: the mini Wardens shoot at your car (target 7)
 
 // the showdown: the drive from the finish line to the ring, the countdown once all three are in it, the fight, the winner
 enum ShdPhase { SH_OFF, SH_DRIVE, SH_PREP, SH_FIGHT, SH_OVER };

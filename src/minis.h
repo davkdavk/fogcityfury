@@ -4,6 +4,7 @@
 // the ground; picked up, they add up to levels, and each level unlocks one of your attributes (PERKS). Offline only.
 // They are fighters (fighter.h) in slots 1..4, with mini set: they walk, aim, shoot and die like the showdown's bots.
 #pragma once
+static bool netRoamNearest(V3 from, int& id, V3& pos, bool& onFoot); static V3 netRoamAnchor();   // (netroam.h) online roam: other players
 namespace mini {
 static const int MAXN = 3;                                     // at most this many about at once
 static const float JET_CD = 12;                                // a jetpack burst, then this long to recharge
@@ -26,7 +27,9 @@ static int jets = 0, group = 0; static bool outcar = false, hold = false, now = 
 
 static int level() { int l = 0; for (const Perk& p : PERKS) if (flowers >= p.need) l++; return l; }
 static bool has(int k) { return !netRace && level() > k; }
-static bool active() { return state == RACE && exploreMode && !netRace && !showdownOn && !nc.on && countdown <= 0; }
+static uint16_t uid[NFIGHT] = {}, uidNext = 1; static int remoteTgt[NFIGHT] = { -1, -1, -1, -1, -1 };   // online roam: each one's id on the wire; the other player it is after (-1: you)
+static bool active() { return state == RACE && exploreMode && !showdownOn && countdown <= 0 && (netRace ? nc.phase == net::ROAM : !nc.on); }   // offline free roam, or a roam server
+static bool authority() { return !netRace || nc.hosts; }   // this game runs them (offline; online, the host)
 static int alive() { int n = 0; for (int i = 1; i < NFIGHT; i++) if (fighters[i].on && fighters[i].mini && fighters[i].alive) n++; return n; }
 
 // the attributes the levels give: set every frame (and none of them online, where everyone is equal)
@@ -39,7 +42,7 @@ static void reset() { blooms.clear(); spawnT = FIRST; for (bool& c : counted) c 
 
 // somewhere near you to come down: a road 90-220 m away along the lap, a little off it, on dry open ground
 static bool findSpot(V3& out, const V3* near = nullptr) {
-    V3 a = avatarPos(); int i0 = W.nearest(a.x, a.z, a.y);
+    V3 a = netRace ? netRoamAnchor() : avatarPos(); int i0 = W.nearest(a.x, a.z, a.y);
     if (near) for (int tries = 0; tries < 20; tries++) {   // the next of a group: a few metres from the first
         float an = grng.r(0, 6.28f), r = grng.r(3, 8); V3 p(near->x + cosf(an) * r, 0, near->z + sinf(an) * r);
         if (W.HW(p.x, p.z) < 0.4f || W.dry(p.x, p.z)) continue; p.y = W.ground(p.x, p.z, W.H(p.x, p.z) + 1.0f); if (solidAt(p + V3(0, 1, 0), false)) continue; out = p; return true;
@@ -60,7 +63,7 @@ static bool spawnOne(V3& where, bool next) {
     V3 p; if (!findSpot(p, next ? &where : nullptr)) return false; where = p;
     Fighter& f = fighters[k]; V3 a = avatarPos();
     footSpawn(f, k, p, atan2f(a.x - p.x, a.z - p.z)); f.bot = true; f.mini = true; f.name = "MINI WARDEN"; f.paint = k % 2; f.hp = 70; f.gun = G_PISTOL; f.strafe = k % 2 ? 1.0f : -1.0f;
-    counted[k] = false; rammed[k] = false; spawned++;
+    counted[k] = false; rammed[k] = false; uid[k] = uidNext++; if (!uidNext) uidNext = 1; remoteTgt[k] = -1; spawned++;
     for (int j = 0; j < 24; j++) spawn(p + V3(0, 0.4f, 0), V3(grng.r(-6, 6), grng.r(1, 7), grng.r(-6, 6)), 0.7f, 0.25f, 0.6f, V3(0.75f, 0.70f, 0.62f), 0.7f, 0, -6);   // the dust of its landing
     sfx(p, 90, 0.5f, 0.9f, 0, -30); return true;
 }
@@ -84,7 +87,10 @@ static void penalty() {
 // one mini Warden's mind: close in to shooting range, circle you while it shoots in bursts
 static FootIn think(Fighter& f, float dt) {
     FootIn in; if (!active() || hold) return in;   // (hold: --minishold, tests: it stands still)
-    V3 tp = avatarPos(), eye = f.pos + V3(0, 1.4f, 0); float d = flatDist(f.pos, tp);
+    V3 tp = avatarPos(), eye = f.pos + V3(0, 1.4f, 0); float d = flatDist(f.pos, tp); bool onFoot = me.on;
+    { int rid; V3 rp; bool rf; remoteTgt[f.id] = -1;   // online roam: whoever is nearest, you or another player
+      if (netRoamNearest(f.pos, rid, rp, rf) && flatDist(f.pos, rp) < d) { remoteTgt[f.id] = rid; tp = rp; d = flatDist(f.pos, rp); onFoot = rf; } }
+    bool remote = remoteTgt[f.id] >= 0;
     f.strafeT -= dt; if (f.strafeT <= 0) { f.strafe = -f.strafe; f.strafeT = grng.r(1.0f, 2.6f); }
     f.stuckT += dt; if (f.stuckT > 0.5f) { if (f.wantMove && flatDist(f.pos, f.lastPos) < 0.3f) { f.strafe = -f.strafe; f.sideT = 0.8f; } f.lastPos = f.pos; f.stuckT = 0; }
     f.sideT = std::max(0.0f, f.sideT - dt);
@@ -92,22 +98,23 @@ static FootIn think(Fighter& f, float dt) {
     {   // the jetpack: a short burst that carries it most of the way to you, then 12 s to recharge
         bool grounded = f.pos.y < W.ground(f.pos.x, f.pos.z, f.pos.y + 0.6f) + 0.1f; V3 to(tp.x - f.pos.x, 0, tp.z - f.pos.z); to = to * (1 / std::max(d, 0.01f));
         if (f.jetCD <= 0 && f.jetT <= 0 && grounded && d > 16 && d < 70 && canSee(eye, tp + V3(0, 1, 0), false)) {
-            float sp = clampf((d - (me.on ? 3.0f : 14.0f)) / 1.3f, 8, 24);
+            float sp = clampf((d - (onFoot ? 3.0f : 14.0f)) / 1.3f, 8, 24);
             f.vel = to * sp + V3(0, 7.0f, 0); f.pos.y += 0.12f; f.jetT = 0.6f; f.jetCD = JET_CD; f.yaw = atan2f(to.x, to.z); jets++;
             sfx(f.pos, 220, 0.45f, 0.7f, 2, 400);
         }
     }
-    if (me.on) {   // you on foot: it fights hand to hand, like you have to. It rushes in, punches, and sidesteps now and then
-        f.gun = G_FISTS; f.target = d < 4 && tgtAlive(0) ? 0 : -1;
+    if (onFoot) {   // you on foot: it fights hand to hand, like you have to. It rushes in, punches, and sidesteps now and then
+        f.gun = G_FISTS; f.target = !remote && d < 4 && tgtAlive(0) ? 0 : -1; if (remote && d < 2.4f) f.yaw = atan2f(tp.x - f.pos.x, tp.z - f.pos.z);   // (another player: it swings at them; their game takes the hit)
         V3 to(tp.x - f.pos.x, 0, tp.z - f.pos.z); to = to * (1 / std::max(d, 0.01f)); V3 side(to.z, 0, -to.x);
         V3 mv = d > 1.4f ? to : V3(); if (f.sideT > 0 || (d < 3 && fmodf(f.burstT, 3.0f) > 2.4f)) mv = mv + side * f.strafe;
         f.burstT += dt; in.mx = mv.x; in.mz = mv.z; in.sprint = d > 8; in.fire = d < 2.1f; f.wantMove = true; return in;
     }
-    f.gun = G_PISTOL; int tg = 7; f.target = d < 75 && tgtAlive(tg) && canSee(eye, tgtPos(tg), false) ? tg : -1;   // you in the car: it shoots at the car
+    f.gun = G_PISTOL; int tg = 7; f.target = !remote && d < 75 && tgtAlive(tg) && canSee(eye, tgtPos(tg), false) ? tg : -1;   // you in the car: it shoots at the car
+    bool shootRemote = remote && d < 75 && canSee(eye, tp + V3(0, 0.8f, 0), false); if (shootRemote) f.yaw = atan2f(tp.x - f.pos.x, tp.z - f.pos.z);   // (another player's car: their game decides if it hit)
     V3 to(tp.x - f.pos.x, 0, tp.z - f.pos.z); to = to * (1 / std::max(d, 0.01f)); V3 side(to.z, 0, -to.x);
     V3 mv = d > 24 ? to : d < 9 ? to * -0.7f + side * (f.strafe * 0.6f) : side * f.strafe; if (f.sideT > 0) mv = side * f.strafe;
     in.mx = mv.x; in.mz = mv.z; in.sprint = d > 45 && f.target < 0; f.wantMove = true;
-    f.burstT += dt; in.fire = f.target >= 0 && fmodf(f.burstT, 2.4f) < 1.2f;
+    f.burstT += dt; in.fire = (f.target >= 0 || shootRemote) && fmodf(f.burstT, 2.4f) < 1.2f;
     return in;
 }
 
@@ -125,6 +132,20 @@ static FootIn youThink(Fighter& f, float dt) {
     V3 to(fighters[best].pos.x - f.pos.x, 0, fighters[best].pos.z - f.pos.z); to = to * (1 / std::max(bd, 0.01f));
     if (bd > 1.3f) { in.mx = to.x; in.mz = to.z; in.sprint = bd > 6; } in.fire = bd < 2.2f; return in;
 }
+// flowers: walk or drive over them to pick them up
+static void pickUp(float dt) {
+    V3 a = avatarPos(); float reach = me.on ? 2.2f : 4.2f;
+    for (size_t k = 0; k < blooms.size(); ) {
+        Bloom& b = blooms[k]; b.age += dt;
+        if (flatDist(a, b.p) < reach && fabsf(a.y - b.p.y) < 3) {
+            int before = level(); flowers += b.n; picked++; char s[64]; snprintf(s, sizeof s, "+%d FLOWERS", b.n); say(s, V3(0.5f, 1, 0.55f), 1.4f); tone(1320, 0.08f, 0.3f, 2); tone(1760, 0.1f, 0.3f, 2, 0, 0.06f);
+            int after = level(); if (after > before) { const Perk& p = PERKS[after - 1]; snprintf(s, sizeof s, "LEVEL %d: %s - %s", after, p.name, p.what); say(s, V3(1, 0.85f, 0.3f), 4.0f); tone(880, 0.15f, 0.4f, 2); tone(1320, 0.25f, 0.4f, 2, 0, 0.12f); }
+            saveCfg(); blooms.erase(blooms.begin() + k); continue;
+        }
+        if (b.age > 90) { blooms.erase(blooms.begin() + k); continue; }
+        k++;
+    }
+}
 static void step(float dt) {
     applyPerks();
     if (state == RACE && !player.dead && player.hp < 50 && grng.f() < dt * (4 + (50 - player.hp) * 0.4f)) {   // a hurt car smokes from under the bonnet, thicker as it gets worse
@@ -133,6 +154,15 @@ static void step(float dt) {
     }
     if (!active()) { if (state != RACE || !exploreMode) for (int i = 1; i < NFIGHT; i++) if (fighters[i].mini && !showdownOn) { fighters[i] = Fighter(); fighters[i].id = i; } return; }
     roamCarTarget = true; if (outcar && !me.on) { footLeaveCar(); outcar = false; }   // (--outcar, tests: on foot from the start)
+    if (!authority()) {   // online, not the host: the host runs them; here only our bumper (reported to the host) and their jet flames
+        for (int i = 1; i < NFIGHT; i++) { Fighter& f = fighters[i]; if (!f.on || !f.mini || !f.remote) continue;
+            if (f.jetT > 0) for (int j = 0; j < 3; j++) spawn(f.pos + V3(grng.r(-0.2f, 0.2f), 1.0f, grng.r(-0.2f, 0.2f)) - yawDir(f.yaw) * 0.25f, V3(grng.r(-1, 1), grng.r(-9, -5), grng.r(-1, 1)), 0.25f, 0.12f, 0.2f, V3(5, 2.6f, 0.7f), 1, 1, 0);
+            static float sentT[NFIGHT] = {}; sentT[i] -= dt;
+            if (f.alive && !me.on && !player.dead && sentT[i] <= 0) { float sp = len(player.vel); V3 d = f.pos - player.pos, fw = yawDir(player.yaw); float u = d.x * fw.x + d.z * fw.z, lat = fabsf(d.x * fw.z - d.z * fw.x);
+                if (sp > 7 && fabsf(d.y) < 2.2f && fabsf(u) < 3.0f && lat < 1.9f) { netRoamHit(i, 1, 999); sentT[i] = 1.0f; rams++; shake = std::max(shake, 0.3f); } }
+        }
+        pickUp(dt); return;
+    }
     spawnT -= dt; if (now) { if (alive() == 0) land(group > 0 ? group : 1); now = false; spawnT = GAP_MAX; }
     if (spawnT <= 0) { float r = grng.r(0, 1); if (alive() == 0) land(r < 0.6f ? 1 : r < 0.9f ? 2 : 3); spawnT = grng.r(GAP_MIN, GAP_MAX); }   // (60% one, 30% two, 10% three; none while some are still about)
     for (int i = 1; i < NFIGHT; i++) {
@@ -154,18 +184,7 @@ static void step(float dt) {
         if (!f.alive && f.deadT > 9) { f = Fighter(); f.id = i; }
         if (f.alive && flatDist(f.pos, avatarPos()) > 420) { f = Fighter(); f.id = i; }   // left far behind: it gives up
     }
-    // flowers: walk or drive over them to pick them up
-    V3 a = avatarPos(); float reach = me.on ? 2.2f : 4.2f;
-    for (size_t k = 0; k < blooms.size(); ) {
-        Bloom& b = blooms[k]; b.age += dt;
-        if (flatDist(a, b.p) < reach && fabsf(a.y - b.p.y) < 3) {
-            int before = level(); flowers += b.n; picked++; char s[64]; snprintf(s, sizeof s, "+%d FLOWERS", b.n); say(s, V3(0.5f, 1, 0.55f), 1.4f); tone(1320, 0.08f, 0.3f, 2); tone(1760, 0.1f, 0.3f, 2, 0, 0.06f);
-            int after = level(); if (after > before) { const Perk& p = PERKS[after - 1]; snprintf(s, sizeof s, "LEVEL %d: %s - %s", after, p.name, p.what); say(s, V3(1, 0.85f, 0.3f), 4.0f); tone(880, 0.15f, 0.4f, 2); tone(1320, 0.25f, 0.4f, 2, 0, 0.12f); }
-            saveCfg(); blooms.erase(blooms.begin() + k); continue;
-        }
-        if (b.age > 90) { blooms.erase(blooms.begin() + k); continue; }
-        k++;
-    }
+    pickUp(dt);
 }
 
 // the minimap: a red dot for each one about (in place of any announcement)

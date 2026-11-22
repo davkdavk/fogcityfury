@@ -3,7 +3,9 @@
 // the server's snapshots with dead reckoning. The server decides phases, places and finishing order.
 #pragma once
 #include "net.h"
+#include <vector>
 
+static int netLocalTrack(int id);   // (netroam.h) the track in our list for a server track id, -1 if we have not got it yet
 struct Remote { uint8_t hitSeq = 0; bool seen = false;   // seen: we have looked at this player's state at least once
     bool bot = false;   // computer-driven (the host's game drives it; to everyone else it is one more car)
     bool present = false, racing = false, fresh = true; char name[net::NAMELEN + 1] = ""; net::CarState s; float age = 0, moved = 0; uint8_t place = 0; Car car; };
@@ -11,13 +13,16 @@ static struct NetClient {
     bool hosts = false;   // the server has made our game the bots' driver (netshd.h)
     bool on = false, connected = false, ready = false, racing = false, finished = false, autoReady = false, skipMenus = false;
     int sock = -1, id = -1, field = 0; sockaddr_in addr;
-    uint8_t phase = 0, prevPhase = 255, track = 0, laps = 3, weather = 0, myPlace = 1, count = 0; float phaseT = 0, finishT = 0;
+    int track = 0;                          // the server's track, as our own track number (-1: a custom track still on its way: see trackId)
+    uint8_t trackId = 0, phase = 0, prevPhase = 255, laps = 3, weather = 0, myPlace = 1, count = 0; float phaseT = 0, finishT = 0;
     uint8_t hitId = 0, hitSeq = 0;          // our last rocket hit (see CarState)
     uint8_t placeFull = 0;                  // test metric: our place the last time at least two players were present
     float maxMoved = 0; int maxCount = 0;   // test metrics: furthest any remote car was seen to travel, most players seen at once
     float sinceRecv = 0, sinceSend = 0, sinceJoin = 9, connectT = 0; uint32_t seq = 0, lastTick = 0; bool gotSnap = false;
     char host[96] = "127.0.0.1:27015", name[net::NAMELEN + 1] = "PLAYER", error[64] = "";
     Remote r[net::MAXP]; net::Snapshot snap;
+    std::vector<net::TrackChunk> pieces;    // pieces of a custom track file, waiting to be put together (netroam.h)
+    net::Roam roam; bool roamGot = false; uint32_t roamTick = 0;   // online roam: everyone on foot and the mini Wardens, as the server last sent them
     net::Showdown sd; bool sdGot = false; uint32_t sdTick = 0;   // the showdown as the server last described it (netshd.h acts on it)
     int sdSlotOf(int id) const { if (sdGot) for (int k = 0; k < net::SD_FIGHT; k++) if (sd.fighter[k] == id) return k; return -1; }
 } nc;
@@ -48,14 +53,14 @@ static void netPump(float dt, bool inLobby) {
         int n = net::recvFrom(nc.sock, buf, sizeof buf, from); if (n <= 0) break;
         if (!net::valid(buf, n, sizeof(net::Header)) || !net::sameAddr(from, nc.addr)) continue;
         net::Header h; memcpy(&h, buf, sizeof h); nc.sinceRecv = 0;
-        if (h.type == net::S_WELCOME && n >= (int)sizeof(net::Welcome)) { net::Welcome w; memcpy(&w, buf, sizeof w); nc.id = w.yourId; nc.track = w.track % net::TRACKS; nc.laps = w.laps; nc.weather = w.weather % 4; nc.connected = true; }
+        if (h.type == net::S_WELCOME && n >= (int)sizeof(net::Welcome)) { net::Welcome w; memcpy(&w, buf, sizeof w); nc.id = w.yourId; nc.trackId = w.track; nc.track = netLocalTrack(w.track); nc.laps = w.laps; nc.weather = w.weather % 4; nc.connected = true; }
         else if (h.type == net::S_REJECT && n >= (int)sizeof(net::Reject)) { net::Reject r; memcpy(&r, buf, sizeof r); netClose(r.reason == net::R_FULL ? "SERVER IS FULL" : "SERVER VERSION MISMATCH"); return; }
         else if (h.type == net::S_SNAPSHOT && n >= 20 && nc.connected) {
             net::Snapshot sn; memset(&sn, 0, sizeof sn); memcpy(&sn, buf, std::min(n, (int)sizeof sn));
             if (sn.count > net::MAXP || n < 20 + sn.count * (int)sizeof(net::PlayerSnap) || (nc.gotSnap && sn.tick < nc.lastTick && nc.lastTick - sn.tick < 100000)) continue;
             { bool ok = net::saneF(sn.phaseT, 1e7f); for (int k = 0; k < sn.count && ok; k++) ok = net::sane(sn.p[k].s);
               if (!ok) { static int bad = 0; if (bad++ < 5) { char m[96]; snprintf(m, sizeof m, "net: dropped a snapshot with bad numbers (tick %u, %d cars)", sn.tick, sn.count); plat::logLine(m); } continue; } }
-            nc.lastTick = sn.tick; nc.gotSnap = true; nc.snap = sn; nc.phase = sn.phase; nc.track = sn.track % net::TRACKS; nc.laps = sn.laps; nc.weather = sn.weather % 4; nc.phaseT = sn.phaseT; nc.count = sn.count; nc.maxCount = std::max(nc.maxCount, (int)sn.count);
+            nc.lastTick = sn.tick; nc.gotSnap = true; nc.snap = sn; nc.phase = sn.phase; nc.trackId = sn.track; nc.track = netLocalTrack(sn.track); nc.laps = sn.laps; nc.weather = sn.weather % 4; nc.phaseT = sn.phaseT; nc.count = sn.count; nc.maxCount = std::max(nc.maxCount, (int)sn.count);
             bool seen[net::MAXP] = {};
             for (int k = 0; k < sn.count; k++) {
                 const net::PlayerSnap& p = sn.p[k]; if (p.id >= net::MAXP) continue;
@@ -65,6 +70,11 @@ static void netPump(float dt, bool inLobby) {
             }
             for (int i = 0; i < net::MAXP; i++) if (!seen[i]) nc.r[i].present = false;
             if (nc.phase != net::SHOWDOWN && nc.phase != net::RESULTS) nc.sdGot = false;
+        }
+        else if (h.type == net::S_TRACK && n >= (int)offsetof(net::TrackChunk, data) && nc.connected && nc.pieces.size() < 64) { net::TrackChunk m; memset(&m, 0, sizeof m); memcpy(&m, buf, std::min(n, (int)sizeof m)); if (m.len <= net::CHUNK && n >= (int)offsetof(net::TrackChunk, data) + m.len) nc.pieces.push_back(m); }
+        else if (h.type == net::S_ROAM && n >= (int)sizeof(net::Roam) && nc.connected) {
+            net::Roam m; memcpy(&m, buf, sizeof m); if (nc.roamGot && m.tick < nc.roamTick && nc.roamTick - m.tick < 100000) continue;
+            if (m.nfeet > net::MAXP || m.nminis > net::MINIS || m.nhits > net::HITS) continue; nc.roam = m; nc.roamTick = m.tick; nc.roamGot = true;
         }
         else if (h.type == net::S_SHOWDOWN && n >= (int)sizeof(net::Showdown) && nc.connected) {
             net::Showdown m; memcpy(&m, buf, sizeof m); if (nc.sdGot && m.tick < nc.sdTick && nc.sdTick - m.tick < 100000) continue;
@@ -90,10 +100,10 @@ static void netPump(float dt, bool inLobby) {
         netClose("CONNECTION LOST"); return;
     }
     if (nc.sinceSend >= 1 / 30.f) {
-        nc.sinceSend = 0; net::State st; memset(&st, 0, sizeof st); st.h = net::header(net::C_STATE, (uint8_t)nc.id); st.seq = ++nc.seq; net::CarState& s = st.s;
+        nc.sinceSend = 0; net::State st; memset(&st, 0, sizeof st); st.h = net::header(net::C_STATE, (uint8_t)nc.id); st.seq = ++nc.seq; st.have = nc.trackId >= net::TRACKS && nc.track >= 0 ? nc.trackId : 255; net::CarState& s = st.s;
         s.x = player.pos.x; s.y = player.pos.y; s.z = player.pos.z; s.vx = player.vel.x; s.vy = player.vel.y; s.vz = player.vel.z; s.yaw = player.yaw; s.pitch = player.pitch; s.roll = player.roll + player.lean; s.steer = player.steer;
         s.car = (uint8_t)player.type; s.paint = (uint8_t)player.paint; s.lap = (uint8_t)std::min(player.lap, 255); s.cp = (uint16_t)player.nextCp; s.progress = player.progress; s.finishT = nc.finishT; s.hitId = nc.hitId; s.hitSeq = nc.hitSeq;
-        s.flags = (nc.ready && inLobby ? net::F_READY : 0) | (player.braking ? net::F_BRAKING : 0) | (player.dead ? net::F_DEAD : 0) | (nc.finished ? net::F_FINISHED : 0) | (player.boost > 0.35f ? net::F_NITRO : 0);
+        s.flags = (nc.ready && inLobby && nc.track >= 0 ? net::F_READY : 0) | (player.braking ? net::F_BRAKING : 0) | (player.dead ? net::F_DEAD : 0) | (nc.finished ? net::F_FINISHED : 0) | (player.boost > 0.35f ? net::F_NITRO : 0);
         net::sendTo(nc.sock, nc.addr, &st, sizeof st);
     }
     // dead reckoning: aim at where the last report says the car is by now, and ease towards it

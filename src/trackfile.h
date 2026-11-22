@@ -112,10 +112,14 @@ static void trackWrite(const TrackDef& d, FILE* f) {
 static bool trackSave(const TrackDef& d, const char* path) { FILE* f = fopen(path, "w"); if (!f) return false; trackWrite(d, f); return fclose(f) == 0; }
 
 // Read one. `base` gives the settings a file leaves out (a file with nothing but a road line makes a track).
-static bool trackRead(FILE* f, TrackDef& d, const TrackDef& base) {
+static bool trackParse(const std::string& textAll, TrackDef& d, const TrackDef& base);
+static bool trackRead(FILE* f, TrackDef& d, const TrackDef& base) { std::string t; char b[1024]; size_t n; while ((n = fread(b, 1, sizeof b, f)) > 0 && t.size() < 65536) t.append(b, n); return trackParse(t, d, base); }
+// a track from its text (a file's contents, or one sent by a server)
+static bool trackParse(const std::string& textAll, TrackDef& d, const TrackDef& base) {
     d = base; d.ctrl.clear(); d.hills.clear(); d.branches.clear(); d.tunnel.clear(); d.islands.clear(); d.jumps.clear(); d.keyPts.clear(); d.wardens = 2; d.lapMul = 1; d.deco = -1; d.song = -1; d.wx = 0; d.nameS = ""; d.subS = ""; d.file = "";
-    char line[1024]; bool head = false; int lines = 0;
-    while (fgets(line, sizeof line, f) && lines++ < 400) {
+    char line[1024]; bool head = false; int lines = 0; size_t pos = 0;
+    auto nextLine = [&]() { if (pos >= textAll.size()) return false; size_t e = textAll.find('\n', pos); if (e == std::string::npos) e = textAll.size(); size_t n = std::min(e - pos, sizeof line - 1); memcpy(line, textAll.data() + pos, n); line[n] = 0; pos = e + 1; return true; };
+    while (nextLine() && lines++ < 400) {
         if (char* h = strchr(line, '#')) *h = 0;
         char key[32] = ""; int used = 0; if (sscanf(line, "%31s%n", key, &used) != 1) continue;
         const char* rest = line + used; while (*rest == ' ' || *rest == '\t') rest++;

@@ -149,7 +149,7 @@ static int baseGun() { return gunUnlocked(G_PISTOL) ? G_PISTOL : G_FISTS; }   //
 static int bestGun(const Fighter& f) { for (int g = NGUNS - 1; g > G_PISTOL; g--) if (f.ammo[g] > 0) return g; return baseGun(); }
 static void cycleGun() {
     if (!me.on || !me.alive) return;
-    for (int k = 1; k <= NGUNS; k++) { int g = (me.gun + k) % NGUNS; if (g == baseGun() || me.ammo[g] > 0) { me.gun = g; break; } }
+    for (int k = 1; k <= NGUNS; k++) { int g = (me.gun + k) % NGUNS; if (g == G_FISTS || g == baseGun() || me.ammo[g] > 0) { me.gun = g; break; } }   // (fists are always there: the mini Wardens can be punched)
     tone(600, 0.05f, 0.3f, 2); tone(900, 0.04f, 0.25f, 2, 0, 0.05f);
 }
 static void killFighter(Fighter& t, int by) {
@@ -162,15 +162,20 @@ static void killFighter(Fighter& t, int by) {
 // by: the fighter who did it (-1: the ring, a racer's bumper). dir: the way the shot was travelling
 static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = false) {   // pierce: armour is no help (the ring)
     if (!t.on || !t.alive) return;
+    if (t.mini && t.remote) {   // online roam: a mini Warden the host's game runs. A punch is reported to it; anything else sparks off
+        for (int i = 0; i < 5; i++) spawn(t.pos + V3(0, 1.1f, 0), V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
+        if ((meleeHit || shotGun == G_PISTOL || shotGun == G_SMG || shotGun == G_SHOTGUN) && by == 0) { netRoamHit(t.id, 0, dmg); hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); t.hurtT = 0.25f; } else sfx(t.pos, 2600, 0.05f, 0.3f, 2);
+        return;
+    }
     if (t.remote) {   // online: their health is theirs to keep. Ours only adds up what it has dealt, and shows the hit
         if (by < 0 || fighters[by].remote) return; fighters[by].dealtTo[t.id] += dmg; t.hurtT = 0.25f; sfx(t.pos, 420, 0.06f, 0.25f, 1);
         if (by == 0) { me.hits++; hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); }
             bleed(t.pos + V3(0, 1.15f, 0), dir, dmg);
         return;
     }
-    if (t.mini && !meleeHit && !ramHit) {   // a mini Warden: bullets and blasts spark off its armour. Only fists (or a car) hurt it
+    if (t.mini && !meleeHit && !ramHit && shotGun != G_PISTOL && shotGun != G_SMG && shotGun != G_SHOTGUN) {   // a mini Warden: rifle rounds and grenades spark off its armour (fists, pistol, SMG and shotgun hurt it). Only fists (or a car) hurt it
         for (int i = 0; i < 5; i++) spawn(t.pos + V3(0, 1.1f, 0), V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
-        sfx(t.pos, 2600, 0.05f, 0.3f, 2); if (by == 0) { hitFlash = 0.1f; static float told = -99; if (T - told > 6) { told = T; say("ONLY YOUR FISTS HURT A MINI WARDEN", V3(1, 0.8f, 0.3f), 2.0f); } }
+        sfx(t.pos, 2600, 0.05f, 0.3f, 2); if (by == 0) { hitFlash = 0.1f; static float told = -99; if (T - told > 6) { told = T; say("USE FISTS, PISTOL, SMG OR SHOTGUN ON A MINI WARDEN", V3(1, 0.8f, 0.3f), 2.0f); } }
         return;
     }
     float a = pierce ? 0.0f : std::min(t.armour, dmg * 0.7f); t.armour -= a; t.hp -= dmg - a; t.hurtT = 0.25f;
@@ -202,7 +207,7 @@ static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
     spawn(o + d * std::min(2.0f, bt * 0.5f), d * 150, clampf(bt / 150, 0.035f, 0.13f), 0.55f, 0, V3(3.2f, 2.5f, 1.2f), 0.9f, 1, 0, 3.2f);   // tracer
     if (tg >= 8) hurtCar(ai[tg - 8], g.carDmg, end);
     else if (tg == 7) hurtCar(player, g.carDmg * 0.25f, end);
-    else if (tg >= 0) damageFighter(fighters[tg], g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f) * (f.mini ? 0.4f : 1.0f), f.id, d);   // (a mini Warden's little gun)
+    else if (tg >= 0) { shotGun = (int)(&g - GUNS); damageFighter(fighters[tg], g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f) * (f.mini ? 0.4f : 1.0f), f.id, d); shotGun = -1; }   // (a mini Warden's little gun)
     else if (bt < g.range - 0.01f) {
         for (int i = 0; i < 3; i++) spawn(end, V3(grng.r(-3, 3), grng.r(0.5f, 4), grng.r(-3, 3)) - d * 2.0f, 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
         spawn(end, V3(0, 0.6f, 0) - d * 0.8f, 0.5f, 0.18f, 0.9f, V3(0.42f, 0.40f, 0.38f), 0.5f, 0, 0.5f);

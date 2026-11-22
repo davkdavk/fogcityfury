@@ -409,7 +409,7 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 9
+NET_MAGIC, NET_PROTO = 0x59464346, 10
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
 C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
@@ -472,7 +472,7 @@ class FakeClient:
 
     def state(self, flags=0, lap=0, progress=0.0, x=0.0, hit=(0, 0)):
         self.seq += 1
-        self.sock.sendto(self.hdr(C_STATE) + struct.pack("<I", self.seq) + struct.pack(CARSTATE, x, 1, 2, 0, 0, 0, 0, 0, 0, 0, 1, 2, flags, lap, 0, progress, 0.0, hit[0], hit[1]), self.addr)
+        self.sock.sendto(self.hdr(C_STATE) + struct.pack("<I", self.seq) + struct.pack(CARSTATE, x, 1, 2, 0, 0, 0, 0, 0, 0, 0, 1, 2, flags, lap, 0, progress, 0.0, hit[0], hit[1]) + b"\0" * 4, self.addr)   # + the track we have, and padding
 
     def send_raw(self, data):
         self.sock.sendto(data, self.addr)
@@ -607,8 +607,8 @@ def net_server_rejects_bad_clients_and_drops_silent_ones():
         again = clients[0].join()
         check(again[0] == S_WELCOME and clients[0].id == 0, "re-joining from the same address keeps the same slot", clients[0].id)
         clients[0].send_raw(b"garbage")
-        clients[0].send_raw(struct.pack(HDR, 0x12345678, 1, C_STATE, 0) + b"\0" * (4 + CS_SIZE))
-        clients[0].send_raw(clients[0].hdr(C_STATE) + struct.pack("<I", 10 ** 6) + struct.pack(CARSTATE, float("nan"), 1, 2, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0.0, 0.0, 0, 0))
+        clients[0].send_raw(struct.pack(HDR, 0x12345678, 1, C_STATE, 0) + b"\0" * (8 + CS_SIZE))
+        clients[0].send_raw(clients[0].hdr(C_STATE) + struct.pack("<I", 10 ** 6) + struct.pack(CARSTATE, float("nan"), 1, 2, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0.0, 0.0, 0, 0) + b"\0" * 4)
         clients[0].state(x=42.0)
         time.sleep(0.1)
         sn = clients[0].snapshot()
@@ -642,6 +642,31 @@ def net_two_game_clients_race_each_other():
     check(reports[0]["wrecks"] >= 1 and reports[0]["wrecksLeft"] >= 1, "alice's own game blew her up and left the wreck", (reports[0]["wrecks"], reports[0]["wrecksLeft"]))
     check(reports[1]["wrecksLeft"] >= 1, "bob sees alice's wreck too", reports[1]["wrecksLeft"])
     check("joined" in srv.log and "phase RACE" in srv.log, "server log shows the session")
+
+
+@test
+def net_roam_server_shares_mini_wardens():
+    """A --roam server: everyone free-roams the same city. The host's game runs the mini Wardens; a guest sees them,
+    punches one out and gets its flowers."""
+    with Server("--roam", "--track", 1) as srv:
+        def client(name, secs, *extra):
+            return subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", name, "--ready", "--seconds", str(secs)] + [str(x) for x in extra], stdout=subprocess.PIPE, text=True)
+        host = client("host", 40, "--minisnow", "--minishold"); time.sleep(1.5); guest = client("guest", 36, "--outcar", "--footai")
+        h, g = [json.loads(p.communicate(timeout=120)[0].strip().splitlines()[-1]) for p in (host, guest)]
+    check(h["netPhase"] == 5 and g["netPhase"] == 5 and h["state"] == 3 and g["state"] == 3, "both are in online roam", (h["netPhase"], g["netPhase"]))
+    check(h["miniSpawned"] == 1 and g["miniSpawned"] == 0, "only the host's game lands them", (h["miniSpawned"], g["miniSpawned"]))
+    check(h["miniKilled"] == 1 and g["roamFlowers"] >= 2, "the guest's fists beat it, and the guest gets the flowers", (h["miniKilled"], g["roamFlowers"]))
+
+
+@test
+def net_server_sends_custom_tracks():
+    """A server with --tracks DIR: a game that has not got the track downloads it, builds it and races on it."""
+    with Server("--tracks", os.path.join(ROOT, "tests", "tracks"), "--track", NTRACKS, "--laps", 1, "--countdown", 1) as srv:
+        procs = [subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", n, "--ready", "--auto", "--seconds", "14"], stdout=subprocess.PIPE, text=True) for n in ("alice", "bob")]
+        reports = [json.loads(p.communicate(timeout=60)[0].strip().splitlines()[-1]) for p in procs]
+    for name, d in zip(("alice", "bob"), reports):
+        check(d["netError"] == "" and d["netTrackId"] == NTRACKS, "%s is on the server's custom track" % name, (d["netError"], d["netTrackId"]))
+        check(d["netPhase"] == RACE and d["state"] == 3 and d["trackLen"] > 500 and d["dist"] > 100, "%s built it and is racing on it" % name, (d["netPhase"], d["state"], d["trackLen"], d["dist"]))
 
 
 @test
@@ -1504,13 +1529,13 @@ def twin_isles_the_endurance_track():
 @test
 def mini_wardens_in_free_roam():
     """Free roam: mini Wardens land near you (now and then, one to three at a time), jet at you, fight you hand to hand
-    on foot and shoot at your car. Only fists beat them; they leave flowers that add up to levels, each unlocking an
+    on foot and shoot at your car. Fists, pistol, SMG and shotgun beat them; they leave flowers that add up to levels, each unlocking an
     attribute. Run one down and the flowers towards your next level are lost, and a Warden fires a rocket at you."""
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", seconds=40)
     check(d["miniSpawned"] == 1 and d["minis"] == 1, "one lands near you", (d["miniSpawned"], d["minis"]))
     check(d["carHp"] < 90 and d["miniJets"] >= 1, "it jets in and shoots your parked car", (d["carHp"], d["miniJets"]))
-    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--outcar", "--footai", "--gun", 1, seconds=20)
-    check(d["miniKilled"] == 0 and d["minis"] == 1, "bullets spark off it", (d["miniKilled"], d["minis"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--outcar", "--footai", "--gun", 2, seconds=20)
+    check(d["miniKilled"] == 0 and d["minis"] == 1, "rifle rounds spark off it", (d["miniKilled"], d["minis"]))
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--outcar", "--footai", seconds=45)
     check(d["miniKilled"] == 1 and d["roamFlowers"] >= 2 and d["footHp"] > 0, "your fists beat it, and you pick up its flowers", (d["miniKilled"], d["roamFlowers"], d["footHp"]))
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--auto", "--flowers", 30, seconds=12)

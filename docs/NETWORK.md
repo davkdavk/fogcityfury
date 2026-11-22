@@ -34,6 +34,10 @@ Server options:
 | `--bots N` | 4 | computer-driven cars added to each race (0-4, fewer if the server is nearly full). See "Bots" |
 | `--showdown-site U` | | always put the showdown's ring that far round the lap (0-1) instead of somewhere new each race |
 | `--timeout S` | 5 | drop a player after this much silence |
+| `--tracks DIR` | | also offer every `.fcft` track file in DIR (made in the track editor). Players who have not got one are sent it |
+| `--custom-only` | | only the tracks from `--tracks` |
+| `--roam` | | a roam server: no race; everyone drives and walks the same track together, mini Wardens included |
+| `--roam-minutes M` | stay | roam: move to the next track every M minutes |
 | `--quiet` | | no log output |
 
 The server needs one UDP port reachable by the players. It has no dependencies beyond libstdc++, so
@@ -88,7 +92,7 @@ An online race cannot be paused: Esc opens a menu while the car coasts.
 ## Wire format
 
 UDP datagrams. Integers little-endian, floats IEEE-754 single, structs packed with no padding.
-Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 8) in `net.h` must be bumped
+Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 10) in `net.h` must be bumped
 whenever a struct changes or a flag bit gains a meaning; a client with a different version gets `S_REJECT` reason 2.
 
 Every packet starts with an 8-byte header:
@@ -96,7 +100,7 @@ Every packet starts with an 8-byte header:
 | Offset | Type | Field |
 |---|---|---|
 | 0 | u32 | magic `0x59464346` (bytes `FCFY`) |
-| 4 | u16 | protocol version (8) |
+| 4 | u16 | protocol version (2) |
 | 6 | u8 | packet type |
 | 7 | u8 | sender's player id, `0xFF` if none yet or from the server |
 
@@ -147,6 +151,29 @@ results = seconds until the next lobby.
 Loss and ordering: nothing is retransmitted. States and snapshots are complete, so a lost one is
 replaced by the next; out-of-order ones are dropped by `seq` / `tick`. Join is repeated until
 answered. Leave is sent twice and backed by the timeout.
+
+## Custom tracks and roam (protocol 10)
+
+**Custom tracks.** Track ids from 7 up are the server's `--tracks` files, in name order. Every `C_STATE` ends with
+`u8 have` (the highest-numbered server track the client holds; 0 if none) and 3 bytes of padding. While a player's
+`have` is not the current custom track, the server sends the file as `S_TRACK` (21) pieces: track id, crc32 of the
+whole file, total length, offset, piece length (up to 1024), then the bytes. A file is at most 8192 bytes. The
+client puts the pieces together, checks the crc, builds the track and only then may mark itself ready. In the
+server list a custom track shows as "CUSTOM TRACK".
+
+**Roam.** A `--roam` server skips the lobby and sits in phase `ROAM` (5). Cars travel as in a race. On top:
+
+| Packet | Type | From | Carries |
+|---|---|---|---|
+| `C_FOOT` | 5 | any player | their state on foot (as in the showdown) |
+| `C_MINIS` | 9 | the host | up to 4 mini Wardens (40 bytes each: id, position, velocity, yaw, health, target, fire count, jet) |
+| `C_MINIHIT` | 10 | any player | a hit on a mini Warden: its id, kind (0 fists or gun, 1 run over), damage |
+| `S_ROAM` | 22 | server, 15 Hz | everyone on foot, the host's mini Wardens, and the last 8 hits |
+
+The host (the lowest-numbered player) runs the mini Wardens: where they land, who they chase, when they die. Other
+games draw what the host reports and send their hits to it through the server. The host gives the flowers to
+whoever landed the last blow, or the penalty to whoever ran one over. When a mini Warden shoots at you, your own
+game decides whether it hit.
 
 ## The showdown
 

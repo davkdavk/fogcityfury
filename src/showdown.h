@@ -378,7 +378,7 @@ static void footFrame(float dt) {
     bool act = state == RACE, canFire = !showdownOn || shdPhase == SH_FIGHT, canMove = act && (!showdownOn || shdPhase != SH_OVER);
     footTurn = 0;
     for (auto& f : fighters) {
-        if (!f.on) continue; if (f.remote) { netStepRemote(f, dt); continue; } FootIn in;
+        if (!f.on) continue; if (f.remote) { if (!f.mini) netStepRemote(f, dt); continue; } FootIn in;   // (a remote mini Warden: netroam.h moves it)
         if (act && f.alive) { if (f.mini) in = mini::think(f, dt); else if (f.bot) in = &f == &me && !showdownOn && exploreMode ? mini::youThink(f, dt) : botThink(f, dt); else if (!(simMode && heldKeys.empty() && fingers.empty() && !tstick.on)) in = readFootInput(footTurn, dt); }
         stepFighter(f, in, dt, canFire, canMove);
     }
@@ -509,7 +509,7 @@ static void drawFootHUD(float Hb) {
     if (shdSpectate) { snprintf(b, sizeof b, touchOn ? "WATCHING %s" : "WATCHING %s   -   %s: NEXT FIGHTER", fighters[shdWatch].name, keyName(binds[B_CAM][0])); ui.text(Wd / 2, Hb - 60, 2.6f, white, b, 1); }
     if (me.alive && !shdSpectate) { float x = Wd - 300, y = Hb - 118; panel(x, y, 280, 98, 0.55f); const GunSpec& g = GUNS[me.gun]; ui.text(x + 14, y + 16, 3.2f, yel, g.name);
       if (g.clip) snprintf(b, sizeof b, "%d", me.ammo[me.gun]); else snprintf(b, sizeof b, "-"); ui.text(x + 266, y + 12, 5, g.clip && me.ammo[me.gun] <= g.clip / 4 ? red : white, b, 2, 1, 0.12f);
-      float gx = x + 12; for (int k = 0; k < NGUNS; k++) { bool have = k == baseGun() || me.ammo[k] > 0, locked = !gunUnlocked(k); ui.rect(gx, y + 58, 38, 6, k == me.gun ? yel : locked ? red : have ? white : dim, have ? 0.9f : 0.35f); ui.text(gx + 19, y + 70, 0.95f, k == me.gun ? yel : have ? white : dim, GUNS[k].name, 1, have ? 0.9f : 0.4f); gx += 43; } }
+      float gx = x + 12; for (int k = 0; k < NGUNS; k++) { bool have = k == G_FISTS || k == baseGun() || me.ammo[k] > 0, locked = k != G_FISTS && !gunUnlocked(k); ui.rect(gx, y + 58, 38, 6, k == me.gun ? yel : locked ? red : have ? white : dim, have ? 0.9f : 0.35f); ui.text(gx + 19, y + 70, 0.95f, k == me.gun ? yel : have ? white : dim, GUNS[k].name, 1, have ? 0.9f : 0.4f); gx += 43; } }
     // health, armour, stamina
     if (me.alive && !shdSpectate) { float w = 380, x = Wd / 2 - w / 2, y = Hb - 52; ui.rect(x - 3, y - 3, w + 6, 30, V3(0.02f, 0.03f, 0.06f), 0.6f);
       ui.rect(x, y, w * clampf(me.hp / 100, 0, 1), 16, hpCol(me.hp), 0.95f); if (me.armour > 0) ui.rect(x, y - 7, w * clampf(me.armour / 50, 0, 1) * 0.5f, 5, V3(0.35f, 0.7f, 1), 0.95f);

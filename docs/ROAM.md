@@ -8,8 +8,8 @@ There is no announcement: each shows as a red dot on the minimap.
 They hunt you. Each has a jetpack: a short burst that carries it most of the way to you, then 12 s to recharge. On
 foot, they rush in and fight hand to hand. In the car, they keep 12-26 m off, circle and shoot at it.
 
-**Only your fists hurt them.** Bullets and grenades spark off their armour (with a reminder now and then). Each one
-beaten with your fists leaves 2-4 **flowers** where it fell; walk or drive over them to pick them up (they last 90 s).
+**Fists, pistol, SMG and shotgun hurt them.** Rifle rounds and grenades spark off their armour (with a reminder now
+and then). Each one beaten leaves 2-4 **flowers** where it fell; walk or drive over them to pick them up (they last 90 s).
 
 **Running one down is allowed, but it costs you.** It bursts into pieces of Warden, leaves no flowers, the flowers
 you had earned towards your next level are lost (you keep your level), and the nearest big Warden fires a rocket at
@@ -33,6 +33,12 @@ Flowers add up to **levels**, and each level unlocks an attribute for good:
 
 The attributes work in offline races and the showdown too, but never online, where everyone is equal. The flower
 count is saved with the settings (`flowers N` in the config file; not saved on the Xbox 360 yet).
+
+## Online
+
+On a roam server (`fogcityfury-server --roam`) everyone shares the same mini Wardens. They chase whoever is nearest.
+The flowers go to the player who landed the last blow; run one over and the penalty and the rocket are yours alone.
+Levels and perks stay your own. See NETWORK.md for how it works.
 
 ## For developers
 
