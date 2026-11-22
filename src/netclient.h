@@ -5,7 +5,7 @@
 #include "net.h"
 #include <vector>
 
-static bool shareOpen = false, shareAuto = false; static std::vector<int> shareList();
+static bool shareOpen = false, shareAuto = false; static std::vector<int> shareList(); static bool voteOpen(); static bool voteMine();   // (netroam.h)
 static int netLocalTrack(int id);   // (netroam.h) the track in our list for a server track id, -1 if we have not got it yet
 struct Remote { uint8_t hitSeq = 0; bool seen = false;   // seen: we have looked at this player's state at least once
     bool bot = false;   // computer-driven (the host's game drives it; to everyone else it is one more car)
@@ -23,6 +23,7 @@ static struct NetClient {
     char host[96] = "127.0.0.1:27015", name[net::NAMELEN + 1] = "PLAYER", error[64] = "";
     Remote r[net::MAXP]; net::Snapshot snap;
     std::vector<net::TrackChunk> pieces;    // pieces of a custom track file, waiting to be put together (netroam.h)
+    net::Vote vote; bool voteGot = false; float voteSeen = 9; uint8_t voteAnswer = 0, voteTrack = 255;   // a shared track's vote (S_VOTE): our answer, 0 none yet
     net::Roam roam; bool roamGot = false; uint32_t roamTick = 0;   // online roam: everyone on foot and the mini Wardens, as the server last sent them
     net::Showdown sd; bool sdGot = false; uint32_t sdTick = 0;   // the showdown as the server last described it (netshd.h acts on it)
     int sdSlotOf(int id) const { if (sdGot) for (int k = 0; k < net::SD_FIGHT; k++) if (sd.fighter[k] == id) return k; return -1; }
@@ -73,6 +74,7 @@ static void netPump(float dt, bool inLobby) {
             if (nc.phase != net::SHOWDOWN && nc.phase != net::RESULTS) nc.sdGot = false;
         }
         else if (h.type == net::S_TRACK && n >= (int)offsetof(net::TrackChunk, data) && nc.connected && nc.pieces.size() < 64) { net::TrackChunk m; memset(&m, 0, sizeof m); memcpy(&m, buf, std::min(n, (int)sizeof m)); if (m.len <= net::CHUNK && n >= (int)offsetof(net::TrackChunk, data) + m.len) nc.pieces.push_back(m); }
+        else if (h.type == net::S_VOTE && n >= (int)sizeof(net::Vote) && nc.connected) { memcpy(&nc.vote, buf, sizeof nc.vote); nc.vote.name[sizeof nc.vote.name - 1] = 0; nc.voteGot = true; nc.voteSeen = 0; if (nc.vote.track != nc.voteTrack) { nc.voteTrack = nc.vote.track; nc.voteAnswer = 0; } }
         else if (h.type == net::S_ROAM && n >= (int)sizeof(net::Roam) && nc.connected) {
             net::Roam m; memcpy(&m, buf, sizeof m); if (nc.roamGot && m.tick < nc.roamTick && nc.roamTick - m.tick < 100000) continue;
             if (m.nfeet > net::MAXP || m.nminis > net::MINIS || m.nhits > net::HITS) continue; nc.roam = m; nc.roamTick = m.tick; nc.roamGot = true;

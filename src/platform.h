@@ -38,6 +38,7 @@ enum {
 #define SDLK_o 'o'
 #define SDLK_q 'q'
 #define SDLK_r 'r'
+#define SDLK_y 'y'
 #define SDLK_s 's'
 #define SDLK_t 't'
 #define SDLK_w 'w'

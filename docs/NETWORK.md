@@ -164,9 +164,14 @@ server list a custom track shows as "CUSTOM TRACK".
 
 **Sharing a track.** In the lobby a player presses T (Y on a pad, SHARE TRACK on a touch screen), picks one of their
 own tracks from the list, and their game sends the file to the server as `C_TRACK` (11) pieces, laid out like
-`S_TRACK` (the track id is not used). When the server has the whole file and the crc matches, it adds the track to
-its list (up to 24 custom tracks in all, kept until the server stops), moves the lobby to it and sends it to
-everyone else as above. If the race has already started, it becomes the next track. `--no-uploads` turns this off.
+`S_TRACK` (the track id is not used). When the server has the whole file and the crc matches, it adds it to its list
+(never to the rotation) and, in the lobby, opens a vote: `S_VOTE` (23) four times a second with the track's name, the
+sharer, the yes/no counts, the seconds left and the road's control points (for the games' preview map). Each game
+answers with `C_VOTE` (12: 1 yes, 2 no) until it closes. The sharer counts as yes; the vote closes when everyone has
+answered or after 20 s, and passes if more said yes than no. Nobody can start the race while it is open. If it passes
+the lobby moves to the track, everyone downloads it as above (and keeps it in their own tracks), and after that race
+the server goes back to the track it was on and carries on its rotation. Games that predate the vote ignore `S_VOTE`
+and simply follow the lobby. `--no-uploads` turns sharing off.
 
 **Roam.** A `--roam` server skips the lobby and sits in phase `ROAM` (5). Cars travel as in a race. On top:
 

@@ -33,7 +33,7 @@ static double cfgCountdown = 5, cfgResults = 12, cfgLobby = 0, cfgFinish = 45, c
 // the showdown: slots are in podium order
 struct Slot { int player = -1; bool heard = false, alive = false; int place = 0, kills = 0; uint32_t seq = 0; FootState s; };
 // custom tracks (--tracks DIR): their files' text, sent to the games that need them. Track ids TRACKS and up
-struct CustomTrack { std::string name, text; uint32_t crc = 0; }; static std::vector<CustomTrack> CT;
+struct CustomTrack { std::string name, text; uint32_t crc = 0; bool shared = false; }; static std::vector<CustomTrack> CT;   // shared: a player's (C_TRACK), never in the rotation
 static int nTracks() { return TRACKS + (int)CT.size(); }
 static void loadTracks(const char* dir) {
 #ifndef _WIN32
@@ -50,7 +50,14 @@ static void loadTracks(const char* dir) {
 static const char* trackName(int t) { static const char* B[TRACKS] = { "HILLTOP HEIGHTS", "BAYSIDE BREAKER", "SUMMIT SWITCHBACKS", "MIDNIGHT MILE", "HARBOUR DEEP", "LAGOON LOOP", "TWIN ISLES" }; return t < TRACKS ? B[t] : CT[t - TRACKS].name.c_str(); }
 // roam (--roam): the mini Wardens as the host's game last reported them, and the last hits on them
 // tracks shared by players (C_TRACK): the pieces so far, by player; wantTrack: the track to move to as soon as we are in the lobby
-struct Upload { uint32_t crc = 0; int total = 0; std::string data; std::vector<uint8_t> got; }; static Upload UP[MAXP]; static int wantTrack = -1; static bool cfgUploads = true;
+struct Upload { uint32_t crc = 0; int total = 0; std::string data; std::vector<uint8_t> got; }; static Upload UP[MAXP]; static bool cfgUploads = true;
+// the vote on a shared track: open in the lobby for VOTE_TIME seconds (or until everyone has answered); it passes if more
+// say yes than no (the sharer is a yes). Then the lobby moves to it for one race, and afterwards back to returnTrack
+static const double VOTE_TIME = 20;
+static struct { bool open = false; int track = -1, by = -1; double left = 0, closedT = -9; bool passed = false; uint8_t ans[MAXP] = {}; char byName[NAMELEN + 1] = ""; } vote;
+static int pendTrack = -1, pendBy = -1, returnTrack = -1;   // pend: a shared track waiting for its vote (in the lobby)
+// the next track in the rotation (the server's own and --tracks ones; never a shared one)
+static int nextTrack(int t, bool customOnly) { int n = nTracks(); for (int k = 0; k < n; k++) { t = (t + 1) % n; if (t >= TRACKS && CT[t - TRACKS].shared) continue; if (customOnly && t < TRACKS) continue; return t; } return t; }
 static bool cfgRoam = false; static double cfgRoamMinutes = 0, roamT = 0; static MiniState M[MINIS]; static int nMinis = 0; static MiniHit H[HITS]; static uint16_t hitSeq = 0;
 static Slot S[SD_FIGHT]; static SdStage sdStage = SD_DRIVE; static double sdT = 0, sdRing = SD_RING0, Dback[SD_DROPS]; static float sdSite[3] = {}; static SiteKind sdSiteKind = SITE_UNKNOWN; static int sdFighters = 0, sdWinner = -1, sdDrops = 0; static SdDrop D[SD_DROPS];
 static int sdAlive() { int n = 0; for (auto& q : S) if (q.player >= 0 && q.alive) n++; return n; }
@@ -172,10 +179,13 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
         for (uint8_t g : u.got) if (!g) return;
         bool good = crc32(u.data.data(), u.total) == u.crc && u.data.compare(0, 5, "fcft ") == 0 && u.data.find("\nroad") != std::string::npos; int k = -1;
         if (good) { for (size_t i = 0; i < CT.size(); i++) if (CT[i].crc == u.crc && CT[i].text == u.data) k = (int)i;
-            if (k < 0 && (int)CT.size() < MAXCT) { CustomTrack c; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
+            if (k < 0 && (int)CT.size() < MAXCT) { CustomTrack c; c.shared = true; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
                 size_t a = u.data.find("\nname"); if (a != std::string::npos) { a = u.data.find_first_not_of(" \t", a + 5); size_t e = u.data.find('\n', a); if (a != std::string::npos && e != std::string::npos && e > a) c.name = u.data.substr(a, std::min(e - a, (size_t)32)); } c.text = u.data; c.crc = u.crc; CT.push_back(c); k = (int)CT.size() - 1; say("%s shared a track (%d bytes): track %d", P[who].name, u.total, TRACKS + k); } }
-        if (k >= 0) wantTrack = TRACKS + k;
+        if (k >= 0 && TRACKS + k != track && !vote.open) { pendTrack = TRACKS + k; pendBy = who; say("%s shared track %d: the lobby votes on it", P[who].name, TRACKS + k); }
         u = Upload();
+    } else if (h.type == C_VOTE && len >= (int)sizeof(VoteMsg) && who >= 0 && h.id == who) {
+        VoteMsg m; memcpy(&m, buf, sizeof m); P[who].lastHeard = t;
+        if (vote.open && m.track == vote.track && (m.answer == 1 || m.answer == 2) && who != vote.by) vote.ans[who] = m.answer;
     } else if (h.type == C_STATE && len >= (int)sizeof(State) && who >= 0 && h.id == who) {
         State st; memcpy(&st, buf, sizeof st); Player& p = P[who]; p.lastHeard = t;
         if (!sane(st.s)) return;   // garbled numbers: keep the last good state rather than pass them on
@@ -235,6 +245,33 @@ static void sendTrackPieces() {
         m.len = (uint16_t)std::min((int)c.text.size() - k * CHUNK, CHUNK); m.total = (uint16_t)c.text.size(); m.crc = c.crc; memcpy(m.data, c.text.data() + k * CHUNK, m.len);
         sendTo(sock, p.addr, &m, (int)(sizeof m - CHUNK + m.len)); }
 }
+static void sendVote() {
+    Vote m; memset(&m, 0, sizeof m); m.h = header(S_VOTE, 0xFF); m.track = (uint8_t)vote.track; m.by = (uint8_t)std::max(0, vote.by); m.open = vote.open; m.passed = vote.passed; m.left = (float)vote.left;
+    for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot) { m.voters++; if (vote.ans[i] == 1) m.yes++; if (vote.ans[i] == 2) m.no++; }
+    snprintf(m.name, sizeof m.name, "%s", vote.track >= TRACKS && vote.track < nTracks() ? CT[vote.track - TRACKS].name.c_str() : "");
+    if (vote.track >= TRACKS && vote.track < nTracks()) {   // the road's points from the file's "road" lines, for the games' preview map
+        const std::string& tx = CT[vote.track - TRACKS].text; size_t pos = 0; std::vector<float> v;
+        while ((pos = tx.find("road", pos)) != std::string::npos) { if (pos == 0 || tx[pos - 1] == '\n') { const char* c = tx.c_str() + pos + 4; char* e = nullptr; while (true) { float f = strtof(c, &e); if (e == c) break; v.push_back(f); c = e; } } pos += 4; }
+        int np = std::min((int)v.size() / 2, 60); m.npts = (uint8_t)np; for (int k = 0; k < np * 2; k++) m.pts[k] = (int16_t)std::max(-32000.0f, std::min(32000.0f, v[k]));
+    }
+    for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot) sendTo(sock, P[i].addr, &m, sizeof m);
+}
+// the shared-track vote, once a frame: opens in the lobby when a track is waiting, closes when everyone has answered or time is up
+static void stepVote(double dt, double t) {
+    if (!vote.open && pendTrack >= 0 && phase == LOBBY) {
+        if (pendBy < 0 || !P[pendBy].used) { pendTrack = -1; return; }   // the sharer has gone
+        vote.open = true; vote.passed = false; vote.track = pendTrack; vote.by = pendBy; vote.left = VOTE_TIME; memset(vote.ans, 0, sizeof vote.ans); vote.ans[pendBy] = 1;
+        snprintf(vote.byName, sizeof vote.byName, "%s", P[pendBy].name); pendTrack = pendBy = -1; readySince = -1; for (auto& q : P) q.ready = false;
+    }
+    if (!vote.open) return;
+    vote.left -= dt; int yes = 0, no = 0, people = 0, answered = 0;
+    for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot) { people++; if (vote.ans[i]) answered++; if (vote.ans[i] == 1) yes++; if (vote.ans[i] == 2) no++; }
+    if (phase != LOBBY || vote.left <= 0 || answered >= people) {
+        vote.open = false; vote.passed = phase == LOBBY && yes > no; vote.closedT = t;
+        say("vote on %s's track: %d yes, %d no: %s", vote.byName, yes, no, vote.passed ? "playing it" : "staying");
+        if (vote.passed) { if (returnTrack < 0) returnTrack = track; track = vote.track; setPhase(LOBBY, -1); }
+    }
+}
 static void sendRoam(uint32_t tick) {
     Roam m; memset(&m, 0, sizeof m); m.h = header(S_ROAM, 0xFF); m.tick = tick; int n = 0; double t = now();
     for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot && t - P[i].footHeard < 2) { RoamFoot& f = m.f[n++]; f.id = (uint8_t)i; f.on = P[i].footOn; f.s = P[i].foot; }
@@ -291,7 +328,7 @@ int main(int argc, char** argv) {
     }
     if (tracksDir) { loadTracks(tracksDir); printf("%d custom track(s) from %s\n", (int)CT.size(), tracksDir); for (size_t k = 0; k < CT.size(); k++) printf("  %d: %s\n", TRACKS + (int)k, CT[k].name.c_str()); }
     if (customOnly && CT.empty()) { fprintf(stderr, "--custom-only: no custom tracks\n"); return 2; }
-    track = ((trackArg % nTracks()) + nTracks()) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS;
+    track = ((trackArg % nTracks()) + nTracks()) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS;   // (no shared tracks yet: all of these are in the rotation)
     sock = openUdp(port); if (sock < 0) { fprintf(stderr, "cannot bind UDP port %d\n", port); return 1; }
     signal(SIGINT, [](int) { running = false; }); signal(SIGTERM, [](int) { running = false; });
     say("Fog City Fury server: UDP port %d, protocol %d, %d laps, up to %d players", port, PROTO, laps, MAXP);
@@ -309,7 +346,7 @@ int main(int argc, char** argv) {
         case LOBBY:
             if (ready > 0 && readySince < 0) readySince = t; if (ready == 0) readySince = -1;
             phaseT = (cfgLobby > 0 && readySince >= 0) ? std::max(0.0, cfgLobby - (t - readySince)) : -1;
-            if (n > 0 && (ready == n || (cfgLobby > 0 && readySince >= 0 && t - readySince >= cfgLobby))) setPhase(COUNTDOWN, cfgCountdown);
+            if (!vote.open && n > 0 && (ready == n || (cfgLobby > 0 && readySince >= 0 && t - readySince >= cfgLobby))) setPhase(COUNTDOWN, cfgCountdown);   // (not while the lobby votes on a shared track)
             break;
         case COUNTDOWN: phaseT -= dt; if (people == 0) setPhase(LOBBY, -1); else if (phaseT <= 0) setPhase(RACE, 0); break;
         case RACE:
@@ -320,12 +357,12 @@ int main(int argc, char** argv) {
         case SHOWDOWN: if (people == 0) setPhase(LOBBY, -1); else stepShowdown(dt); break;
         case ROAM:   // nothing to finish; with --roam-minutes, on to the next track now and then
             roamT += dt; for (auto& p : P) if (p.used) p.racing = true;
-            if (cfgRoamMinutes > 0 && roamT > cfgRoamMinutes * 60) { if (!fixedTrack) { track = (track + 1) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS; } setPhase(ROAM, -1); }
+            if (cfgRoamMinutes > 0 && roamT > cfgRoamMinutes * 60) { if (!fixedTrack) track = nextTrack(track, customOnly); setPhase(ROAM, -1); }
             break;
-        case RESULTS: phaseT -= dt; if (phaseT <= 0) { if (!fixedTrack) { track = (track + 1) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS; } if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
+        case RESULTS: phaseT -= dt; if (phaseT <= 0) { if (returnTrack >= 0) { track = returnTrack; returnTrack = -1; } else if (!fixedTrack) track = nextTrack(track, customOnly); if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
         }
-        if (wantTrack >= 0 && phase == LOBBY) { if (track != wantTrack) { track = wantTrack; setPhase(LOBBY, -1); } wantTrack = -1; }
-        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); }   // (roam: 15 times a second)
+        stepVote(dt, t);
+        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); if (tick % 5 == 0 && (vote.open || t - vote.closedT < 1.5)) sendVote(); }   // (roam: 15 times a second)
         sleepMs(4);
     }
     say("shutting down"); closeSock(sock); return 0;

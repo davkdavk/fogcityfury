@@ -673,22 +673,36 @@ def net_server_sends_custom_tracks():
 
 @test
 def net_player_shares_a_track_from_the_lobby():
-    """SHARE TRACK in the lobby: one player sends a track of their own to the server; the server moves to it and sends
-    it on to the other player, and both race on it."""
+    """SHARE TRACK in the lobby: one player sends a track of their own; the lobby votes on it (with a preview of its
+    road). If more say yes than no, everyone races it and keeps it; afterwards the server goes back to its own track."""
     import tempfile, shutil
     mine, none = tempfile.mkdtemp(), tempfile.mkdtemp()
     shutil.copy(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), mine)
     try:
-        with Server("--laps", 1, "--countdown", 1) as srv:
-            def client(name, folder, *extra):
-                return subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", name, "--ready", "--auto", "--seconds", "16", "--tracksdir", folder] + list(extra), stdout=subprocess.PIPE, text=True)
-            procs = [client("alice", mine, "--share"), client("bob", none)]
-            a, b = [json.loads(p.communicate(timeout=60)[0].strip().splitlines()[-1]) for p in procs]
+        with Server("--laps", 1, "--countdown", 1, "--results", 1, "--no-showdown") as srv:
+            def client(name, folder, secs, *extra):
+                return subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", name, "--ready", "--auto", "--seconds", str(secs), "--tracksdir", folder] + list(extra), stdout=subprocess.PIPE, text=True)
+            procs = [client("alice", mine, 100, "--share"), client("bob", none, 100, "--vote", "yes")]
+            a, b = [json.loads(p.communicate(timeout=200)[0].strip().splitlines()[-1]) for p in procs]
+        kept = os.listdir(none)
     finally:
         shutil.rmtree(mine); shutil.rmtree(none)
-    check(a["shared"] == 1 and "shared a track" in srv.log, "alice's game sent her track and the server took it", a["shared"])
-    for name, d in (("alice", a), ("bob", b)):
-        check(d["netTrackId"] == NTRACKS and d["netPhase"] == RACE and d["trackLen"] > 500 and d["dist"] > 100, "%s races on the shared track" % name, (d["netTrackId"], d["netPhase"], d["trackLen"], d["dist"]))
+    check(a["shared"] == 1 and "the lobby votes on it" in srv.log, "alice's game sent her track and the lobby voted on it", a["shared"])
+    check("2 yes, 0 no: playing it" in srv.log and b["votesPassed"] == 1, "bob said yes: it passed", b["votesPassed"])
+    check("phase RACE  track %d" % NTRACKS in srv.log, "and they raced it")
+    check("RESULTS  track %d" % NTRACKS in srv.log and srv.log.index("LOBBY  track 0", srv.log.index("RESULTS  track %d" % NTRACKS)) > 0, "afterwards the server went back to its own track")
+    check(b["kept"] == 1 and kept == ["my-track.fcft"], "bob kept the track in his tracks", (b["kept"], kept))
+
+    mine, none = tempfile.mkdtemp(), tempfile.mkdtemp()
+    shutil.copy(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), mine)
+    try:
+        with Server("--countdown", 1) as srv:
+            procs = [subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", n, "--auto", "--seconds", "10", "--tracksdir", f] + x, stdout=subprocess.PIPE, text=True)
+                     for n, f, x in (("alice", mine, ["--share"]), ("bob", none, ["--vote", "no"]))]
+            b = [json.loads(p.communicate(timeout=60)[0].strip().splitlines()[-1]) for p in procs][1]
+    finally:
+        shutil.rmtree(mine); shutil.rmtree(none)
+    check("1 yes, 1 no: staying" in srv.log and b["votesPassed"] == 0 and b["netTrackId"] == 0, "a tie: the lobby stays on its track", (b["votesPassed"], b["netTrackId"]))
 
     with Server("--no-uploads") as srv:   # a server that does not take them
         c = FakeClient(srv.port, "mallory"); c.join(); body = open(os.path.join(ROOT, "tests", "tracks", "test-loop.fcft"), "rb").read()

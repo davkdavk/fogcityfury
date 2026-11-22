@@ -21,6 +21,46 @@ static int netLocalTrack(int id) {
     if (!srvTrackReady) { for (int& t : srvTrack) t = -1; srvTrackReady = true; }
     return srvTrack[id & 255];
 }
+static int autoVote = 0, keptCount = 0, votesSeen = 0, votesPassed = 0;
+// Tracks the server sends are kept: written to our tracks folder, so they are in "my tracks" from then on (unless we
+// have the very same file already). netKeptTrack: our track whose file is exactly this one (by crc), else -1
+static int netKeptTrack(uint32_t crc) {
+    static std::vector<std::pair<std::string, uint32_t>> seen;   // file -> crc, read once each
+    for (int t = NTRACKS; t < (int)TRACKS.size(); t++) {
+        const TrackDef& d = TRACKS[t]; if (d.deleted || d.file.empty()) continue; uint32_t c = 0; bool have = false;
+        for (auto& s : seen) if (s.first == d.file) { c = s.second; have = true; }
+        if (!have) { FILE* f = fopen(d.file.c_str(), "rb"); if (!f) continue; std::string b; char tmp[1024]; size_t k; while ((k = fread(tmp, 1, sizeof tmp, f)) > 0 && b.size() <= (size_t)net::TRACKFILE_MAX) b.append(tmp, k); fclose(f);
+            c = net::crc32(b.data(), (int)b.size()); seen.push_back({ d.file, c }); }
+        if (c == crc) return t;
+    }
+    return -1;
+}
+static std::string netKeepTrack(const std::string& text, const TrackDef& d) {
+#ifdef FCF_GFX_XSDK
+    (void)text; (void)d; return "";   // (no saving on the 360 yet)
+#else
+    if (noSave && tracksDirOverride.empty()) return "";
+    std::string dir = tracksDir(); trackMkdir(dir); std::string path = trackNewFile(dir, d.nameS.empty() ? "SHARED TRACK" : d.nameS);
+    FILE* f = fopen(path.c_str(), "wb"); if (!f) return ""; bool ok = fwrite(text.data(), 1, text.size(), f) == text.size(); ok = fclose(f) == 0 && ok;
+    if (ok) { keptCount++; char s[160]; snprintf(s, sizeof s, "net: kept the track as %s", path.c_str()); plat::logLine(s); }
+    return ok ? path : "";
+#endif
+}
+// the shared-track vote: our answer, sent with every S_VOTE while it is open (they come four times a second, so a lost one
+// is soon made up). --vote yes|no (tests) answers by itself
+static bool voteOpen() { return nc.on && nc.voteGot && nc.vote.open && nc.voteSeen < 1.0f && nc.phase == net::LOBBY; }
+static bool voteMine() { return voteOpen() && nc.vote.by == nc.id; }
+static void netVoteFrame(float dt) {
+    if (!nc.on) { nc.voteGot = false; return; }
+    nc.voteSeen += dt;
+    static uint8_t lastTrack = 255; static bool counted = false;
+    if (nc.voteGot && nc.vote.track != lastTrack) { lastTrack = nc.vote.track; counted = false; votesSeen++; }
+    if (nc.voteGot && !nc.vote.open && !counted) { counted = true; if (nc.vote.passed) votesPassed++; }
+    if (!voteOpen() || voteMine()) return;
+    if (autoVote && !nc.voteAnswer) nc.voteAnswer = (uint8_t)autoVote;
+    static float sendT = 0; sendT -= dt;
+    if (nc.voteAnswer && sendT <= 0) { sendT = 0.25f; net::VoteMsg m; memset(&m, 0, sizeof m); m.h = net::header(net::C_VOTE, (uint8_t)nc.id); m.track = nc.vote.track; m.answer = nc.voteAnswer; net::sendTo(nc.sock, nc.addr, &m, sizeof m); }
+}
 static void netTrackPieces() {
     if (!nc.on) { srvTrackReady = false; nc.pieces.clear(); return; }
     if (srvTrackHost != nc.host) { srvTrackHost = nc.host; srvTrackReady = false; tbuf.id = -1; }   // another server: its track ids mean other tracks
@@ -33,8 +73,8 @@ static void netTrackPieces() {
         memcpy(&tbuf.data[m.chunk * net::CHUNK], m.data, m.len); tbuf.got[m.chunk] = 1;
         bool all = true; for (uint8_t g : tbuf.got) if (!g) all = false; if (!all) continue;
         if (net::crc32(tbuf.data.data(), tbuf.total) != tbuf.crc) { tbuf.id = -1; continue; }   // garbled: start again
-        TrackDef d; int t = -1;
-        if (trackParse(tbuf.data, d, TRACKS[0])) { d.file = ""; t = trackAdd(d); if (t >= 0) weatherOf[t] = d.wx; }
+        TrackDef d; int t = netKeptTrack(tbuf.crc);   // one of ours already (a track we kept before, or our own): no copy
+        if (t < 0 && trackParse(tbuf.data, d, TRACKS[0])) { d.file = netKeepTrack(tbuf.data, d); t = trackAdd(d); if (t >= 0) weatherOf[t] = d.wx; }
         if (t < 0) t = 0;   // no room, or not a track: race the first built-in rather than wait for ever
         srvTrack[m.track] = t; trackByCrc.push_back({ m.crc, t }); tbuf.id = -1;
         char s[96]; snprintf(s, sizeof s, "net: got custom track %d (%d bytes) as track %d", m.track, m.total, t); plat::logLine(s);

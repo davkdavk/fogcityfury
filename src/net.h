@@ -38,7 +38,7 @@ const int MINIS = 4, HITS = 8;                               // online roam: min
 const int BOTS = 4;   // computer-driven cars the server adds to a race, at most. The server has no map: one player's game (the host) drives them
 const int SD_FIGHT = 5, SD_DROPS = 12, SD_SLOW_KIND = 5;   // the showdown: fighters (the podium), pick-ups at most, the kind of pick-up (the grenade launcher) that takes three times as long to come back
 
-enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, C_MINIS = 9, C_MINIHIT = 10, C_TRACK = 11, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20, S_TRACK = 21, S_ROAM = 22 };
+enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, C_MINIS = 9, C_MINIHIT = 10, C_TRACK = 11, C_VOTE = 12, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20, S_TRACK = 21, S_ROAM = 22, S_VOTE = 23 };
 enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4, ROAM = 5 };   // ROAM: a roam server (--roam): everyone drives and walks the island together, no laps   // SHOWDOWN comes between RACE and RESULTS
 enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
 enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
@@ -107,7 +107,12 @@ struct TrackChunk { Header h; uint8_t track, chunk, nchunks, pad; uint16_t len, 
 struct MiniState { uint16_t uid; uint8_t alive, target, fireSeq, killedBy, rammed, flags; float x, y, z, yaw, vx, vy, vz; uint8_t hp, gun, paint, pad; };   // 40 bytes. target/killedBy: a player id or NOBODY. flags: 1 jetting, 2 aiming
 struct MiniHit { uint16_t seq, uid; uint8_t by, kind; uint16_t dmg; };                                  // kind: 0 a punch, 1 run down (dmg in tenths)
 struct Minis { Header h; uint32_t seq; uint8_t n, pad[3]; MiniState m[MINIS]; };                       // C_MINIS
-struct MiniHitMsg { Header h; MiniHit hit; };                                                          // C_MINIHIT
+struct MiniHitMsg { Header h; MiniHit hit; };
+// A player shared a track (C_TRACK): the lobby votes on it. The server sends S_VOTE four times a second while the vote
+// is open (open 1) and a few times when it closes (open 0, passed 0/1); each game answers with C_VOTE until it closes.
+// Older games ignore both and simply follow the lobby onto the track if it passes.
+struct Vote { Header h; uint8_t track, by, yes, no, open, passed, voters, npts; float left; char name[24]; int16_t pts[120]; };   // S_VOTE. track: the shared track's id; by: who shared it; pts: its road's control points (x, z in metres; npts of them), for a preview map
+struct VoteMsg { Header h; uint8_t track, answer, pad[2]; };                                              // C_VOTE. answer: 1 yes, 2 no                                                          // C_MINIHIT
 struct RoamFoot { uint8_t id, on, pad[2]; FootState s; };                                               // on: 1 if that player is out of the car
 struct Roam { Header h; uint32_t tick; uint8_t nfeet, nminis, nhits, pad; RoamFoot f[MAXP]; MiniState m[MINIS]; MiniHit hits[HITS]; };   // S_ROAM
 inline uint32_t crc32(const void* data, int n) { const uint8_t* p = (const uint8_t*)data; uint32_t c = 0xFFFFFFFFu; for (int i = 0; i < n; i++) { c ^= p[i]; for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1))); } return ~c; }
@@ -251,6 +256,7 @@ inline void turnPacket(uint8_t* p, int len) {
         if (has(FCF_AT(Minis, n))) turn32(p + FCF_AT(Minis, seq));
         turnEach(p, len, FCF_AT(Minis, m), sizeof(MiniState), MINIS, turnMini); break;
     case C_MINIHIT: if (has(sizeof(MiniHitMsg))) turnHit(p + FCF_AT(MiniHitMsg, hit)); break;
+    case S_VOTE: if (has(sizeof(Vote))) { turn32(p + FCF_AT(Vote, left)); for (int k = 0; k < 120; k++) turn16(p + FCF_AT(Vote, pts) + 2 * k); } break;
     case S_ROAM:
         if (has(FCF_AT(Roam, nfeet))) turn32(p + FCF_AT(Roam, tick));
         turnEach(p, len, FCF_AT(Roam, f), sizeof(RoamFoot), MAXP, [](uint8_t* e) { turnFoot(e + FCF_AT(RoamFoot, s)); });

@@ -316,7 +316,8 @@ static void touchLayout() {
     case TRACKSEL: arrows(); side(0, "START", SDLK_RETURN); side(1, "BACK", SDLK_ESCAPE); break;
     case PAUSED: key("RESUME", W / 2 - 290, 460, 140, 80, SDLK_ESCAPE); act("RESET", W / 2 - 140, 460, 140, 80, TA_RESET); key("OPTIONS", W / 2 + 10, 460, 140, 80, SDLK_F1); key("QUIT", W / 2 + 160, 460, 130, 80, SDLK_q); break;
     case RESULTS: key("OK", bx, by, 130, 80, SDLK_RETURN); key("LEAVE", bx - 140, by, 130, 80, SDLK_ESCAPE); break;
-    case NETLOBBY: key(shareOpen ? "SHARE" : "READY", bx, by, 130, 80, SDLK_RETURN); key("BACK", bx - 140, by, 130, 80, SDLK_ESCAPE);
+    case NETLOBBY: if (voteOpen() && !voteMine()) { key("ACCEPT", bx, by, 130, 80, SDLK_y); key("NO", bx - 140, by, 130, 80, SDLK_n); break; }
+        key(shareOpen ? "SHARE" : "READY", bx, by, 130, 80, SDLK_RETURN); key("BACK", bx - 140, by, 130, 80, SDLK_ESCAPE);
         if (shareOpen) { key("UP", 20, by - 90, 130, 80, SDLK_UP); key("DOWN", 20, by, 130, 80, SDLK_DOWN); } else if (!shareList().empty()) key("SHARE TRACK", 20, by, 200, 80, SDLK_t);
         break;
     case NETJOIN:
@@ -1002,7 +1003,7 @@ static void update(float dt) {
     T += dt; frameNo++;
     if (logoT >= 0) { float t0 = logoT; logoT += dt; logoSounds(t0, logoT); if (logoT >= LOGO_LEN) logoT = -1; }
     if (pendingTrack >= 0 && (pendingT -= dt) <= 0) flushPendingTrack();
-    netPump(dt, state == NETLOBBY); netTrackPieces(); netShareFrame(dt); netReact(); netRoamFrame(dt);
+    netPump(dt, state == NETLOBBY); netTrackPieces(); netShareFrame(dt); netVoteFrame(dt); netReact(); netRoamFrame(dt);
     if (state == NETJOIN && !nc.on) srvPump(dt);
     if (nc.on && (netRace || state == NETLOBBY)) weather = nc.weather % NWX;   // online: the server picks
     else if (state == TRACKSEL || state == CARSEL) weather = selWeather;
@@ -1735,6 +1736,14 @@ static void drawLogo(float t) {
     else if (t < 0.25f) ui.rect(0, 0, W, H, V3(0, 0, 0), 1 - t / 0.25f);                                     // fade in
 }
 
+// the vote preview's road shape: Catmull-Rom over the control points (the editor's ed::spline is PC-only)
+static void voteSpline(const TrackDef& d, std::vector<V3>& out, int per) {
+    out.clear(); int m = (int)d.ctrl.size() / 2; if (m < 3) return;
+    auto C = [&](int k) { k = ((k % m) + m) % m; return V3(d.ctrl[k * 2], 0, d.ctrl[k * 2 + 1]); };
+    for (int i = 0; i < m; i++) { V3 p0 = C(i - 1), p1 = C(i), p2 = C(i + 1), p3 = C(i + 2);
+        for (int k = 0; k < per; k++) { float t = k / (float)per, t2 = t * t, t3 = t2 * t; out.push_back((p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5f); } }
+}
+
 static void drawHUD() {
     float Wd = ui.W, Hd = ui.H; char b[160]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f);
     if (state == OPTS) {
@@ -1790,7 +1799,30 @@ static void drawHUD() {
         snprintf(b, sizeof b, "%d OF %d READY", readyN, n); ui.text(Wd / 2, yy, 3, white, b, 1);
         if (nc.phase == net::COUNTDOWN) { snprintf(b, sizeof b, "STARTING IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 4, yel, b, 1); }
         std::vector<int> mine = shareList();
-        if (upl.on) ui.text(Wd / 2, Hd - 150, 3, V3(0.5f, 1, 0.6f), "SENDING YOUR TRACK TO THE SERVER...", 1);
+        if (voteOpen()) {   // the vote on a shared track
+            const net::Vote& v = nc.vote; char nm[net::NAMELEN + 1] = "A PLAYER"; for (int q = 0; q < std::min((int)nc.snap.count, (int)net::MAXP); q++) if (nc.snap.p[q].id == v.by) { memcpy(nm, nc.snap.p[q].name, net::NAMELEN); nm[net::NAMELEN] = 0; }
+            const float px = Wd / 2 - 440, py = Hd - 330, pw = 880, ph = 230, cx = Wd / 2 + 105;   // the panel; text centred right of the preview
+            panel(px, py, pw, ph, 0.94f);
+            {   // the preview: the road's shape from the points the server sent (start marked), on a patch of sea
+                const float mx = px + 20, my = py + 20, ms = 190; ui.rect(mx, my, ms, ms, V3(0.05f, 0.16f, 0.26f), 0.95f);
+                TrackDef pd; for (int q = 0; q < std::min((int)v.npts, 60) * 2; q++) pd.ctrl.push_back((float)v.pts[q]);
+                std::vector<V3> sp; voteSpline(pd, sp, 10);
+                if (!sp.empty()) {
+                    float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f; for (const V3& q : sp) { x0 = std::min(x0, q.x); x1 = std::max(x1, q.x); z0 = std::min(z0, q.z); z1 = std::max(z1, q.z); }
+                    float sc = (ms - 30) / std::max(std::max(x1 - x0, z1 - z0), 1.0f), ox = mx + ms / 2 - (x0 + x1) / 2 * sc, oz = my + ms / 2 - (z0 + z1) / 2 * sc;
+                    for (const V3& q : sp) ui.rect(ox + q.x * sc - 2.5f, oz + q.z * sc - 2.5f, 5, 5, V3(0.30f, 0.62f, 0.25f), 0.9f);   // a band of grass under it
+                    for (const V3& q : sp) ui.rect(ox + q.x * sc - 1.5f, oz + q.z * sc - 1.5f, 3, 3, V3(0.92f, 0.92f, 0.95f), 1);
+                    ui.disc(ox + sp[0].x * sc, oz + sp[0].z * sc, 5, yel, 1);   // the start
+                }
+            }
+            snprintf(b, sizeof b, "%s SHARED A TRACK", nm); ui.text(cx, py + 22, 3.2f, yel, b, 1);
+            ui.text(cx, py + 66, 4, white, v.name[0] ? v.name : "CUSTOM TRACK", 1);
+            snprintf(b, sizeof b, "%d YES   %d NO   OF %d      %d S", v.yes, v.no, v.voters, (int)ceilf(std::max(0.0f, v.left))); ui.text(cx, py + 118, 2.6f, V3(0.75f, 0.8f, 0.9f), b, 1);
+            if (voteMine()) ui.text(cx, py + 165, 2.6f, V3(0.5f, 1, 0.6f), "WAITING FOR THE OTHERS TO VOTE", 1);
+            else if (nc.voteAnswer) ui.text(cx, py + 165, 2.6f, V3(0.5f, 1, 0.6f), nc.voteAnswer == 1 ? "YOU SAID YES" : "YOU SAID NO", 1);
+            else ui.text(cx, py + 165, 2.6f, white, P("Y / ENTER: PLAY IT   N / ESC: NO", "{A} PLAY IT   {B} NO"), 1);
+        }
+        else if (upl.on) ui.text(Wd / 2, Hd - 150, 3, V3(0.5f, 1, 0.6f), "SENDING YOUR TRACK TO THE SERVER...", 1);
         else if (!shareOpen && nc.phase == net::LOBBY && !mine.empty()) ui.text(Wd / 2, Hd - 150, 2.5f, V3(0.75f, 0.8f, 0.9f), padUI ? "Y: SHARE ONE OF YOUR TRACKS" : "T: SHARE ONE OF YOUR TRACKS", 1);
         if (shareOpen && !mine.empty()) {
             int ns = (int)mine.size(), first = std::max(0, std::min(shareSel - 3, ns - 7)), shown = std::min(ns, 7);
@@ -1800,7 +1832,7 @@ static void drawHUD() {
         }
         else if (nc.phase == net::LOBBY && nc.phaseT > 0) { snprintf(b, sizeof b, "AUTO START IN %d", (int)ceilf(nc.phaseT)); ui.text(Wd / 2, yy + 40, 3, yel, b, 1); }
         else if (nc.phase == net::RESULTS) ui.text(Wd / 2, yy + 40, 3, V3(0.75f, 0.8f, 0.9f), "RACE OVER - NEXT TRACK COMING UP", 1);
-        if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, nc.ready ? P("YOU ARE READY   ENTER: NOT READY    ESC: BACK", "YOU ARE READY   {A} NOT READY    {B} BACK") : P("ENTER: READY    ESC: BACK", "{A} READY    {B} BACK"), 1);
+        if (!touchOn && !(voteOpen() && !voteMine())) ui.text(Wd / 2, 640, 2.2f, white, nc.ready ? P("YOU ARE READY   ENTER: NOT READY    ESC: BACK", "YOU ARE READY   {A} NOT READY    {B} BACK") : P("ENTER: READY    ESC: BACK", "{A} READY    {B} BACK"), 1);
     } else if (state == NETJOIN) {
         ui.text(Wd / 2, 30, 6, yel, "ONLINE RACE", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f), good(0.4f, 1, 0.6f), bad(1, 0.4f, 0.3f); bool blink = fmodf(T, 0.8f) < 0.5f;
         panel(Wd / 2 - 580, 110, 1160, 430, 0.72f); float x0 = Wd / 2 - 560;
@@ -2172,6 +2204,10 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (k == SDLK_RETURN && !servers.empty()) { ok(); snprintf(nc.host, sizeof nc.host, "%s", servers[srvSel].host.c_str()); if (!nc.name[0]) snprintf(nc.name, sizeof nc.name, "PLAYER"); saveCfg(); netConnect(); }
         break;
     case NETLOBBY: {
+        if (voteOpen() && !voteMine()) {   // someone shared a track: yes (Y, Enter, pad A) or no (N, Esc, pad B)
+            if (k == SDLK_y || k == SDLK_RETURN) { nc.voteAnswer = 1; ok(); } else if (k == SDLK_n || k == SDLK_ESCAPE) { nc.voteAnswer = 2; blip(); }
+            break;
+        }
         std::vector<int> mine = shareList();
         if (shareOpen) {   // the list of our own tracks: pick one to send to the server
             int n = (int)mine.size(); if (n == 0 || k == SDLK_ESCAPE || k == SDLK_t) { shareOpen = false; break; }
@@ -2211,6 +2247,7 @@ static void printJSON(FILE* o) {
     { std::string sc; for (const World::Branch& br : W.brs) { int blocked = 0; for (const TS& b : br.ts) for (auto& bx : W.boxes) { float dx = b.x - bx.cx, dz = b.z - bx.cz, r = BRANCH_W + std::max(bx.hx, bx.hz); if (dx * dx + dz * dz < r * r) { blocked++; break; } }
           char b[64]; snprintf(b, sizeof b, "%s%d,%d,%.0f,%d", sc.empty() ? "" : ";", br.a, br.b, br.len, blocked); sc += b; }
       fprintf(o, "\"shortcuts\":\"%s\",\"tunnels\":%d,\"tunnel\":[%d,%d,%d,%d],\"inTunnel\":%d,\"tubeDirt\":%d,", sc.c_str(), (int)W.tuns.size(), W.tunA, W.tunB, W.glassA, W.glassB, (int)W.dry(player.pos.x, player.pos.z), tubeDirt()); }
+    fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
     fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);
     fprintf(o, "\"minis\":%d,\"miniSpawned\":%d,\"miniKilled\":%d,\"miniRams\":%d,\"roamFeet\":%d,\"remoteMinis\":%d,\"netTrackId\":%d,\"keysGot\":%u,\"jumps\":%d,\"miniPenalties\":%d,\"miniJets\":%d,\"miniRockets\":%d,\"roamFlowers\":%d,\"level\":%d,\"blooms\":%d,\"miniPos\":[%.1f,%.1f,%.1f,%.2f],\"carHp\":%.1f,\"footHp\":%.1f,\"footMaxHp\":%.0f,", mini::alive(), mini::spawned, mini::killed, mini::rams, (int)std::count_if(roamPeople, roamPeople + net::MAXP, [](const Fighter& f) { return f.on; }), (int)std::count_if(fighters + 1, fighters + NFIGHT, [](const Fighter& f) { return f.on && f.mini && f.remote && f.alive; }), (int)nc.trackId, keysGot[W.id], (int)W.def->jumps.size() / 5, mini::penalties, mini::jets, mini::rocketsFired, roamFlowers, mini::level(), (int)mini::blooms.size(), fighters[1].pos.x, fighters[1].pos.y, fighters[1].pos.z, fighters[1].yaw, player.hp, me.on ? me.hp : -1.0f, footMaxHp);
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
@@ -2364,7 +2401,7 @@ int main(int argc, char** argv) {
         else if (a == "--connect") { snprintf(nc.host, sizeof nc.host, "%s", argv[++i]); netWanted = true; } else if (a == "--name") { snprintf(nc.name, sizeof nc.name, "%.16s", argv[++i]); for (char* c = nc.name; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--ready") nc.autoReady = true;
         else if (a == "--minisnow") mini::now = true; else if (a == "--minigroup") { mini::now = true; mini::group = atoi(argv[++i]); } else if (a == "--minishold") mini::hold = true; else if (a == "--outcar") mini::outcar = true; else if (a == "--flowers") mini::flowers = atoi(argv[++i]);   // tests: a mini Warden straight away (40 m ahead, on the road); as if that many flowers were picked up
-        else if (a == "--share") shareAuto = true;
+        else if (a == "--share") shareAuto = true; else if (a == "--vote") { std::string v = argv[++i]; autoVote = v == "yes" ? 1 : v == "no" ? 2 : 0; }
         else if (a == "--tracksdir") tracksDirOverride = argv[++i];                        // where custom tracks (.fcft) are kept
         else if (a == "--trackfile") cliTrackFile = argv[++i];                             // load this custom track and pick it
         else if (a == "--exporttracks") { initTracks(); std::string dir = argv[++i]; trackMkdir(dir); for (int t = 0; t < NTRACKS; t++) { TrackDef d = TRACKS[t]; d.nameS = d.name; d.subS = d.sub; d.song = TRACK_SONG[t]; char num[8]; snprintf(num, sizeof num, "%d", t + 1); std::string f = dir + "/builtin-" + num + ".fcft"; if (!trackSave(d, f.c_str())) { fprintf(stderr, "cannot write %s\n", f.c_str()); return 1; } } return 0; }
