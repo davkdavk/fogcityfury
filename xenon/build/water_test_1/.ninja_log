@@ -1,7 +1,0 @@
-# ninja log v6
-1	13	1795053035511190681	CMakeFiles/water_test_1.dir/runtime_compat.cpp.obj	a2252465fd1974b7
-1	14340	1795053035507049195	CMakeFiles/water_test_1.dir/home/davey/Documents/fogcityfurysrc/src/game.cpp.obj	7dc2143322a6c23d
-14340	14649	1795053049847287901	water_test_1	af1c4d5f0f64c6a6
-2	15	1795053283831779089	CMakeFiles/water_test_1.dir/runtime_compat.cpp.obj	a2252465fd1974b7
-2	14588	1795053283827155687	CMakeFiles/water_test_1.dir/home/davey/Documents/fogcityfurysrc/src/game.cpp.obj	7dc2143322a6c23d
-14588	14903	1795053298415386096	water_test_1	af1c4d5f0f64c6a6

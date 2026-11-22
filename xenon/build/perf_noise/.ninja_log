@@ -1,7 +1,0 @@
-# ninja log v6
-1	15	1795052151131502651	CMakeFiles/perf_noise.dir/runtime_compat.cpp.obj	7681e6ee6a581278
-13576	13882	1795052164701114829	perf_noise	6e46925d3bd9afb
-1	13576	1795052151124899692	CMakeFiles/perf_noise.dir/home/davey/Documents/fogcityfurysrc/src/game.cpp.obj	f7f337bb17905feb
-1	15	1795053171423363381	CMakeFiles/perf_noise.dir/runtime_compat.cpp.obj	7681e6ee6a581278
-1	12928	1795053171417311547	CMakeFiles/perf_noise.dir/home/davey/Documents/fogcityfurysrc/src/game.cpp.obj	f7f337bb17905feb
-12928	13224	1795053184345526749	perf_noise	6e46925d3bd9afb

@@ -1,5 +1,0 @@
-/home/davey/Documents/fogcityfurysrc/xenon/build/cull_test/CMakeFiles/cull_only.dir
-/home/davey/Documents/fogcityfurysrc/xenon/build/cull_test/CMakeFiles/cull_lod.dir
-/home/davey/Documents/fogcityfurysrc/xenon/build/cull_test/CMakeFiles/cull_lod_noprepass.dir
-/home/davey/Documents/fogcityfurysrc/xenon/build/cull_test/CMakeFiles/edit_cache.dir
-/home/davey/Documents/fogcityfurysrc/xenon/build/cull_test/CMakeFiles/rebuild_cache.dir

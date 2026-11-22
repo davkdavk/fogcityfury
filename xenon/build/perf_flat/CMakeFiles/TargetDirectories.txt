@@ -1,3 +1,0 @@
-/home/davey/Documents/fogcityfurysrc/xenon/build/perf_flat/CMakeFiles/perf_flat.dir
-/home/davey/Documents/fogcityfurysrc/xenon/build/perf_flat/CMakeFiles/edit_cache.dir
-/home/davey/Documents/fogcityfurysrc/xenon/build/perf_flat/CMakeFiles/rebuild_cache.dir
