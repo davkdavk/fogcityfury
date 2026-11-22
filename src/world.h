@@ -232,7 +232,38 @@ struct World {
     float H(float x, float z) const { return flat ? 5.0f : sampleTri(h, x, z); }
     float drawnH(float x, float z) const { return flat ? 5.0f : sampleTri(hr, x, z); }   // the terrain mesh's own surface (tests)
     float RD(float x, float z) const { return flat ? 0.0f : sampleGrid(rd, x, z); }
-    bool city(float x, float z) const { return vnoise(x * 0.0055f + def->seed * 3.1f, z * 0.0055f + 1.7f) > def->cityThr; }
+    bool rawCity(float x, float z) const { return vnoise(x * 0.0055f + def->seed * 3.1f, z * 0.0055f + 1.7f) > def->cityThr; }
+    // Town or not. Built-in tracks: straight from the noise, point by point (their hidden keys sit on its buildings). Custom
+    // tracks: a whole city block at a time, tidied (tidyTown), so paving, backstreets and buildings agree block for block:
+    // no half-paved blocks, no lone paving in the fields, no bites of grass out of town
+    std::vector<uint8_t> townBlk; static constexpr int TBN = 64, TBO = 4;   // blocks across; block k is the lot centred on GRID0 + (k - TBO) * GRID
+    bool city(float x, float z) const {
+        if (townBlk.empty()) return rawCity(x, z);
+        int i = (int)roundf((x - GRID0) / GRID) + TBO, j = (int)roundf((z - GRID0) / GRID) + TBO;
+        return i >= 0 && j >= 0 && i < TBN && j < TBN && townBlk[j * TBN + i];
+    }
+    // a custom track's town, block by block: the noise at each block's middle, then twice a block is town if most of the
+    // nine round it are (smooths the edge onto the grid and drops single blocks), then patches of town under six blocks
+    // become fields and holes in it under four blocks are filled in
+    void tidyTown() {
+        townBlk.clear(); if (id < NTRACKS) return;
+        auto ctr = [](int k) { return GRID0 + (k - TBO) * GRID; };
+        std::vector<uint8_t> a(TBN * TBN), b(TBN * TBN);
+        for (int j = 0; j < TBN; j++) for (int i = 0; i < TBN; i++) a[j * TBN + i] = rawCity(ctr(i), ctr(j));
+        for (int pass = 0; pass < 2; pass++) {
+            for (int j = 0; j < TBN; j++) for (int i = 0; i < TBN; i++) { int c = 0; for (int dj = -1; dj <= 1; dj++) for (int di = -1; di <= 1; di++) { int x = i + di, y = j + dj; if (x >= 0 && y >= 0 && x < TBN && y < TBN) c += a[y * TBN + x]; } b[j * TBN + i] = c >= 5; }
+            a.swap(b);
+        }
+        std::vector<int> comp(TBN * TBN, -1), stack;
+        for (int s0 = 0; s0 < TBN * TBN; s0++) {
+            if (comp[s0] >= 0) continue; uint8_t v = a[s0]; std::vector<int> cells; bool edge = false; stack.push_back(s0); comp[s0] = s0;
+            while (!stack.empty()) { int q = stack.back(); stack.pop_back(); cells.push_back(q); int x = q % TBN, y = q / TBN; if (x == 0 || y == 0 || x == TBN - 1 || y == TBN - 1) edge = true;
+                const int nb[4] = { x > 0 ? q - 1 : -1, x < TBN - 1 ? q + 1 : -1, y > 0 ? q - TBN : -1, y < TBN - 1 ? q + TBN : -1 };
+                for (int r : nb) if (r >= 0 && comp[r] < 0 && a[r] == v) { comp[r] = s0; stack.push_back(r); } }
+            if ((v && cells.size() < 6) || (!v && !edge && cells.size() < 4)) for (int q : cells) a[q] = !v;
+        }
+        townBlk = a;
+    }
     // nearest centre-line sample. Give y where the road crosses itself, so the car on the bridge finds the bridge
     int nearest(float x, float z, float y = NAN) const {
         int b = 0; float bd = 1e18f; bool hy = !std::isnan(y);
@@ -918,6 +949,7 @@ struct World {
 
     void build(int id_) {
         id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB();
+        tidyTown();
         boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); jumpObs.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
 #ifdef FCF_XENOS_CULL
         for (auto& c : worldCells) c = WorldCell();
@@ -1035,6 +1067,7 @@ struct World {
             // every building stands square in the middle of its lot, so its walls are parallel to the kerb with an even pavement all round (some are set back a little further)
             float d = RD(x, z); bool ct = city(x, z);
             if (!((d < 75 && r1 < 0.62f) || (ct && r1 < 0.85f))) continue;
+            if (!ct && !townBlk.empty()) continue;   // custom tracks: buildings only in town (out in the fields they stood on bare grass, no paving)
             if (d < ROADW + 5 + std::max(hx, hz) * 1.25f || excluded(x, z, 13)) continue;
             float mn = 1e9f, mx = -1e9f; for (int k = 0; k < 4; k++) { float hh = H(x + (k & 1 ? hx : -hx), z + (k & 2 ? hz : -hz)); mn = std::min(mn, hh); mx = std::max(mx, hh); }
             if (mn < 2.6f || mx - mn > 7) continue;
