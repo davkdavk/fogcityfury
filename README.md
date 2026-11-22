@@ -81,6 +81,12 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 1.6
+
+- Free roam: mini Wardens drop in now and then (red dots on the map). Beat them with your fists for flowers that level you up and unlock attributes. Run one over and the Wardens fire back.
+- Track editor: place jumps and hide up to five keys on your own tracks. Del on the track screen deletes one of your tracks.
+- Smoother shortcut joins; bots brake for them.
+
 ## What's new in 1.5
 
 - **Track editor (PC).** Build your own tracks in the game: on the track screen press **F4** to edit the
