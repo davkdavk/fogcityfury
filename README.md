@@ -90,6 +90,11 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.28.1
+
+- fcfedit saves again: CTRL+S (and CTRL+Z, SHIFT for fine steps, ALT to drop a target off a building) were read after
+  the keys were let go, and W A S D were taken as arrow keys; there is a SAVE button at the top right as well
+
 ## What's new in 2.28
 
 - **Scripted events on any track**, and **fcfedit**, the event editor to make them (see `docs/EVENTS.md`): draw

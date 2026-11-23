@@ -270,7 +270,8 @@ static void handleKey(SDL_Keycode k, int sc) {
         if (k != SDLK_ESCAPE && k != SDLK_F1 && sc > 0) { setBind(optRow, optCol, sc); saveCfg(); tone(520, 0.12f, 0.4f, 2); } optCapture = false; return;
     }
     if (k == SDLK_F1 && (state == TITLE || (state == PAUSED && !netRace))) { optReturn = state; state = OPTS; optRow = 0; optCapture = false; tone(700, 0.08f, 0.3f, 2); return; }
-    if (state != RACE && state != NETJOIN) { if (k == SDLK_a) k = SDLK_LEFT; if (k == SDLK_d) k = SDLK_RIGHT; if (k == SDLK_w) k = SDLK_UP; if (k == SDLK_s) k = SDLK_DOWN; }
+    if (state != RACE && state != NETJOIN && state != EVEDIT) { if (k == SDLK_a) k = SDLK_LEFT;   // (menus take WASD as arrows; the event editor wants its letters: CTRL+S, flying)
+        if (k == SDLK_d) k = SDLK_RIGHT; if (k == SDLK_w) k = SDLK_UP; if (k == SDLK_s) k = SDLK_DOWN; }
     onKey(k, sc);
 }
 // fingers (and, with --touch, the mouse) on the on-screen buttons. x, y in HUD units

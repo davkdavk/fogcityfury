@@ -19,6 +19,9 @@ static float mx = 0, my = 0, pmx = 0, pmy = 0, flyYaw = 0, flyPitch = -0.35f, no
 static char note[160];
 static std::vector<std::string> undo;
 static bool keyW = false, keyA = false, keyS = false, keyD = false, keyQ = false, keyE = false;
+// CTRL, SHIFT and ALT, followed from their own presses: the game takes a frame's input in one batch, so SDL's modifier
+// state is already the frame's end by the time a key is handled (CTRL+S arrived with CTRL let go)
+static bool ctrlDown = false, shiftDown = false, altDown = false;
 static const V3 YEL(1, 0.82f, 0.15f), WHT(1, 1, 1), CYA(0.3f, 0.9f, 1), RED(1, 0.3f, 0.25f), GREY(0.72f, 0.77f, 0.86f), ORG(1, 0.55f, 0.15f);
 static const V3 KCOL[director::NKIND] = { V3(1, 0.4f, 0.2f), V3(1, 0.75f, 0.2f), V3(0.35f, 0.75f, 1), V3(0.8f, 0.6f, 1), V3(0.5f, 1, 0.55f) };
 
@@ -140,6 +143,7 @@ static void stepRow(Event& e, int r, int dir, float lapX) {
     case R_TARGET: break;   // (set by dragging the red target ring onto a building)
     }
 }
+static bool onSave(float x, float y) { return y > 10 && y < 54 && x > uiW - 170 && x < uiW - 20; }   // the SAVE button, top right
 static bool inPanel(float x, float y) { return selEv >= 0 && x > uiW - PW && y > 80 && y < rowY(NROW) + 10; }
 
 // a new event of this kind on the ground at g, set off by the newest line if there is one (the usual next step)
@@ -153,6 +157,7 @@ static void place(int kind, V3 g) {
 // ---- mouse ----
 static void mouseDown(int button) {
     if (typing) { typing = false; plat::textInput(false); }
+    if (button == SDL_BUTTON_LEFT && onSave(mx, my)) { save(); return; }
     if (button == SDL_BUTTON_RIGHT && !inPanel(mx, my)) { if (fly) look = true; else pan = true; pmx = mx; pmy = my; return; }
     if (inPanel(mx, my)) {
         Event& e = director::evs[selEv];
@@ -191,7 +196,7 @@ static void mouseMove(float x, float y) {
     if (selLine >= 0 && grab < 2) { Line& l = director::lines[selLine]; (grab ? l.bx : l.ax) = g.x; (grab ? l.bz : l.az) = g.z; }
     if (selEv >= 0 && grab == 2) { Event& e = director::evs[selEv]; float h = e.at.y - W.H(e.at.x, e.at.z); e.at = V3(g.x, g.y + h, g.z); if (e.kind == director::SPLASH) e.at.y = 0; }
     if (selW >= 0 && grab == 4) { director::wardenAt[selW].x = g.x; director::wardenAt[selW].z = g.z; }
-    if (selEv >= 0 && grab == 3) aimAt(director::evs[selEv], g, !(SDL_GetModState() & KMOD_ALT));   // (ALT: no snapping)
+    if (selEv >= 0 && grab == 3) aimAt(director::evs[selEv], g, !altDown);   // (ALT: no snapping)
 }
 static void mouseUp() { pan = look = false; if (grab >= 0 && grab != 9) grab = -1; }
 static void zoom(float steps) { if (!fly) { ed::mx = mx; ed::my = my; ed::zoom(steps); } else flyPos = flyPos + V3(sinf(flyYaw) * cosf(flyPitch), sinf(flyPitch), cosf(flyYaw) * cosf(flyPitch)) * steps * 8; }
@@ -202,7 +207,8 @@ static void text(const char* s) {
 
 // ---- keys ----
 static void key(SDL_Keycode k, bool down = true) {
-    bool ctrl = (SDL_GetModState() & KMOD_CTRL) != 0; half = (SDL_GetModState() & KMOD_SHIFT) != 0;
+    if (k == SDLK_LCTRL || k == SDLK_RCTRL) ctrlDown = down; if (k == SDLK_LSHIFT || k == SDLK_RSHIFT) shiftDown = down; if (k == SDLK_LALT || k == SDLK_RALT) altDown = down;
+    bool ctrl = ctrlDown; half = shiftDown;
     if (k == SDLK_w) keyW = down; if (k == SDLK_a) keyA = down; if (k == SDLK_s && !ctrl) keyS = down; if (k == SDLK_d) keyD = down; if (k == SDLK_q) keyQ = down; if (k == SDLK_e) keyE = down;
     if (!down) return;
     if (typing) {
@@ -304,7 +310,8 @@ static void draw(float Wd) {
     // the top and bottom bars
     ui.rect(0, 0, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
     snprintf(b, sizeof b, "EVENT EDITOR  -  %s%s", W.def->name, dirty ? "  *" : ""); ui.text(20, 14, 3.4f, YEL, b);
-    snprintf(b, sizeof b, "%d LINES  %d EVENTS  %s", (int)director::lines.size(), (int)director::evs.size(), fly ? "FLY VIEW" : "MAP VIEW"); ui.text(Wd - 20, 22, 2.2f, GREY, b, 2);
+    snprintf(b, sizeof b, "%d LINES  %d EVENTS  %s", (int)director::lines.size(), (int)director::evs.size(), fly ? "FLY VIEW" : "MAP VIEW"); ui.text(Wd - 190, 22, 2.2f, GREY, b, 2);
+    { bool hov = onSave(mx, my); ui.rect(Wd - 170, 10, 150, 44, dirty ? ORG : V3(0.25f, 0.27f, 0.32f), hov ? 1 : 0.85f); ui.text(Wd - 95, 20, 2.6f, dirty ? V3(0, 0, 0) : WHT, dirty ? "SAVE *" : "SAVED", 1); }
     ui.rect(0, 656, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
     ui.text(20, 666, 1.45f, WHT, "L LINE  1 ROCKET 2 BLAST 3 SPLASH 4 SHAKE 5 SAY  6 WARDEN  DEL REMOVE  CTRL+Z UNDO  CTRL+S SAVE  P PREVIEW  TAB FLY/MAP  PGUP/DN TRACK");
     if (noteT > 0) ui.text(20, 694, 2.0f, ORG, note);
