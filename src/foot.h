@@ -360,9 +360,21 @@ static void buildFighter() {
     { MB m; loft(m, { { 0.05f, 0.03f, 0.03f, 0 }, { 0.0f, 0.084f, 0.092f, 0 }, { -0.14f, 0.080f, 0.086f, 0 }, { -0.30f, 0.066f, 0.070f, 0 }, { -0.43f, 0.056f, 0.058f, 0 }, { -0.46f, 0.03f, 0.03f, 0 } }, 12,
         [&](int i, float a, V3& c, float& mat) { suit(c, mat); if (fabsf(cosf(a)) > 0.9f && i > 0) { c = white; mat = 0; } });
       fThigh.upload(m); }
-    { MB m; loft(m, { { 0.03f, 0.03f, 0.03f, 0 }, { 0.0f, 0.058f, 0.060f, 0 }, { -0.14f, 0.054f, 0.062f, -0.008f }, { -0.30f, 0.042f, 0.046f, 0 }, { -0.375f, 0.040f, 0.044f, 0 }, { -0.39f, 0.052f, 0.060f, 0.005f }, { -0.44f, 0.054f, 0.115f, 0.055f }, { -0.485f, 0.052f, 0.125f, 0.06f }, { -0.49f, 0.01f, 0.03f, 0.06f } }, 12,
-        [&](int i, float, V3& c, float& mat) { suit(c, mat); if (i >= 4) { c = dark; mat = 5; } });   // boot
-      fShin.upload(m); }
+    {
+        MB m;
+        loft(m,
+                {{0.03f, 0.03f, 0.03f, 0}, {0.0f, 0.058f, 0.060f, 0}, {-0.14f, 0.054f, 0.062f, -0.008f}, {-0.30f, 0.042f, 0.046f, 0},
+                        {-0.375f, 0.040f, 0.044f, 0}, {-0.39f, 0.052f, 0.060f, 0.005f}, {-0.44f, 0.054f, 0.115f, 0.055f},
+                        {-0.485f, 0.052f, 0.125f, 0.06f}, {-0.49f, 0.01f, 0.03f, 0.06f}},
+                12, [&](int i, float, V3& c, float& mat) {
+                    suit(c, mat);
+                    if (i >= 4) {
+                        c = dark;
+                        mat = 5;
+                    }
+                }); // boot
+        fShin.upload(m);
+    }
     // guns: grip at the origin, barrel along +z, top towards +y
     const V3 steel(0.07f, 0.07f, 0.08f), wood(0.30f, 0.16f, 0.07f), olive(0.16f, 0.22f, 0.10f), brass(0.75f, 0.55f, 0.15f);
     { MB m; m.abox(V3(0, 0.035f, 0.07f), V3(0.016f, 0.022f, 0.09f), steel, 0); m.abox(V3(0, -0.035f, 0.0f), V3(0.014f, 0.05f, 0.022f), dark, 5); gunMesh[G_PISTOL].upload(m); }

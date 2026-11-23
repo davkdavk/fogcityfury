@@ -389,7 +389,17 @@ static void setup() {
     setups++;
     if (planFor != W.gen || !planN) { fillBuckets(); planN = (int)ceilf(W.n / DS); planRoute(0, -SIDE_OFFSET); planRoute(1, SIDE_OFFSET); buildArc(0); buildArc(1); planFor = W.gen; }
     static const V3 PAINTS[NUNIT] = { V3(0.42f, 0.07f, 0.04f), V3(0.05f, 0.20f, 0.30f), V3(0.36f, 0.30f, 0.05f), V3(0.20f, 0.22f, 0.26f) };   // oxide red; deep teal; ochre; gunmetal
-    for (int u = 0; u < NUNIT; u++) { Unit& m = unit[u]; int r = u % 2; m.s0 = arcOfS(r, W.n * (0.085f + 0.5f * r + 0.25f * (u / 2))); /* (s0: a walking distance along its route; the third and fourth share the two routes, a quarter of a lap on) */ m.tOff = u * 17.0f; m.paint = PAINTS[u]; m.route = r; m.lookYaw = m.lookPitch = 0; }
+    for (int u = 0; u < NUNIT; u++) {
+        Unit& m = unit[u];
+        int r = u % 2;
+        m.s0 = arcOfS(r,
+                W.n * (0.085f + 0.5f * r +
+                              0.25f * (u / 2))); /* (s0: a walking distance along its route; the third and fourth share the two routes, a quarter of a lap on) */
+        m.tOff = u * 17.0f;
+        m.paint = PAINTS[u];
+        m.route = r;
+        m.lookYaw = m.lookPitch = 0;
+    }
 }
 static float groundAt(float x, float z) { return std::max(W.H(x, z), -9.0f); }   // in the sea it wades on the shelf, the water to its thighs
 // how close its route comes to a building, sampled every 3 m round the whole loop (for the tests: should be >= R_CLEAR)

@@ -327,7 +327,17 @@ static void stepShowdown(float dt) {
 #endif
     if (netShd) return;
     shdT += dt;
-    for (auto& d : drops) if (d.back > 0) { d.back -= dt; if (d.back <= 0) { d.back = 0; shdBack++; sfx(d.p, 880, 0.12f, 0.25f, 2); for (int k = 0; k < 10; k++) spawn(d.p + V3(0, 0.6f, 0), V3(grng.r(-2, 2), grng.r(1, 4), grng.r(-2, 2)), 0.4f, 0.10f, 0, V3(3, 3, 3), 1, 1, -4); } }   // a pick-up is back
+    for (auto& d : drops)
+        if (d.back > 0) {
+            d.back -= dt;
+            if (d.back <= 0) {
+                d.back = 0;
+                shdBack++;
+                sfx(d.p, 880, 0.12f, 0.25f, 2);
+                for (int k = 0; k < 10; k++)
+                    spawn(d.p + V3(0, 0.6f, 0), V3(grng.r(-2, 2), grng.r(1, 4), grng.r(-2, 2)), 0.4f, 0.10f, 0, V3(3, 3, 3), 1, 1, -4);
+            }
+        } // a pick-up is back
     if (shdPhase == SH_DRIVE) {
         shdDriveBots(dt);
         shdDriveMe(); shdRide();
@@ -344,7 +354,15 @@ static void stepShowdown(float dt) {
         shdRing += std::max((shdRingTgt - shdRing) * (1 - expf(-0.9f * dt)), -net::SD_CLOSE_MAX * dt);   // (never faster than you can run in)
         for (auto& f : fighters) {   // outside the ring: it burns, in ticks
             if (!f.on || !f.alive || flatDist(f.pos, shdSite) <= shdRing) { f.ringT = 0; continue; }
-            f.ringT += dt; if (f.ringT >= SH_BURN_EVERY) { f.ringT = 0; damageFighter(f, SH_BURN, -1, V3(), true); if (!f.alive && f.bot) shdRingDeaths++; for (int i = 0; i < 6; i++) spawn(f.pos + V3(0, grng.r(0.2f, 1.6f), 0), V3(grng.r(-1, 1), grng.r(1, 3), grng.r(-1, 1)), 0.4f, 0.14f, 0, V3(4, 1.4f, 0.3f), 1, 1, 1); }
+            f.ringT += dt;
+            if (f.ringT >= SH_BURN_EVERY) {
+                f.ringT = 0;
+                damageFighter(f, SH_BURN, -1, V3(), true);
+                if (!f.alive && f.bot) shdRingDeaths++;
+                for (int i = 0; i < 6; i++)
+                    spawn(f.pos + V3(0, grng.r(0.2f, 1.6f), 0), V3(grng.r(-1, 1), grng.r(1, 3), grng.r(-1, 1)), 0.4f, 0.14f, 0, V3(4, 1.4f, 0.3f), 1,
+                            1, 1);
+            }
         }
         if (shdAlive() <= 1) {
             shdPhase = SH_OVER; shdOverT = 0; shdWinner = -1;
@@ -401,7 +419,13 @@ static void footFrame(float dt) {
         }
     }
     if (showdownOn && shdPhase == SH_DRIVE) for (int k = 0; k < 2; k++) spawn(shdSite + V3(grng.r(-0.5f, 0.5f), grng.r(0, 45), grng.r(-0.5f, 0.5f)), V3(0, 6, 0), 1.0f, 0.5f, 0, V3(4, 1.6f, 0.4f), 0.9f, 1, 0);   // a beacon over the middle of the ring, to drive at
-    for (auto& d : drops) if (d.back <= 0 && grng.f() < dt * 5) spawn(d.p + V3(grng.r(-0.3f, 0.3f), 0.2f, grng.r(-0.3f, 0.3f)), V3(0, 2.2f, 0), 0.9f, 0.09f, 0, d.kind == D_MED ? V3(0.6f, 3, 1) : d.kind == D_ARMOUR ? V3(0.6f, 1.6f, 3) : V3(3, 2, 0.6f), 0.9f, 1, 0);   // a column of sparks marks each one
+    for (auto& d : drops)
+        if (d.back <= 0 && grng.f() < dt * 5)
+            spawn(d.p + V3(grng.r(-0.3f, 0.3f), 0.2f, grng.r(-0.3f, 0.3f)), V3(0, 2.2f, 0), 0.9f, 0.09f, 0,
+                    d.kind == D_MED      ? V3(0.6f, 3, 1)
+                    : d.kind == D_ARMOUR ? V3(0.6f, 1.6f, 3)
+                                         : V3(3, 2, 0.6f),
+                    0.9f, 1, 0); // a column of sparks marks each one
     // out of the car in a race: the racers do not stop for you
     if (racersAreTargets() && me.on && me.alive && me.hurtT <= 0 && me.rollT <= 0) for (auto& a : ai) {
         if (a.dead || a.speed < 6 || flatDist(a.pos, me.pos) > 2.3f || fabsf(a.pos.y - me.pos.y) > 2) continue;
@@ -490,7 +514,14 @@ static void drawFootHUD(float Hb) {
     float Wd = ui.W, Hd = ui.H, sx, sy, cw; char b[96]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f), red(1, 0.25f, 0.15f), dim(0.5f, 0.52f, 0.58f);
     bool arena = showdownOn && shdCut;
     if (hurtFlash > 0) {   // hit: the edges of the screen redden, and an arc shows the side it came from
-        float a = hurtFlash / 0.45f; for (int k = 0; k < 6; k++) { float w = 14, o = k * w, al = a * 0.30f * (1 - k / 6.0f); ui.rect(o, o, Wd - 2 * o, w, red, al); ui.rect(o, Hd - o - w, Wd - 2 * o, w, red, al); ui.rect(o, o + w, w, Hd - 2 * o - 2 * w, red, al); ui.rect(Wd - o - w, o + w, w, Hd - 2 * o - 2 * w, red, al); }
+        float a = hurtFlash / 0.45f;
+        for (int k = 0; k < 6; k++) {
+            float w = 14, o = k * w, al = a * 0.30f * (1 - k / 6.0f);
+            ui.rect(o, o, Wd - 2 * o, w, red, al);
+            ui.rect(o, Hd - o - w, Wd - 2 * o, w, red, al);
+            ui.rect(o, o + w, w, Hd - 2 * o - 2 * w, red, al);
+            ui.rect(Wd - o - w, o + w, w, Hd - 2 * o - 2 * w, red, al);
+        }
         for (int k = -3; k < 3; k++) { float a0 = hurtAng + k * 0.09f, a1 = a0 + 0.09f; ui.line(Wd / 2 - sinf(a0) * 170, Hd / 2 - cosf(a0) * 170, Wd / 2 - sinf(a1) * 170, Hd / 2 - cosf(a1) * 170, 7, red, a * 0.9f); }
     }
     // the others: a name and a health bar over each head; brackets round the one you are locked on to
@@ -509,7 +540,14 @@ static void drawFootHUD(float Hb) {
     if (shdSpectate) { snprintf(b, sizeof b, touchOn ? "WATCHING %s" : "WATCHING %s   -   %s: NEXT FIGHTER", fighters[shdWatch].name, keyName(binds[B_CAM][0])); ui.text(Wd / 2, Hb - 60, 2.6f, white, b, 1); }
     if (me.alive && !shdSpectate) { float x = Wd - 300, y = Hb - 118; panel(x, y, 280, 98, 0.55f); const GunSpec& g = GUNS[me.gun]; ui.text(x + 14, y + 16, 3.2f, yel, g.name);
       if (g.clip) snprintf(b, sizeof b, "%d", me.ammo[me.gun]); else snprintf(b, sizeof b, "-"); ui.text(x + 266, y + 12, 5, g.clip && me.ammo[me.gun] <= g.clip / 4 ? red : white, b, 2, 1, 0.12f);
-      float gx = x + 12; for (int k = 0; k < NGUNS; k++) { bool have = k == G_FISTS || k == baseGun() || me.ammo[k] > 0, locked = k != G_FISTS && !gunUnlocked(k); ui.rect(gx, y + 58, 38, 6, k == me.gun ? yel : locked ? red : have ? white : dim, have ? 0.9f : 0.35f); ui.text(gx + 19, y + 70, 0.95f, k == me.gun ? yel : have ? white : dim, GUNS[k].name, 1, have ? 0.9f : 0.4f); gx += 43; } }
+      float gx = x + 12;
+      for (int k = 0; k < NGUNS; k++) {
+          bool have = k == G_FISTS || k == baseGun() || me.ammo[k] > 0, locked = k != G_FISTS && !gunUnlocked(k);
+          ui.rect(gx, y + 58, 38, 6, k == me.gun ? yel : locked ? red : have ? white : dim, have ? 0.9f : 0.35f);
+          ui.text(gx + 19, y + 70, 0.95f, k == me.gun ? yel : have ? white : dim, GUNS[k].name, 1, have ? 0.9f : 0.4f);
+          gx += 43;
+      }
+    }
     // health, armour, stamina
     if (me.alive && !shdSpectate) { float w = 380, x = Wd / 2 - w / 2, y = Hb - 52; ui.rect(x - 3, y - 3, w + 6, 30, V3(0.02f, 0.03f, 0.06f), 0.6f);
       ui.rect(x, y, w * clampf(me.hp / 100, 0, 1), 16, hpCol(me.hp), 0.95f); if (me.armour > 0) ui.rect(x, y - 7, w * clampf(me.armour / 50, 0, 1) * 0.5f, 5, V3(0.35f, 0.7f, 1), 0.95f);
@@ -521,7 +559,15 @@ static void drawFootHUD(float Hb) {
       auto at = [&](V3 q, float& x, float& y) { V3 d = q - shdSite; float u = dot(d, R) * sc, v = -dot(d, F) * sc, L = sqrtf(u * u + v * v); if (L > 98) { u *= 98 / L; v *= 98 / L; } x = cx + u; y = cy + v; };
       float px = 0, py = 0, qx, qy; for (int i = 0; i <= 48; i++) { float a = 2 * (float)M_PI * i / 48; at(shdSite + V3(cosf(a), 0, sinf(a)) * shdRing, qx, qy); if (i) ui.line(px, py, qx, qy, 2.5f, shdRingTgt < shdRing - 0.4f ? red : org, 0.95f); px = qx; py = qy; }
       for (auto& d : drops) { if (d.back > 0) continue; at(d.p, qx, qy); ui.rect(qx - 2.5f, qy - 2.5f, 5, 5, d.kind == D_MED ? V3(0.3f, 1, 0.45f) : d.kind == D_ARMOUR ? V3(0.4f, 0.75f, 1) : white, 0.9f); }
-      for (int i = NFIGHT - 1; i >= 0; i--) { const Fighter& f = fighters[i]; if (!f.on || !f.alive) continue; at(f.pos, qx, qy); float r = i ? 4.0f : 5.0f; ui.rect(qx - r - 1.5f, qy - r - 1.5f, 2 * r + 3, 2 * r + 3, V3(0, 0, 0), 0.9f); ui.rect(qx - r, qy - r, 2 * r, 2 * r, i ? PAINTS[f.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f) : V3(1, 0.9f, 0.1f)); } }
+      for (int i = NFIGHT - 1; i >= 0; i--) {
+          const Fighter& f = fighters[i];
+          if (!f.on || !f.alive) continue;
+          at(f.pos, qx, qy);
+          float r = i ? 4.0f : 5.0f;
+          ui.rect(qx - r - 1.5f, qy - r - 1.5f, 2 * r + 3, 2 * r + 3, V3(0, 0, 0), 0.9f);
+          ui.rect(qx - r, qy - r, 2 * r, 2 * r, i ? PAINTS[f.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f) : V3(1, 0.9f, 0.1f));
+      }
+    }
     // the three contenders
     for (int i = 0; i < NFIGHT; i++) { const Fighter& f = fighters[i]; float y = 20 + i * 42.0f; panel(20, y, 260, 36, f.alive ? 0.55f : 0.3f);
         ui.rect(28, y + 9, 10, 20, PAINTS[f.paint] * 0.8f + V3(0.2f, 0.2f, 0.2f), f.alive ? 1.0f : 0.4f); ui.text(46, y + 12, 2.2f, !f.alive ? dim : i ? white : yel, f.name);
@@ -529,11 +575,18 @@ static void drawFootHUD(float Hb) {
         else if (!f.on) ui.text(266, y + 12, 2.0f, f.arrived ? white : dim, f.arrived ? "IN THE RING" : "DRIVING", 2);
         else { ui.rect(140, y + 13, 126, 10, V3(0.1f, 0.12f, 0.14f), 0.9f); ui.rect(140, y + 13, 126 * clampf(f.hp / 100, 0, 1), 10, hpCol(f.hp), 0.95f); if (f.armour > 0) ui.rect(140, y + 26, 126 * clampf(f.armour / 50, 0, 1), 3, V3(0.35f, 0.7f, 1), 0.95f); } }
     // where the match stands
-    if (shdPhase == SH_DRIVE) { int in = 0; for (int i = 0; i < NFIGHT; i++) if (fighters[i].arrived) in++; snprintf(b, sizeof b, "%d OF %d IN THE RING", in, NFIGHT); ui.text(Wd / 2, 26, 4, yel, b, 1, 1, 0.12f); ui.text(Wd / 2, 74, 2.2f, white, "COLLECT WHAT YOU CAN  -  THE COUNTDOWN STARTS WHEN ALL ARE IN", 1); }
-    else if (shdPhase == SH_PREP) { float left = SH_PREP_LEN - shdT;
+    if (shdPhase == SH_DRIVE) {
+        int in = 0;
+        for (int i = 0; i < NFIGHT; i++)
+            if (fighters[i].arrived) in++;
+        snprintf(b, sizeof b, "%d OF %d IN THE RING", in, NFIGHT);
+        ui.text(Wd / 2, 26, 4, yel, b, 1, 1, 0.12f);
+        ui.text(Wd / 2, 74, 2.2f, white, "COLLECT WHAT YOU CAN  -  THE COUNTDOWN STARTS WHEN ALL ARE IN", 1);
+    } else if (shdPhase == SH_PREP) {
+        float left = SH_PREP_LEN - shdT;
         if (left > 3.4f) { snprintf(b, sizeof b, "%d", (int)ceilf(left)); ui.text(Wd / 2, 22, 8, yel, b, 1, 1, 0.12f); ui.text(Wd / 2, 86, 2.2f, white, "GUNS LIVE IN", 1); }
-        else if (left > 0.3f) { snprintf(b, sizeof b, "%d", (int)ceilf(left - 0.4f)); ui.text(Wd / 2, 180, 26, yel, b, 1, 1, 0.12f); } }
-    else if (shdPhase == SH_FIGHT) {
+        else if (left > 0.3f) { snprintf(b, sizeof b, "%d", (int)ceilf(left - 0.4f)); ui.text(Wd / 2, 180, 26, yel, b, 1, 1, 0.12f); }
+    } else if (shdPhase == SH_FIGHT) {
         snprintf(b, sizeof b, "%d LEFT", shdAlive()); ui.text(Wd / 2, 26, 4.5f, white, b, 1, 1, 0.12f);
         bool out = me.alive && !shdSpectate && flatDist(me.pos, shdSite) > shdRing;
         if (out && fmodf(T, 0.5f) < 0.33f) ui.text(Wd / 2, 300, 5, red, "GET BACK INSIDE THE RING", 1, 1, 0.12f);

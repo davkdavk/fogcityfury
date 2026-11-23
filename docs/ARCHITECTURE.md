@@ -1,6 +1,7 @@
 # Architecture
 
-Two executables. The game is one translation unit (`src/game.cpp` including seven headers) with
+Two executables. The game is one translation unit (`src/game.cpp` including its headers in order; since 2.26 its own parts are
+`serverlist.h`, `settings.h`, `combat.h`, `driving.h`, `update.h`, `scene.h`, `hud.h` and `input.h`) with
 global state and no dependencies beyond SDL2 and OpenGL. The dedicated server is `src/server.cpp`
 plus `src/net.h` and depends on nothing; `docs/NETWORK.md` covers it. Read `AGENTS.md` first for conventions.
 

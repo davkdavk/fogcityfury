@@ -191,11 +191,31 @@ static void mouseMove(float nx, float ny) {
     mx = nx; my = ny; if (!drag || sel < 0) return;
     V3 p = world(mx, my); moved = true;
     if (tool == ROAD && sel * 2 + 1 < (int)d.ctrl.size()) { d.ctrl[sel * 2] = clampf(p.x, -640, 640); d.ctrl[sel * 2 + 1] = clampf(p.z, -640, 640); touch(); }
-    else if (tool == HILL && sel < (int)d.hills.size()) { d.hills[sel].x = clampf(p.x, -760, 760); d.hills[sel].z = clampf(p.z, -760, 760); touch(); }
-    else if (tool == TUNNEL && sel / 2 < nTun()) { int k = sel / 2, i = W.nearest(p.x, p.z); float f = i / (float)W.n, a = d.tunnel[k * 5], b = d.tunnel[k * 5 + 1]; if (sel % 2 == 0) a = clampf(f, b - 0.5f, b - 0.08f); else b = clampf(f, a + 0.08f, a + 0.5f); if (!tunnelClash(k, a, b)) { setTunnel(k, a, b); touch(); } }
-    else if (tool == JUMP && sel < (int)d.jumps.size() / 5) { jumpTo(d, sel, p); touch(); }
-    else if (tool == KEY && sel < (int)d.keyPts.size() / 3) { d.keyPts[sel * 3] = clampf(p.x, -700, 700); d.keyPts[sel * 3 + 1] = clampf(p.z, -700, 700); touch(); }
-    else if (tool == CUT && sel / 2 < (int)d.branches.size()) { int i = W.offTunnel(W.nearest(p.x, p.z)); float f = i / (float)W.n; std::vector<float>& br = d.branches[sel / 2]; if (sel % 2 == 0) br[0] = clampf(f, br[1] - 0.45f, br[1] - 0.03f); else br[1] = clampf(f, br[0] + 0.03f, br[0] + 0.45f); touch(); }
+    else if (tool == HILL && sel < (int)d.hills.size()) { d.hills[sel].x = clampf(p.x, -760, 760); d.hills[sel].z = clampf(p.z, -760, 760); touch();
+    } else if (tool == TUNNEL && sel / 2 < nTun()) {
+        int k = sel / 2, i = W.nearest(p.x, p.z);
+        float f = i / (float)W.n, a = d.tunnel[k * 5], b = d.tunnel[k * 5 + 1];
+        if (sel % 2 == 0) a = clampf(f, b - 0.5f, b - 0.08f);
+        else b = clampf(f, a + 0.08f, a + 0.5f);
+        if (!tunnelClash(k, a, b)) {
+            setTunnel(k, a, b);
+            touch();
+        }
+    } else if (tool == JUMP && sel < (int)d.jumps.size() / 5) {
+        jumpTo(d, sel, p);
+        touch();
+    } else if (tool == KEY && sel < (int)d.keyPts.size() / 3) {
+        d.keyPts[sel * 3] = clampf(p.x, -700, 700);
+        d.keyPts[sel * 3 + 1] = clampf(p.z, -700, 700);
+        touch();
+    } else if (tool == CUT && sel / 2 < (int)d.branches.size()) {
+        int i = W.offTunnel(W.nearest(p.x, p.z));
+        float f = i / (float)W.n;
+        std::vector<float>& br = d.branches[sel / 2];
+        if (sel % 2 == 0) br[0] = clampf(f, br[1] - 0.45f, br[1] - 0.03f);
+        else br[1] = clampf(f, br[0] + 0.03f, br[0] + 0.45f);
+        touch();
+    }
 }
 static void mouseUp() { if (drag) { if (!moved && !undo.empty()) undo.pop_back(); else if (dirty) dirtyT = 0; } drag = pan = false; }
 static void zoom(float steps) { V3 a = world(mx, my); topH = clampf(topH * powf(0.88f, steps), 140, 1900); V3 b = world(mx, my); camTgt.x = clampf(camTgt.x + a.x - b.x, -800, 800); camTgt.z = clampf(camTgt.z + a.z - b.z, -800, 800); }
@@ -269,7 +289,19 @@ static void update(float dt) { noteT -= dt; if (dirty && !drag && (dirtyT -= dt)
 
 // ---- drawing (HUD units: the screen is Wd x 720) ----
 static void ring(float cx, float cy, float r, V3 c, float a, float th = 2) { const int N = 40; for (int i = 0; i < N; i++) { float a0 = i * 6.2831853f / N, a1 = (i + 1) * 6.2831853f / N; ui.line(cx + r * cosf(a0), cy + r * sinf(a0), cx + r * cosf(a1), cy + r * sinf(a1), th, c, a); } }
-static void path(const std::vector<TS>& ts, int a, int b, int stepN, V3 c, float al, float th) { float px = 0, py = 0; bool have = false; for (int i = a; i <= b; i += stepN) { const TS& s = ts[clampi(i, 0, (int)ts.size() - 1)]; float sx, sy; screen(V3(s.x, s.y, s.z), sx, sy); if (have) ui.line(px, py, sx, sy, th, c, al); px = sx; py = sy; have = true; } }
+static void path(const std::vector<TS>& ts, int a, int b, int stepN, V3 c, float al, float th) {
+    float px = 0, py = 0;
+    bool have = false;
+    for (int i = a; i <= b; i += stepN) {
+        const TS& s = ts[clampi(i, 0, (int)ts.size() - 1)];
+        float sx, sy;
+        screen(V3(s.x, s.y, s.z), sx, sy);
+        if (have) ui.line(px, py, sx, sy, th, c, al);
+        px = sx;
+        py = sy;
+        have = true;
+    }
+}
 static void draw(float Wd) {
     const TrackDef& d = def(); char b[160]; float sx, sy;
     // the centre line, straight from the points
@@ -280,13 +312,39 @@ static void draw(float Wd) {
         for (const V3& m : marks) { screen(m, sx, sy); ring(sx, sy, 15 + 3 * sinf(T * 6), RED, 0.9f, 3); }
     }
     { const TS& s = W.ts[0]; screen(V3(s.x, s.y, s.z), sx, sy); ui.text(sx + 14, sy - 26, 2.2f, WHT, "START"); float ex, ey; const TS& e = W.ts[std::min(60, W.n - 1)]; screen(V3(e.x, e.y, e.z), ex, ey); ui.line(sx, sy, ex, ey, 4, WHT, 0.9f); }
-    if (tool == ROAD) { int m = (int)d.ctrl.size() / 2; for (int k = 0; k < m; k++) { screenXZ(d.ctrl[k * 2], d.ctrl[k * 2 + 1], sx, sy); bool s = k == sel, hv = hit(d.ctrl[k * 2], d.ctrl[k * 2 + 1]); float r = s || hv ? 9.0f : 7.0f; ui.rect(sx - r - 2, sy - r - 2, r * 2 + 4, r * 2 + 4, V3(0, 0, 0), 0.8f); ui.rect(sx - r, sy - r, r * 2, r * 2, s ? WHT : YEL, 1); } }
+    if (tool == ROAD) {
+        int m = (int)d.ctrl.size() / 2;
+        for (int k = 0; k < m; k++) {
+            screenXZ(d.ctrl[k * 2], d.ctrl[k * 2 + 1], sx, sy);
+            bool s = k == sel, hv = hit(d.ctrl[k * 2], d.ctrl[k * 2 + 1]);
+            float r = s || hv ? 9.0f : 7.0f;
+            ui.rect(sx - r - 2, sy - r - 2, r * 2 + 4, r * 2 + 4, V3(0, 0, 0), 0.8f);
+            ui.rect(sx - r, sy - r, r * 2, r * 2, s ? WHT : YEL, 1);
+        }
+    }
     if (tool == HILL) for (size_t k = 0; k < d.hills.size(); k++) { const Gauss& g = d.hills[k]; screenXZ(g.x, g.z, sx, sy); float ex, ey; screenXZ(g.x + g.s, g.z, ex, ey); bool s = (int)k == sel; V3 c = g.a >= 0 ? V3(1, 0.6f, 0.2f) : CYA;
         ring(sx, sy, fabsf(ex - sx), c, s ? 0.95f : 0.5f, s ? 3 : 2); ui.disc(sx, sy, s ? 10 : 8, c, 1); snprintf(b, sizeof b, "%+d M", (int)g.a); ui.text(sx + 14, sy - 10, 2.2f, WHT, b); }
-    if (tool == TUNNEL) { for (int k = 0; k < nTun(); k++) for (int e = 0; e < 2; e++) { const TS& s = W.ts[clampi((int)(d.tunnel[k * 5 + e] * W.n), 0, W.n - 1)]; screen(V3(s.x, s.y, s.z), sx, sy); ui.disc(sx, sy, sel == k * 2 + e ? 11 : 9, CYA, 1); ui.text(sx + 14, sy - 10, 2.2f, WHT, e ? "OUT" : "IN"); }
-        if (pick >= 0 && pick < W.n) { const TS& s = W.ts[pick]; screen(V3(s.x, s.y, s.z), sx, sy); ring(sx, sy, 12, CYA, 1, 3); } }
-    if (tool == CUT) { for (size_t k = 0; k < d.branches.size(); k++) for (int e = 0; e < 2; e++) { const TS& s = W.ts[clampi((int)(d.branches[k][e] * W.n), 0, W.n - 1)]; screen(V3(s.x, s.y, s.z), sx, sy); ui.disc(sx, sy, sel == (int)k * 2 + e ? 11 : 9, GRN, 1); snprintf(b, sizeof b, "%d", (int)k + 1); ui.text(sx + 14, sy - 10, 2.2f, WHT, b); }
-        if (pick >= 0 && pick < W.n) { const TS& s = W.ts[pick]; screen(V3(s.x, s.y, s.z), sx, sy); ring(sx, sy, 12, GRN, 1, 3); } }
+    if (tool == TUNNEL) {
+        for (int k = 0; k < nTun(); k++)
+            for (int e = 0; e < 2; e++) {
+                const TS& s = W.ts[clampi((int)(d.tunnel[k * 5 + e] * W.n), 0, W.n - 1)];
+                screen(V3(s.x, s.y, s.z), sx, sy);
+                ui.disc(sx, sy, sel == k * 2 + e ? 11 : 9, CYA, 1);
+                ui.text(sx + 14, sy - 10, 2.2f, WHT, e ? "OUT" : "IN");
+            }
+        if (pick >= 0 && pick < W.n) { const TS& s = W.ts[pick]; screen(V3(s.x, s.y, s.z), sx, sy); ring(sx, sy, 12, CYA, 1, 3); }
+    }
+    if (tool == CUT) {
+        for (size_t k = 0; k < d.branches.size(); k++)
+            for (int e = 0; e < 2; e++) {
+                const TS& s = W.ts[clampi((int)(d.branches[k][e] * W.n), 0, W.n - 1)];
+                screen(V3(s.x, s.y, s.z), sx, sy);
+                ui.disc(sx, sy, sel == (int)k * 2 + e ? 11 : 9, GRN, 1);
+                snprintf(b, sizeof b, "%d", (int)k + 1);
+                ui.text(sx + 14, sy - 10, 2.2f, WHT, b);
+            }
+        if (pick >= 0 && pick < W.n) { const TS& s = W.ts[pick]; screen(V3(s.x, s.y, s.z), sx, sy); ring(sx, sy, 12, GRN, 1, 3); }
+    }
     if (tool == JUMP) for (int k = 0; k < (int)d.jumps.size() / 5; k++) {   // each jump: its footprint, an arrow the way it launches you
         V3 fw, m = jumpMid(d, k, &fw), rt(fw.z, 0, -fw.x); float L = d.jumps[k * 5 + 2] * 0.5f, hw = 4.0f; bool sl = k == sel; V3 c = sl ? WHT : V3(1, 0.55f, 0.15f);
         V3 q[4] = { m - fw * L - rt * hw, m - fw * L + rt * hw, m + fw * L + rt * hw, m + fw * L - rt * hw }; float px[4], py[4]; for (int e = 0; e < 4; e++) screenXZ(q[e].x, q[e].z, px[e], py[e]);

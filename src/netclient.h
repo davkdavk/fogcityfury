@@ -82,14 +82,24 @@ static void netPump(float dt, bool inLobby) {
             }
             for (int i = 0; i < net::MAXP; i++) if (!seen[i]) nc.r[i].present = false;
             if (nc.phase != net::SHOWDOWN && nc.phase != net::RESULTS) nc.sdGot = false;
-        }
-        else if (h.type == net::S_TRACK && n >= (int)offsetof(net::TrackChunk, data) && nc.connected && nc.pieces.size() < 64) { net::TrackChunk m; memset(&m, 0, sizeof m); memcpy(&m, buf, std::min(n, (int)sizeof m)); if (m.len <= net::CHUNK && n >= (int)offsetof(net::TrackChunk, data) + m.len) nc.pieces.push_back(m); }
-        else if (h.type == net::S_VOTE && n >= (int)sizeof(net::Vote) && nc.connected) { memcpy(&nc.vote, buf, sizeof nc.vote); nc.vote.name[sizeof nc.vote.name - 1] = 0; nc.voteGot = true; nc.voteSeen = 0; if (nc.vote.track != nc.voteTrack) { nc.voteTrack = nc.vote.track; nc.voteAnswer = 0; } }
-        else if (h.type == net::S_ROAM && n >= (int)sizeof(net::Roam) && nc.connected) {
+        } else if (h.type == net::S_TRACK && n >= (int)offsetof(net::TrackChunk, data) && nc.connected && nc.pieces.size() < 64) {
+            net::TrackChunk m;
+            memset(&m, 0, sizeof m);
+            memcpy(&m, buf, std::min(n, (int)sizeof m));
+            if (m.len <= net::CHUNK && n >= (int)offsetof(net::TrackChunk, data) + m.len) nc.pieces.push_back(m);
+        } else if (h.type == net::S_VOTE && n >= (int)sizeof(net::Vote) && nc.connected) {
+            memcpy(&nc.vote, buf, sizeof nc.vote);
+            nc.vote.name[sizeof nc.vote.name - 1] = 0;
+            nc.voteGot = true;
+            nc.voteSeen = 0;
+            if (nc.vote.track != nc.voteTrack) {
+                nc.voteTrack = nc.vote.track;
+                nc.voteAnswer = 0;
+            }
+        } else if (h.type == net::S_ROAM && n >= (int)sizeof(net::Roam) && nc.connected) {
             net::Roam m; memcpy(&m, buf, sizeof m); if (nc.roamGot && m.tick < nc.roamTick && nc.roamTick - m.tick < 100000) continue;
             if (m.nfeet > net::MAXP || m.nminis > net::MINIS || m.nhits > net::HITS) continue; nc.roam = m; nc.roamTick = m.tick; nc.roamGot = true;
-        }
-        else if (h.type == net::S_SHOWDOWN && n >= (int)sizeof(net::Showdown) && nc.connected) {
+        } else if (h.type == net::S_SHOWDOWN && n >= (int)sizeof(net::Showdown) && nc.connected) {
             net::Showdown m; memcpy(&m, buf, sizeof m); if (nc.sdGot && m.tick < nc.sdTick && nc.sdTick - m.tick < 100000) continue;
             if (m.ndrops > net::SD_DROPS) continue; nc.sd = m; nc.sdTick = m.tick; nc.sdGot = true;
         }
@@ -103,7 +113,16 @@ static void netPump(float dt, bool inLobby) {
 #endif
             netClose("NO RESPONSE FROM SERVER"); return;
         }
-        if (nc.sinceJoin > 0.4f) { nc.sinceJoin = 0; net::Join j; memset(&j, 0, sizeof j); j.h = net::header(net::C_JOIN, 0xFF); memcpy(j.name, nc.name, std::min(strlen(nc.name), (size_t)net::NAMELEN)); j.car = (uint8_t)player.type; j.paint = (uint8_t)player.paint; net::sendTo(nc.sock, nc.addr, &j, sizeof j); }
+        if (nc.sinceJoin > 0.4f) {
+            nc.sinceJoin = 0;
+            net::Join j;
+            memset(&j, 0, sizeof j);
+            j.h = net::header(net::C_JOIN, 0xFF);
+            memcpy(j.name, nc.name, std::min(strlen(nc.name), (size_t)net::NAMELEN));
+            j.car = (uint8_t)player.type;
+            j.paint = (uint8_t)player.paint;
+            net::sendTo(nc.sock, nc.addr, &j, sizeof j);
+        }
         return;
     }
     if (nc.sinceRecv > 6) {

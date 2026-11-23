@@ -218,7 +218,25 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
                 if ((nShared >= cfgSharedMax || TRACKS + (int)CT.size() > 254) && old >= 0) { say("dropping the oldest shared track (%s) to make room", CT[old].name.c_str()); reuse = old; }
             }
             if (k < 0 && (reuse >= 0 || TRACKS + (int)CT.size() <= 254)) { CustomTrack c; c.shared = true; c.added = t; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
-                size_t a = u.data.find("\nname"); if (a != std::string::npos) { a = u.data.find_first_not_of(" \t", a + 5); size_t e = u.data.find('\n', a); if (a != std::string::npos && e != std::string::npos && e > a) c.name = u.data.substr(a, std::min(e - a, (size_t)32)); } cleanName(c.name, 23); c.text = u.data; c.crc = u.crc; if (reuse >= 0) { CT[reuse] = c; k = reuse; } else { CT.push_back(c); k = (int)CT.size() - 1; } say("%s shared a track (%d bytes): track %d, %s", P[who].name, u.total, TRACKS + k, CT[k].name.c_str()); } }
+                size_t a = u.data.find("\nname");
+                if (a != std::string::npos) {
+                    a = u.data.find_first_not_of(" \t", a + 5);
+                    size_t e = u.data.find('\n', a);
+                    if (a != std::string::npos && e != std::string::npos && e > a) c.name = u.data.substr(a, std::min(e - a, (size_t)32));
+                }
+                cleanName(c.name, 23);
+                c.text = u.data;
+                c.crc = u.crc;
+                if (reuse >= 0) {
+                    CT[reuse] = c;
+                    k = reuse;
+                } else {
+                    CT.push_back(c);
+                    k = (int)CT.size() - 1;
+                }
+                say("%s shared a track (%d bytes): track %d, %s", P[who].name, u.total, TRACKS + k, CT[k].name.c_str());
+            }
+        }
         if (k >= 0 && TRACKS + k != track && !vote.open) { pendTrack = TRACKS + k; pendBy = who; say("%s shared track %d: the lobby votes on it", P[who].name, TRACKS + k); }
         u = Upload();
     } else if (h.type == C_SPACE && who >= 0 && h.id == who) {   // parked under the golden UFO: everyone to space in ten seconds
@@ -344,11 +362,26 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto next = [&] { return i + 1 < argc ? argv[++i] : (char*)"0"; };
         if (a == "--port") port = atoi(next()); else if (a == "--laps") laps = std::max(1, std::min(20, atoi(next()))); else if (a == "--track") trackArg = atoi(next()); else if (a == "--tracks") tracksDir = next(); else if (a == "--custom-only") customOnly = true;
-        else if (a == "--roam") cfgRoam = true; else if (a == "--no-uploads") cfgUploads = false; else if (a == "--rate") cfgRate = std::max(10.0, atof(next())); else if (a == "--per-ip") { cfgPerIp = std::max(1, atoi(next())); perIpLoopback = true; } else if (a == "--share-gap") cfgShareGap = std::max(0.0, atof(next())); else if (a == "--shared-max") cfgSharedMax = std::max(1, atoi(next())); else if (a == "--min-lap") cfgMinLap = std::max(0.0, atof(next())); else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
+        else if (a == "--roam") cfgRoam = true;
+        else if (a == "--no-uploads") cfgUploads = false;
+        else if (a == "--rate") cfgRate = std::max(10.0, atof(next()));
+        else if (a == "--per-ip") {
+            cfgPerIp = std::max(1, atoi(next()));
+            perIpLoopback = true;
+        } else if (a == "--share-gap") cfgShareGap = std::max(0.0, atof(next()));
+        else if (a == "--shared-max") cfgSharedMax = std::max(1, atoi(next()));
+        else if (a == "--min-lap") cfgMinLap = std::max(0.0, atof(next()));
+        else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
         else if (a == "--weather") { const char* v = next(); if (!strcmp(v, "random")) { wxMode = 1; weather = 1; } else weather = ((atoi(v) % 4) + 4) % 4; }
         else if (a == "--name") { snprintf(serverName, sizeof serverName, "%s", next()); for (char* c = serverName; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--fixed-track") fixedTrack = true; else if (a == "--countdown") cfgCountdown = atof(next()); else if (a == "--results") cfgResults = atof(next());
-        else if (a == "--lobby") cfgLobby = atof(next()); else if (a == "--finish-timeout") cfgFinish = atof(next()); else if (a == "--timeout") cfgTimeout = atof(next()); else if (a == "--quiet") quiet = true; else if (a == "--no-showdown") cfgShowdown = false; else if (a == "--bots") cfgBots = std::max(0, std::min((int)BOTS, atoi(next()))); else if (a == "--showdown-site") cfgSite = std::max(0.0, std::min(0.99, atof(next())));
+        else if (a == "--lobby") cfgLobby = atof(next());
+        else if (a == "--finish-timeout") cfgFinish = atof(next());
+        else if (a == "--timeout") cfgTimeout = atof(next());
+        else if (a == "--quiet") quiet = true;
+        else if (a == "--no-showdown") cfgShowdown = false;
+        else if (a == "--bots") cfgBots = std::max(0, std::min((int)BOTS, atoi(next())));
+        else if (a == "--showdown-site") cfgSite = std::max(0.0, std::min(0.99, atof(next())));
         else {
             printf("fogcityfury-server [--port %d] [--laps 3] [--track 0-%d] [--fixed-track] [--countdown 5] [--results 12]\n"
                    "                   [--weather 0-3|random] [--lobby SECONDS] [--finish-timeout 45] [--timeout 5] [--quiet]\n"
@@ -415,7 +448,18 @@ int main(int argc, char** argv) {
             }
             if (cfgRoamMinutes > 0 && roamT > cfgRoamMinutes * 60) { if (!fixedTrack) track = nextTrack(track, customOnly); setPhase(ROAM, -1); }
             break;
-        case RESULTS: phaseT -= dt; if (phaseT <= 0 && spaceRace) backToRest(); else if (phaseT <= 0) { if (returnTrack >= 0) { track = returnTrack; returnTrack = -1; } else if (!fixedTrack) track = nextTrack(track, customOnly); if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
+        case RESULTS:
+            phaseT -= dt;
+            if (phaseT <= 0 && spaceRace) backToRest();
+            else if (phaseT <= 0) {
+                if (returnTrack >= 0) {
+                    track = returnTrack;
+                    returnTrack = -1;
+                } else if (!fixedTrack) track = nextTrack(track, customOnly);
+                if (wxMode) weather = (int)(now() * 977) % 4;
+                setPhase(LOBBY, -1);
+            }
+            break;
         }
         stepVote(dt, t);
         if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); if (tick % 5 == 0 && (vote.open || t - vote.closedT < 1.5)) sendVote(); }   // (roam: 15 times a second)

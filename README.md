@@ -90,6 +90,12 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.26
+
+- Under the bonnet: game.cpp (3,150 lines) is split into eight files by job: serverlist, settings, combat, driving,
+  update, scene, hud and input (game.cpp keeps the start-up and the main loop, 740 lines). The 95 lines over 300
+  characters are broken up. The compiler sees exactly the same code as 2.25 in every build: nothing in the game changes
+
 ## What's new in 2.25
 
 - Under the bonnet: the Xbox 360 build is one title now, "Fog City Fury" (the bring-up's test builds and their

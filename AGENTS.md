@@ -60,7 +60,15 @@ then add a test that would have caught it.
 | `src/net.h` | 65 | Multiplayer wire format and UDP helpers, shared with the server |
 | `src/netclient.h` | 80 | Multiplayer client: connect, send our car, receive snapshots, dead-reckon remote cars |
 | `src/server.cpp` | 140 | The dedicated server (`fogcityfury-server`); builds without SDL/OpenGL |
-| `src/game.cpp` | 840 | Car specs, `stepPlayer` (physics), `stepAI`, autopilot, `update` (race rules, effects, sound), `drawScene`/`render` (passes, camera, post), HUD, menus, `main` (flags, sim/shot/live loops) |
+| `src/game.cpp` | 740 | Weather, the car and particle types, game state, the golden UFO, editor glue, shader set-up, `main` (flags, sim/shot/live loops); includes the parts below in order |
+| `src/serverlist.h` | 50 | The online screen's server list: DNS, asking each server what it runs, joining |
+| `src/settings.h` | 250 | Key bindings, video and effects options (`fogcityfury.cfg`), the touch-screen layout, the save file |
+| `src/combat.h` | 320 | Wrecks and debris, crates, shields, splashes, explosions, rockets, multiplayer race start/leave |
+| `src/driving.h` | 310 | Respawn, `stepPlayer` (physics), `stepAI`, car-to-car contacts, autopilot, `readInput`, finishing |
+| `src/update.h` | 290 | `update(dt)`: race rules, effects, sound |
+| `src/scene.h` | 410 | `drawScene`: cars, wreckage, fish, world cells and LOD, grass |
+| `src/hud.h` | 490 | Map, logo, HUD and menus drawn, `render()` (passes, camera, post) |
+| `src/input.h` | 315 | Menus and input: keys, touch, the `--sim` JSON report, scripted test input, boot colours |
 | `tests/run_tests.py` | 580 | The test suite |
 | `tools/shot.sh` | - | Headless screenshot helper |
 
@@ -69,8 +77,8 @@ then add a test that would have caught it.
 is a second, separate program that includes only `net.h`. There is no separate
 compilation and no build system beyond the Makefile.
 
-Style: dense, long lines, several statements per line. Keep to it within a file rather than
-reformatting; diffs stay readable that way. Comment the why, not the what.
+Style: dense, several statements per line, but lines kept under about 150 characters (since 2.26). Keep
+to it within a file rather than reformatting; diffs stay readable that way. Comment the why, not the what.
 
 ## Conventions you must not get wrong
 

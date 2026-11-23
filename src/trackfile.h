@@ -77,7 +77,20 @@ static bool trackSanitize(TrackDef& d) {
     for (size_t k = 0; k + 2 < d.keyPts.size(); k += 3) { d.keyPts[k] = clampf(fin(d.keyPts[k], 0), -700, 700); d.keyPts[k + 1] = clampf(fin(d.keyPts[k + 1], 0), -700, 700); d.keyPts[k + 2] = clampf(fin(d.keyPts[k + 2], 1.3f), 0.8f, 40); }
     d.wardens = d.wardens < 0 ? 0 : d.wardens > 4 ? 4 : d.wardens; d.lapMul = d.lapMul < 1 ? 1 : d.lapMul > 3 ? 3 : d.lapMul;
     if (d.branches.size() > (size_t)FCFT_MAXBR) d.branches.resize(FCFT_MAXBR);
-    { std::vector<float> ct; for (size_t k = 0; k + 1 < d.cutTun.size(); k += 2) { int b = (int)d.cutTun[k]; bool dup = false; for (size_t q = 0; q < ct.size(); q += 2) if ((int)ct[q] == b) dup = true; if (b >= 0 && b < (int)d.branches.size() && !dup) { ct.push_back((float)b); ct.push_back(-clampf(fabsf(d.cutTun[k + 1]), 12, 26)); } } d.cutTun = ct; }
+    {
+        std::vector<float> ct;
+        for (size_t k = 0; k + 1 < d.cutTun.size(); k += 2) {
+            int b = (int)d.cutTun[k];
+            bool dup = false;
+            for (size_t q = 0; q < ct.size(); q += 2)
+                if ((int)ct[q] == b) dup = true;
+            if (b >= 0 && b < (int)d.branches.size() && !dup) {
+                ct.push_back((float)b);
+                ct.push_back(-clampf(fabsf(d.cutTun[k + 1]), 12, 26));
+            }
+        }
+        d.cutTun = ct;
+    }
     for (size_t k = 0; k < d.branches.size(); ) {
         std::vector<float>& br = d.branches[k]; bool ok = br.size() >= 2;
         if (ok) { if (br.size() % 2) br.pop_back(); if (br.size() > 2 + 16) br.resize(2 + 16);
@@ -136,9 +149,13 @@ static bool trackParse(const std::string& textAll, TrackDef& d, const TrackDef& 
         else if (K == "name") d.nameS = text; else if (K == "sub") d.subS = text;
         else if (K == "seed" && !num.empty()) d.seed = (int)num[0];
         else if (K == "land") { d.baseH = after("base", 0, d.baseH); d.noiseAmp = after("noise", 0, d.noiseAmp); d.landR = after("radius", 0, d.landR); d.cityThr = after("city", 0, d.cityThr); }
-        else if (K == "sky") { d.skyTop = V3(after("top", 0, d.skyTop.x), after("top", 1, d.skyTop.y), after("top", 2, d.skyTop.z)); d.skyHor = V3(after("horizon", 0, d.skyHor.x), after("horizon", 1, d.skyHor.y), after("horizon", 2, d.skyHor.z)); d.fogDen = after("fog", 0, d.fogDen); }
-        else if (K == "sun") { d.sun = V3(after("dir", 0, d.sun.x), after("dir", 1, d.sun.y), after("dir", 2, d.sun.z)); V3 c(after("colour", 0, -1), after("colour", 1, -1), after("colour", 2, -1)); if (c.x < 0) c = V3(after("color", 0, d.sunCol.x), after("color", 1, d.sunCol.y), after("color", 2, d.sunCol.z)); d.sunCol = c; }
-        else if (K == "night" && !num.empty()) d.night = num[0];
+        else if (K == "sky") { d.skyTop = V3(after("top", 0, d.skyTop.x), after("top", 1, d.skyTop.y), after("top", 2, d.skyTop.z)); d.skyHor = V3(after("horizon", 0, d.skyHor.x), after("horizon", 1, d.skyHor.y), after("horizon", 2, d.skyHor.z)); d.fogDen = after("fog", 0, d.fogDen);
+        } else if (K == "sun") {
+            d.sun = V3(after("dir", 0, d.sun.x), after("dir", 1, d.sun.y), after("dir", 2, d.sun.z));
+            V3 c(after("colour", 0, -1), after("colour", 1, -1), after("colour", 2, -1));
+            if (c.x < 0) c = V3(after("color", 0, d.sunCol.x), after("color", 1, d.sunCol.y), after("color", 2, d.sunCol.z));
+            d.sunCol = c;
+        } else if (K == "night" && !num.empty()) d.night = num[0];
         else if (K == "song" && !num.empty()) d.song = (int)num[0];
         else if (K == "weather") { for (int w = 0; w < 4; w++) if (word == FCFT_WX[w]) d.wx = w; if (word.empty() && !num.empty()) d.wx = (int)num[0]; }
         else if (K == "road") d.ctrl.insert(d.ctrl.end(), num.begin(), num.end());

@@ -82,7 +82,9 @@ static void initTracks() {
     b.baseH = 6.5f; b.noiseAmp = 2.2f; b.landR = 577; b.cityThr = 0.50f; b.night = 0;
     b.sun = norm(V3(-0.72f, 0.24f, 0.45f)); b.sunCol = V3(3.0f, 1.55f, 0.72f);
     b.skyTop = V3(0.10f, 0.13f, 0.42f); b.skyHor = V3(0.95f, 0.50f, 0.28f); b.fogDen = 0.0010f; b.seed = 11;
-    b.branches = { { 0.8647f, 0.9622f, -461.7f, -60.4f, -439.6f, -96.5f, -427.6f, -137.0f, -426.7f, -179.3f, -436.8f, -220.4f }, { 0.1312f, 0.3499f } };   // the backstreet cut, inside the bend before the start: one steady 160 m-radius arc, tangent to the road where it leaves and rejoining it 6 degrees off, so it can be taken flat out (no kink). The gate at 7/8 is passed within reach on it
+    b.branches = {{0.8647f, 0.9622f, -461.7f, -60.4f, -439.6f, -96.5f, -427.6f, -137.0f, -426.7f, -179.3f, -436.8f, -220.4f},
+            {0.1312f,
+                    0.3499f}}; // the backstreet cut, inside the bend before the start: one steady 160 m-radius arc, tangent to the road where it leaves and rejoining it 6 degrees off, so it can be taken flat out (no kink). The gate at 7/8 is passed within reach on it
     TRACKS.push_back(b);
     TrackDef c;
     c.name = "SUMMIT SWITCHBACKS"; c.sub = "MISTY MOUNTAIN PASS - LONG CLIMB";
@@ -879,9 +881,31 @@ struct World {
     void seaSurface(MB& w) {
         std::vector<float> rx0, rx1, rz0, rz1; std::vector<std::pair<int, int>> runs;
         std::vector<Tun> runTun;   // (the tunnel each run belongs to)
-        for (const Tun& tn : tuns) { const std::vector<TS>& ts = tunPath(tn); int s = -1; for (int i = tn.a; i <= tn.b + 1; i++) { bool in = i <= tn.b && ts[i].y > -(TUBE_TOP + TUBE_TH + 0.3f); if (in && s < 0) s = i; if (!in && s >= 0) { runs.push_back({ s, i - 1 }); runTun.push_back(tn); s = -1; } } }
-        for (size_t rk = 0; rk < runs.size(); rk++) { auto& r = runs[rk]; const std::vector<TS>& ts = tunPath(runTun[rk]); float a0 = 1e9f, a1 = -1e9f, b0 = 1e9f, b1 = -1e9f; for (int i = r.first; i <= r.second; i++) { a0 = std::min(a0, ts[i].x); a1 = std::max(a1, ts[i].x); b0 = std::min(b0, ts[i].z); b1 = std::max(b1, ts[i].z); }
-            const float M = TUBE_W + 3; rx0.push_back(floorf((a0 - M) / 1.5f) * 1.5f); rx1.push_back(ceilf((a1 + M) / 1.5f) * 1.5f); rz0.push_back(floorf((b0 - M) / 1.5f) * 1.5f); rz1.push_back(ceilf((b1 + M) / 1.5f) * 1.5f); }
+        for (const Tun& tn : tuns) {
+            const std::vector<TS>& ts = tunPath(tn);
+            int s = -1;
+            for (int i = tn.a; i <= tn.b + 1; i++) {
+                bool in = i <= tn.b && ts[i].y > -(TUBE_TOP + TUBE_TH + 0.3f);
+                if (in && s < 0) s = i;
+                if (!in && s >= 0) {
+                    runs.push_back({s, i - 1});
+                    runTun.push_back(tn);
+                    s = -1;
+                }
+            }
+        }
+        for (size_t rk = 0; rk < runs.size(); rk++) {
+            auto& r = runs[rk];
+            const std::vector<TS>& ts = tunPath(runTun[rk]);
+            float a0 = 1e9f, a1 = -1e9f, b0 = 1e9f, b1 = -1e9f;
+            for (int i = r.first; i <= r.second; i++) {
+                a0 = std::min(a0, ts[i].x);
+                a1 = std::max(a1, ts[i].x);
+                b0 = std::min(b0, ts[i].z);
+                b1 = std::max(b1, ts[i].z);
+            }
+            const float M = TUBE_W + 3; rx0.push_back(floorf((a0 - M) / 1.5f) * 1.5f); rx1.push_back(ceilf((a1 + M) / 1.5f) * 1.5f); rz0.push_back(floorf((b0 - M) / 1.5f) * 1.5f); rz1.push_back(ceilf((b1 + M) / 1.5f) * 1.5f);
+        }
         // the rest of the sheet, in rectangles round the patches
         std::vector<float> xs = { -5000, 5000 }, zs = { -5000, 5000 }; for (size_t k = 0; k < rx0.size(); k++) { xs.push_back(rx0[k]); xs.push_back(rx1[k]); zs.push_back(rz0[k]); zs.push_back(rz1[k]); }
         std::sort(xs.begin(), xs.end()); std::sort(zs.begin(), zs.end());
@@ -995,7 +1019,17 @@ struct World {
             // there the two share their ground, so they must agree on its height (or the ground at the loop's edge buckles)
             float wa = 1 - smooth(0, 25, (float)i), wb = 1 - smooth(0, 25, (float)(m - 1 - i));
             bts[i].y = lerpf(lerpf(bts[i].y, ts[bA].y, wa), ts[bB].y, wb);
-            float bd = 1e18f; int bk = bA; for (int k = bA - 60; k <= bB + 60; k++) { const TS& q = ts[((k % n) + n) % n]; if (q.tun) continue; float dx = q.x - bts[i].x, dz = q.z - bts[i].z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bk = k; } }   // (not the road down in a tunnel: a shortcut passing over or beside one keeps to the ground)
+            float bd = 1e18f;
+            int bk = bA;
+            for (int k = bA - 60; k <= bB + 60; k++) {
+                const TS& q = ts[((k % n) + n) % n];
+                if (q.tun) continue;
+                float dx = q.x - bts[i].x, dz = q.z - bts[i].z, d = dx * dx + dz * dz;
+                if (d < bd) {
+                    bd = d;
+                    bk = k;
+                }
+            } // (not the road down in a tunnel: a shortcut passing over or beside one keeps to the ground)
             float w = 1 - smooth(ROADW + BRANCH_W + 2, ROADW + BRANCH_W + 30, sqrtf(bd)); bts[i].y = lerpf(bts[i].y, ts[((bk % n) + n) % n].y, w);
         }
         for (int i = 0; i < m; i++) { const TS& a = bts[std::max(0, i - 6)], & b = bts[std::min(m - 1, i + 6)]; bts[i].curv = fabsf(wrapPi(atan2f(b.tx, b.tz) - atan2f(a.tx, a.tz))) / 12; }
@@ -1190,8 +1224,13 @@ struct World {
 #endif
             }
 #ifndef FCF_GFX_XSDK
-            { V3 dn(0, -1, 0), lo = up * -0.9f; unsigned q = S.add(pa - sa * SW + lo, dn, gc * 0.7f, -SW, (float)i, SM); S.add(pa + sa * SW + lo, dn, gc * 0.7f, SW, (float)i, SM); S.add(pb + sb * SW + lo, dn, gc * 0.7f, SW, (float)i + 1, SM); S.add(pb - sb * SW + lo, dn, gc * 0.7f, -SW, (float)i + 1, SM);
-              S.idx.insert(S.idx.end(), { q, q + 2, q + 1, q, q + 3, q + 2 });   // the slab's underside, seen through it and from below
+            {
+                V3 dn(0, -1, 0), lo = up * -0.9f;
+                unsigned q = S.add(pa - sa * SW + lo, dn, gc * 0.7f, -SW, (float)i, SM);
+                S.add(pa + sa * SW + lo, dn, gc * 0.7f, SW, (float)i, SM);
+                S.add(pb + sb * SW + lo, dn, gc * 0.7f, SW, (float)i + 1, SM);
+                S.add(pb - sb * SW + lo, dn, gc * 0.7f, -SW, (float)i + 1, SM);
+                S.idx.insert(S.idx.end(), {q, q + 2, q + 1, q, q + 3, q + 2}); // the slab's underside, seen through it and from below
 #ifdef FCF_XENOS_CULL
               S.triTags.push_back(S.cellTag); S.triTags.push_back(S.cellTag);
 #endif
@@ -1260,7 +1299,16 @@ struct World {
             float lo = 1e9f, hi = -1e9f; for (int k = 0; k < 8; k++) { float a = k * 0.785f, hh = H(x + cosf(a) * 12, z + sinf(a) * 12); lo = std::min(lo, hh); hi = std::max(hi, hh); }
             if (hi - lo > 3.5f || lo < 3) continue;
             bool blocked = false;
-            for (int oz = -1; oz <= 1 && !blocked; oz++) for (int ox = -1; ox <= 1 && !blocked; ox++) for (int bi : cell(x + ox * GCELL, z + oz * GCELL)) { const Box& b = boxes[bi]; float r = std::max(b.hx, b.hz) + 14; if ((b.cx - x) * (b.cx - x) + (b.cz - z) * (b.cz - z) < r * r) { blocked = true; break; } }
+            for (int oz = -1; oz <= 1 && !blocked; oz++)
+                for (int ox = -1; ox <= 1 && !blocked; ox++)
+                    for (int bi : cell(x + ox * GCELL, z + oz * GCELL)) {
+                        const Box& b = boxes[bi];
+                        float r = std::max(b.hx, b.hz) + 14;
+                        if ((b.cx - x) * (b.cx - x) + (b.cz - z) * (b.cz - z) < r * r) {
+                            blocked = true;
+                            break;
+                        }
+                    }
             if (blocked) continue;
             float score = y * 0.6f - d * 0.05f + 6 * vnoise(x * 0.013f + def->seed, z * 0.013f);
             if (score > best) { best = score; ufoAt = V3(x, y, z); hasUfo = true; }
@@ -1440,9 +1488,27 @@ struct World {
         n = (int)L; float step = L / n, acc = 0; size_t di = 0; ts.resize(n);
         for (int i = 0; i < n; i++) {
             float target = i * step;
-            while (true) { float sl = len(dense[(di + 1) % dense.size()] - dense[di]); if (acc + sl >= target || di + 1 >= dense.size()) { float t = sl > 0 ? clampf((target - acc) / sl, 0, 1) : 0; V3 p = dense[di] + (dense[(di + 1) % dense.size()] - dense[di]) * t; ts[i].x = p.x; ts[i].z = p.z; break; } acc += sl; di++; }
+            while (true) {
+                float sl = len(dense[(di + 1) % dense.size()] - dense[di]);
+                if (acc + sl >= target || di + 1 >= dense.size()) {
+                    float t = sl > 0 ? clampf((target - acc) / sl, 0, 1) : 0;
+                    V3 p = dense[di] + (dense[(di + 1) % dense.size()] - dense[di]) * t;
+                    ts[i].x = p.x;
+                    ts[i].z = p.z;
+                    break;
+                }
+                acc += sl;
+                di++;
+            }
         }
-        for (int i = 0; i < n; i++) { const TS& a = ts[(i + n - 1) % n], & b = ts[(i + 1) % n]; V3 t = norm(V3(b.x - a.x, 0, b.z - a.z)); ts[i].tx = t.x; ts[i].tz = t.z; ts[i].y = space ? SPACE_Y + 6 * sinf(3 * atan2f(ts[i].z, ts[i].x) + 0.4f) + 3.5f * sinf(7 * atan2f(ts[i].z, ts[i].x) + 1.3f) : std::max(H(ts[i].x, ts[i].z), 2.2f); }
+        for (int i = 0; i < n; i++) {
+            const TS &a = ts[(i + n - 1) % n], &b = ts[(i + 1) % n];
+            V3 t = norm(V3(b.x - a.x, 0, b.z - a.z));
+            ts[i].tx = t.x;
+            ts[i].tz = t.z;
+            ts[i].y = space ? SPACE_Y + 6 * sinf(3 * atan2f(ts[i].z, ts[i].x) + 0.4f) + 3.5f * sinf(7 * atan2f(ts[i].z, ts[i].x) + 1.3f)
+                            : std::max(H(ts[i].x, ts[i].z), 2.2f);
+        }
         for (int pass = 0; pass < 3; pass++) { std::vector<float> y(n); for (int i = 0; i < n; i++) { float s = 0; for (int k = -5; k <= 5; k++) s += ts[(i + k + n) % n].y; y[i] = s / 11; } for (int i = 0; i < n; i++) ts[i].y = y[i]; }
         for (int i = 0; i < n; i++) { const TS& a = ts[(i + n - 6) % n], & b = ts[(i + 6) % n]; ts[i].curv = fabsf(wrapPi(atan2f(b.tx, b.tz) - atan2f(a.tx, a.tz))) / 12; }
 #ifdef FCF_XENOS_CULL

@@ -205,7 +205,9 @@ static void step(float t, float dt) {
                     rounds++; m.recoil = 1;
                     V3 mz, md; mech::muzzle(m, t, mz, md); float near = camNear(mz);
                     if (t > S - 0.4f && t < S) { V3 hp = orbit(u, j, gNow, t + len(orbit(u, j, gNow, t) - mz) / TRACER_V); aimErr = std::max(aimErr, acosf(clampf(dot(md, norm(hp - mz)), -1, 1)) * 57.2958f); }
-                    puff(mz + md * 0.9f, md * 10.0f, 0.07f, 3.4f + 1.2f * R01(u, j, r, 60), 1.2f, V3(5.0f, 3.0f, 1.0f), 1, 1, 0, r * 0.37f); puff(mz + md * 0.3f, md * 2.0f, 0.035f, 1.6f, 0.2f, V3(6.0f, 5.5f, 4.0f), 1, 1, 0, r * 0.71f);   // the muzzle flash: a burst of flame and three spurts out of the brake
+                    puff(mz + md * 0.9f, md * 10.0f, 0.07f, 3.4f + 1.2f * R01(u, j, r, 60), 1.2f, V3(5.0f, 3.0f, 1.0f), 1, 1, 0, r * 0.37f);
+                    puff(mz + md * 0.3f, md * 2.0f, 0.035f, 1.6f, 0.2f, V3(6.0f, 5.5f, 4.0f), 1, 1, 0,
+                            r * 0.71f); // the muzzle flash: a burst of flame and three spurts out of the brake
                     for (int q = 0; q < 3; q++) { float a = r * 1.3f + q * 2.094f; V3 sd = norm(::cross(md, V3(cosf(a), 0.3f, sinf(a)))); puff(mz + md * 0.4f, sd * 14.0f + md * 6.0f, 0.06f, 1.1f, 0.4f, V3(3.6f, 1.7f, 0.5f), 1, 1, 0, q / 3.0f); }
                     if (r % 2 == 0) { V3 dir = md; float L = std::min(1.3f, 0.15f + len(tgt - mz) / TRACER_V); puff(mz + dir * 12.0f, dir * TRACER_V, L, 3.5f, 0, V3(5.0f, 2.4f, 0.6f), 1, 1, 0, r * 0.11f, 6.0f); }   // a tracer: a streak about 20 m long
                     if (r % 2 == 0 && !g_noGL && near > 0.2f) {   // an empty case flies out of the port
@@ -214,7 +216,14 @@ static void step(float t, float dt) {
                         cases.push_back({ pp, out * (7 + 3 * j1) + V3(0, 3 + 2 * j2, 0) - md * 1.5f, 6.2832f * j2, 0, (j1 - 0.5f) * 40, 0, 0 });
                     }
                     if (near > 0.3f) shake = std::max(shake, 0.06f * near);
-                    if (t > S - 0.45f && r % 2 == 1) { V3 hp = orbit(u, j, gNow, t); for (int q = 0; q < 3; q++) { float a = r * 2.1f + q * 2.0f; puff(hp + V3(cosf(a) * 2.5f, 1.0f + q * 0.5f, sinf(a) * 2.5f), V3(cosf(a) * 9, 3 + q * 2, sinf(a) * 9), 0.25f, 0.5f, 0.1f, V3(3.8f, 2.8f, 1.2f), 1, 1, -1, q / 3.0f); } }   // hits: sparks off the hull
+                    if (t > S - 0.45f && r % 2 == 1) {
+                        V3 hp = orbit(u, j, gNow, t);
+                        for (int q = 0; q < 3; q++) {
+                            float a = r * 2.1f + q * 2.0f;
+                            puff(hp + V3(cosf(a) * 2.5f, 1.0f + q * 0.5f, sinf(a) * 2.5f), V3(cosf(a) * 9, 3 + q * 2, sinf(a) * 9), 0.25f, 0.5f, 0.1f,
+                                    V3(3.8f, 2.8f, 1.2f), 1, 1, -1, q / 3.0f);
+                        }
+                    } // hits: sparks off the hull
                 }
                 if (passed(B0)) { float n = camNear(mech::bodyAt(m, t)); if (n > 0) { tone(RATE * 2, B1 - B0, 0.42f * n, 2, 0); tone(2200, B1 - B0, 0.22f * n, 1, 0); tone(110, B1 - B0 + 0.2f, 0.35f * n, 1, -30); } }   // BRRRT: a square wave at twice the fire rate, the crack of the rounds, the thump
                 if (passed(S - SPIN_UP)) { float n = camNear(mech::bodyAt(m, t)); if (n > 0) tone(260, SPIN_UP - BURST, 0.14f * n, 0, 900); }   // the barrels winding up

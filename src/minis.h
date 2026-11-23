@@ -129,7 +129,18 @@ static FootIn youThink(Fighter& f, float dt) {
         if (nb) { V3 to(nb->p.x - f.pos.x, 0, nb->p.z - f.pos.z); to = to * (1 / std::max(nd, 0.01f)); in.mx = to.x; in.mz = to.z; }
         return in;
     }
-    if (forceGun > 0) { f.gun = forceGun; f.target = bd < 40 ? best : -1; in.fire = f.target >= 0; if (bd > 10) { V3 to(fighters[best].pos.x - f.pos.x, 0, fighters[best].pos.z - f.pos.z); to = to * (1 / bd); in.mx = to.x; in.mz = to.z; } return in; }   // (--gun N: shoot at it, to show it shrugs it off)
+    if (forceGun > 0) {
+        f.gun = forceGun;
+        f.target = bd < 40 ? best : -1;
+        in.fire = f.target >= 0;
+        if (bd > 10) {
+            V3 to(fighters[best].pos.x - f.pos.x, 0, fighters[best].pos.z - f.pos.z);
+            to = to * (1 / bd);
+            in.mx = to.x;
+            in.mz = to.z;
+        }
+        return in;
+    }                                                 // (--gun N: shoot at it, to show it shrugs it off)
     f.gun = G_FISTS; f.target = bd < 4 ? best : -1;   // only fists hurt them: walk right up and punch
     V3 to(fighters[best].pos.x - f.pos.x, 0, fighters[best].pos.z - f.pos.z); to = to * (1 / std::max(bd, 0.01f));
     if (bd > 1.3f) { in.mx = to.x; in.mz = to.z; in.sprint = bd > 6; } in.fire = bd < 2.2f; return in;
@@ -192,7 +203,15 @@ static void step(float dt) {
 }
 
 // the minimap: a red dot for each one about (in place of any announcement)
-static void mapDots(float cx, float cy, float sc) { for (int i = 1; i < NSLOT; i++) { const Fighter& f = fighters[i]; if (f.on && f.mini && f.alive) { ui.rect(cx + f.pos.x * sc - 3.5f, cy + f.pos.z * sc - 3.5f, 7, 7, V3(0, 0, 0)); ui.rect(cx + f.pos.x * sc - 2.5f, cy + f.pos.z * sc - 2.5f, 5, 5, V3(1, 0.25f, 0.15f)); } } }
+static void mapDots(float cx, float cy, float sc) {
+    for (int i = 1; i < NSLOT; i++) {
+        const Fighter& f = fighters[i];
+        if (f.on && f.mini && f.alive) {
+            ui.rect(cx + f.pos.x * sc - 3.5f, cy + f.pos.z * sc - 3.5f, 7, 7, V3(0, 0, 0));
+            ui.rect(cx + f.pos.x * sc - 2.5f, cy + f.pos.z * sc - 2.5f, 5, 5, V3(1, 0.25f, 0.15f));
+        }
+    }
+}
 static void drawBlooms(Prog& p, bool lit, float t) {
     if (!lit) return;
     for (const Bloom& b : blooms) {
