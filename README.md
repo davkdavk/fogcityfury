@@ -90,6 +90,17 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.23
+
+- The Wardens walk more like something alive and heavy: they turn onto their path gradually, shift their weight
+  over the foot that carries it, rise and settle with each step, roll heel to toe, and rock when a foot comes down
+- They track the UFOs: the head follows them in, the cannon comes half up while one circles, then fully on it, led
+  ahead so the rounds meet it; a UFO is always brought round in front of the Warden before it is shot
+- The cannon is a proper rotary gun now: it winds up, fires a burst of about 35 rounds with muzzle flashes and
+  tracers walking onto the target, kicks with every round, throws out brass cases that tumble, bounce and ring on
+  the ground, then winds down smoking
+- Xbox 360: the space track's shaders rewritten without the features the console's compiler may refuse
+
 ## What's new in 2.22
 
 - Xbox 360: the space track's road is see-through slime with gold and silver sparkles inside it, the sky is full of

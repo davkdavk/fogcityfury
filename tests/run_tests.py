@@ -1871,6 +1871,16 @@ def the_wardens_shoot_down_ufos_and_plant_flowers():
 
 
 @test
+def the_wardens_minigun_tracks_and_fires_bursts():
+    """Each kill is a burst from the six-barrel cannon (about 1.6 s at 22 rounds a second), and in the last moments
+    before the hit the barrels point at the UFO (where it will be when the rounds arrive) to within a few degrees."""
+    for t in (0, 3, 6):
+        d = sim("--track", t, "--state", 3, "--mode", 0, "--auto", seconds=120)
+        check(d["ufoWrecks"] >= 3 and d["cannonRounds"] >= 30 * d["ufoWrecks"], "track %d: bursts, not single shots" % t, (d["ufoWrecks"], d["cannonRounds"]))
+        check(d["cannonAimErr"] < 6, "track %d: on target when it counts" % t, d["cannonAimErr"])
+        check(d["mechFootErr"] < 0.05, "track %d: the feet still land where they should" % t, d["mechFootErr"])
+
+@test
 def the_wardens_feet_are_solid():
     # a Warden standing on the road at Hilltop's sample 400; we drive at its left foot at 30 m/s
     hit = sim("--track", 0, "--state", 3, "--mode", 1, "--nobotguns", "--mechat", -163, -174.2, 0.609, "--pos", -200.7, -219.8, 0.609, "--speed", 30, seconds=2.5)

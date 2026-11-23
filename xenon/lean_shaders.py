@@ -46,7 +46,10 @@ void main(){
   c = mix(c, uSkyHor*0.8, clamp(-d.y*4.0, 0.0, 1.0));                                                         // below the horizon
   if (uSpace > 0.5) {   // the space track: black all round, stars, a faint band of nebula, the sun as a hard disc (shaders.h spaceSky)
     vec3 ad = abs(d); float big = max(ad.x, max(ad.y, ad.z));
-    vec2 p = ad.x >= big ? d.yz/ad.x + vec2(sign(d.x)*3.0, 0.0) : (ad.y >= big ? d.xz/ad.y + vec2(0.0, sign(d.y)*3.0) : d.xy/ad.z + vec2(sign(d.z)*7.0, 5.0));   // (a cube round the eye, each face its own part of the texture)
+    // (a cube round the eye, each face its own part of the texture; picked with step and mix, no branches)
+    float fx = step(big, ad.x), fy = step(big, ad.y)*(1.0 - fx), fz = 1.0 - fx - fy;
+    vec3 sg = step(vec3(0.0), d)*2.0 - 1.0;
+    vec2 p = (d.yz/max(ad.x, 0.001) + vec2(sg.x*3.0, 0.0))*fx + (d.xz/max(ad.y, 0.001) + vec2(0.0, sg.y*3.0))*fy + (d.xy/max(ad.z, 0.001) + vec2(sg.z*7.0, 5.0))*fz;
     vec4 h1 = texture(uHash, (floor(p*330.0) + 0.5)*0.00390625), h2 = texture(uHash, (floor(p*120.0) + 0.5)*0.00390625 + 0.37);
     vec3 sc = mix(vec3(1.0, 0.82, 0.65), vec3(0.65, 0.78, 1.0), h1.g);
     c = vec3(0.003, 0.004, 0.010) + sc*(step(0.994, h1.b)*(0.35 + 1.2*h1.r)) + vec3(1.0, 0.95, 0.9)*(step(0.997, h2.b)*(1.0 + 2.5*h2.r));
@@ -171,12 +174,13 @@ WORLD = (_HEAD + '  vec3 base = alb, g0 = glow;\n' + _ROAD + '  vec3 aRoad = alb
 # The space track's road (the "slime" program, drawn after everything solid, premultiplied over it): green slime you
 # see through to the planet and the stars. It heaves slowly, shines like something wet, and holds gold and silver
 # sparkles at two depths that slide against each other as you move (shaders.h FS_WORLD material 9, made cheap)
-SLIME = _HEAD.replace('uniform vec3 uSkyHor, uHeadPos, uHeadDir;', 'uniform vec3 uSkyHor, uHeadPos, uHeadDir, uSkyTop, uCamPos, uSunDir, uSunCol; uniform float uTime; uniform sampler2D uHash;').replace('void main(){', '''// one layer of sparkles: a four-pointed one in about a quarter of the cells (cs metres), gold or silver, twinkling
-vec3 spark(vec2 p, float cs, float off, out float k){
+SLIME = _HEAD.replace('uniform vec3 uSkyHor, uHeadPos, uHeadDir;', 'uniform vec3 uSkyHor, uHeadPos, uHeadDir, uSkyTop, uCamPos, uSunDir, uSunCol; uniform float uTime; uniform sampler2D uHash;').replace('void main(){', '''// one layer of sparkles: a four-pointed one in about a quarter of the cells (cs metres), gold or silver, twinkling.
+// rgb: its light; a: how much of this pixel it covers
+vec4 spark(vec2 p, float cs, float off){
   vec2 pp = p/cs, f = fract(pp) - 0.5; vec4 h = texture(uHash, (floor(pp) + 0.5 + off)*0.00390625);
   vec2 q = f - (h.rg - 0.5)*0.5; float r = length(q);
-  k = clamp(1.0 - (abs(q.x*q.y)*160.0 + r*(6.0 + 4.0*h.a)), 0.0, 1.0)*step(0.74, h.b);
-  return mix(vec3(1.0, 0.74, 0.22), vec3(0.82, 0.88, 1.0), step(0.5, h.a))*k*(0.9 + 0.6*sin(uTime*3.0 + h.b*40.0));
+  float k = clamp(1.0 - (abs(q.x*q.y)*160.0 + r*(6.0 + 4.0*h.a)), 0.0, 1.0)*step(0.74, h.b);
+  return vec4(mix(vec3(1.0, 0.74, 0.22), vec3(0.82, 0.88, 1.0), step(0.5, h.a))*k*(0.9 + 0.6*sin(uTime*3.0 + h.b*40.0)), k);
 }
 void main(){''') + '''  {
     vec3 V = normalize(uCamPos - vP);
@@ -186,8 +190,9 @@ void main(){''') + '''  {
     alb = mix(vec3(0.02, 0.22, 0.07), vec3(0.12, 0.50, 0.16), clamp((w.x - 0.35)*2.5, 0.0, 1.0))*(0.8 + 0.3*w2.x);
     vec3 R = reflect(-V, normalize(nb)); float sd = max(dot(R, uSunDir), 0.0), s = sd*sd; s *= s; s *= s; s *= s; s *= s; s *= s; s *= s;
     glow = uSunCol*s*1.8 + uSkyTop*F*0.8 + vec3(0.02, 0.16, 0.05)*(0.6 + 0.4*w.x);
-    float vy = max(abs(V.y), 0.12), k0 = 0.0, k1 = 0.0;   // two layers of sparkles, 0.15 m and 0.45 m down
-    vec3 sc = spark(vP.xz - V.xz*(0.15/vy), 1.1, 0.0, k0) + spark(vP.xz - V.xz*(0.45/vy), 1.5, 91.0, k1)*0.7; float st = max(k0, k1);
+    float vy = max(abs(V.y), 0.12);   // two layers of sparkles, 0.15 m and 0.45 m down
+    vec4 s0 = spark(vP.xz - V.xz*(0.15/vy), 1.1, 0.0), s1 = spark(vP.xz - V.xz*(0.45/vy), 1.5, 91.0);
+    vec3 sc = s0.rgb + s1.rgb*0.7; float st = max(s0.a, s1.a);
     glow += sc*1.6; alb = mix(alb, vec3(1.0, 0.85, 0.5), st*0.5);
     float a = clamp(0.38 + 0.40*F + 0.5*st + 0.5*s, 0.0, 0.95);   // (mostly see-through: the stars and the planet show under it)
     oCol = vec4(tone(mix(vFog.rgb, alb*lit + glow, vFx.x))*a, a); }

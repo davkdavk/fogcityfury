@@ -2631,7 +2631,7 @@ static void printJSON(FILE* o) {
 #else
     fprintf(o, "\"edPinches\":0,\"edTool\":-1,\"edTouch\":\"\",");
 #endif
-    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"fx\":[%d,%d,%d],\"space\":%d,\"slimeTris\":%d,\"spaceFalls\":%d,\"spaceLaunches\":%d,\"goldUfo\":%d,\"goldUfoAt\":[%.1f,%.1f,%.1f],\"ufoSplashes\":%d,\"ufos\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, optRings, optMist, optGrass, (int)W.space, W.slimeTris, spaceFalls, secret::launches, (int)W.hasUfo, W.ufoAt.x, W.ufoAt.y, W.ufoAt.z, wfx::splashed, (int)wfx::ufos.size(), grassNear(), W.beachLand());
+    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"fx\":[%d,%d,%d],\"space\":%d,\"slimeTris\":%d,\"spaceFalls\":%d,\"spaceLaunches\":%d,\"goldUfo\":%d,\"goldUfoAt\":[%.1f,%.1f,%.1f],\"ufoSplashes\":%d,\"cannonRounds\":%d,\"cannonAimErr\":%.1f,\"ufos\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, optRings, optMist, optGrass, (int)W.space, W.slimeTris, spaceFalls, secret::launches, (int)W.hasUfo, W.ufoAt.x, W.ufoAt.y, W.ufoAt.z, wfx::splashed, wfx::rounds, wfx::aimErr, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
