@@ -514,7 +514,7 @@ struct Crate { V3 p; float cd; };
 static std::vector<Wreck> wrecks; static std::vector<Debris> debris; static std::vector<Rocket> rockets; static std::vector<Crate> crates;
 static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;
 static int keyJingles = 0;   // test metric: key jingles played
-static bool grassOff = false, ripAt = false; static float ripX = 0, ripZ = 0; static int grassTufts(); static bool cliEdTouch = false; static std::string edTouchResult;
+static bool fxaaOff = false, grassOff = false, ripAt = false; static float ripX = 0, ripZ = 0; static int grassTufts(); static bool cliEdTouch = false; static std::string edTouchResult;
 static bool touchHasAmmo() { return ammo > 0; }
 static bool selIsCustom();   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
 static bool cratesOn() { return rocketLap != player.lap; }
@@ -1660,20 +1660,21 @@ static void drawWorldMerged(bool terrain, bool props, V3 cam) {
 // kept while near (the Xbox 360's cell renderer has its own, built with the track: see World::build) ----
 #ifndef FCF_XENOS_CULL
 namespace grass {
-// Two rings of squares around the camera. Near: thick tufts of curved blades. Far: thinner, bigger, flat-bladed tufts
-// out to about 125 m. The grass program shrinks blades into the ground with distance (uGrassFade), so the near ring
+// Rings of squares around the camera. Near: thick tufts of curved blades. Further out: thinner, bigger, flat-bladed
+// tufts, to about 190 m (60 m on phones). Blades also take the ground's own colour towards the far edge. The grass program shrinks blades into the ground with distance (uGrassFade), so the near ring
 // melts into the far one and the far one into the bare hillside, and a square is always built before it can be seen:
 // each ring fades out a little short of its inner edge.
 struct Tile { int x = 1 << 30, z = 0, gen = -1; Mesh m; };
 struct Ring { float tile; int R; float step, size; int blades, mode; float in0, in1, out0, out1; std::vector<Tile> tiles; };
 #ifdef FCF_MOBILE
-static Ring rings[2] = { { 16, 2, 1.25f, 1.0f, 3, 1, -2, -1, 22, 30 }, { 32, 3, 2.4f, 1.9f, 3, 2, 22, 30, 78, 94 } };
+static Ring rings[] = { { 16, 2, 1.25f, 1.0f, 3, 1, -2, -1, 18, 30 }, { 32, 2, 2.2f, 1.7f, 3, 2, 18, 30, 44, 62 } };
 #else
-static Ring rings[2] = { { 16, 3, 0.6f, 1.0f, 5, 1, -2, -1, 36, 46 }, { 32, 4, 1.5f, 1.8f, 4, 2, 36, 46, 104, 124 } };
+static Ring rings[] = { { 16, 3, 0.6f, 1.0f, 5, 1, -2, -1, 26, 46 }, { 32, 3, 1.1f, 1.45f, 4, 2, 26, 46, 66, 94 }, { 48, 4, 2.0f, 2.1f, 4, 2, 66, 94, 125, 188 } };
 #endif
 static int built = 0, tufts = 0;
 static void draw(V3 cam) {
     if (grassOff || W.flat) return;
+    { const Ring& last = rings[sizeof rings / sizeof rings[0] - 1]; pGrass.f2("uGrassEnd", last.out1 * 0.45f, last.out1 * 0.92f); }
     for (Ring& r : rings) {
         const int N = 2 * r.R + 1; if (r.tiles.empty()) r.tiles.resize(N * N);
         int cx = (int)floorf(cam.x / r.tile), cz = (int)floorf(cam.z / r.tile), budget = 4;
@@ -2372,6 +2373,7 @@ static void render(int fbw, int fbh) {
     gfx::use(0, fbw, fbh); gfx::bind(4, resTex); gfx::bind(5, blTex[0]);
     pPost.f1("uBright", vidBright * 0.01f); pPost.i1("uMode", 2); pPost.f1("uBlur", blur); pPost.f1("uCA", chase ? caT * 0.012f + blur * 0.04f : 0); pPost.f1("uFlash", clampf(flashT, 0, 1) * 0.55f); pPost.v3("uFlashCol", flashCol);
     pPost.f1("uRain", chase && !debugTop && state != CARSEL && state != TRACKSEL ? wx().rain : 0.0f); pPost.f1("uTime", T);
+    pPost.f1("uFxaa", vidAA > 0 && !fxaaOff ? 1.0f : 0.0f); pPost.f2("uPx", 1.0f / rw, 1.0f / rh);   // (edge smoothing goes with the anti-aliasing setting)
     pPost.f1("uVig", 0.45f + blur * 5); pPost.f1("uSat", chase && player.dead && state != TITLE ? 0.5f : 1.0f); gfx::drawFull(); gfx::depthTest(true);
     }
     if (!hideUI && (DRAW_MASK & DM_UI)) { traceDraw("UI"); gfx::depthWrite(false); gfx::depthTest(false); gfx::blend(gfx::B_ALPHA); ui.H = 720; ui.W = 720 * asp; uiW = ui.W; drawHUD(); drawTouch(); ui.flush(pUI); gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); }
@@ -2696,7 +2698,7 @@ int main(int argc, char** argv) {
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
         else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--bright") vidBright = std::max(50, std::min(150, atoi(argv[++i]))); else if (a == "--autocut") { autoDrive = true; autoCut = atoi(argv[++i]); } else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
-        else if (a == "--ripat") { ripAt = true; ripX = F(1); ripZ = F(2); i += 2; } else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
+        else if (a == "--nofxaa") fxaaOff = true; else if (a == "--ripat") { ripAt = true; ripX = F(1); ripZ = F(2); i += 2; } else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
         else if (a == "--hold") { int sc = SDL_GetScancodeFromName(argv[++i]); if (sc) heldKeys.push_back(sc); }

@@ -90,6 +90,13 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.11
+
+- Anti-aliasing now also smooths edges inside surfaces (lit windows, road lines) and very bright edges, which
+  multisampling alone left jagged
+- Grass reaches further (about 190 m) in three steps of detail and takes the ground's colour at its far edge, so you
+  no longer see it arrive
+
 ## What's new in 2.1
 
 - Grass no longer pops in: it fades in with distance, with a second, lighter ring of grass out to about 125 m

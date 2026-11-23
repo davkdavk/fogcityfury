@@ -12,18 +12,20 @@ void main(){ vec4 w = uModel*vec4(aP,1.0); vP = w.xyz; vN = mat3(uModel)*aN; vC 
 // Grass: the mesh shader, plus the wind and the fade. aUV.x: how far up its blade this corner is (the root stays put,
 // the tip moves most); aUV.y: a number of the blade's own; aN: the corner's offset from its tuft's root. Gusts roll
 // across the field (the slow wave), each blade flutters in them. uGrassFade: tufts grow from nothing between x and y
-// metres from the camera and shrink back into the ground between z and w (so no square of grass is seen arriving)
+// metres from the camera and shrink back into the ground between z and w (so no square of grass is seen arriving).
+// uGrassEnd: between these distances a blade takes the colour of the ground under it, so the last of the grass cannot
+// be told from the bare hillside beyond
 static const char* VS_GRASS = R"(#version 330 core
 layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC;
 layout(location=3) in vec2 aUV; layout(location=4) in float aM;
-uniform mat4 uVP, uModel; uniform float uTime; uniform vec3 uCamPos; uniform vec4 uGrassFade;
+uniform mat4 uVP, uModel; uniform float uTime; uniform vec3 uCamPos; uniform vec4 uGrassFade; uniform vec2 uGrassEnd;
 out vec3 vP, vN, vC; out vec2 vUV; out float vMat;
 void main(){
   vec3 root = aP - aN; float d = length(root.xz - uCamPos.xz);
   float sc = smoothstep(uGrassFade.x, uGrassFade.y, d)*(1.0 - smoothstep(uGrassFade.z, uGrassFade.w, d));
   float gust = 0.55 + 0.45*sin(uTime*0.9 + aP.x*0.07 + aP.z*0.05), k = aUV.x*aUV.x;
   vec3 p = root + aN*sc + (vec3(sin(uTime*2.3 + aP.x*0.6 + aUV.y), 0.0, cos(uTime*1.9 + aP.z*0.6 + aUV.y*1.7))*(0.07*gust*k) + vec3(0.16*gust*k, -0.03*gust*k, 0.07*gust*k))*sc;
-  vec4 w = uModel*vec4(p,1.0); vP = w.xyz; vN = vec3(0.0,1.0,0.0); vC = aC*(0.92 + 0.16*gust*aUV.x); vUV = vec2(0.0); vMat = aM; gl_Position = uVP*w; }
+  vec4 w = uModel*vec4(p,1.0); vP = w.xyz; vN = vec3(0.0,1.0,0.0); float far = smoothstep(uGrassEnd.x, uGrassEnd.y, d); vC = mix(aC*(0.92 + 0.16*gust*aUV.x), aC/mix(0.78, 1.4, aUV.x), far); vUV = vec2(0.0); vMat = aM; gl_Position = uVP*w; }
 )";
 
 static const char* VS_SKY = R"(#version 330 core
@@ -457,8 +459,13 @@ void main(){
 // post chain. uMode 0: bright pass + downsample, 1: gaussian blur, 2: final composite
 static const char* FS_POST = R"(#version 330 core
 in vec2 vNdc; out vec4 oCol;
-uniform sampler2D uTex, uBloom; uniform int uMode; uniform vec2 uDir; uniform float uBright, uBlur, uCA, uFlash, uVig, uSat, uRain, uTime; uniform vec3 uFlashCol;
+uniform sampler2D uTex, uBloom; uniform int uMode; uniform vec2 uDir, uPx; uniform float uBright, uBlur, uCA, uFlash, uVig, uSat, uRain, uTime, uFxaa; uniform vec3 uFlashCol;
 vec3 tonemap(vec3 c){ c *= 0.64*(uBright > 0.01 ? uBright : 1.0); c = (c*(2.51*c+0.03))/(c*(2.43*c+0.59)+0.14); return pow(clamp(c,0.0,1.0), vec3(1.0/2.2)); }
+// Edge smoothing after the tone map (FXAA). Multisampling averages the picture while it is still in its full range of
+// brightness, so an edge between something very bright (a lit window, the sky, a lamp) and something dark stays
+// jagged once it is tone-mapped. This finds such edges in the finished picture and blends along them.
+vec3 fin(vec2 p){ return tonemap(texture(uTex, p).rgb + texture(uBloom, p).rgb*0.38); }
+float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 void main(){
   vec2 uv = vNdc*0.5+0.5;
   if(uMode==0){
@@ -487,6 +494,18 @@ void main(){
     c /= float(N);
     c += texture(uBloom, uv).rgb*0.38; c *= 1.0 + 0.10*wetm;
     c = tonemap(c);
+    if(uFxaa > 0.5){
+      float lNW = lum(fin(uv + vec2(-0.5,-0.5)*uPx)), lNE = lum(fin(uv + vec2(0.5,-0.5)*uPx)), lSW = lum(fin(uv + vec2(-0.5,0.5)*uPx)), lSE = lum(fin(uv + vec2(0.5,0.5)*uPx)), lM = lum(c);
+      float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+      if(lMax - lMin > max(0.035, lMax*0.11)){
+        vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+        float rcp = 1.0/(min(abs(dir.x), abs(dir.y)) + max((lNW + lNE + lSW + lSE)*0.03125, 0.0078125));
+        dir = clamp(dir*rcp, vec2(-8.0), vec2(8.0))*uPx;
+        vec3 a = 0.5*(fin(uv + dir*(1.0/3.0 - 0.5)) + fin(uv + dir*(2.0/3.0 - 0.5)));
+        vec3 b = a*0.5 + 0.25*(fin(uv - dir*0.5) + fin(uv + dir*0.5)); float lb = lum(b);
+        c = mix((lb < lMin || lb > lMax) ? a : b, c, smoothstep(0.0, 0.004, uBlur*m + uCA));   // (not where the speed blur is already smearing the picture)
+      }
+    }
     c *= 1.0 - uVig*dot(d,d)*1.5;
     c = mix(vec3(dot(c, vec3(0.3,0.59,0.11))), c, uSat);
     oCol = vec4(mix(c, uFlashCol, uFlash), 1.0);
