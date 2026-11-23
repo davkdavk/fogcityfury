@@ -12,7 +12,7 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
     V3 skyT = d.skyTop * (1 - w.grey) + grey * (w.grey * 0.85f), skyH = d.skyHor * (1 - w.grey) + grey * w.grey;
     p.v3("uSunDir", d.sun); p.v3("uSunCol", sunC * (1 - 0.35f * w.grey)); p.v3("uSkyTop", skyT + V3(0.25f, 0.25f, 0.32f) * bolt); p.v3("uSkyHor", skyH + V3(0.25f, 0.25f, 0.32f) * bolt);
     p.f1("uWet", w.wet); p.f1("uRain", w.rain); p.f1("uOvercast", w.grey); p.f1("uFogNoise", weather == W_FOG ? 1.0f : w.rain > 0 ? 0.4f : 0.0f); p.f1("uBoltI", bolt); p.v3("uBoltDir", boltDir);
-    p.i1("uDetail", 6);
+    p.i1("uDetail", 6); if (p.has("uCarTex")) p.i1("uCarTex", 9);
     if (p.has("uKeySt")) {
         if (W.keyStreet.size() == 4) p.v4("uKeySt", W.keyStreet[0], W.keyStreet[1], W.keyStreet[2], W.keyStreet[3]);
         else p.v4("uKeySt", 0, 0, 0, 0);
@@ -50,11 +50,15 @@ static void drawCar(const Car& c, Prog& p, bool lit) {
     M4 M = mul(translate(c.pos + V3(0, 0.03f + c.heave + c.ride, 0)), mul(rotY(c.yaw), mul(rotX(-c.pitch - c.squat), rotZ(c.roll + c.lean))));
     p.m4("uModel", M);
     if (lit) { p.v3("uPaint", PAINTS[c.paint]); p.f1("uChrome", c.paint == 7 ? 1.0f : 0.0f); p.f1("uBrake", c.braking ? 1.0f : 0.0f); }
+    const CarModel* cm = carModel(c.type);
+    if (lit) gfx::bind(9, carTex[c.type] ? carTex[c.type] : whiteTex);
     carMesh[c.type].draw();
+    if (lit && carTex[c.type]) gfx::bind(9, whiteTex);   // (the wheels have no baked shading)
     for (int w = 0; w < 4; w++) {
-        float x = (w & 1 ? 1 : -1) * S.tw, z = w < 2 ? S.wbF : -S.wbR;
-        p.m4("uModel", mul(M, mul(translate(V3(x, S.wr - c.heave - c.droop + c.wy[w] - c.ride, z)), mul(rotY(w < 2 ? c.steer * 0.42f : 0), mul(rotX(c.wheelRot), scale(c.type == 2 ? 0.19f : 0.16f, S.wr, S.wr))))));
-        wheelMesh.draw();
+        float x = (w & 1 ? 1 : -1) * S.tw, z = w < 2 ? S.wbF : -S.wbR, k = cm ? S.wr / cm->wheelR : 0;
+        M4 sc = cm ? scale(k, k, k) : scale(c.type == 2 ? 0.19f : 0.16f, S.wr, S.wr);
+        p.m4("uModel", mul(M, mul(translate(V3(x, S.wr - c.heave - c.droop + c.wy[w] - c.ride, z)), mul(rotY(w < 2 ? c.steer * 0.42f : 0), mul(rotX(c.wheelRot), sc)))));
+        (cm ? carWheel[c.type][x < 0 ? 1 : 0] : wheelMesh).draw();
     }
 }
 static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode : st == TITLE; }
@@ -138,7 +142,7 @@ static void drawWreckage(Prog& p, bool lit) {
         const CarSpec& S = SPECS[w.type]; M4 M = mul(translate(w.pos + V3(0, -0.07f, 0)), mul(rotY(w.yaw), mul(rotX(w.pitch), rotZ(w.roll))));
         float gone = goneOf(w.age); if (!lit && gone > 0.5f) continue;          // no shadow once it is mostly gone
         if (lit) { p.f1("uBurnt", w.age < 7 ? 2.0f : 1.0f); p.f1("uGone", gone); }   // embers glow for a while; then it fades out
-        p.m4("uModel", M); carMesh[w.type].draw();
+        p.m4("uModel", M); if (lit) gfx::bind(9, carTex[w.type] ? carTex[w.type] : whiteTex); carMesh[w.type].draw(); if (lit) gfx::bind(9, whiteTex);
         for (int k = 0; k < 4; k++) if (w.wheels >> k & 1) { p.m4("uModel", mul(M, mul(translate(V3((k & 1 ? 1 : -1) * S.tw, S.wr * 0.8f, k < 2 ? S.wbF : -S.wbR)), scale(w.type == 2 ? 0.19f : 0.16f, S.wr, S.wr)))); wheelMesh.draw(); }
     }
     if (lit) p.f1("uBurnt", 1);

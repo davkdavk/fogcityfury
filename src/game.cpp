@@ -32,7 +32,7 @@ static const WxDef WX[NWX] = {
 static int weather = W_CLEAR;                    // what is being rendered and driven on right now
 static const WxDef& wx() { return WX[weather]; }
 static float boltT = 4, boltFlash = 0;
-static const int LAPS = 3, NAI = 9, NPAINT = 8, NCARS = 4;   // nine opponents: ten cars on the grid
+static const int LAPS = 3, NAI = 9, NPAINT = 8, NCARS = 5;   // nine opponents: ten cars on the grid
 
 // ------------------------------------------------------------------ cars
 #include "carspec.h"
@@ -40,6 +40,7 @@ static const V3 PAINTS[NPAINT] = { {0.75f,0.03f,0.03f},{0.03f,0.16f,0.75f},{0.95
 static const char* PAINT_NAMES[NPAINT] = { "RED", "BLUE", "YELLOW", "GREEN", "WHITE", "BLACK", "PURPLE", "GOLD CHROME" };
 
 #include "cars.h"
+#include "model.h"   // cars made in Blender (tools/blender/fcf_model.py)
 static void buildKey(MB& m) {
     V3 w(1, 1, 1); const int N = 12;
     for (int i = 0; i < N; i++) { float a = i * 2 * M_PI / N; m.box(cosf(a) * 0.30f, 0, 0.10f, 0.05f, 0, 0, 0, w, 1, w, 1); }
@@ -93,6 +94,8 @@ static State state = TITLE;
 static World W;
 static Car player, ai[NAI];
 static Mesh carMesh[NCARS], wheelMesh, keyMesh;
+static Mesh carWheel[NCARS][2];               // a Blender car's own wheel: [0] the +X side, [1] mirrored for -X
+static gfx::Tex carTex[NCARS] = {}, whiteTex = 0;   // its baked shading (unit 9; white: none)
 static Prog pGrass, pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
 #ifdef FCF_XENOS_LEAN
 static Prog pGround, pRoad, pRoadWet, pWall, pMisc;   // the 360's own world shaders, one per kind of surface (xenon/lean_shaders.py)
@@ -698,7 +701,16 @@ int main(int argc, char** argv) {
     bootColor(0xFF00FFFF);   // cyan: texture setup returned
 #endif
 
-    for (int t = 0; t < NCARS; t++) { MB m; buildCar(t, m); carMesh[t].upload(m); }
+    { unsigned char w[4] = { 255, 255, 255, 255 }; gfx::Sampler s; gfx::tex2D(whiteTex, gfx::RGBA8, 1, 1, w, s); }
+    for (int t = 0; t < NCARS; t++) {
+        MB m;
+        if (const CarModel* cm = carModel(t)) {   // made in Blender: its body, its wheel (both sides) and its shading
+            modelMesh(m, cm->bodyV, cm->bodyNV, cm->bodyI, cm->bodyNI, cm->scale, false);
+            for (int s = 0; s < 2; s++) { MB w; modelMesh(w, cm->wheelV, cm->wheelNV, cm->wheelI, cm->wheelNI, 1.0f, s == 1); carWheel[t][s].upload(w); }
+            modelTexture(carTex[t], *cm);
+        } else buildCar(t, m);
+        carMesh[t].upload(m);
+    }
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: car meshes complete");
     bootColor(0xFF0000FF);   // blue: car meshes returned

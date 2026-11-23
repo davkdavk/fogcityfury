@@ -218,7 +218,7 @@ PLANET = _HEAD.replace('uniform vec3 uSkyHor, uHeadPos, uHeadDir;', 'uniform vec
 # vMat: 0 plain 1 paint 2 glass 3 headlight 4 taillight 5 rubber
 CAR = COMMON + '''
 in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
-uniform vec3 uPaint; uniform float uBrake, uChrome, uBurnt, uGone;
+uniform vec3 uPaint; uniform float uBrake, uChrome, uBurnt, uGone; uniform sampler2D uCarTex;
 void main(){
   vec3 n = normalize(vN)*(gl_FrontFacing ? 1.0 : -1.0);
   vec3 toCam = uCamPos - vP; float dist = length(toCam); vec3 V = toCam/dist;
@@ -237,6 +237,8 @@ void main(){
   else if(vMat < 3.5) col = vC*2.1 + env*0.3;
   else if(vMat < 4.5) col = vC*(0.25*lit + 0.25 + uNight*1.2 + uBrake*2.6);
   else                col = vC*lit;
+  float lamp = step(2.5, vMat)*step(vMat, 4.5);   // a Blender car's baked shading, on all but the lights (fetched outside any branch)
+  col *= mix(mix(0.45, 1.0, texture(uCarTex, vUV).r), 1.0, lamp);
   col = mix(col, vec3(0.03,0.026,0.022)*lit, clamp(uBurnt, 0.0, 1.0));
   col = mix(col, uSkyHor, 1.0 - exp(-dist*uFogDen));
   oCol = vec4(tone(col), 1.0);

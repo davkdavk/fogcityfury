@@ -90,6 +90,15 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.27
+
+- A new car: the **Ronin 120**, an early-70s Japanese sedan, light, rear-driven and eager to turn. Round headlights,
+  chrome bumpers and door mirrors, steel wheels; it takes any paint like the others
+- It is the first car made in Blender: the Blender conduit (`tools/blender/fcf_model.py`) brings a model into the game
+  for every platform, trims it to the triangle budget, and bakes its soft shading (in the wheel arches, under the
+  bumpers, between the panels) into a texture the car shaders use, on the Xbox 360 too
+- Online, an older version of the game shows the Ronin as a Stallion
+
 ## What's new in 2.26
 
 - Under the bonnet: game.cpp (3,150 lines) is split into eight files by job: serverlist, settings, combat, driving,

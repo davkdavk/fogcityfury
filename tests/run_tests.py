@@ -21,7 +21,7 @@ VERBOSE = "-v" in sys.argv
 RENDER = "--render" in sys.argv
 WINDOWS = "--windows" in sys.argv
 FILTERS = [a for a in sys.argv[1:] if not a.startswith("-")]
-CARS = ["stallion", "katana", "bruiser"]
+CARS = ["stallion", "katana", "bruiser", "ripdog", "ronin"]
 NTRACKS = 7
 NTRACKS_KEYS = 6   # (Twin Isles, the seventh, has no hidden keys)
 PI = "3.1416"
@@ -725,13 +725,15 @@ def net_player_shares_a_track_from_the_lobby():
                 return subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", name, "--ready", "--auto", "--seconds", str(secs), "--tracksdir", folder] + list(extra), stdout=subprocess.PIPE, text=True)
             procs = [client("alice", mine, 130, "--share", "--sharewhen", "2"), client("bob", none, 130, "--vote", "yes")]
             a, b = [json.loads(p.communicate(timeout=260)[0].strip().splitlines()[-1]) for p in procs]
+            time.sleep(2.5)   # (the server goes back to its own track a second after the results: let it, before it is stopped)
         kept = os.listdir(none)
     finally:
         shutil.rmtree(mine); shutil.rmtree(none)
     check(a["shared"] == 1 and "the lobby votes on it" in srv.log, "alice's game sent her track and the lobby voted on it", a["shared"])
     check("2 yes, 0 no: playing it" in srv.log and b["votesPassed"] == 1, "bob said yes: it passed", b["votesPassed"])
     check("phase RACE  track %d" % NTRACKS in srv.log, "and they raced it")
-    check("RESULTS  track %d" % NTRACKS in srv.log and srv.log.index("LOBBY  track 0", srv.log.index("RESULTS  track %d" % NTRACKS)) > 0, "afterwards the server went back to its own track")
+    res = srv.log.find("RESULTS  track %d" % NTRACKS)
+    check(res >= 0 and srv.log.find("LOBBY  track 0", res) > 0, "afterwards the server went back to its own track", srv.log[res:res + 200] if res >= 0 else "no results")
     check(b["kept"] == 1 and kept == ["my-track.fcft"], "bob kept the track in his tracks", (b["kept"], kept))
 
     mine, none = tempfile.mkdtemp(), tempfile.mkdtemp()
@@ -1879,6 +1881,19 @@ def the_wardens_minigun_tracks_and_fires_bursts():
         check(d["ufoWrecks"] >= 3 and d["cannonRounds"] >= 30 * d["ufoWrecks"], "track %d: bursts, not single shots" % t, (d["ufoWrecks"], d["cannonRounds"]))
         check(d["cannonAimErr"] < 6, "track %d: on target when it counts" % t, d["cannonAimErr"])
         check(d["mechFootErr"] < 0.05, "track %d: the feet still land where they should" % t, d["mechFootErr"])
+
+@test
+def the_ronin_120_comes_from_blender_and_races():
+    """The Ronin 120 is the first car made in Blender and brought in through the conduit (tools/blender/fcf_model.py,
+    src/model_ronin.h): within the triangle budget, with its baked shading, and it drives a full race like the others."""
+    import re
+    h = open(os.path.join(ROOT, "src", "model_ronin.h")).read()
+    n = {k: int(v) for k, v in re.findall(r"(BODY_NV|BODY_NI|WHEEL_NV|WHEEL_NI|AO_N) = (\d+)", h)}
+    check(n["BODY_NI"] % 3 == 0 and 5000 < n["BODY_NI"] // 3 <= 40000, "body within the PC budget (40k triangles)", n["BODY_NI"] // 3)
+    check(n["WHEEL_NI"] // 3 <= 4000, "a light wheel", n["WHEEL_NI"] // 3)
+    ao = [int(x) for x in re.search(r"AO\[\] = \{\n(.*?) \};", h, re.S).group(1).replace("\n", "").split(",")]
+    check(len(ao) == n["AO_N"] ** 2 and min(ao) < 80 and sum(ao) / len(ao) > 100, "baked shading: dark arches, a mostly light body", (len(ao), min(ao), sum(ao) // len(ao)))
+    _race(0, 4)
 
 @test
 def every_xbox_program_gets_the_vertex_layout_of_its_vertex_shader():

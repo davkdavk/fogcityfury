@@ -326,6 +326,7 @@ void main(){
 // car paint with dynamic cubemap reflections. vMat: 0 plain 1 paint 2 glass 3 headlight 4 taillight 5 rubber
 static const char* FS_CAR = R"(
 in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
+uniform sampler2D uCarTex;   // a Blender car's baked ambient occlusion (r; white for the others)
 uniform vec3 uPaint; uniform float uBrake, uChrome, uBurnt, uGone;   // uGone: 0 solid .. 1 faded away (wrecks dissolve through a dither pattern)
 void main(){
   vec3 n = normalize(vN); if(!gl_FrontFacing) n = -n;
@@ -362,6 +363,7 @@ void main(){
   } else {
     col = vC*(amb + uSunCol*ndl*sh)*(1.0-F*0.4) + env*F*0.4 + sunSpec*0.3;
   }
+  if(m != 3 && m != 4) col *= mix(0.45, 1.0, texture(uCarTex, vUV).r);
   finish(applyFog(col, vP), 1.0);
 }
 )";

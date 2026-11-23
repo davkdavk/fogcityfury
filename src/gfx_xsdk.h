@@ -38,7 +38,7 @@ static std::vector<TexObj> textures(1);
 static std::vector<BufObj> buffers(1);
 static std::vector<TargetObj> targets(1);  // handle 0 is the present buffer
 static std::vector<XsdkSamplerState> samplerStates(1);
-static std::array<Tex,9> bound = {};   // (unit 8: uHash, the noise texture without mip maps)
+static std::array<Tex,10> bound = {};   // (unit 8: uHash, the noise texture without mip maps; 9: uCarTex, a Blender car's shading)
 static Target activeTarget = 0;
 static int activeW = 0, activeH = 0;
 static bool dirty = false;
