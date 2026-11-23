@@ -385,10 +385,10 @@ float wh(vec2 p){ float t = uTime;
 #ifdef FCF_RIPPLE
 // Rings from splashes (x, z, age in seconds, strength; strength 0: none). Each is one band of waves that spreads and
 // fades. Returns the slope of the water in x and z, and its height
-uniform vec4 uRip0, uRip1, uRip2, uRip3, uRip4, uRip5, uRip6, uRip7;
+uniform vec4 uRip0, uRip1, uRip2, uRip3, uRip4, uRip5, uRip6, uRip7; uniform float uRipScale;   // the options' WATER RINGS: 1 as made, 2 twice the size
 vec3 rip(vec4 r, vec2 p){
   if(r.w <= 0.0) return vec3(0.0);
-  vec2 dv = p - r.xy; float d = length(dv) + 0.001, rad = r.z*(3.0 + 1.6*r.w), life = clamp(1.0 - r.z/2.6, 0.0, 1.0);
+  vec2 dv = (p - r.xy)/max(uRipScale, 0.1); float d = length(dv) + 0.001, rad = r.z*(3.0 + 1.6*r.w), life = clamp(1.0 - r.z/2.6, 0.0, 1.0);
   float w = exp(-(d-rad)*(d-rad)/(1.0 + r.z*1.4))*life*life*r.w, ph = (d-rad)*4.2;
   return vec3(dv/d*cos(ph)*w, sin(ph)*w); }
 #endif

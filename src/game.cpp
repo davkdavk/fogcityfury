@@ -281,7 +281,8 @@ static void logoSounds(float t0, float t1) {
 static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBtn> tbtn; static std::vector<Finger> fingers; static int touchLaid = -1;
 static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold == b) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
 static const int RES[][2] = { { 854, 480 }, { 1024, 576 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } }; static const int NRES = 8;
-static const int AA_OPT[4] = { 0, 2, 4, 8 }, AF_OPT[5] = { 1, 2, 4, 8, 16 }, NVIDROWS = 6;
+static const int AA_OPT[4] = { 0, 2, 4, 8 }, AF_OPT[5] = { 1, 2, 4, 8, 16 }, NVIDROWS = 9;
+static int optRings = 100, optMist = 100, optGrass = 100;   // effects, %: the size of the rings on the water, how much spray a splash throws up, how thick the grass grows (0: off)
 static int vidBright = 85;   // brightness, %: scales the light going into the tone curve (50-150; 85 since 1.72, 100 was the old look)
 #ifdef __ANDROID__
 static bool vidFull = true, vidVsync = true; static int vidW = 1280, vidH = 720, vidAA = 0, vidAF = 4;    // phones: always full screen, drawn at 720p and scaled up, no MSAA. All changeable in the options
@@ -449,7 +450,8 @@ static void loadCfg() {
         int lp = 0; if (fscanf(f, " laps %d", &lp) == 1 && lp >= 1 && lp <= 9) selLaps = lp;
         int fl = 0; if (fscanf(f, " flowers %d", &fl) == 1 && fl >= 0) roamFlowers = fl;
         char cn[200]; unsigned cm = 0; while (fscanf(f, " ckey %199s %u", cn, &cm) == 2) customKeysSaved.push_back({ cn, cm });
-        int br = 0; if (fscanf(f, " bright %d", &br) == 1) vidBright = std::max(50, std::min(150, br));   // free roam: flowers picked up, the levels they make (minis.h)
+        int br = 0; if (fscanf(f, " bright %d", &br) == 1) vidBright = std::max(50, std::min(150, br));
+        { int a = 0, b = 0, c = 0; if (fscanf(f, " fx %d %d %d", &a, &b, &c) == 3) { optRings = std::max(0, std::min(300, a)); optMist = std::max(0, std::min(200, b)); optGrass = std::max(0, std::min(150, c)); } }   // free roam: flowers picked up, the levels they make (minis.h)
     }
     fclose(f);
 }
@@ -461,7 +463,7 @@ static void saveCfg() {
     fprintf(f, "v1\nvideo %d %d %d %d %d %d\n", (int)vidFull, vidW, vidH, vidAA, vidAF, (int)vidVsync); for (int i = 0; i < NBIND; i++) fprintf(f, "bind %d %d %d\n", i, binds[i][0], binds[i][1]);
     fprintf(f, "servers %d\n", (int)servers.size()); for (auto& e : servers) fprintf(f, "server %s\n", e.host.c_str()); fprintf(f, "name %s\nlaps %d\nflowers %d\n", nc.name, selLaps, roamFlowers);
     for (int t = NTRACKS; t < (int)TRACKS.size(); t++) if (keysGot[t] && !TRACKS[t].file.empty()) { std::string n = TRACKS[t].file; size_t sl = n.find_last_of("/\\"); if (sl != std::string::npos) n = n.substr(sl + 1); if (n.find(' ') == std::string::npos) fprintf(f, "ckey %s %u\n", n.c_str(), keysGot[t]); }   // keys found on your own tracks
-    fprintf(f, "bright %d\n", vidBright);
+    fprintf(f, "bright %d\n", vidBright); fprintf(f, "fx %d %d %d\n", optRings, optMist, optGrass);
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the
@@ -617,14 +619,14 @@ static void add(float x, float z, float amp) { if (W.HW(x, z) > -0.03f) return; 
 // a UFO. No random numbers: the same splash every time
 static void waterSplash(V3 p, float k) {
     ripple::add(p.x, p.z, clampf(0.6f + k * 0.7f, 0.5f, 2.5f)); if (g_noGL) return;
-    int n = (int)(22 + 26 * std::min(k, 2.5f)); V3 w(0.88f, 0.94f, 1.0f); float r0 = 0.6f + 0.9f * k;
+    int n = (int)((22 + 26 * std::min(k, 2.5f)) * optMist * 0.01f); V3 w(0.88f, 0.94f, 1.0f); float r0 = 0.6f + 0.9f * k;   // (optMist: the options' SPLASH MIST)
     for (int i = 0; i < n && parts.size() < 5200; i++) {
         float a = i * 2.39996f, u = (i + 0.5f) / n, r = r0 * sqrtf(u);
         V3 at(p.x + cosf(a) * r, 0.15f, p.z + sinf(a) * r);
         if (i % 3) spawn(at, V3(cosf(a) * (0.6f + 1.4f * u), (7 + 9 * (1 - u)) * sqrtf(k) + (i % 5) * 0.6f, sinf(a) * (0.6f + 1.4f * u)), 1.2f + (i % 4) * 0.3f, 0.3f + 0.3f * k, 1.1f + 0.5f * k, w, 0.30f, 0, -6.5f);   // the column
         else spawn(at, V3(cosf(a) * (5 + 4 * k), 2.5f + (i % 3), sinf(a) * (5 + 4 * k)), 0.8f + (i % 3) * 0.2f, 0.4f + 0.3f * k, 2.0f, w, 0.5f, 0, -11);                                                          // the skirt
     }
-    for (int i = 0; i < 8 && parts.size() < 5200; i++) { float a = i * 0.785f; spawn(V3(p.x + cosf(a) * r0, 0.3f, p.z + sinf(a) * r0), V3(cosf(a) * 1.2f, 1.6f, sinf(a) * 1.2f), 2.4f, 1.2f * (0.6f + 0.4f * k), 1.6f, w, 0.10f, 0, 0.15f); }   // mist that hangs
+    for (int i = 0; i < (int)(8 * optMist * 0.01f + 0.5f) && parts.size() < 5200; i++) { float a = i * 0.785f; spawn(V3(p.x + cosf(a) * r0, 0.3f, p.z + sinf(a) * r0), V3(cosf(a) * 1.2f, 1.6f, sinf(a) * 1.2f), 2.4f, 1.2f * (0.6f + 0.4f * k), 1.6f, w, 0.10f, 0, 0.15f); }   // mist that hangs
 }
 static void blast(V3 p, V3 vel, float k) {
     fireball(p, vel); if (p.y < 2.5f && W.HW(p.x, p.z) < -0.03f) waterSplash(p, 1.0f); tone(900, 0.9f, 0.9f * k, 1, -700); tone(70, 0.6f, 0.8f * k, 0, -40);
@@ -1757,7 +1759,8 @@ static Ring rings[] = { { 16, 3, 0.6f, 1.0f, 5, 1, -2, -1, 26, 46 }, { 32, 3, 1.
 #endif
 static int built = 0, tufts = 0;
 static void draw(V3 cam) {
-    if (grassOff || W.flat || W.space) return;
+    if (grassOff || W.flat || W.space || optGrass <= 0) return;
+    static int seen = -1; if (seen != optGrass) { seen = optGrass; for (Ring& r : rings) for (Tile& t : r.tiles) t.gen = -1; }   // (the GRASS setting changed: grow it again)
     { const Ring& last = rings[sizeof rings / sizeof rings[0] - 1]; pGrass.f2("uGrassEnd", last.out1 * 0.45f, last.out1 * 0.92f); }
     for (Ring& r : rings) {
         const int N = 2 * r.R + 1; if (r.tiles.empty()) r.tiles.resize(N * N);
@@ -1768,7 +1771,7 @@ static void draw(V3 cam) {
             int tx = cx + dx, tz = cz + dz; Tile& t = r.tiles[(((tz % N) + N) % N) * N + (((tx % N) + N) % N)];   // (each square has its place in the ring, so moving on only rebuilds the new edge)
             if (t.x != tx || t.z != tz || t.gen != W.gen) {
                 if (budget <= 0 && !fresh) { t.m.n = 0; t.x = 1 << 30; continue; }   // (four a frame: the rest next frame; they are past the fade)
-                budget--; MB b; tufts += W.grassSquare(b, tx * r.tile, tz * r.tile, r.tile, r.step, r.size, r.mode, 1e9f, r.blades); t.x = tx; t.z = tz; t.gen = W.gen; built++;
+                budget--; MB b; tufts += W.grassSquare(b, tx * r.tile, tz * r.tile, r.tile, r.step / sqrtf(std::max(0.25f, optGrass * 0.01f)), r.size, r.mode, 1e9f, r.blades); t.x = tx; t.z = tz; t.gen = W.gen; built++;
                 if (b.idx.empty()) t.m.n = 0; else t.m.upload(b);
             }
             t.m.draw();
@@ -1935,7 +1938,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     }
     if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2);
 #ifndef FCF_GFX_XSDK
-        for (int i = 0; i < 8; i++) { const ripple::R& r = ripple::rs[i]; float age = T - r.t0; bool on = age >= 0 && age < ripple::LIFE; char nm[8]; snprintf(nm, sizeof nm, "uRip%d", i); pWater.v4(nm, r.x, r.z, on ? age : 0.0f, on ? r.amp : 0.0f); }
+        pWater.f1("uRipScale", std::max(0.1f, optRings * 0.01f)); for (int i = 0; i < 8; i++) { const ripple::R& r = ripple::rs[i]; float age = T - r.t0; bool on = age >= 0 && age < ripple::LIFE && optRings > 0; char nm[8]; snprintf(nm, sizeof nm, "uRip%d", i); pWater.v4(nm, r.x, r.z, on ? age : 0.0f, on ? r.amp : 0.0f); }
 #endif
         W.water.draw(); }
 #ifndef FCF_GFX_XSDK
@@ -2101,14 +2104,15 @@ static void drawHUD() {
             if (optCapture) ui.text(Wd / 2, 646, 2.2f, white, "PRESS THE KEY TO USE     ESC: CANCEL", 1);
             else { if (!touchOn && !padUI) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, P("TAB: VIDEO SETTINGS     ESC: BACK", "{LB} {RB} VIDEO SETTINGS     {B} BACK"), 1); }
         } else {
-            char v[NVIDROWS][48]; static const char* nm[NVIDROWS] = { "DISPLAY", "RESOLUTION", "ANTI-ALIASING", "ANISOTROPIC FILTERING", "VSYNC", "BRIGHTNESS" };
-            static const char* help[NVIDROWS] = { "F11 SWITCHES THIS AT ANY TIME", "", "MSAA: SMOOTHS THE EDGES OF CARS AND BUILDINGS", "KEEPS THE ROAD AND GROUND SHARP INTO THE DISTANCE", "OFF: NO FRAME-RATE CAP, MAY TEAR", "LOWER IT IF THE PICTURE LOOKS WASHED OUT (100%: THE OLD LOOK)" };
+            char v[NVIDROWS][48]; static const char* nm[NVIDROWS] = { "DISPLAY", "RESOLUTION", "ANTI-ALIASING", "ANISOTROPIC FILTERING", "VSYNC", "BRIGHTNESS", "WATER RINGS", "SPLASH MIST", "GRASS" };
+            static const char* help[NVIDROWS] = { "F11 SWITCHES THIS AT ANY TIME", "", "MSAA: SMOOTHS THE EDGES OF CARS AND BUILDINGS", "KEEPS THE ROAD AND GROUND SHARP INTO THE DISTANCE", "OFF: NO FRAME-RATE CAP, MAY TEAR", "LOWER IT IF THE PICTURE LOOKS WASHED OUT (100%: THE OLD LOOK)", "THE SIZE OF THE RINGS THAT CARS AND SPLASHES LEAVE ON THE WATER", "HOW MUCH SPRAY GOES UP WHEN SOMETHING LANDS IN THE WATER", "HOW THICK THE GRASS GROWS (TURN IT DOWN ON A SLOW MACHINE)" };
             snprintf(v[0], 48, "%s", vidFull ? "FULL SCREEN" : "WINDOW"); snprintf(v[1], 48, "%d X %d", vidW, vidH);
             if (vidAA > 0) snprintf(v[2], 48, "%dX MSAA", vidAA); else snprintf(v[2], 48, "OFF");
             if (maxAF <= 1) snprintf(v[3], 48, "NOT SUPPORTED"); else if (vidAF > 1) snprintf(v[3], 48, "%dX", vidAF); else snprintf(v[3], 48, "OFF");
             snprintf(v[4], 48, "%s", vidVsync ? "ON" : "OFF"); snprintf(v[5], 48, "%d%%", vidBright);
+            int fx[3] = { optRings, optMist, optGrass }; for (int q = 0; q < 3; q++) { if (fx[q] > 0) snprintf(v[6 + q], 48, "%d%%", fx[q]); else snprintf(v[6 + q], 48, "OFF"); }
             for (int i = 0; i < NVIDROWS; i++) {
-                float y = 200 + i * 62.0f; bool sel = i == optRow; ui.rect(Wd / 2 - 500, y - 8, 1000, 50, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.9f : 0.5f);
+                float y = 150 + i * 41.0f; bool sel = i == optRow; ui.rect(Wd / 2 - 500, y - 6, 1000, 38, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.9f : 0.5f);
                 ui.text(Wd / 2 - 470, y + 4, 3, sel ? white : V3(0.8f, 0.82f, 0.86f), nm[i]); snprintf(b, sizeof b, "%s %.47s %s", sel ? "<" : " ", v[i], sel ? ">" : " "); ui.text(Wd / 2 + 250, y + 4, 3, sel ? yel : V3(0.75f, 0.85f, 1), b, 1);
                 const char* h = i == 1 ? (vidFull ? "FULL SCREEN: THE GAME IS DRAWN AT THIS SIZE AND SCALED TO THE SCREEN" : "THE SIZE OF THE WINDOW") : help[i]; if (sel) ui.text(Wd / 2, 530, 2.2f, dim, h, 1);
             }
@@ -2492,6 +2496,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
 #endif
             if (optRow == 1) { int i = 0; for (int q = 0; q < NRES; q++) if (RES[q][0] == vidW && RES[q][1] == vidH) i = q; for (int t = 0; t < NRES; t++) { i = (i + d + NRES) % NRES; if (RES[i][0] <= deskW && RES[i][1] <= deskH) break; } vidW = RES[i][0]; vidH = RES[i][1]; }
             if (optRow == 2) vidAA = cycle(AA_OPT, 4, vidAA, maxAA); if (optRow == 3) vidAF = cycle(AF_OPT, 5, vidAF, maxAF); if (optRow == 4) vidVsync = !vidVsync; if (optRow == 5) vidBright = std::max(50, std::min(150, vidBright + d * 5));
+            if (optRow == 6) optRings = std::max(0, std::min(300, optRings + d * 25)); if (optRow == 7) optMist = std::max(0, std::min(200, optMist + d * 25)); if (optRow == 8) optGrass = std::max(0, std::min(150, optGrass + d * 25));
             applyVideo(); saveCfg();
         }
         break; }
@@ -2617,7 +2622,7 @@ static void printJSON(FILE* o) {
 #else
     fprintf(o, "\"edPinches\":0,\"edTool\":-1,\"edTouch\":\"\",");
 #endif
-    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"space\":%d,\"slimeTris\":%d,\"spaceFalls\":%d,\"spaceLaunches\":%d,\"goldUfo\":%d,\"goldUfoAt\":[%.1f,%.1f,%.1f],\"ufoSplashes\":%d,\"ufos\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, (int)W.space, W.slimeTris, spaceFalls, secret::launches, (int)W.hasUfo, W.ufoAt.x, W.ufoAt.y, W.ufoAt.z, wfx::splashed, (int)wfx::ufos.size(), grassNear(), W.beachLand());
+    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"fx\":[%d,%d,%d],\"space\":%d,\"slimeTris\":%d,\"spaceFalls\":%d,\"spaceLaunches\":%d,\"goldUfo\":%d,\"goldUfoAt\":[%.1f,%.1f,%.1f],\"ufoSplashes\":%d,\"ufos\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, optRings, optMist, optGrass, (int)W.space, W.slimeTris, spaceFalls, secret::launches, (int)W.hasUfo, W.ufoAt.x, W.ufoAt.y, W.ufoAt.z, wfx::splashed, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);

@@ -90,6 +90,10 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.21
+
+- Sliders in Options > Video for the size of the water rings, the amount of splash mist and how thick the grass is
+
 ## What's new in 2.2
 
 - A secret track: find the golden UFO in Roam (follow its beam of light), park under it, and race the Space Ring,

@@ -224,6 +224,10 @@ Press **F1** on the title screen or in the pause menu. **Tab** switches between 
 - **Video.** Window or full screen, resolution, anti-aliasing, anisotropic filtering (keeps the road sharp
   into the distance), vsync, and **brightness** (lower it if the picture looks washed out; 100% is the
   original look). On a slow computer, a lower resolution in full screen is a real speed-up.
+- **Effects** (on the Video page). **Water rings**: the size of the rings cars and splashes leave on the water
+  (off up to 300%). **Splash mist**: how much spray goes up when something lands in the water (off up to 200%).
+  **Grass**: how thick the grass grows (off up to 150%; turn it down on a slow machine). The Xbox 360 keeps its
+  own fixed grass and has no water rings.
 
 ## Where your progress is saved
 
