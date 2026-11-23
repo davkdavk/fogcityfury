@@ -611,8 +611,22 @@ namespace ripple {
 struct R { float x = 0, z = 0, t0 = -99, amp = 0; }; static R rs[8]; static int next = 0, made = 0; static const float LIFE = 2.6f;
 static void add(float x, float z, float amp) { if (W.HW(x, z) > -0.03f) return; rs[next] = { x, z, T, amp }; next = (next + 1) % 8; made++; }
 }
+// Something lands in the water: a column of mist thrown up (white, hanging a moment before it drifts down), a low
+// skirt of spray thrown outward, and a ring on the water. k: about 0.4 for a car rolling in, 1.2 from a height, 2.5 for
+// a UFO. No random numbers: the same splash every time
+static void waterSplash(V3 p, float k) {
+    ripple::add(p.x, p.z, clampf(0.6f + k * 0.7f, 0.5f, 2.5f)); if (g_noGL) return;
+    int n = (int)(22 + 26 * std::min(k, 2.5f)); V3 w(0.88f, 0.94f, 1.0f); float r0 = 0.6f + 0.9f * k;
+    for (int i = 0; i < n && parts.size() < 5200; i++) {
+        float a = i * 2.39996f, u = (i + 0.5f) / n, r = r0 * sqrtf(u);
+        V3 at(p.x + cosf(a) * r, 0.15f, p.z + sinf(a) * r);
+        if (i % 3) spawn(at, V3(cosf(a) * (0.6f + 1.4f * u), (7 + 9 * (1 - u)) * sqrtf(k) + (i % 5) * 0.6f, sinf(a) * (0.6f + 1.4f * u)), 1.2f + (i % 4) * 0.3f, 0.3f + 0.3f * k, 1.1f + 0.5f * k, w, 0.30f, 0, -6.5f);   // the column
+        else spawn(at, V3(cosf(a) * (5 + 4 * k), 2.5f + (i % 3), sinf(a) * (5 + 4 * k)), 0.8f + (i % 3) * 0.2f, 0.4f + 0.3f * k, 2.0f, w, 0.5f, 0, -11);                                                          // the skirt
+    }
+    for (int i = 0; i < 8 && parts.size() < 5200; i++) { float a = i * 0.785f; spawn(V3(p.x + cosf(a) * r0, 0.3f, p.z + sinf(a) * r0), V3(cosf(a) * 1.2f, 1.6f, sinf(a) * 1.2f), 2.4f, 1.2f * (0.6f + 0.4f * k), 1.6f, w, 0.10f, 0, 0.15f); }   // mist that hangs
+}
 static void blast(V3 p, V3 vel, float k) {
-    fireball(p, vel); if (p.y < 2.5f) ripple::add(p.x, p.z, 1.5f); tone(900, 0.9f, 0.9f * k, 1, -700); tone(70, 0.6f, 0.8f * k, 0, -40);
+    fireball(p, vel); if (p.y < 2.5f && W.HW(p.x, p.z) < -0.03f) waterSplash(p, 1.0f); tone(900, 0.9f, 0.9f * k, 1, -700); tone(70, 0.6f, 0.8f * k, 0, -40);
     shake = std::max(shake, k); flashT = std::max(flashT, 0.7f * k * k); flashCol = V3(1, 0.8f, 0.5f); caT = std::max(caT, k); rumble(k, (int)(600 * k));
 }
 static float nearK(V3 p) { return clampf(1.3f - len(p - player.pos) / 80, 0.12f, 1); }
@@ -834,7 +848,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
     if (c.dead) { c.deadT -= dt; if (c.deadT <= 0) respawn(c); return; }
     float cy = c.pos.y + 0.4f, gh = W.ground(c.pos.x, c.pos.z, cy), tH = W.H(c.pos.x, c.pos.z), tW = W.HW(c.pos.x, c.pos.z);
     bool gr = c.pos.y - gh < 0.15f, onPlat = gh > tH + 0.3f;
-    bool onRoad = onPlat || W.RD(c.pos.x, c.pos.z) < ROADW + 1.0f; c.wet = tW < -0.03f && c.pos.y < 0.15f; c.offroad = !onRoad;
+    bool onRoad = onPlat || W.RD(c.pos.x, c.pos.z) < ROADW + 1.0f; { bool was = c.wet; c.wet = tW < -0.03f && c.pos.y < 0.15f; if (c.wet && !was) waterSplash(c.pos, clampf((fabsf(c.vel.y) * 1.5f + len(c.vel) * 0.35f) / 14, 0.35f, 1.4f)); } c.offroad = !onRoad;
     float sr = (in.steer * c.steer < 0 || fabsf(in.steer) < fabsf(c.steer)) ? 6.0f : 3.4f;
     c.steer += clampf(in.steer - c.steer, -sr * dt, sr * dt);
     V3 f(sinf(c.yaw), 0, cosf(c.yaw)), sd(cosf(c.yaw), 0, -sinf(c.yaw));
@@ -916,7 +930,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
     }
     c.pos = np;
     if (W.HW(np.x, np.z) < -1.1f && np.y < -0.85f) {   // sunk (not in the tunnel: it is dry)
-        tm.sinks++; c.dead = true; c.sunk = true; c.deadT = 1.4f; tone(500, 0.7f, 0.8f, 1, -300); ripple::add(np.x, np.z, 1.5f);
+        tm.sinks++; c.dead = true; c.sunk = true; c.deadT = 1.4f; tone(500, 0.7f, 0.8f, 1, -300); waterSplash(np, 1.2f);
         for (int i = 0; i < 40; i++) spawn(V3(np.x, 0.1f, np.z) + V3(grng.r(-1.5f, 1.5f), 0, grng.r(-1.5f, 1.5f)), V3(grng.r(-4, 4), grng.r(5, 14), grng.r(-4, 4)), grng.r(0.6f, 1.2f), 0.6f, 1.5f, V3(0.85f, 0.92f, 1), 0.7f, 0, -14);
         return;
     }
@@ -1165,10 +1179,10 @@ static bool edTesting() { return false; }
 static int edToolNow() { return -1; }
 #endif
 // wakes: every car in the shallows, and you on foot, leave a ring behind about five times a second
-static int grassNear() { if (grassOff || W.flat) return 0; MB b; V3 a = avatarPos(); return W.grassSquare(b, a.x - 48, a.z - 48, 96, 2.0f, 1.0f, false); }   // (tufts within 48 m of you: for the tests)
+static int grassNear() { if (grassOff || W.flat) return 0; MB b; V3 a = avatarPos(); return W.grassSquare(b, a.x - 48, a.z - 48, 96, 2.0f, 1.0f, 0); }   // (tufts within 48 m of you: for the tests)
 static void rippleWakes() {
     static float wakeT = 0; if (fabsf(T - wakeT) <= 0.22f) return;
-    wakeT = T; if (ripAt) { static int n = 0; if (n++ % 3 == 0) ripple::add(ripX, ripZ, n % 2 ? 1.5f : 0.45f); }
+    wakeT = T; if (ripAt) { static int n = 0; if (n++ % 3 == 0) { if (n % 2) waterSplash(V3(ripX, 0, ripZ), 1.5f); else ripple::add(ripX, ripZ, 0.45f); } }
     if (state != RACE) return;
     auto wake = [](const Car& c) { if (!c.dead && c.pos.y < 0.9f && len(c.vel) > 1.5f) ripple::add(c.pos.x, c.pos.z, 0.45f); };
     wake(player); for (auto& c : ai) wake(c);
@@ -1646,25 +1660,34 @@ static void drawWorldMerged(bool terrain, bool props, V3 cam) {
 // kept while near (the Xbox 360's cell renderer has its own, built with the track: see World::build) ----
 #ifndef FCF_XENOS_CULL
 namespace grass {
-#ifdef FCF_MOBILE
-static const int R = 2, BLADES = 3; static const float STEP = 1.25f;
-#else
-static const int R = 3, BLADES = 5; static const float STEP = 0.6f;
-#endif
-static const float TILE = 16; static int built = 0, tufts = 0;
+// Two rings of squares around the camera. Near: thick tufts of curved blades. Far: thinner, bigger, flat-bladed tufts
+// out to about 125 m. The grass program shrinks blades into the ground with distance (uGrassFade), so the near ring
+// melts into the far one and the far one into the bare hillside, and a square is always built before it can be seen:
+// each ring fades out a little short of its inner edge.
 struct Tile { int x = 1 << 30, z = 0, gen = -1; Mesh m; };
-static Tile tiles[(2 * R + 1) * (2 * R + 1)];
+struct Ring { float tile; int R; float step, size; int blades, mode; float in0, in1, out0, out1; std::vector<Tile> tiles; };
+#ifdef FCF_MOBILE
+static Ring rings[2] = { { 16, 2, 1.25f, 1.0f, 3, 1, -2, -1, 22, 30 }, { 32, 3, 2.4f, 1.9f, 3, 2, 22, 30, 78, 94 } };
+#else
+static Ring rings[2] = { { 16, 3, 0.6f, 1.0f, 5, 1, -2, -1, 36, 46 }, { 32, 4, 1.5f, 1.8f, 4, 2, 36, 46, 104, 124 } };
+#endif
+static int built = 0, tufts = 0;
 static void draw(V3 cam) {
     if (grassOff || W.flat) return;
-    int cx = (int)floorf(cam.x / TILE), cz = (int)floorf(cam.z / TILE), budget = 2; const int N = 2 * R + 1;
-    for (int dz = -R; dz <= R; dz++) for (int dx = -R; dx <= R; dx++) {
-        int tx = cx + dx, tz = cz + dz; Tile& t = tiles[(((tz % N) + N) % N) * N + (((tx % N) + N) % N)];   // (each square has its place in the ring, so moving on only rebuilds the new edge)
-        if (t.x != tx || t.z != tz || t.gen != W.gen) {
-            if (budget <= 0) { t.m.n = 0; t.x = 1 << 30; continue; }   // (two a frame: the rest next frame)
-            budget--; MB b; tufts += W.grassSquare(b, tx * TILE, tz * TILE, TILE, STEP, 1.0f, true, 1e9f, BLADES); t.x = tx; t.z = tz; t.gen = W.gen; built++;
-            if (b.idx.empty()) t.m.n = 0; else t.m.upload(b);
+    for (Ring& r : rings) {
+        const int N = 2 * r.R + 1; if (r.tiles.empty()) r.tiles.resize(N * N);
+        int cx = (int)floorf(cam.x / r.tile), cz = (int)floorf(cam.z / r.tile), budget = 4;
+        bool fresh = r.tiles[0].gen != W.gen && r.tiles[N * N - 1].gen != W.gen;   // a new world: build the lot now (the screen is still coming up)
+        pGrass.v4("uGrassFade", r.in0, r.in1, r.out0, r.out1);
+        for (int dz = -r.R; dz <= r.R; dz++) for (int dx = -r.R; dx <= r.R; dx++) {
+            int tx = cx + dx, tz = cz + dz; Tile& t = r.tiles[(((tz % N) + N) % N) * N + (((tx % N) + N) % N)];   // (each square has its place in the ring, so moving on only rebuilds the new edge)
+            if (t.x != tx || t.z != tz || t.gen != W.gen) {
+                if (budget <= 0 && !fresh) { t.m.n = 0; t.x = 1 << 30; continue; }   // (four a frame: the rest next frame; they are past the fade)
+                budget--; MB b; tufts += W.grassSquare(b, tx * r.tile, tz * r.tile, r.tile, r.step, r.size, r.mode, 1e9f, r.blades); t.x = tx; t.z = tz; t.gen = W.gen; built++;
+                if (b.idx.empty()) t.m.n = 0; else t.m.upload(b);
+            }
+            t.m.draw();
         }
-        t.m.draw();
     }
 }
 }
@@ -2504,7 +2527,7 @@ static void printJSON(FILE* o) {
 #else
     fprintf(o, "\"edPinches\":0,\"edTool\":-1,\"edTouch\":\"\",");
 #endif
-    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, grassNear(), W.beachLand());
+    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"ufoSplashes\":%d,\"ufos\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, wfx::splashed, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);

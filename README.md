@@ -90,6 +90,13 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.1
+
+- Grass no longer pops in: it fades in with distance, with a second, lighter ring of grass out to about 125 m
+- Grass on the verges along the road in town
+- Landing in the water throws up a column of mist
+- A third UFO for every Warden, and some come down in the sea with a splash
+
 ## What's new in 2.0
 
 - Track editor on phones (touch) and with a gamepad

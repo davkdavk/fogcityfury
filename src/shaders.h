@@ -9,17 +9,21 @@ out vec3 vP, vN, vC; out vec2 vUV; out float vMat;
 void main(){ vec4 w = uModel*vec4(aP,1.0); vP = w.xyz; vN = mat3(uModel)*aN; vC = aC; vUV = aUV; vMat = aM; gl_Position = uVP*w; }
 )";
 
-// Grass: the mesh shader, plus the wind. aUV.x: how far up its blade this corner is (the root stays put, the tip moves
-// most); aUV.y: a number of the blade's own. Gusts roll across the field (the slow wave), each blade flutters in them.
+// Grass: the mesh shader, plus the wind and the fade. aUV.x: how far up its blade this corner is (the root stays put,
+// the tip moves most); aUV.y: a number of the blade's own; aN: the corner's offset from its tuft's root. Gusts roll
+// across the field (the slow wave), each blade flutters in them. uGrassFade: tufts grow from nothing between x and y
+// metres from the camera and shrink back into the ground between z and w (so no square of grass is seen arriving)
 static const char* VS_GRASS = R"(#version 330 core
 layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC;
 layout(location=3) in vec2 aUV; layout(location=4) in float aM;
-uniform mat4 uVP, uModel; uniform float uTime;
+uniform mat4 uVP, uModel; uniform float uTime; uniform vec3 uCamPos; uniform vec4 uGrassFade;
 out vec3 vP, vN, vC; out vec2 vUV; out float vMat;
 void main(){
+  vec3 root = aP - aN; float d = length(root.xz - uCamPos.xz);
+  float sc = smoothstep(uGrassFade.x, uGrassFade.y, d)*(1.0 - smoothstep(uGrassFade.z, uGrassFade.w, d));
   float gust = 0.55 + 0.45*sin(uTime*0.9 + aP.x*0.07 + aP.z*0.05), k = aUV.x*aUV.x;
-  vec3 p = aP + vec3(sin(uTime*2.3 + aP.x*0.6 + aUV.y), 0.0, cos(uTime*1.9 + aP.z*0.6 + aUV.y*1.7))*(0.07*gust*k) + vec3(0.16*gust*k, -0.03*gust*k, 0.07*gust*k);
-  vec4 w = uModel*vec4(p,1.0); vP = w.xyz; vN = mat3(uModel)*aN; vC = aC*(0.92 + 0.16*gust*aUV.x); vUV = vec2(0.0); vMat = aM; gl_Position = uVP*w; }
+  vec3 p = root + aN*sc + (vec3(sin(uTime*2.3 + aP.x*0.6 + aUV.y), 0.0, cos(uTime*1.9 + aP.z*0.6 + aUV.y*1.7))*(0.07*gust*k) + vec3(0.16*gust*k, -0.03*gust*k, 0.07*gust*k))*sc;
+  vec4 w = uModel*vec4(p,1.0); vP = w.xyz; vN = vec3(0.0,1.0,0.0); vC = aC*(0.92 + 0.16*gust*aUV.x); vUV = vec2(0.0); vMat = aM; gl_Position = uVP*w; }
 )";
 
 static const char* VS_SKY = R"(#version 330 core

@@ -1754,6 +1754,15 @@ def grass_grows_in_the_fields_only():
 
 
 @test
+def some_ufos_come_down_in_the_sea():
+    """Each Warden has three UFOs. Now and then one that is shot down lands in the water with a splash and sinks
+    (no wreck is left); the rest still leave wrecks on land."""
+    d = sim("--track", 0, "--state", 3, "--mode", 1, "--auto", seconds=240)
+    check(d["ufoSplashes"] >= 1 and d["ufoWrecks"] >= 3, "splashes in the sea, wrecks on land", (d["ufoSplashes"], d["ufoWrecks"]))
+    check(d["ripples"] >= d["ufoSplashes"], "each splash rings the water", (d["ripples"], d["ufoSplashes"]))
+
+
+@test
 def splashes_ring_the_water():
     """Something hitting the sea leaves spreading rings; nothing on dry land does."""
     sea = sim("--track", 0, "--state", 3, "--mode", 1, "--ripat", -700, 0, seconds=3)

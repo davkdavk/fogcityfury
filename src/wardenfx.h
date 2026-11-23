@@ -14,13 +14,13 @@ static inline uint32_t H4(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
 static inline float R01(uint32_t a, uint32_t b, uint32_t c, uint32_t d) { return (H4(a, b, c, d) >> 8) / 16777216.0f; }
 
 // ---- timing ----
-// Each Warden has two UFOs. A UFO's life is a CYC-second cycle: it flies in (ARRIVE s), circles, is shot (at shotIn),
+// Each Warden has three UFOs. A UFO's life is a CYC-second cycle: it flies in (ARRIVE s), circles, is shot (at shotIn),
 // falls (FALL s) and lies where it lands; then the next one comes. The last KEEP wrecks of each stay.
 static const float CYC = 70, ARRIVE = 6, FALL = 3.2f, BOLT = 0.18f, BURN = 45;   // BURN: a wreck on the road burns out and is gone after this long
-static const int NUFO = 2, KEEP = 3;
+static const int NUFO = 3, KEEP = 3;
 // seeds: one every SEED_EVERY s per Warden (unless it is busy shooting), SEED_FLY s in the air; the last NFLOW flowers stay
 static const float SEED_EVERY = 8, SEED_FLY = 1.1f; static const int NFLOW = 14;
-static float offOf(int u, int j) { return u * 13.0f + j * 35.0f; }
+static float offOf(int u, int j) { return u * 13.0f + (j == 2 ? 52.0f : j * 35.0f); }   // (the third came later: the first two keep their times)
 static float shotIn(int u, int j, int g) { return 16.0f + 8.0f * (H4(u, j, g, 1) % 5); }
 static float shotAt(int u, int j, int g) { return g * CYC + offOf(u, j) + shotIn(u, j, g); }
 static int genAt(int u, int j, float t) { return (int)floorf((t - offOf(u, j)) / CYC); }
@@ -29,18 +29,25 @@ static float seedAt(int u, int k) { return k * SEED_EVERY + u * 3.7f + 2.0f; }
 // where UFO j of Warden u (generation g) is at time t while it circles: round the Warden, flying in from far off first
 static V3 orbit(int u, int j, int g, float t) {
     V3 c = mech::bodyAt(mech::unit[u], t);
-    float R = 48 + 22 * R01(u, j, g, 2), ht = 34 + 12 * R01(u, j, g, 3), w = (j ? -0.30f : 0.34f) * (0.8f + 0.4f * R01(u, j, g, 4)), a = 6.2832f * R01(u, j, g, 5) + w * t;
+    float R = 48 + 22 * R01(u, j, g, 2) + (j == 2 ? 16 : 0), ht = 34 + 12 * R01(u, j, g, 3) + (j == 2 ? 9 : 0), w = (j == 2 ? 0.22f : j ? -0.30f : 0.34f) * (0.8f + 0.4f * R01(u, j, g, 4)), a = 6.2832f * R01(u, j, g, 5) + w * t;
     V3 p = c + V3(cosf(a) * R, ht + 3 * sinf(t * 1.3f + j * 2), sinf(a) * R);
     float c0 = g * CYC + offOf(u, j), k = smooth(c0, c0 + ARRIVE, t);
     if (k < 1) { float b = 6.2832f * R01(u, j, g, 6); V3 away = c + V3(cosf(b) * 420, 170, sinf(b) * 420); p = away + (p - away) * k; }
     return p;
 }
-// where its wreck comes down: somewhere round about, clear of buildings and out of the sea; about one in three on the road
-struct Landing { int g = -1; V3 p; float yaw = 0; bool road = false; int si = 0; float lat = 0; };
+// where its wreck comes down: somewhere round about, clear of buildings; about one in three on the road, and about one
+// in four (if there is water within reach) in the sea or a lagoon, where it goes in with a great splash and sinks
+struct Landing { int g = -1; V3 p; float yaw = 0; bool road = false, sea = false; int si = 0; float lat = 0; };
 static Landing landCache[mech::NUNIT][NUFO][KEEP]; static int cacheTrack = -1;
 static const Landing& landing(int u, int j, int g) {
     Landing& L = landCache[u][j][g % KEEP]; if (L.g == g) return L;
     L = Landing(); L.g = g; L.yaw = 6.2832f * R01(u, j, g, 7); V3 p0 = orbit(u, j, g, shotAt(u, j, g)); bool done = false;
+    if (!W.flat && R01(u, j, g, 9) < 0.27f) for (int tr = 0; tr < 6 && !done; tr++) {   // into the water
+        float a = 6.2832f * R01(u, j, g, 60 + tr), d = 70 + 230 * R01(u, j, g, 70 + tr);
+        V3 q(clampf(p0.x + cosf(a) * d, -HALF + 30, HALF - 30), 0, clampf(p0.z + sinf(a) * d, -HALF + 30, HALF - 30));
+        if (W.HW(q.x, q.z) > -1.5f || W.RD(q.x, q.z) < ROADW + 14) continue;   // (deep enough to go under; clear of bridges and causeways)
+        L.p = q; L.sea = true; return L;
+    }
     if (!W.flat && R01(u, j, g, 8) >= 0.35f) for (int tr = 0; tr < 4 && !done; tr++) {
         float a = 6.2832f * R01(u, j, g, 10 + tr), d = 60 + 160 * R01(u, j, g, 20 + tr);
         V3 q(clampf(p0.x + cosf(a) * d, -HALF + 40, HALF - 40), 0, clampf(p0.z + sinf(a) * d, -HALF + 40, HALF - 40)); float h = W.H(q.x, q.z);
@@ -83,7 +90,7 @@ struct UWreck { V3 p; float yaw, age; bool road; int si; float lat; };
 struct Flower { V3 p; float age, yaw, sc; int col; };
 struct Obstacle { int si; float lat, r; };   // something on the road for the bots to steer round
 static std::vector<Ufo> ufos; static std::vector<UWreck> wrecks; static std::vector<Flower> flowers; static std::vector<Obstacle> obs;
-static float lastT = -1; static int downed = 0;   // (tests) UFOs shot down so far this race
+static float lastT = -1; static int downed = 0, splashed = 0;   // (tests) UFOs shot down so far this race
 
 static void puff(V3 p, V3 v, float life, float size, float grow, V3 col, float a, float add, float buoy, float seed, float stretch = 0) {
     if (!g_noGL && parts.size() < 5200) parts.push_back({ p, v, life, life, size, grow, col, a, add, seed, buoy, stretch });
@@ -100,7 +107,7 @@ static void step(float t, float dt) {
     }
     float t0 = lastT < 0 ? t : lastT; lastT = t;
     auto passed = [&](float e) { return e > t0 && e <= t; };
-    ufos.clear(); wrecks.clear(); flowers.clear(); obs.clear(); W.discs.clear(); downed = 0;
+    ufos.clear(); wrecks.clear(); flowers.clear(); obs.clear(); W.discs.clear(); downed = 0; splashed = 0;
     for (int u = 0; u < mech::count(); u++) {
         mech::Unit& m = mech::unit[u]; V3 body = mech::bodyAt(m, t);
         float aim = 0; V3 tgt = body + V3(sinf(m.yaw), 0, cosf(m.yaw)) * 60;
@@ -123,6 +130,13 @@ static void step(float t, float dt) {
                     ufos.push_back({ p, t * 1.7f + q * q * 14.0f, 0.15f + 0.55f * q, true });
                     puff(p, V3(0, 2.5f, 0), 2.4f, 2.0f, 1.6f, V3(0.10f, 0.10f, 0.11f), 0.55f, 0, 0.5f, q);
                     if (((int)(t * 30)) % 2) puff(p, V3(0, 0.5f, 0), 0.4f, 1.4f, 0.4f, V3(3.0f, 1.2f, 0.3f), 0.9f, 1, 0, q);
+                    continue;
+                }
+                if (L.sea) {   // in the water: a great splash, then it settles, steaming, and goes under. Nothing is left
+                    float age = t - (S + FALL); splashed++;
+                    if (passed(S + FALL)) { float k = camNear(L.p); if (k > 0) { tone(90, 0.8f, 0.8f * k, 1, -40); tone(1400, 0.9f, 0.35f * k, 1, -900); shake = std::max(shake, 0.3f * k); } waterSplash(L.p, 2.5f); }
+                    if (age < 7) { ufos.push_back({ V3(L.p.x, 0.6f - age * 0.75f, L.p.z), L.yaw + age * 0.2f, 0.35f + 0.05f * age, true });
+                        if (((int)(t * 12)) % 2) puff(L.p + V3(sinf(t * 7) * 3, 0.4f, cosf(t * 5) * 3), V3(0, 2.2f, 0), 2.2f, 1.6f, 2.0f, V3(0.9f, 0.94f, 1), 0.22f * (1 - age / 7), 0, 0.4f, age); }
                     continue;
                 }
                 float age = t - (S + FALL); if (L.road && age > BURN) continue;   // burnt out and cleared away

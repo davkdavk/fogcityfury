@@ -632,44 +632,52 @@ struct World {
     static float alleyDist(float v) { float c = fmodf(v - GRID0, GRID); if (c < 0) c += GRID; return fabsf(c - GRID * 0.5f); }   // distance from v to the nearest centre line
     // where the terrain shader paves town: right up to the main road's kerb (cityGround's backstreets stop short of it,
     // in the shader: see vUV.y on the terrain)
-    // Grass: is this spot open grassland (not road, shoulder, town, sand, rock or water)? col: the ground's colour there
-    bool grassAt(float x, float z, V3& col, float& y) const {
+    // Grass: is this spot grass (not road, shoulder, paving, sand, rock or water)? col: the ground's colour there.
+    // mow: 1 in the fields, about half on the verge between the kerb and the promenade in town (kept short)
+    bool grassAt(float x, float z, V3& col, float& y, float* mow = nullptr) const {
         if (flat || fabsf(x) > HALF - 8 || fabsf(z) > HALF - 8) return false;
-        y = H(x, z); if (y < 2.3f || RD(x, z) < ROADW + 8 || city(x, z) || excluded(x, z, 3) || (!shoreD.empty() && sampleGrid(shoreD, x, z) < BEACH + 3)) return false;
+        y = H(x, z); float d = RD(x, z); if (y < 2.3f || d < ROADW + 1.3f || excluded(x, z, 3) || (!shoreD.empty() && sampleGrid(shoreD, x, z) < BEACH + 3)) return false;
+        bool verge = false;
+        if (city(x, z)) { if (d > 13.4f || !pavedGround(x, z) || !openStrip(x, z)) return false; verge = true; }   // in town: only the verge along the main road
+        else if (d < ROADW + 6.5f) return false;                                                                   // out of town: the gravel shoulder
         float sx = H(x + 1.5f, z) - H(x - 1.5f, z), sz = H(x, z + 1.5f) - H(x, z - 1.5f); if (sx * sx + sz * sz > 1.1f) return false;   // steeper than about 19 degrees: rock
-        float nz = fbm(x * 0.02f, z * 0.02f, 3); col = V3(0.20f, 0.36f, 0.12f) * (1 - nz) + V3(0.42f, 0.40f, 0.18f) * nz; return true;
+        float nz = fbm(x * 0.02f, z * 0.02f, 3); col = V3(0.20f, 0.36f, 0.12f) * (1 - nz) + V3(0.42f, 0.40f, 0.18f) * nz; if (mow) *mow = verge ? 0.5f : 1.0f; return true;
     }
-    // one tuft: three blades leaning apart, dark at the root and light at the tip, lit like the ground under it (normal
-    // up). k: a number for this tuft, which fixes its shape. Plain colour (material 3). curved: each blade bends over in
-    // two steps (three triangles) and carries how far up the blade each corner is (u) and a number of its own (v), which
-    // the grass program sways it by; otherwise one flat triangle a blade (Xbox 360: a third of the triangles, no sway)
-    static void grassTuft(MB& m, V3 p, V3 col, uint32_t k, float size, bool curved, int blades = 3) {
+    // one tuft: blades leaning apart, dark at the root and light at the tip, lit like the ground under it. k: a number
+    // for this tuft, which fixes its shape. Plain colour (material 3). mode 0: one flat triangle a blade, normal up
+    // (Xbox 360: baked into the world, no sway). 1: each blade bends over in two steps (three triangles). 2: flat, for
+    // far away. In 1 and 2 the grass program draws it: u = how far up the blade a corner is, v = a number of the
+    // blade's own, and the normal holds the corner's offset from the tuft's root (the program shrinks blades with
+    // distance by it, and lights them with a normal of its own: straight up)
+    static void grassTuft(MB& m, V3 p, V3 col, uint32_t k, float size, int mode, int blades = 3) {
         auto rnd = [&k] { k = k * 1664525u + 1013904223u; return (k >> 8) / 16777216.0f; };
-        V3 up(0, 1, 0);
+        V3 root = p + V3(0, -0.04f, 0); auto N = [&](V3 v) { return mode ? v - root : V3(0, 1, 0); };
         for (int b = 0; b < blades; b++) {
-            float a = rnd() * 6.2832f, h = size * (0.30f + 0.38f * rnd()), w = size * (0.07f + 0.05f * rnd()), lean = size * (0.10f + 0.22f * rnd());
-            V3 dir(sinf(a), 0, cosf(a)), side(dir.z, 0, -dir.x), base = p + dir * (size * 0.12f * rnd()) + V3(0, -0.04f, 0); float t = 0.85f + 0.3f * rnd(), ph = rnd() * 6.2832f;
-            V3 c0 = col * (0.78f * t), c1 = (col * 1.4f + V3(0.06f, 0.08f, 0.01f)) * t, tip = base + dir * lean + V3(0, h, 0);
-            unsigned i = m.add(base - side * w, up, c0, 0, ph, 3); m.add(base + side * w, up, c0, 0, ph, 3);
-            if (curved) {
-                V3 mid = base + dir * (lean * 0.28f) + V3(0, h * 0.58f, 0), cm = c0 * 0.45f + c1 * 0.55f;   // (most of the lean is in the top half: a blade bending over)
-                m.add(mid - side * (w * 0.62f), up, cm, 0.34f, ph, 3); m.add(mid + side * (w * 0.62f), up, cm, 0.34f, ph, 3); m.add(tip, up, c1, 1, ph, 3);
+            float a = rnd() * 6.2832f, h = size * (0.30f + 0.38f * rnd()), w = size * (0.07f + 0.05f * rnd()) * (mode == 2 ? 1.5f : 1.0f), lean = size * (0.10f + 0.22f * rnd());
+            V3 dir(sinf(a), 0, cosf(a)), side(dir.z, 0, -dir.x), base = root + dir * (size * 0.12f * rnd()); float t = 0.85f + 0.3f * rnd(), ph = rnd() * 6.2832f;
+            V3 c0 = col * (0.78f * t), c1 = (col * 1.4f + V3(0.06f, 0.08f, 0.01f)) * t, tip = base + dir * lean + V3(0, h, 0), l = base - side * w, r = base + side * w;
+            unsigned i = m.add(l, N(l), c0, 0, ph, 3); m.add(r, N(r), c0, 0, ph, 3);
+            if (mode == 1) {
+                V3 mid = base + dir * (lean * 0.28f) + V3(0, h * 0.58f, 0), cm = c0 * 0.45f + c1 * 0.55f, ml = mid - side * (w * 0.62f), mr = mid + side * (w * 0.62f);   // (most of the lean is in the top half: a blade bending over)
+                m.add(ml, N(ml), cm, 0.34f, ph, 3); m.add(mr, N(mr), cm, 0.34f, ph, 3); m.add(tip, N(tip), c1, 1, ph, 3);
                 unsigned q[9] = { i, i + 1, i + 2, i + 1, i + 3, i + 2, i + 2, i + 3, i + 4 }; for (unsigned v : q) m.idx.push_back(v);
-            } else { m.add(tip, up, c1, 0, 0, 3); m.idx.push_back(i); m.idx.push_back(i + 1); m.idx.push_back(i + 2); }
+            } else { m.add(tip, N(tip), c1, mode ? 1.0f : 0.0f, mode ? ph : 0.0f, 3); m.idx.push_back(i); m.idx.push_back(i + 1); m.idx.push_back(i + 2); }
 #ifdef FCF_XENOS_CULL
-            for (int n = curved ? 3 : 1; n > 0; n--) m.triTags.push_back(m.cellTag);
+            for (int n = mode == 1 ? 3 : 1; n > 0; n--) m.triTags.push_back(m.cellTag);
 #endif
         }
     }
     // the tufts of one square of ground (x0, z0, side long), a jittered grid `step` apart, thinned in patches
-    int grassSquare(MB& m, float x0, float z0, float side, float step, float size, bool curved, float maxRD = 1e9f, int blades = 3) const {
+    int grassSquare(MB& m, float x0, float z0, float side, float step, float size, int mode, float maxRD = 1e9f, int blades = 3) const {
         int n = (int)(side / step), made = 0;
         for (int j = 0; j < n; j++) for (int i = 0; i < n; i++) {
             float gx = x0 + i * step, gz = z0 + j * step; uint32_t k = (uint32_t)((int)floorf(gx * 8) * 73856093) ^ (uint32_t)((int)floorf(gz * 8) * 19349663) ^ (def->seed * 83492791u);
             auto rnd = [&k] { k = k * 1664525u + 1013904223u; return (k >> 8) / 16777216.0f; };
-            float x = gx + rnd() * step, z = gz + rnd() * step; if (rnd() > 0.35f + 0.9f * vnoise(x * 0.11f, z * 0.11f)) continue;   // patchy
-            V3 c; float y; if (!grassAt(x, z, c, y) || RD(x, z) > maxRD) continue;
-            grassTuft(m, V3(x, y, z), c, k, size * (0.8f + 0.5f * rnd()), curved, blades); made++;
+            float x = gx + rnd() * step, z = gz + rnd() * step, thin = rnd();
+            V3 c; float y, mow = 1; if (!grassAt(x, z, c, y, &mow) || RD(x, z) > maxRD) continue;
+            if (mow > 0.9f && thin > 0.35f + 0.9f * vnoise(x * 0.11f, z * 0.11f)) continue;   // patchy in the fields; the verge is a lawn
+            float sz2 = size * mow;
+            grassTuft(m, V3(x, y, z), c, k, sz2 * (0.8f + 0.5f * rnd()), mode, blades); made++;
         }
         return made;
     }
@@ -1178,7 +1186,7 @@ struct World {
         // seen from the car, as part of the small props (drawn within 300 m, culled by cell). About 20,000 tufts a track
         for (float gz = -HALF; gz < HALF; gz += 24) for (float gx = -HALF; gx < HALF; gx += 24) {
             float d = RD(gx + 12, gz + 12); if (d > ROADW + 8 + 26 + 17) continue;
-            int oldTag = setCellTag(smallMb, gx + 12, gz + 12); grassSquare(smallMb, gx, gz, 24, 2.4f, 1.5f, false, ROADW + 8 + 26);
+            int oldTag = setCellTag(smallMb, gx + 12, gz + 12); grassSquare(smallMb, gx, gz, 24, 2.4f, 1.5f, 0, ROADW + 8 + 26);
             smallMb.cellTag = oldTag;
         }
         arrangeProps(mb, false); arrangeProps(smallMb, true);
