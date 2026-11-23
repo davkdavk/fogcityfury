@@ -732,8 +732,13 @@ def net_player_shares_a_track_from_the_lobby():
     check(a["shared"] == 1 and "the lobby votes on it" in srv.log, "alice's game sent her track and the lobby voted on it", a["shared"])
     check("2 yes, 0 no: playing it" in srv.log and b["votesPassed"] == 1, "bob said yes: it passed", b["votesPassed"])
     check("phase RACE  track %d" % NTRACKS in srv.log, "and they raced it")
-    res = srv.log.find("RESULTS  track %d" % NTRACKS)
-    check(res >= 0 and srv.log.find("LOBBY  track 0", res) > 0, "afterwards the server went back to its own track", srv.log[res:res + 200] if res >= 0 else "no results")
+    # its own track: the one its lobby was on when the shared race began (a rotation race may have run before the
+    # share landed, so it is not always track 0)
+    import re
+    race = srv.log.find("phase RACE  track %d" % NTRACKS); res = srv.log.find("RESULTS  track %d" % NTRACKS)
+    own = [t for t in re.findall(r"phase LOBBY  track (\d+)", srv.log[:race]) if int(t) != NTRACKS] if race >= 0 else []
+    back = re.search(r"phase LOBBY  track (\d+)", srv.log[res:]) if res >= 0 else None
+    check(own and back and back.group(1) == own[-1], "afterwards the server went back to its own track", (own[-1:] if own else None, back.group(1) if back else None))
     check(b["kept"] == 1 and kept == ["my-track.fcft"], "bob kept the track in his tracks", (b["kept"], kept))
 
     mine, none = tempfile.mkdtemp(), tempfile.mkdtemp()
