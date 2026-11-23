@@ -1,0 +1,21 @@
+fcft 1
+name    HARBOUR DEEP REMIX
+sub     UNDER THE HARBOUR - GLASS TUNNEL OR THE CAUSEWAY
+seed    57
+land    base 8  noise 2.4  radius 600  city 0.42
+sky     top 0.06 0.25 0.6  horizon 0.45 0.62 0.82  fog 0.0008
+sun     dir 0.32967 0.725275 0.604396  colour 2.6 2.35 1.95
+night   0
+song    6
+weather clear
+road    -450 -150  -380 -400  -184.878 -463.097  52.8337 -422.768  180 -460  380 -400 
+road    460 -150  440 180  300 420  -1.12756 275.476  -267.003 288.429  -440 180 
+hill    1.42796 -486.097 -68 150
+hill    350 230 22 95
+hill    -290 210 15 85
+hill    -470 -260 9 40
+hill    3.05677 178.61 64 120
+hill    600.179 -56.0606 52 70
+branch  0.02 0.437762  -350 -280  -190 -255  0 -250  190 -255  345 -270 
+branch  0.7107 0.9507 
+tunnel  0.0947568 0.315856  depth 19  glass 0.151611 0.252685

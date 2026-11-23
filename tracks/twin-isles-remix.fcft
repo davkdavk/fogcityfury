@@ -1,0 +1,30 @@
+fcft 1
+name    TWIN ISLES REMIX
+sub     ENDURANCE - TWO ISLANDS, TWO TUNNELS
+seed    83
+land    base 8  noise 2.2  radius 600  city 0.48
+sky     top 0.1 0.2 0.52  horizon 0.62 0.58 0.62  fog 0.0007
+sun     dir -0.441836 0.694314 -0.568075  colour 2.7 2.2 1.7
+night   0
+song    8
+weather clear
+road    540 175  560 320  520 470  400 560  270 560  180 470 
+road    120 346  -35 191  -191 35  -346 -120  -540 -175  -560 -320 
+road    -520 -470  -400 -560  -270 -560  -180 -470  -120 -346  35 -191 
+road    191 -35  346 120 
+hill    -349.423 -367.553 56 110
+hill    340.002 262.02 60 110
+branch  0.203016 0.49507  200 320  100 100  0 0  -100 -100  -250 -200 
+branch  0.0768562 0.201856 
+branch  0.520592 0.689095 
+tunnel  0.2494 0.4408  depth 19  glass 0.2877 0.4025
+tunnel  0.7494 0.9408  depth 19  glass 0.7877 0.9025
+island  -330 -330 320
+island  330 330 320
+wardens 4
+laps    x2
+key     -253.612 9.57866  height 1.3
+key     -9.80344 -277.734  height 1.3
+key     -141.129 -51.554  height 1.3
+key     621.772 261.311  height 1.3
+key     204.198 557.484  height 1.3
