@@ -34,7 +34,7 @@ void main(){ vec2 p = vec2((gl_VertexID<<1)&2, gl_VertexID&2)*2.0-1.0; vNdc = p;
 '''
 
 SKY = COMMON + '''
-in vec2 vNdc; uniform vec3 uCamR, uCamU, uCamF; uniform vec2 uTan;
+in vec2 vNdc; uniform vec3 uCamR, uCamU, uCamF; uniform vec2 uTan; uniform float uSpace; uniform sampler2D uHash;
 void main(){
   vec3 d = normalize(uCamF + uCamR*vNdc.x*uTan.x + uCamU*vNdc.y*uTan.y);
   vec3 c = mix(uSkyHor, uSkyTop, sqrt(clamp(d.y, 0.0, 1.0)));
@@ -44,6 +44,16 @@ void main(){
   float cl = clamp((cn - 0.48 + 0.36*uOvercast)*3.3, 0.0, 1.0)*clamp(d.y*10.0, 0.0, 1.0)*(0.85 + 0.13*uOvercast);
   c = mix(c, mix(uSkyHor, vec3(1.0 - 0.5*uNight), 0.55 - 0.41*uOvercast), cl);
   c = mix(c, uSkyHor*0.8, clamp(-d.y*4.0, 0.0, 1.0));                                                         // below the horizon
+  if (uSpace > 0.5) {   // the space track: black all round, stars, a faint band of nebula, the sun as a hard disc (shaders.h spaceSky)
+    vec3 ad = abs(d); float big = max(ad.x, max(ad.y, ad.z));
+    vec2 p = ad.x >= big ? d.yz/ad.x + vec2(sign(d.x)*3.0, 0.0) : (ad.y >= big ? d.xz/ad.y + vec2(0.0, sign(d.y)*3.0) : d.xy/ad.z + vec2(sign(d.z)*7.0, 5.0));   // (a cube round the eye, each face its own part of the texture)
+    vec4 h1 = texture(uHash, (floor(p*330.0) + 0.5)*0.00390625), h2 = texture(uHash, (floor(p*120.0) + 0.5)*0.00390625 + 0.37);
+    vec3 sc = mix(vec3(1.0, 0.82, 0.65), vec3(0.65, 0.78, 1.0), h1.g);
+    c = vec3(0.003, 0.004, 0.010) + sc*(step(0.994, h1.b)*(0.35 + 1.2*h1.r)) + vec3(1.0, 0.95, 0.9)*(step(0.997, h2.b)*(1.0 + 2.5*h2.r));
+    float band = clamp(1.0 - abs(dot(d, vec3(0.26, 0.92, 0.29)))*2.2, 0.0, 1.0), neb = texture(uNoise, p*0.35).r;
+    c += mix(vec3(0.10, 0.025, 0.16), vec3(0.015, 0.07, 0.15), texture(uNoise, p*0.6 + 0.5).g)*band*band*clamp((neb - 0.45)*3.0, 0.0, 1.0)*0.8;
+    c += uSunCol*(clamp(sd*4000.0 - 3997.6, 0.0, 1.0)*30.0 + s16*s16*0.4 + s4*0.03);
+  }
   oCol = vec4(tone(c), 1.0);
 }
 '''
@@ -156,6 +166,49 @@ MISC = _HEAD + _MISC + _TAIL
 WORLD = (_HEAD + '  vec3 base = alb, g0 = glow;\n' + _ROAD + '  vec3 aRoad = alb, lRoad = lit; alb = base; lit = vL;\n' + _WALL
          + '  vec3 aWall = alb, gWall = glow; alb = base; glow = g0;\n' + _MISC
          + '  alb = vMat < 1.5 ? aRoad : vMat < 2.5 ? aWall : alb; lit = vMat < 1.5 ? lRoad : vL; glow = vMat < 1.5 ? g0 : vMat < 2.5 ? gWall : glow;\n' + _TAIL)
+
+
+# The space track's road (the "slime" program, drawn after everything solid, premultiplied over it): green slime you
+# see through to the planet and the stars. It heaves slowly, shines like something wet, and holds gold and silver
+# sparkles at two depths that slide against each other as you move (shaders.h FS_WORLD material 9, made cheap)
+SLIME = _HEAD.replace('uniform vec3 uSkyHor, uHeadPos, uHeadDir;', 'uniform vec3 uSkyHor, uHeadPos, uHeadDir, uSkyTop, uCamPos, uSunDir, uSunCol; uniform float uTime; uniform sampler2D uHash;').replace('void main(){', '''// one layer of sparkles: a four-pointed one in about a quarter of the cells (cs metres), gold or silver, twinkling
+vec3 spark(vec2 p, float cs, float off, out float k){
+  vec2 pp = p/cs, f = fract(pp) - 0.5; vec4 h = texture(uHash, (floor(pp) + 0.5 + off)*0.00390625);
+  vec2 q = f - (h.rg - 0.5)*0.5; float r = length(q);
+  k = clamp(1.0 - (abs(q.x*q.y)*160.0 + r*(6.0 + 4.0*h.a)), 0.0, 1.0)*step(0.74, h.b);
+  return mix(vec3(1.0, 0.74, 0.22), vec3(0.82, 0.88, 1.0), step(0.5, h.a))*k*(0.9 + 0.6*sin(uTime*3.0 + h.b*40.0));
+}
+void main(){''') + '''  {
+    vec3 V = normalize(uCamPos - vP);
+    vec2 w = texture(uNoise, vP.xz*0.04 + uTime*vec2(0.006, 0.014)).rg, w2 = texture(uNoise, vP.xz*0.28 - uTime*vec2(0.04, 0.03)).gr;
+    vec3 nb = vec3((w.x - 0.5)*0.9 + (w2.x - 0.5)*0.12, 1.0, (w.y - 0.5)*0.9 + (w2.y - 0.5)*0.12);
+    float c5 = 1.0 - clamp(abs(dot(nb, V))*0.85, 0.0, 1.0), c2 = c5*c5, F = 0.04 + 0.96*c2*c2*c5;
+    alb = mix(vec3(0.02, 0.22, 0.07), vec3(0.12, 0.50, 0.16), clamp((w.x - 0.35)*2.5, 0.0, 1.0))*(0.8 + 0.3*w2.x);
+    vec3 R = reflect(-V, normalize(nb)); float sd = max(dot(R, uSunDir), 0.0), s = sd*sd; s *= s; s *= s; s *= s; s *= s; s *= s; s *= s;
+    glow = uSunCol*s*1.8 + uSkyTop*F*0.8 + vec3(0.02, 0.16, 0.05)*(0.6 + 0.4*w.x);
+    float vy = max(abs(V.y), 0.12), k0 = 0.0, k1 = 0.0;   // two layers of sparkles, 0.15 m and 0.45 m down
+    vec3 sc = spark(vP.xz - V.xz*(0.15/vy), 1.1, 0.0, k0) + spark(vP.xz - V.xz*(0.45/vy), 1.5, 91.0, k1)*0.7; float st = max(k0, k1);
+    glow += sc*1.6; alb = mix(alb, vec3(1.0, 0.85, 0.5), st*0.5);
+    float a = clamp(0.38 + 0.40*F + 0.5*st + 0.5*s, 0.0, 0.95);   // (mostly see-through: the stars and the planet show under it)
+    oCol = vec4(tone(mix(vFog.rgb, alb*lit + glow, vFx.x))*a, a); }
+}
+'''
+# The space track's planet (the "planet" program; on the PC, FS_WORLD materials 10 and 11): lit per vertex like the
+# world; on top, clouds drifting over it (looked up on two planes, mixed by latitude), the sea catching the sun, the
+# air glowing blue round the rim, and the towns lit on the night side. vMat: 10 the sea and ice, 11 an island's
+# ground (vUV.x: how much town), 2 the walls of its buildings, 3 their roofs and the roads
+PLANET = _HEAD.replace('uniform vec3 uSkyHor, uHeadPos, uHeadDir;', 'uniform vec3 uSkyHor, uHeadPos, uHeadDir, uCamPos, uSunDir, uSunCol; uniform float uTime;') + '''  {
+    vec3 rn = normalize(vP - vec3(0.0, 60.0, 0.0)), V = normalize(uCamPos - vP);   // (60: World's SPACE_Y, the planet's middle)
+    float cn = mix(texture(uNoise, rn.xz*0.9 + vec2(uTime*0.0012, 0.0)).r, texture(uNoise, vec2(rn.x + rn.z, rn.y)*0.9 + vec2(uTime*0.0012, 0.3)).g, clamp(1.0 - abs(rn.y)*1.4, 0.0, 1.0));
+    float cl = clamp((cn - 0.56)*5.0, 0.0, 1.0), up = dot(rn, uSunDir), day = clamp(up*3.0 + 0.3, 0.0, 1.0), night = clamp(-up*4.0 + 0.2, 0.0, 1.0);
+    float sea = step(9.5, vMat)*step(vMat, 10.5)*clamp((vC.b - max(vC.r, vC.g))*5.0, 0.0, 1.0);
+    vec3 R = reflect(-V, rn); float sd = max(dot(R, uSunDir), 0.0), s = sd*sd; s *= s; s *= s; s *= s; s *= s; s *= s;
+    alb = mix(alb, vec3(0.95), cl*0.9);
+    float rim = 1.0 - max(dot(rn, V), 0.0); rim = rim*rim; rim = rim*rim;
+    float town = step(10.5, vMat)*clamp(vUV.x, 0.0, 1.0) + step(1.5, vMat)*step(vMat, 2.5)*0.6;
+    glow = uSunCol*s*sea*(1.0 - cl)*0.9 + vec3(0.20, 0.45, 1.0)*rim*(0.05 + 0.8*day) + vec3(1.0, 0.72, 0.38)*town*night*0.5; }
+''' + _TAIL
+
 
 # vMat: 0 plain 1 paint 2 glass 3 headlight 4 taillight 5 rubber
 CAR = COMMON + '''
@@ -276,7 +329,7 @@ void main(){
 }
 '''
 
-LEAN_VS = {n: (WORLD_VS, WORLD_LOC) for n in ('world', 'ground', 'road', 'roadwet', 'wall', 'misc')}
+LEAN_VS = {n: (WORLD_VS, WORLD_LOC) for n in ('world', 'ground', 'road', 'roadwet', 'wall', 'misc', 'slime', 'planet')}
 LEAN_VS['sky'] = (SKY_VS, {'vNdc': 0})
 # The depth pre-pass must place every vertex exactly where the colour pass does, or the colour pass's depth test
 # (less-or-equal, depth writes off) fails on the ground and the road and leaves them black. So it runs the colour
@@ -286,7 +339,7 @@ DEPTH = '''#version 330 core
 out vec4 oCol;
 void main(){ oCol = vec4(1.0); }
 '''
-LEAN_EXTRA = ('ground', 'road', 'roadwet', 'wall', 'misc')   # programs only the lean build has
+LEAN_EXTRA = ('ground', 'road', 'roadwet', 'wall', 'misc', 'slime', 'planet')   # programs only the lean build has
 # Text: the font texture holds, for the 5x7 pixel font, the signed distance to each glyph's edge in font pixels
 # (base.h, UI::init under FCF_XENOS_LEAN), sampled linearly. Each font pixel comes out as a square with a smooth
 # one-screen-pixel edge at any text size, where point sampling at sizes like 1.8 or 3.2 gave pixels of uneven widths.
@@ -303,7 +356,7 @@ void main(){
 }
 '''
 
-LEAN = {'ui': UI, 'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'roadwet': ROAD_WET, 'wall': WALL, 'misc': MISC, 'car': CAR, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING, 'glass': GLASS}
+LEAN = {'ui': UI, 'depth': DEPTH, 'sky': SKY, 'world': WORLD, 'ground': GROUND, 'road': ROAD, 'roadwet': ROAD_WET, 'wall': WALL, 'misc': MISC, 'car': CAR, 'slime': SLIME, 'planet': PLANET, 'water': WATER, 'part': PART, 'mark': MARK, 'ring': RING, 'glass': GLASS}
 
 # Diagnostic (FCF_LEAN_DEBUG=mat): every world surface in one flat colour per material, so a picture shows which
 # geometry is where. Road (vMat 1) red, walls (2) green, the rest of the props (3-6) blue, terrain yellow. Anything

@@ -96,6 +96,7 @@ static Mesh carMesh[NCARS], wheelMesh, keyMesh;
 static Prog pGrass, pWorld, pCar, pSky, pWater, pPart, pDepth, pUI;
 #ifdef FCF_XENOS_LEAN
 static Prog pGround, pRoad, pRoadWet, pWall, pMisc;   // the 360's own world shaders, one per kind of surface (xenon/lean_shaders.py)
+static Prog pSlime, pPlanet;   // the space track's see-through road and its planet (xenon/lean_shaders.py)
 #endif
 static UI ui;
 static gfx::Target shadowFBO = 0, cubeFBO = 0; static gfx::Tex shadowTex = 0, cubeTex = 0, cubeDepth = 0; static gfx::Buf partBuf = 0;   // shadow map, reflection cube, particles (and anything else drawn as L_PART triangles)
@@ -1877,6 +1878,9 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         if(DRAW_MASK & DM_PROPS) W.props.draw();
 #endif
 #endif
+#ifdef FCF_XENOS_LEAN
+        if (W.hasPlanet && (DRAW_MASK & DM_PROPS)) { traceDraw("planet"); gfx::depthWrite(true); setCommon(pPlanet, VP, cam, hdr); W.planetM.draw(); }   // (the space track's planet: its own program)
+#endif
         gfx::depthWrite(true);
 #else
         setCommon(pWorld, VP, cam, hdr);
@@ -1941,9 +1945,14 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         pWater.f1("uRipScale", std::max(0.1f, optRings * 0.01f)); for (int i = 0; i < 8; i++) { const ripple::R& r = ripple::rs[i]; float age = T - r.t0; bool on = age >= 0 && age < ripple::LIFE && optRings > 0; char nm[8]; snprintf(nm, sizeof nm, "uRip%d", i); pWater.v4(nm, r.x, r.z, on ? age : 0.0f, on ? r.amp : 0.0f); }
 #endif
         W.water.draw(); }
-#ifndef FCF_GFX_XSDK
-    if (W.space && W.hasSlime && (DRAW_MASK & DM_PROPS)) { traceDraw("slime"); gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); setCommon(pWorld, VP, cam, hdr); W.slime.draw(); gfx::depthWrite(true); gfx::blend(gfx::B_OFF); }   // the see-through road, over the planet and the stars
+    if (W.space && W.hasSlime && (DRAW_MASK & DM_PROPS)) {   // the see-through road, over the planet and the stars
+        traceDraw("slime"); gfx::depthWrite(false);
+#ifdef FCF_XENOS_LEAN
+        gfx::blend(gfx::B_PREMUL); setCommon(pSlime, VP, cam, hdr);
+#else
+        gfx::blend(gfx::B_ALPHA); setCommon(pWorld, VP, cam, hdr);
 #endif
+        W.slime.draw(); gfx::depthWrite(true); gfx::blend(gfx::B_OFF); }
     if (mainPass && secret::shown() && (DRAW_MASK & DM_EFFECTS)) { traceDraw("ufo beam"); setCommon(pWorld, VP, cam, hdr); secret::drawBeam(pWorld); }
     if ((DRAW_MASK & DM_WATER) && mainPass && !W.glassV.empty() && len(cam - glassMid()) < 900) {   // the tunnel's glass, over the sea and the fish outside it
         traceDraw("glass"); setCommon(pGlass, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
@@ -2941,6 +2950,8 @@ int main(int argc, char** argv) {
     FCF_MAKE_PROG(pRoadWet, "roadwet", VS_MESH, FS_COMMON, FS_WORLD);
     FCF_MAKE_PROG(pWall, "wall", VS_MESH, FS_COMMON, FS_WORLD);
     FCF_MAKE_PROG(pMisc, "misc", VS_MESH, FS_COMMON, FS_WORLD);
+    FCF_MAKE_PROG(pSlime, "slime", VS_MESH, FS_COMMON, FS_WORLD);
+    FCF_MAKE_PROG(pPlanet, "planet", VS_MESH, FS_COMMON, FS_WORLD);
 #endif
 #undef FCF_MAKE_PROG
 #undef FCF_XSDK_PROG_LOG

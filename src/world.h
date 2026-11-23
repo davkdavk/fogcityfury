@@ -238,6 +238,7 @@ struct World {
     // the space track: no ground but a strip each side of the road; a car below spaceFall has fallen off. slime: the
     // see-through road (drawn after everything solid; on the Xbox 360 it is solid and in the props instead)
     bool space = false, hasSlime = false; float spaceFall = 0; Mesh slime;
+    bool hasPlanet = false; Mesh planetM;   // (the Xbox 360's lean build: the planet on its own, for its own program; on the PC it is in the props)
     // the golden UFO (free roam on the ordinary tracks): parked over a clearing off the road, its beam up into the sky
     bool hasUfo = false; V3 ufoAt;
 
@@ -1181,11 +1182,7 @@ struct World {
 #ifdef FCF_XENOS_CULL
             int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f); sm.cellTag = mb.cellTag;
 #endif
-#ifdef FCF_GFX_XSDK
-            MB& S = mb; const float SM = 3; V3 gc(0.08f, 0.50f, 0.16f);   // (the Xbox 360: solid green, with the props)
-#else
             MB& S = sm; const float SM = 9; V3 gc(0.15f, 0.85f, 0.30f);
-#endif
             { unsigned q = S.add(pa - sa * SW + up * 0.03f, up, gc, -SW, (float)i, SM); S.add(pa + sa * SW + up * 0.03f, up, gc, SW, (float)i, SM); S.add(pb + sb * SW + up * 0.03f, up, gc, SW, (float)i + 1, SM); S.add(pb - sb * SW + up * 0.03f, up, gc, -SW, (float)i + 1, SM);
               S.idx.insert(S.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
 #ifdef FCF_XENOS_CULL
@@ -1215,6 +1212,9 @@ struct World {
         for (int c = 0; c < NCP; c++) gate(c * n / NCP, c == 0);
         paintGrid();
         {   // the planet: a globe of sea and ice, then the islands on it
+#ifdef FCF_XENOS_LEAN
+            MB keep; std::swap(keep, mb);   // (built on its own, then mb is the props again)
+#endif
 #ifdef FCF_GFX_XSDK
             const int SEG = 160, RING = 80, NI = 7, NG = 48;
 #else
@@ -1238,6 +1238,9 @@ struct World {
             static const float ISL[14][4] = { {0,0,0,0}, {1,8,51,0.6f}, {2,-6,103,1.2f}, {3,4,154,2.0f}, {4,-8,206,2.7f}, {5,6,257,3.3f}, {6,-4,308,4.1f},
                                               {0,38,25,1.0f}, {1,-40,77,2.2f}, {2,42,128,3.0f}, {3,-35,180,0.4f}, {4,36,231,1.7f}, {5,-38,283,2.9f}, {6,40,334,0.9f} };
             for (int k = 0; k < NI; k++) planetIsland((int)ISL[k][0], ISL[k][1], ISL[k][2], ISL[k][3], NG);
+#ifdef FCF_XENOS_LEAN
+            planetM.upload(mb, "planet"); hasPlanet = true; std::swap(keep, mb);
+#endif
         }
 #ifdef FCF_XENOS_CULL
         { V3 far(0, -20000, 0); smallMb.tri(far, far + V3(1, 0, 0), far + V3(0, 0, 1), V3(0, 0, 0), 3); }   // (the small props are never empty)
@@ -1265,7 +1268,7 @@ struct World {
         if (hasUfo) addExcl(ufoAt.x, ufoAt.z, 16);
     }
     void build(int id_) {
-        id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB(); space = def->space && !flat; hasSlime = false; hasUfo = false;
+        id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB(); space = def->space && !flat; hasSlime = false; hasPlanet = false; hasUfo = false;
         tidyTown();
         boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); jumpObs.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
 #ifdef FCF_XENOS_CULL
