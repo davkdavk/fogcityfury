@@ -7,6 +7,8 @@ static void onKey(SDL_Keycode k, int sc = 0) {
     auto blip = [] { tone(700, 0.08f, 0.3f, 2); }; auto ok = [] { tone(520, 0.12f, 0.4f, 2); tone(1040, 0.2f, 0.4f, 2, 0, 0.08f); };
     int np = chromeUnlocked ? NPAINT : NPAINT - 1;
 #ifdef FCF_EDITOR
+    if (evx::testing && !netRace) { if (k == SDLK_F4 && (state == RACE || state == PAUSED || state == RESULTS)) { evx::resume(); return; } if (state != RACE && state != PAUSED && state != RESULTS) evx::testing = false; }
+    if (state == EVEDIT) { evx::key(k); return; }
     if (ed::testing && !netRace) { if (k == SDLK_F4 && (state == RACE || state == PAUSED || state == RESULTS)) { ed::resume(); return; } if (state != RACE && state != PAUSED && state != RESULTS) ed::testing = false; }
 #endif
     if (k == SDLK_m && state != NETJOIN && state != EDIT && !(state == RACE && (bindHit(B_CAM, sc) || bindHit(B_RESET, sc) || bindHit(B_FIRE, sc)))) { snd.musicOn = !snd.musicOn; return; }
@@ -192,6 +194,7 @@ static void printJSON(FILE* o) {
             W.ufoAt.x, W.ufoAt.y, W.ufoAt.z, wfx::splashed, W.kinds[0], W.kinds[1], W.kinds[2], W.kinds[3], W.kinds[4], W.kinds[5], W.kinds[6],
             (int)W.boxes.size(), W.propTris, wfx::rounds, wfx::aimErr, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
+    fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
     fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);

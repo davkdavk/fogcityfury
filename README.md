@@ -90,6 +90,16 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.28
+
+- **Scripted events on any track**, and **fcfedit**, the event editor to make them (see `docs/EVENTS.md`): draw
+  trigger lines across the road, place rockets, blasts, splashes, shakes and messages, and set for each what sets it
+  off (a line, a lap starting, a race time, another event), on which laps, after what delay, how often, by what chance
+  and by whose car. Aim a rocket at a building by dropping its target on it; set where each Warden starts walking.
+  Preview a race with the events in the editor, then save
+- Hilltop Heights has the first script: a rocket streaks across the road ahead as you pass the gate, every lap
+- `make fcfedit` (Linux) and `make windows` (fcfedit.exe); the same editor is in the game with `--evedit`
+
 ## What's new in 2.27
 
 - A new car: the **Ronin 120**, an early-70s Japanese sedan, light, rear-driven and eager to turn. Round headlights,

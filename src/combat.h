@@ -13,6 +13,7 @@ struct Rocket {
     int owner = -1;
     int lob = 0;
     float cruise = 0;
+    V3 aim; bool aimed = false;   // aimed: no car, it flies to a point (the race director's rockets: events.h)
 }; // lob: 1 climbing, 2 across at cruise height, 3 diving: a Warden's rocket that goes over the town (see wardenLob)          // target: 0..NAI-1 an opponent, TGT_ME us, 16+id another player, -1 none. owner: -1 us, 0.. a bot
 static const int TGT_ME = 15;
 static int lobHits = 0;   // test metric: Warden lob rockets that hit
@@ -86,7 +87,8 @@ static void setupCars(bool race) {
         shieldPU[k].holder = -2;
         shieldPU[k].at = 0;
     }
-    mech::setup(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
+    director::reset();   // the track's scripted events (events.h), all unfired
+    mech::setup(); director::placeWardens(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
     for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
 static void netLoadingNotice();   // (netclient.h) online: tell the server we are about to go quiet while the track builds
@@ -347,6 +349,10 @@ static void stepRockets(float dt) {
             V3 want = r.lob == 1 ? norm(V3(0, 1, 0) + h * 0.45f) : norm(h + V3(0, clampf((r.cruise - r.p.y) * 0.08f, -0.4f, 0.4f), 0));
             float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = 2.8f * dt; if (a <= th || a < 1e-3f) dir = want; else dir = norm(dir * sinf(a - th) + want * sinf(th));
             sp = std::min(sp, 80.0f);
+        } else if (!c && r.aimed) {   // to a point: turn towards it like at a car, and go off when there
+            tp = r.aim; V3 want = norm(tp - r.p); float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = 3.5f * dt;
+            if (a <= th || a < 1e-3f) dir = want; else dir = norm(dir * sinf(a - th) + want * sinf(th));
+            sp = std::min(sp, 95.0f);
         } else if (c) {   // turn towards where the target will be, at up to 4.5 rad/s, shedding speed in a hard turn (so it can come about for a car behind us)
             tp = c->pos + V3(0, 0.6f, 0); V3 want = norm(tp + c->vel * std::min(len(tp - r.p) / sp, 0.6f) - r.p);
             float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = (r.lob ? 7.0f : 4.5f) * dt;   // (a lob's dive turns hard: it comes down on the car)
@@ -359,6 +365,7 @@ static void stepRockets(float dt) {
         spawn(r.p - dir * 0.6f, dir * -6 + V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1)), 0.12f, 0.22f, 0.5f, V3(6, 3.2f, 0.8f), 1, 1, 0);
         for (int k = 0; k < 2; k++) spawn(r.p - dir * (0.8f + k * 0.9f), V3(grng.r(-0.6f, 0.6f), grng.r(0.2f, 1.0f), grng.r(-0.6f, 0.6f)), grng.r(0.7f, 1.2f), 0.22f, 1.3f, V3(0.75f, 0.75f, 0.78f), 0.35f);
         if (c && len(tp - r.p) < 2.9f) { if (r.lob) lobHits++; rocketHit(r.target, r.p, r.owner); done = true; }
+        else if (!c && r.aimed && len(r.aim - r.p) < 2.5f) { blast(r.p, V3(), nearK(r.p)); done = true; }
         else {
             // it skims the ground like a cruise missile, so crests and dips do not stop it; walls and cliffs do
             V3 q = r.p, vv = r.v; float imp = 0, g = W.ground(r.p.x, r.p.z, r.p.y + 1.5f);

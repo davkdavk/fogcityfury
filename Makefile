@@ -17,7 +17,11 @@ fogcityfury-gles: src/game.cpp $(wildcard src/*.h)
 fogcityfury-server: src/server.cpp src/net.h
 	$(CXX) $(CXXFLAGS) -o $@ src/server.cpp
 
-all: fogcityfury fogcityfury-server
+# the event editor: the same engine, opening straight into the event editor (src/evedit.h)
+fcfedit: src/game.cpp $(wildcard src/*.h)
+	$(CXX) $(CXXFLAGS) -DFCF_EVEDIT_APP $(SDL_CFLAGS) -o $@ src/game.cpp $(SDL_LIBS) -lGL -lm
+
+all: fogcityfury fogcityfury-server fcfedit
 
 run: fogcityfury
 	./fogcityfury
@@ -35,10 +39,14 @@ fogcityfury.exe: src/game.cpp $(wildcard src/*.h)
 	$(MINGW_CXX) $(WIN_FLAGS) -I$(SDL2_MINGW)/include -o $@ src/game.cpp -L$(SDL2_MINGW)/lib -lmingw32 -lSDL2main -lSDL2 -mwindows \
 	  -lopengl32 -lws2_32 -lm -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
 
+fcfedit.exe: src/game.cpp $(wildcard src/*.h)
+	$(MINGW_CXX) $(WIN_FLAGS) -I$(SDL2_MINGW)/include -DFCF_EVEDIT_APP -o $@ src/game.cpp -L$(SDL2_MINGW)/lib -lmingw32 -lSDL2main -lSDL2 -mwindows \
+	  -lopengl32 -lws2_32 -lm -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
+
 fogcityfury-server.exe: src/server.cpp src/net.h
 	$(MINGW_CXX) $(WIN_FLAGS) -o $@ src/server.cpp -lws2_32
 
-windows: fogcityfury.exe fogcityfury-server.exe
+windows: fogcityfury.exe fogcityfury-server.exe fcfedit.exe
 
 # headless test suite (no display needed); see docs/TESTING.md
 test: fogcityfury fogcityfury-server

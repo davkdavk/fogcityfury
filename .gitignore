@@ -1,2 +1,3 @@
 *.xex
 xenon/build/
+__pycache__/

@@ -1,0 +1,6 @@
+# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)
+# Hilltop Heights: a rocket streaks across the road ahead as you pass the gate, and bursts over it
+line gate1  -143.7 -108.2  -125.5 -165.4
+event rocket1 rocket  at 8.0 62.0 -199.5  to -25.0 22.0 -95.0  laps all  delay 0  times lap  chance 100  by player  on gate1
+event shake1 shake  at 0.0 0.0 0.0  k 0.5  laps all  delay 1.6  times lap  chance 100  by player  on after rocket1
+event say1 say  at 0.0 0.0 0.0  text "INCOMING FROM THE ROOFTOPS!"  laps 2  delay 0  times once  chance 100  by player  on lap

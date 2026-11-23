@@ -12,7 +12,7 @@ fixed 60 Hz and prints one JSON line of state and metrics (fields are listed in 
 The simulation is deterministic, so thresholds here can be tight. If you change handling or a track
 on purpose, re-measure and update the numbers in the same commit, and say why in the commit message.
 """
-import json
+import json, sys
 import math, os, shutil, socket, struct, subprocess, sys, tempfile, time, wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1886,6 +1886,49 @@ def the_wardens_minigun_tracks_and_fires_bursts():
         check(d["ufoWrecks"] >= 3 and d["cannonRounds"] >= 30 * d["ufoWrecks"], "track %d: bursts, not single shots" % t, (d["ufoWrecks"], d["cannonRounds"]))
         check(d["cannonAimErr"] < 6, "track %d: on target when it counts" % t, d["cannonAimErr"])
         check(d["mechFootErr"] < 0.05, "track %d: the feet still land where they should" % t, d["mechFootErr"])
+
+@test
+def the_race_director_plays_a_tracks_events():
+    """Hilltop Heights' events (events/track0.fcfe): a trigger line, a rocket fired each lap as the player crosses it,
+    a shake chained after the rocket, and a message on lap 2 only. Three laps: 3 rockets, 3 shakes, 1 message. The
+    file is built into the game too (src/events_builtin.h, for the 360 and Android), and that copy is up to date."""
+    d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=230)
+    check(d["eventsLoaded"] == 3 and d["eventLines"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"]))
+    check(d["lap"] >= 3 and d["events"] == 7, "three laps: a rocket and a shake each lap, the message once", (d["lap"], d["events"]))
+    sys.path.insert(0, os.path.join(ROOT, "tools")); import embed_events
+    check(embed_events.build() == open(os.path.join(ROOT, "src", "events_builtin.h")).read(), "src/events_builtin.h matches events/ (run tools/embed_events.py)")
+    e = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=20)
+    check(e["eventsLoaded"] == 0 and e["events"] == 0, "a track without an event file has none", (e["eventsLoaded"], e["events"]))
+
+
+@test
+def the_event_editor_saves_files_the_game_races():
+    """fcfedit (here --evedit, scripted): a line, a rocket set off by it, a blast chained after the rocket, a message on
+    lap 2, a shake at 5 s, and a blast with no chance. Saved, the file reads back and a race fires exactly the four that
+    can happen, the same way twice; the editor's preview races the events before they are saved."""
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    script = ("line gate1 -143.7 -108.2 -125.5 -165.4; event rocket -175 30 -175; set on gate1; set to -70 14 -95; "
+              "event blast -70 14 -95; set on after rocket1; set k 1.4; event say -120 3 -200; set text \"LAP TWO\"; set on lap; set laps 2; "
+              "event shake 0 0 0; set on time 5; event blast -134 13 -137; set on gate1; set chance 0; set times always; set by any; save")
+    subprocess.run([BIN, "--sim", "--seconds", "0.1", "--evedit", "--track", "1", "--evscript", script], cwd=tmp, capture_output=True, timeout=120)
+    f = os.path.join(tmp, "events", "track1.fcfe")
+    check(os.path.exists(f), "the editor saved events/track1.fcfe")
+    if not os.path.exists(f): return
+    txt = open(f).read()
+    check(txt.count("\nline ") == 1 and txt.count("\nevent ") == 5, "one line and five events in the file", txt[:300])
+    check("on after rocket1" in txt and "laps 2" in txt and "chance 0" in txt and 'text "LAP TWO"' in txt, "with their settings")
+    runs = [sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=230) for _ in range(2)]
+    check(runs[0]["eventsLoaded"] == 5 and runs[0]["events"] == 4, "a race fires the four that can happen", (runs[0]["eventsLoaded"], runs[0]["events"]))
+    check(runs[0] == runs[1], "the same way twice")
+    p = subprocess.run([BIN, "--sim", "--seconds", "60", "--auto", "--evedit", "--track", "0", "--evscript", "event shake 0 0 0; set on time 3; preview"],
+                       cwd=tmp, capture_output=True, text=True, timeout=200)
+    pv = json.loads(p.stdout.strip().splitlines()[-1])
+    check(pv["events"] >= 1, "the editor's preview races the unsaved events", pv["events"])
+    w = os.path.join(tmp, "w.fcfe"); open(w, "w").write("warden 1  -460 -200\nwarden 2  -134 -175\n")
+    d = sim("--track", 0, "--state", 3, "--events", w, seconds=0.1)
+    dist = lambda m, x, z: math.hypot(m[0] - x, m[2] - z)
+    check(dist(d["mech"], -460, -200) < 25 and dist(d["mech2"], -134, -175) < 25, "Wardens 1 and 2 start walking where the file puts them", (d["mech"][:3], d["mech2"]))
 
 @test
 def the_ronin_120_comes_from_blender_and_races():

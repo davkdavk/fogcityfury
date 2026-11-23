@@ -22,8 +22,11 @@ static void update(float dt) {
     if (state == NETJOIN && !nc.on) srvPump(dt);
     if (nc.on && (netRace || state == NETLOBBY)) weather = nc.weather % NWX;   // online: the server picks
     else if (state == TRACKSEL || state == CARSEL) weather = selWeather;
-    else if (state == TITLE || state == EDIT) weather = W_CLEAR;
+    else if (state == TITLE || state == EDIT || state == EVEDIT) weather = W_CLEAR;
 #ifdef FCF_EDITOR
+#ifdef FCF_EDITOR
+    if (state == EVEDIT) evx::update(dt);
+#endif
     if (state == EDIT) { edPadFrame(dt); ed::update(dt); static bool wasNaming = false; if (ed::naming != wasNaming) { wasNaming = ed::naming; plat::textInput(ed::naming); } }   // (naming: the phone's keyboard comes up)
 #endif
     bool driving = state == RACE || state == RESULTS || state == TITLE || (netRace && state == PAUSED);
@@ -171,6 +174,7 @@ static void update(float dt) {
     lockTgt = state == RACE && ammo > 0 && !player.dead && !me.on ? pickTarget() : -1;
     netBotsFrame(dt);   // online, if the server has made us the host: the bots' cars
     if (driving) { stepRockets(dt); stepWreckage(dt, state != TITLE); footFrame(dt); }
+    if (state == RACE && countdown <= 0 && !netRace) director::step(dt);   // scripted events (online: 2.3, when the server sends them)
     // --- keys ---
     if (state == RACE) for (size_t k = 0; k < W.keys.size(); k++) {
         if (keysGot[W.id] >> k & 1) continue; V3 d = W.keys[k] - (avatarPos() + V3(0, 0.8f, 0));

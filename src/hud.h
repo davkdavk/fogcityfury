@@ -279,6 +279,8 @@ static void drawHUD() {
 #ifdef FCF_EDITOR
     } else if (state == EDIT) {
         ed::draw(Wd);
+    } else if (state == EVEDIT) {
+        evx::draw(Wd);
 #endif
     } else if (state == TRACKSEL) {
         ui.text(Wd / 2, 36, 6, yel, "CHOOSE YOUR TRACK", 1, 1, 0.12f);

@@ -20,4 +20,4 @@ set(FCF_XENOS_ROAD_LOD0 120 CACHE STRING "Road-cell LOD0 distance in metres")
 # makes the noise textures they read, FCF_XENOS_LEAN draws with them, FCF_XENOS_CULL/LOD draw the world in cells.
 # (The 2.x bring-up's diagnostic titles - flat, noise, water, cull, draw-mask, sky and Hi-Z tests - were removed in 2.25.)
 add_fcf_xex(lean FCF_PERF_NOISE FCF_XENOS_LEAN FCF_XENOS_CULL FCF_XENOS_LOD FCF_XENOS_LOD_NEAR=${FCF_XENOS_LOD_NEAR} FCF_XENOS_LOD_FAR=${FCF_XENOS_LOD_FAR} FCF_XENOS_LOD_ULTRA=${FCF_XENOS_LOD_ULTRA} FCF_XENOS_ROAD_LOD0=${FCF_XENOS_ROAD_LOD0})
-xsdk_add_xex(lean TITLE_ID 0x46434C31 NAME "Fog City Fury" VERSION 2.2.7.0)
+xsdk_add_xex(lean TITLE_ID 0x46434C31 NAME "Fog City Fury" VERSION 2.2.8.0)

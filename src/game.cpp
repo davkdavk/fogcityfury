@@ -89,7 +89,7 @@ static void spawn(V3 p, V3 v, float life, float size, float grow, V3 col, float 
 #include "audio.h"
 
 // ------------------------------------------------------------------ game state
-enum State { TITLE, CARSEL, TRACKSEL, RACE, PAUSED, RESULTS, NETJOIN, NETLOBBY, OPTS, EDIT };   // OPTS: the options screens (controls, video)
+enum State { TITLE, CARSEL, TRACKSEL, RACE, PAUSED, RESULTS, NETJOIN, NETLOBBY, OPTS, EDIT, EVEDIT };   // EVEDIT: the event editor (fcfedit)   // OPTS: the options screens (controls, video)
 static State state = TITLE;
 static World W;
 static Car player, ai[NAI];
@@ -130,6 +130,12 @@ static const int NMODES = 4;   // 0 race, 1 roam, 2 rampage (race with guns, the
 static void miniReset();   // minis.h
 static bool delAsk = false;   // the track screen is asking whether to delete the custom track shown
 static std::vector<std::pair<std::string, unsigned>> customKeysSaved;   // from the config: keys found on custom tracks, by file name (applied once they are loaded)
+static std::string cliEvScript; static bool cliEvEdit =
+#ifdef FCF_EVEDIT_APP
+    true;   // fcfedit: the event editor is the whole program
+#else
+    false;   // --evedit: straight into the event editor
+#endif
 static std::string cliTrackFile, cliEdScript; static bool cliEdit = false, cliEdNew = false; static int cliEdTool = 0;   // --trackfile, --edit, --edtool
 static bool champOn = false, champDone = false, cliChamp = false; static int champRound = 0; static int champPts[NAI + 1];   // championship: running, all four rounds done, round 0-3, points (0: you, 1 + k: ai[k])
 static const int CHAMP_TRACK[4] = { 0, 1, 2, 3 }, CHAMP_LAPS[4] = { 1, 2, 2, 3 }, CHAMP_PTS[10] = { 25, 18, 15, 12, 10, 8, 6, 4, 2, 1 };
@@ -214,7 +220,9 @@ static std::string tracksDir() {
 }
 #include "serverlist.h"   // the server list on the online screen: lookups, asking each server what it runs, joining
 #include "settings.h"   // settings (key bindings, video and effects options, fogcityfury.cfg), the touch-screen layout, the save file
+namespace director { static void reset(); static void placeWardens(); }   // (events.h, after combat.h: a race start resets the scripted events)
 #include "combat.h"   // wreckage and debris, crates, shields, the multiplayer race start and leave, splashes, explosions, rockets
+#include "events.h"   // the race director: scripted events from a track's event file
 #include "driving.h"   // respawning, the player's car physics, the computer drivers, cars bumping each other, input, finishing a race
 #include "foot.h"
 #include "showdown.h"
@@ -302,6 +310,7 @@ static void hud(float Wd, float Hd) {
 #ifndef FCF_GFX_XSDK
 #define FCF_EDITOR 1
 #include "editor.h"
+#include "evedit.h"   // the event editor (fcfedit): trigger lines and scripted events on a track
 static bool selIsCustom() { return state == TRACKSEL && selTrack >= NTRACKS; }
 static bool edTesting() { return ed::testing; } static int edToolNow() { return state == EDIT ? ed::tool : -1; }
 // the editor by touch: one finger is the mouse (on empty map it moves the map); a second finger turns it into moving and
@@ -377,7 +386,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto F = [&](int k) { return (float)atof(argv[i + k]); };
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--shotevery") shotEvery = atoi(argv[++i]); else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
-        else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
+        else if (a == "--events" && i + 1 < argc) director::overridePath = argv[++i]; else if (a == "--evedit") cliEvEdit = true; else if (a == "--evscript" && i + 1 < argc) cliEvScript = argv[++i]; else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true;
         } else if (a == "--save") noSave = false;
         else if (a == "--top") {
@@ -549,6 +558,7 @@ int main(int argc, char** argv) {
             ed::tool = ((cliEdTool % ed::NTOOL) + ed::NTOOL) % ed::NTOOL;
             ed::noteT = 0;
         } // --edit: straight into the editor (for screenshots)
+        if (cliEvEdit) { evx::open(selTrack); if (!cliEvScript.empty()) evx::script(cliEvScript.c_str()); evx::noteT = cliEvScript.empty() ? evx::noteT : 0; }
 #endif
         if (keyrun >= 0 && keyrun < (int)W.recipes.size()) {   // drive the scripted route to hidden key number `keyrun`
             const Recipe& r = W.recipes[keyrun]; posSet = true; px = r.x; pz = r.z; pyaw = r.yaw;
@@ -819,6 +829,15 @@ int main(int argc, char** argv) {
                 }
             }
 #ifdef FCF_EDITOR
+            if (state == EVEDIT && !touchMouse) {   // the event editor: mouse on the map or the panel, keys held for flying
+                if (e.type == plat::EV_TEXT) evx::text(e.text);
+                if (e.type == plat::EV_KEY_UP) evx::key(e.key, false);
+                if (e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP || e.type == plat::EV_MOUSE_MOVE) {
+                    int ww = 1, wh = 1; plat::windowSize(plat::window(display), ww, wh); float mx = e.x * uiW / ww, my = e.y * 720.0f / wh;
+                    evx::mouseMove(mx, my); if (e.type == plat::EV_MOUSE_DOWN) evx::mouseDown(e.button); else if (e.type == plat::EV_MOUSE_UP) evx::mouseUp();
+                }
+                if (e.type == plat::EV_MOUSE_WHEEL) evx::zoom(e.yrel);
+            }
             if (state == EDIT && !touchMouse) {   // the editor: the mouse works on the map
                 if (e.type == plat::EV_TEXT) ed::text(e.text);
                 if (e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP || e.type == plat::EV_MOUSE_MOVE) {
