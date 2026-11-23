@@ -1,5 +1,5 @@
 #!/bin/bash
-# One command: transform the game's GLSL and compile all ten programs (20 stages) to Xenos microcode.
+# One command: transform the game's GLSL and compile every program (both stages) to Xenos microcode.
 # Needs: glslang on PATH, and xsdk (XSDK env, default /tmp/xsdk) for xsc. Run from anywhere:
 #   XSDK=/path/to/xsdk bash xenon/build_shaders.sh
 set -u

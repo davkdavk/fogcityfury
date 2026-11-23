@@ -1791,38 +1791,19 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
 #ifdef FCF_XENOS_CULL
     selectWorldCells(VP, cam);
 #endif
-#ifdef FCF_XSDK_OBJECT_TEST
-    static int lastObject=-1;
-    int object=(int)(T/3.0f)%4;
-    static const char* objectName[4]={"terrain","props","water","cars"};
-    if(mainPass && object!=lastObject){ xsdk_log_write("object-test: %d %s",object,objectName[object]); lastObject=object; }
-    bool objectOnly=mainPass;
-#else
-    bool objectOnly=false;
-#endif
-    // behind: drawn after the terrain and props with the depth test on, so only the pixels nothing covered are shaded
-    // (the sky is at the far plane, where the depth buffer was cleared to). Otherwise first, over the whole screen.
-    auto drawSky = [&](bool behind) {
-    if(!objectOnly && (DRAW_MASK & DM_SKY)) {
-    traceDraw(behind ? "sky behind" : "sky");
-    // A depth-disabled sky draw with writes enabled invalidates Xenos Hi-Z before the terrain prepass.
-    gfx::depthWrite(false);
-    if (behind) { gfx::blend(gfx::B_OFF); gfx::depthTest(true); } else gfx::depthTest(false);
-    setCommon(pSky, VP, cam, hdr);
-    pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); pSky.f2("uTan", 1 / P.m[0], 1 / P.m[5]);
-    gfx::drawFull(); gfx::depthTest(true); gfx::depthWrite(true);
+    // the sky first, over the whole screen, depth test off. (A depth-disabled sky draw with writes enabled invalidates
+    // Xenos Hi-Z before the terrain prepass, so writes are off too.)
+    if (DRAW_MASK & DM_SKY) {
+        traceDraw("sky");
+        gfx::depthWrite(false); gfx::depthTest(false);
+        setCommon(pSky, VP, cam, hdr);
+        pSky.v3("uCamR", V3(V.m[0], V.m[4], V.m[8])); pSky.v3("uCamU", V3(V.m[1], V.m[5], V.m[9])); pSky.v3("uCamF", V3(-V.m[2], -V.m[6], -V.m[10])); pSky.f2("uTan", 1 / P.m[0], 1 / P.m[5]);
+        gfx::drawFull(); gfx::depthTest(true); gfx::depthWrite(true);
     }
-    };
-#ifdef FCF_SKY_BEHIND
-    const bool skyBehind = mainPass;
-#else
-    const bool skyBehind = false;
-#endif
-    if (!skyBehind) drawSky(false);
-    if(!objectOnly && (DRAW_MASK & (DM_TERRAIN|DM_PROPS))) {
+    if (DRAW_MASK & (DM_TERRAIN|DM_PROPS)) {
         traceDraw("terrain+props");
 #if defined(FCF_GFX_XSDK) || defined(FCF_CHUNKS)
-#if defined(FCF_GFX_XSDK) && !defined(FCF_XENOS_NO_PREPASS)   // (no depth prepass on phones: their tiled GPUs sort hidden pixels out themselves)
+#ifdef FCF_GFX_XSDK   // (no depth prepass on phones: their tiled GPUs sort hidden pixels out themselves)
         traceDraw("terrain+props depth prepass");
         gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); gfx::colorWrite(false);
         pDepth.use(); pDepth.m4("uVP", VP); pDepth.m4("uModel", ident());
@@ -1891,18 +1872,6 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
 #endif
 #endif
     }
-    if (skyBehind) drawSky(true);
-#ifdef FCF_XSDK_OBJECT_TEST
-    if(objectOnly) {
-        // One world component at a time, rotating every three seconds for Xenia screenshots.
-        if(object==0) { setCommon(pWorld,VP,cam,hdr); W.terrain.draw(); }
-        else if(object==1) { setCommon(pWorld,VP,cam,hdr); W.props.draw(); }
-        else if(object==2) { setCommon(pWater,VP,cam,hdr); pWater.i1("uHeight",2); W.water.draw(); }
-        else { setCommon(pCar,VP,cam,hdr); drawCars(pCar,true,true); }
-        gfx::blend(gfx::B_OFF);
-        return;
-    }
-#endif
     if ((DRAW_MASK & DM_EFFECTS) && mainPass && !marks.empty()) {   // skid marks
         traceDraw("marks");
         gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); gfx::offset(-2, -2);
@@ -2412,12 +2381,6 @@ static void render(int fbw, int fbh) {
     if (xsdkPasses == 0) {
         if (DRAW_MASK == 0) traceDraw("clear only");
         gfx::use(0, fbw, fbh); gfx::clear(true, true);
-#if defined(FCF_GFX_XSDK) && defined(FCF_SKY_DEPTH_FILL)
-        M4 VP = mul(P, V);
-        gfx::colorWrite(false); gfx::depthTest(false); gfx::depthWrite(true);
-        setCommon(pSky, VP, eye, 1); gfx::drawFull();
-        gfx::colorWrite(true); gfx::depthTest(true); gfx::depthWrite(true);
-#endif
         drawScene(V, P, eye, true);
     } else
 #endif
@@ -2831,9 +2794,6 @@ int main(int argc, char** argv) {
         else if (a == "--wav") { renderWav(argv[i + 1], F(2)); return 0; }
         else if (a == "--help") { printf("fogcityfury [--fullscreen] [--size W H]\n"); return 0; }
     }
-#ifdef FCF_XSDK_OBJECT_TEST
-    hideUI = true;
-#endif
     loadCfg();   // key bindings and video settings; command-line flags win for this run without being saved
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: loadCfg complete");

@@ -33,7 +33,8 @@ with open(path, 'w') as f:
     f.write('struct FcfUniformMeta { const char* name; uint32_t offset; uint32_t size; uint32_t type; };\n')
     f.write('struct FcfSamplerMeta { const char* name; uint32_t unit; uint32_t slot; };\n')
     f.write('struct FcfLiteralMeta { uint32_t reg; float value[4]; };\n')
-    f.write('struct FcfProgramMeta { const char* name; const uint32_t* vs; uint32_t vsBytes; const uint32_t* fs; uint32_t fsBytes; const FcfUniformMeta* vu; uint32_t nvu; const FcfUniformMeta* fu; uint32_t nfu; const FcfSamplerMeta* samplers; uint32_t nsamplers; const FcfLiteralMeta* vl; uint32_t nvl; const FcfLiteralMeta* fl; uint32_t nfl; uint32_t fsSlots; uint32_t fsKill; uint32_t fsLoops; };\n')
+    f.write('struct FcfProgramMeta { const char* name; const uint32_t* vs; uint32_t vsBytes; const uint32_t* fs; uint32_t fsBytes; const FcfUniformMeta* vu; uint32_t nvu; const FcfUniformMeta* fu; uint32_t nfu; const FcfSamplerMeta* samplers; uint32_t nsamplers; const FcfLiteralMeta* vl; uint32_t nvl; const FcfLiteralMeta* fl; uint32_t nfl; uint32_t fsSlots; uint32_t fsKill; uint32_t fsLoops; uint32_t layout; };\n')
+    f.write('enum { FCF_LAYOUT_NONE, FCF_LAYOUT_MESH, FCF_LAYOUT_PART, FCF_LAYOUT_UI };   // FcfProgramMeta::layout: its vertex shader\'s input\n')
     for p in programs:
         m = json.load(open(os.path.join(out, p + '.uniforms.json')))
         literals = {}
@@ -77,6 +78,7 @@ with open(path, 'w') as f:
             f.write(','.join('{%d,{%s}}' % (reg, ','.join(cfloat(x) for x in value)) for reg,value in ls) if ls else '{0,{0.0f,0.0f,0.0f,0.0f}}')
             f.write('};\n')
         literal_counts[p] = (len(literals['vert']), len(literals['frag']))
+    LAYOUTS = {'none': 'FCF_LAYOUT_NONE', 'mesh': 'FCF_LAYOUT_MESH', 'part': 'FCF_LAYOUT_PART', 'ui': 'FCF_LAYOUT_UI'}
     f.write('static const FcfProgramMeta fcf_programs[] = {\n')
     for p in programs:
         m=json.load(open(os.path.join(out,p+'.uniforms.json')))
@@ -84,6 +86,6 @@ with open(path, 'w') as f:
         vu=len(m['vertex']); fu=len(m['fragment']); ns=len({s['name'] for s in m['samplers']})
         vl, fl = literal_counts[p]
         slots, kill, loops = fragment_stats[p]
-        f.write(f'  {{"{p}",fcf_{p}_vs,{vb},fcf_{p}_fs,{fb},fcf_{p}_vu,{vu},fcf_{p}_fu,{fu},fcf_{p}_s,{ns},fcf_{p}_vl,{vl},fcf_{p}_fl,{fl},{slots},{kill},{loops}}},\n')
+        f.write(f'  {{"{p}",fcf_{p}_vs,{vb},fcf_{p}_fs,{fb},fcf_{p}_vu,{vu},fcf_{p}_fu,{fu},fcf_{p}_s,{ns},fcf_{p}_vl,{vl},fcf_{p}_fl,{fl},{slots},{kill},{loops},{LAYOUTS[m["layout"]]}}},\n')
     f.write('};\nstatic const uint32_t fcf_program_count = sizeof(fcf_programs)/sizeof(fcf_programs[0]);\n')
 print(path)

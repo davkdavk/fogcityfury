@@ -1881,18 +1881,23 @@ def the_wardens_minigun_tracks_and_fires_bursts():
         check(d["mechFootErr"] < 0.05, "track %d: the feet still land where they should" % t, d["mechFootErr"])
 
 @test
-def every_xbox_mesh_program_has_a_vertex_layout():
-    """The 360 sets each program's vertex layout by name (gfx_xsdk.h makeProg). A mesh program left off that list draws
-    nothing or garbage: in 2.22-2.23 the space track's planet was missing and its road solid."""
-    import os, re
+def every_xbox_program_gets_the_vertex_layout_of_its_vertex_shader():
+    """The 360 build's shader table (xenon/transform.py) carries each program's vertex layout, and makeProg sets it from
+    there. Every program the game makes is in the table, with the layout of the vertex shader the game gives it (a mesh
+    program without the mesh layout draws nothing or garbage: in 2.22-2.23 the space track's planet and road)."""
+    import os, re, json, subprocess, tempfile
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    want = {"VS_MESH": "mesh", "VS_PART": "part", "VS_UI": "ui", "VS_SKY": "none"}
+    game = open(os.path.join(root, "src", "game.cpp")).read()
+    made = {n: want[v] for n, v in re.findall(r'FCF_MAKE_PROG\(\w+, "(\w+)", (VS_\w+),', game) if v in want}
+    out = tempfile.mkdtemp()
+    subprocess.run(["python3", os.path.join(root, "xenon", "transform.py"), out], check=True, capture_output=True)
+    table = {n: json.load(open(os.path.join(out, n + ".uniforms.json")))["layout"] for n in open(os.path.join(out, "programs.txt")).read().split()}
+    check(set(made) <= set(table), "every program the 360 makes is in its shader table", sorted(set(made) - set(table)))
+    check(all(table.get(n) == l for n, l in made.items()), "each with its vertex shader's layout", {n: (l, table.get(n)) for n, l in made.items() if table.get(n) != l})
     src = open(os.path.join(root, "src", "gfx_xsdk.h")).read()
-    line = next(l for l in src.splitlines() if '!strcmp(name,"roadwet")' in l)
-    named = set(re.findall(r'!strcmp\(name,"(\w+)"\)', line))
-    lean = open(os.path.join(root, "xenon", "lean_shaders.py")).read()
-    mesh = set(re.findall(r"'(\w+)'", re.search(r"LEAN_VS = \{n: \(WORLD_VS, WORLD_LOC\) for n in \(([^)]*)\)", lean).group(1)))
-    mesh |= {"car", "water", "depth"}
-    check(mesh <= named, "every mesh program gets the mesh layout", sorted(mesh - named))
+    check("switch(p.meta->layout)" in src and 'strcmp(name,"world")||!strcmp(name,"car")' not in src, "makeProg sets the layout from the table", None)
+
 
 @test
 def the_town_has_all_kinds_of_buildings():

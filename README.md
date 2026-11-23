@@ -90,6 +90,13 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.25
+
+- Under the bonnet: the Xbox 360 build is one title now, "Fog City Fury" (the bring-up's test builds and their
+  switches are gone, about 300 lines), and every 360 shader gets its vertex layout from the shader build itself, so
+  a new effect can't go missing the way the space track's planet did
+- Nothing in the game changes: same look, same handling, same tracks
+
 ## What's new in 2.24
 
 - A town that looks like one: stepped towers, office towers on shop podiums, blue glass office blocks, round glass

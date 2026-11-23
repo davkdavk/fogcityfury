@@ -5,6 +5,11 @@ Toolchain: xsdk (not libXenon). Test in Xenia. Only the xenon-port branch is
 pushed to; master is the desktop game, and patches from Claude come in as
 files applied with `git am -3 <file>`.
 
+**Since 2.25 there is one 360 build:** `xenon/build_game.sh` makes `build/game/lean.xex` ("Fog City Fury", title
+0x46434C31). The diagnostic titles and switches described further down (flat, noise, water, cull, draw-mask, object,
+sky-behind, depth-fill, no-prepass, no-Hi-Z, material debug) were removed; those notes are kept as the port's history.
+Each program's vertex layout now comes from the shader table (transform.py -> pack_shaders.py -> makeProg).
+
 
 ## Done
 - src/platform.h: timing, threads, audio device, gamepad and error dialogs

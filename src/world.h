@@ -1618,13 +1618,7 @@ struct World {
 #endif
         MB w; seaSurface(w); if (space) for (Vtx& q : w.v) q.py = -20000; water.upload(w);   // (space: no sea, no ground: both far out of sight)
         if (g_noGL) return;
-#if defined(FCF_GFX_XSDK) && FCF_WATER_TEST == 1
-        std::vector<uint8_t> packedHeight(h.size() * 4);
-        for (size_t i = 0; i < h.size(); i++) { uint32_t v = (uint32_t)(clampf((h[i] + 96.0f) / 192.0f, 0, 1) * 65535.0f + 0.5f); packedHeight[i * 4] = (uint8_t)(v >> 8); packedHeight[i * 4 + 1] = (uint8_t)v; packedHeight[i * 4 + 2] = 0; packedHeight[i * 4 + 3] = 255; }
-        gfx::Sampler hs; hs.linear = false; gfx::tex2D(htex, gfx::RGBA8, GN, GN, packedHeight.data(), hs);
-#else
         gfx::tex2D(htex, gfx::R16F, GN, GN, h.data(), gfx::Sampler());   // half float: linear filtering of it is guaranteed on GLES 3 too
-#endif
     }
 };
 

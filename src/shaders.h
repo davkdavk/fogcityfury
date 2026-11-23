@@ -110,9 +110,6 @@ vec3 skyColor(vec3 d){
   return c;
 }
 vec3 ambient(vec3 n){ return mix(uSkyHor*0.55 + vec3(0.05,0.045,0.04), uSkyTop*0.6 + uSkyHor*0.35, n.y*0.5+0.5); }
-#if defined(FCF_PERF_NOISE) && FCF_PERF_PASS_LEVEL < 2
-float shadow(vec3 wp, vec3 n){ return 1.0; }
-#else
 float shadow(vec3 wp, vec3 n){
   vec4 lp = uLightVP*vec4(wp + n*0.12, 1.0); vec3 s = lp.xyz/lp.w*0.5+0.5;
   if(s.x<0.0||s.x>1.0||s.y<0.0||s.y>1.0||s.z>1.0) return 1.0;
@@ -121,7 +118,6 @@ float shadow(vec3 wp, vec3 n){
   float edge = 1.0-smoothstep(0.42, 0.5, max(abs(s.x-0.5), abs(s.y-0.5)));
   return mix(1.0, r/9.0, edge);
 }
-#endif
 vec3 applyFog(vec3 c, vec3 wp){
   float d = length(wp-uCamPos);
   float bank = uFogNoise > 0.0 ? 1.0 + uFogNoise*(fbm(wp.xz*0.011 + vec2(uTime*0.035, uTime*0.02)) - 0.45)*1.5 : 1.0;
@@ -151,11 +147,7 @@ void finish(vec3 c, float a){ if(uHDR > 0.5) oCol = vec4(c, a); else oCol = vec4
 static const char* FS_SKY = R"(
 in vec2 vNdc; uniform vec3 uCamR, uCamU, uCamF; uniform vec2 uTan;
 void main(){ vec3 d = normalize(uCamF + uCamR*vNdc.x*uTan.x + uCamU*vNdc.y*uTan.y);
-#ifdef FCF_FLAT_TEST
-  oCol = vec4(mix(uSkyHor, uSkyTop, clamp(d.y, 0.0, 1.0)), 1.0);
-#else
   vec3 c = skyColor(d); if(d.y<0.0 && uSpace < 0.5) c = mix(c, uSkyHor*0.8, smoothstep(0.0,0.25,-d.y)); finish(c, 1.0);
-#endif
 }
 )";
 
@@ -375,9 +367,6 @@ void main(){
 )";
 
 static const char* FS_WATER = R"(
-#ifndef FCF_WATER_TEST
-#define FCF_WATER_TEST 0
-#endif
 in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
 uniform sampler2D uHeight;
 float wh(vec2 p){ float t = uTime;
@@ -394,24 +383,13 @@ vec3 rip(vec4 r, vec2 p){
 #endif
 void main(){
   vec2 huv = (vP.xz+768.0)/1536.0;
-#if FCF_WATER_TEST == 1
-  vec4 ht = texture(uHeight, clamp(huv, 0.0, 1.0));
-  float th = (ht.r*65280.0 + ht.g*255.0)/65535.0*192.0 - 96.0;
-#else
   float th = texture(uHeight, clamp(huv, 0.0, 1.0)).r;
-#endif
   if(huv.x<0.0||huv.x>1.0||huv.y<0.0||huv.y>1.0) th = -30.0;
   float depth = -th;
-#if FCF_WATER_TEST != 2
   if(depth < -0.02) discard;
-#endif
   float dist = length(uCamPos-vP);
   float e = 0.35;
-#if FCF_WATER_TEST == 3
-  float h0 = 0.0, hx = 0.0, hz = 0.0;
-#else
   float h0 = wh(vP.xz), hx = wh(vP.xz+vec2(e,0.0)), hz = wh(vP.xz+vec2(0.0,e));
-#endif
   float k = 0.9/(1.0+dist*0.012);
   vec3 n = vec3(-(hx-h0)/e*k, 1.0, -(hz-h0)/e*k); float crest = 0.0;
 #ifdef FCF_RIPPLE
@@ -432,9 +410,6 @@ void main(){
   float foam = fo*smoothstep(0.42, 0.75, vnoise(vP.xz*1.6 + vec2(uTime*0.4,0.0)) + fo*0.5 + 0.15*sin(depth*9.0 - uTime*2.5));
   col = mix(col, vec3(0.9)*(ambient(n)+uSunCol*0.6*sh), clamp(foam + crest*crest*0.6,0.0,1.0)*0.85);
   float a = clamp(depth*1.1+0.25, 0.0, 1.0);
-#if FCF_WATER_TEST == 2
-  if(depth < -0.02) a = 0.0;
-#endif
   finish(applyFog(col, vP), a);
 }
 )";

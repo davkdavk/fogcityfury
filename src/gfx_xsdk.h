@@ -5,9 +5,6 @@
 #include "xsdk/texture.h"
 #include "gfx_shader_data.h"
 #include <array>
-#ifdef FCF_XENOS_NO_HIZ
-extern "C" void xsdk_gpu_hiz_drop(void);
-#endif
 
 struct Prog;
 namespace gfx {
@@ -343,9 +340,6 @@ void beginFrame(int width,int height) {
     arena.cursor=0;
     for(auto& b:xs::buffers) { b.streamVertices=nullptr; b.streamBytes=0; }
     xs::setScreenTarget(xs::screenW>0?xs::screenW:width,xs::screenH>0?xs::screenH:height);
-#ifdef FCF_XENOS_NO_HIZ
-    xsdk_gpu_hiz_drop();
-#endif
 }
 static void clear(bool color,bool depth) {
     auto& t=xs::targets[xs::activeTarget];
@@ -570,16 +564,15 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
         {.usage=XSDK_USAGE_COLOR,.usage_index=0,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=8},
         {.usage=XSDK_USAGE_TEXCOORD,.usage_index=0,.format=XSDK_VERTEX_FLOAT4,.offset_bytes=16}};
     static const uint32_t meshStride[]={48}, partStride[]={44}, uiStride[]={32};
-    if(!strcmp(name,"world")||!strcmp(name,"car")||!strcmp(name,"water")||!strcmp(name,"depth")||!strcmp(name,"ground")||!strcmp(name,"road")||!strcmp(name,"roadwet")||!strcmp(name,"wall")||!strcmp(name,"misc")||!strcmp(name,"slime")||!strcmp(name,"planet")) {   // (every program drawing a Mesh needs this, or it draws nothing or garbage: the space track's road and planet were missing it)
-        if(!strcmp(name,"world")) {
-            xsdk_log_write("gfx: %s vertex stride=%u elements=%u",name,(unsigned)meshStride[0],(unsigned)(sizeof M/sizeof M[0]));
-            for(uint32_t i=0;i<sizeof M/sizeof M[0];i++) xsdk_log_write("gfx: %s element %u usage=%u index=%u format=%u offset=%u",name,(unsigned)i,(unsigned)M[i].usage,(unsigned)M[i].usage_index,(unsigned)M[i].format,(unsigned)M[i].offset_bytes);
-        }
-        xsdk_shader_set_vertex_layout(&p.vs,M,5,meshStride);
+    // the vertex layout comes with the program (transform.py writes it from the program's vertex shader), so a new
+    // program can't be left without one (2.22-2.23: the space track's planet and road drew nothing or garbage)
+    switch(p.meta->layout){
+    case FCF_LAYOUT_MESH: xsdk_shader_set_vertex_layout(&p.vs,M,5,meshStride); break;
+    case FCF_LAYOUT_PART: xsdk_shader_set_vertex_layout(&p.vs,P,4,partStride); break;
+    case FCF_LAYOUT_UI: xsdk_shader_set_vertex_layout(&p.vs,U,3,uiStride); break;
+    default: break;   // (sky, post: drawn by drawFull, no vertex buffer)
     }
-    else if(!strcmp(name,"part")||!strcmp(name,"mark")||!strcmp(name,"ring")||!strcmp(name,"glass")) xsdk_shader_set_vertex_layout(&p.vs,P,4,partStride);
-    else if(!strcmp(name,"ui")) xsdk_shader_set_vertex_layout(&p.vs,U,3,uiStride);
-    else if(strcmp(name,"sky")&&strcmp(name,"post")) xsdk_log_write("gfx: WARNING %s has no vertex layout",name);
+    xsdk_log_write("gfx: %s layout=%u",name,(unsigned)p.meta->layout);
     uint32_t vr=0,fr=0;
     for(uint32_t i=0;i<p.meta->nvu;i++) vr=std::max(vr,(p.meta->vu[i].offset+p.meta->vu[i].size+15)/16);
     for(uint32_t i=0;i<p.meta->nfu;i++) fr=std::max(fr,(p.meta->fu[i].offset+p.meta->fu[i].size+15)/16);
