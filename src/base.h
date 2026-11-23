@@ -129,7 +129,7 @@ struct MB {
 #endif
     }
     // oriented box. local x axis = (ca,0,-sa), local z = (sa,0,ca)
-    void box(float cx, float cz, float hx, float hz, float ang, float y0, float y1, V3 wallCol, float wallMat, V3 roofCol, float roofMat, float vRef = 0, float uOff = 0) {
+    void box(float cx, float cz, float hx, float hz, float ang, float y0, float y1, V3 wallCol, float wallMat, V3 roofCol, float roofMat, float vRef = 0, float uOff = 0, float uScale = 1) {   // uScale: windows packed closer (2: twice as many across)
         float ca = cosf(ang), sa = sinf(ang);
         float lx[4] = { -hx, hx, hx, -hx }, lz[4] = { -hz, -hz, hz, hz }; V3 p[4];
         for (int i = 0; i < 4; i++) p[i] = V3(cx + ca * lx[i] + sa * lz[i], 0, cz - sa * lx[i] + ca * lz[i]);
@@ -140,7 +140,7 @@ struct MB {
         bool fit = wallMat > 1.5f && wallMat < 2.5f; float vs = 1;
         if (fit) { float hgt = y1 - vRef; if (hgt > 1) vs = std::max(1.0f, roundf(hgt / 3.3f)) * 3.3f / hgt; u = floorf(uOff / 3.4f) * 3.4f; }
         for (int i = 0; i < 4; i++) {
-            V3 a = p[i], b = p[(i + 1) % 4]; float L = len(b - a), du = fit ? std::max(1.0f, roundf(L / 3.4f)) * 3.4f : L;
+            V3 a = p[i], b = p[(i + 1) % 4]; float L = len(b - a), du = fit ? std::max(1.0f, roundf(L * uScale / 3.4f)) * 3.4f : L;
             quad(V3(b.x, y0, b.z), V3(a.x, y0, a.z), V3(a.x, y1, a.z), V3(b.x, y1, b.z), wallCol, wallMat, u + du, (y0 - vRef) * vs, u, (y1 - vRef) * vs);
             u += du;
         }

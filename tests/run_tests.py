@@ -1881,6 +1881,32 @@ def the_wardens_minigun_tracks_and_fires_bursts():
         check(d["mechFootErr"] < 0.05, "track %d: the feet still land where they should" % t, d["mechFootErr"])
 
 @test
+def every_xbox_mesh_program_has_a_vertex_layout():
+    """The 360 sets each program's vertex layout by name (gfx_xsdk.h makeProg). A mesh program left off that list draws
+    nothing or garbage: in 2.22-2.23 the space track's planet was missing and its road solid."""
+    import os, re
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "src", "gfx_xsdk.h")).read()
+    line = next(l for l in src.splitlines() if '!strcmp(name,"roadwet")' in l)
+    named = set(re.findall(r'!strcmp\(name,"(\w+)"\)', line))
+    lean = open(os.path.join(root, "xenon", "lean_shaders.py")).read()
+    mesh = set(re.findall(r"'(\w+)'", re.search(r"LEAN_VS = \{n: \(WORLD_VS, WORLD_LOC\) for n in \(([^)]*)\)", lean).group(1)))
+    mesh |= {"car", "water", "depth"}
+    check(mesh <= named, "every mesh program gets the mesh layout", sorted(mesh - named))
+
+@test
+def the_town_has_all_kinds_of_buildings():
+    """Every lot that had a building still has one, the same size: only the look changed. A city track has every kind
+    (plain, stepped, podium, glass, round, flats, warehouse), and the props stay within budget."""
+    d = sim("--track", 3, "--state", 3, seconds=0.1)
+    check(all(k > 0 for k in d["buildingKinds"][:6]), "towers, podiums, glass, round, flats and plain blocks", d["buildingKinds"])
+    n = 0
+    for t in range(NTRACKS):
+        e = sim("--track", t, "--state", 3, seconds=0.1); n += e["buildingKinds"][6]
+        check(e["propTris"] < 400000, "track %d: props within budget" % t, e["propTris"])
+    check(n > 0, "warehouses by the water somewhere", n)
+
+@test
 def the_wardens_feet_are_solid():
     # a Warden standing on the road at Hilltop's sample 400; we drive at its left foot at 30 m/s
     hit = sim("--track", 0, "--state", 3, "--mode", 1, "--nobotguns", "--mechat", -163, -174.2, 0.609, "--pos", -200.7, -219.8, 0.609, "--speed", 30, seconds=2.5)

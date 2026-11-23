@@ -90,6 +90,17 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.24
+
+- A town that looks like one: stepped towers, office towers on shop podiums, blue glass office blocks, round glass
+  towers, brick flats with balconies, and warehouses with sawtooth roofs and roller doors by the water
+- On the roofs: parapets, air-conditioning plant, stair houses, water tanks, masts with red aircraft lights, helipads
+- At street level: shop signs that glow at night and canvas awnings over the shop windows
+- Every building stands where it did and is the same size and height (only its look changed), so the routes,
+  shortcuts and keys are all where they were
+- Xbox 360: the space track's planet is back and its road is see-through again (their shaders never got the mesh
+  vertex layout, so the planet drew nothing and the road came out solid)
+
 ## What's new in 2.23
 
 - The Wardens walk more like something alive and heavy: they turn onto their path gradually, shift their weight

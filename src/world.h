@@ -1267,8 +1267,161 @@ struct World {
         }
         if (hasUfo) addExcl(ufoAt.x, ufoAt.z, 16);
     }
+    // ---- town buildings ----
+    // A building on a lot: one of seven kinds, each with its roof and (in town) its street front. Its own random numbers
+    // come from where it stands, so adding any of this never moved a building, a tree or anything else: the only draw from
+    // the world's stream is the one building() always made. Walls are material 2 (the window shader: a window every
+    // 3.4 m across, a floor every 3.3 m up, bigger windows on the ground floor); uScale packs the windows closer (glass
+    // offices). The small things (roof plant, awnings, signs, balconies) go in the small props: on the Xbox 360 they are
+    // only drawn within 300 m, and some are left out there.
+    enum { B_PLAIN, B_SETBACK, B_PODIUM, B_GLASS, B_ROUND, B_FLATS, B_SHED };
+    int kinds[7] = {}, propTris = 0;   // (tests) how many of each kind this track has; the props' triangles
+    void cityBuilding(float x, float z, float hx, float hz, float ht, V3 col, bool ct) {
+        float uOff = rng.f() * 20;
+        Rng br; br.s = ((uint32_t)(int)(x + 2000) * 73856093u) ^ ((uint32_t)(int)(z + 2000) * 19349663u) ^ ((uint32_t)def->seed * 83492791u) ^ 0x5bd1e995u;
+        br.f(); br.f();
+        float mn = 1e9f, mx = -1e9f; for (int k = 0; k < 5; k++) { float lx = k == 4 ? 0 : (k & 1 ? hx : -hx), lz = k == 4 ? 0 : (k & 2 ? hz : -hz); float hh = H(x + lx, z + lz); mn = std::min(mn, hh); mx = std::max(mx, hh); }
+        const float y0 = mn - 1.5f, ref = (mn + mx) * 0.5f, gy = mx; float top = mx + ht;
+#ifdef FCF_GFX_XSDK
+        const bool rich = false;   // (the Xbox 360: no balconies, less roof plant)
+#else
+        const bool rich = true;
+#endif
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(mb, x, z), oldSmall = setCellTag(smallMb, x, z); MB& S = smallMb;
+#else
+        MB& S = mb;
+#endif
+        // which faces look onto a road (the street front): 0 +x, 1 -x, 2 +z, 3 -z
+        bool street[4]; float dc = RD(x, z);
+        for (int f = 0; f < 4; f++) { float nx = f == 0 ? 1.f : f == 1 ? -1.f : 0.f, nz = f == 2 ? 1.f : f == 3 ? -1.f : 0.f; street[f] = RD(x + nx * (hx + 7), z + nz * (hz + 7)) < dc - 3; }
+        bool nearSea = false; for (int k = 0; k < 8 && !nearSea; k++) { float a = k * 0.785f; if (H(x + cosf(a) * 55, z + sinf(a) * 55) < -0.5f) nearSea = true; }
+        int kind = B_PLAIN; float r = br.f();
+        if (!ct) kind = nearSea && r < 0.7f ? B_SHED : B_PLAIN;
+        else if (ht > 30 && r < 0.28f) kind = B_SETBACK;
+        else if (ht > 22 && r < 0.48f) kind = B_PODIUM;
+        else if (ht > 26 && r < 0.60f) kind = B_GLASS;
+        else if (ht > 34 && r < 0.66f && std::fabs(hx - hz) < 0.1f) kind = B_ROUND;
+        else if (ht < 32 && r < 0.86f) kind = B_FLATS;
+        else if (nearSea && ht < 20) kind = B_SHED;
+        kinds[kind]++;
+        float vs = 1; { float hg = top - ref; if (hg > 1) vs = std::max(1.0f, roundf(hg / 3.3f)) * 3.3f / hg; } const float FL = 3.3f / vs;   // (the floor height the window shader will draw)
+        auto block = [&](float cx, float cz, float bx, float bz, float b0, float b1, V3 c, float uScale) {
+            mb.box(cx, cz, bx, bz, 0, b0, b1, c, 2, c * 0.45f, 3, ref, uOff, uScale); addBox(cx, cz, bx, bz, 0, y0, b1); };
+        // a low wall round the edge of a roof
+        auto parapet = [&](float cx, float cz, float bx, float bz, float y, V3 c) {
+            if (!rich && bx < 7) return; V3 pc = c * 0.75f, tc = c * 0.55f;   // (its outer face and a band on top: 16 triangles)
+            V3 o[4] = { V3(cx - bx, 0, cz - bz), V3(cx + bx, 0, cz - bz), V3(cx + bx, 0, cz + bz), V3(cx - bx, 0, cz + bz) };
+            for (int k = 0; k < 4; k++) { V3 a = o[k], b = o[(k + 1) & 3], in = norm(V3(cx, 0, cz) - (a + b) * 0.5f) * 0.4f;
+                S.quad(V3(b.x, y - 0.1f, b.z), V3(a.x, y - 0.1f, a.z), V3(a.x, y + 0.8f, a.z), V3(b.x, y + 0.8f, b.z), pc, 3);
+                S.quad(V3(b.x, y + 0.8f, b.z), V3(a.x, y + 0.8f, a.z), V3(a.x, y + 0.8f, a.z) + in, V3(b.x, y + 0.8f, b.z) + in, tc, 3); } };
+        // what stands on a roof: air-conditioning boxes, a stair and lift house, a water tank on legs, on tall towers a
+        // mast with red warning lights, and now and then a helipad instead
+        auto roof = [&](float cx, float cz, float bx, float bz, float y, bool tall, bool tank) {
+            V3 steel(0.42f, 0.43f, 0.45f), dark(0.16f, 0.16f, 0.17f), red(1.0f, 0.06f, 0.03f);
+            if (tall && bx >= 6.5f && br.f() < 0.22f) {   // a helipad: a dark square, a yellow ring and H, lights at the corners
+                V3 pad(0.12f, 0.12f, 0.13f), yel(0.95f, 0.75f, 0.10f); float s = std::min(bx, bz) - 1.2f;
+                S.box(cx, cz, s, s, 0, y, y + 0.12f, pad, 3, pad, 3);
+                for (int k = 0; k < 16; k++) { float a0 = k * 0.3927f, a1 = a0 + 0.3927f, r0 = s * 0.70f, r1 = s * 0.84f, yy = y + 0.14f;   // the ring: flat quads
+                    S.quad(V3(cx + cosf(a0) * r0, yy, cz + sinf(a0) * r0), V3(cx + cosf(a0) * r1, yy, cz + sinf(a0) * r1), V3(cx + cosf(a1) * r1, yy, cz + sinf(a1) * r1), V3(cx + cosf(a1) * r0, yy, cz + sinf(a1) * r0), yel, 3); }
+                S.box(cx - 1.4f, cz, 0.35f, 2.2f, 0, y + 0.12f, y + 0.17f, yel, 3, yel, 3); S.box(cx + 1.4f, cz, 0.35f, 2.2f, 0, y + 0.12f, y + 0.17f, yel, 3, yel, 3); S.box(cx, cz, 1.1f, 0.3f, 0, y + 0.12f, y + 0.17f, yel, 3, yel, 3);
+                for (int k = 0; k < 4; k++) S.box(cx + (k & 1 ? s : -s) * 0.95f, cz + (k & 2 ? s : -s) * 0.95f, 0.15f, 0.15f, 0, y + 0.1f, y + 0.4f, V3(0.4f, 1.0f, 0.5f), 6, V3(0.4f, 1.0f, 0.5f), 6);
+                return;
+            }
+            int n = 1 + (int)(br.f() * (rich ? 3.0f : 1.5f));
+            for (int k = 0; k < n; k++) {   // air-conditioning: a grey box with a dark fan on top
+                float ax = cx + br.r(-bx + 2, bx - 2), az = cz + br.r(-bz + 2, bz - 2), w = br.r(0.8f, 1.4f);
+                S.box(ax, az, w, w * 0.7f, 0, y, y + 1.2f, steel, 3, steel * 0.8f, 3); if (rich) S.box(ax, az, w * 0.5f, w * 0.5f, 0.785f, y + 1.2f, y + 1.28f, dark, 3, dark, 3);
+            }
+            if (br.f() < 0.6f) { float ax = cx + br.r(-bx + 2.5f, bx - 2.5f) * 0.5f, az = cz + br.r(-bz + 2.5f, bz - 2.5f) * 0.5f;   // the stair and lift house
+                S.box(ax, az, 1.8f, 2.2f, 0, y, y + 3.0f, col * 0.8f, 3, col * 0.5f, 3); }
+            if (tank && (rich || br.f() < 0.3f)) {   // a water tank on four legs, with a cone for a lid
+                float ax = cx + br.r(-bx + 2.5f, bx - 2.5f), az = cz + br.r(-bz + 2.5f, bz - 2.5f); V3 wood(0.42f, 0.28f, 0.17f);
+                for (int k = 0; k < 4; k++) S.box(ax + (k & 1 ? 1.0f : -1.0f), az + (k & 2 ? 1.0f : -1.0f), 0.1f, 0.1f, 0, y, y + 1.6f, dark, 3, dark, 3);
+                const int SG = rich ? 10 : 7; float rr = 1.45f, yb = y + 1.6f, yt = y + 4.0f;
+                for (int k = 0; k < SG; k++) { float a0 = k * 6.2832f / SG, a1 = (k + 1) * 6.2832f / SG; V3 p0(ax + cosf(a0) * rr, 0, az + sinf(a0) * rr), p1(ax + cosf(a1) * rr, 0, az + sinf(a1) * rr);
+                    S.quad(V3(p0.x, yb, p0.z), V3(p0.x, yt, p0.z), V3(p1.x, yt, p1.z), V3(p1.x, yb, p1.z), wood * (0.9f + 0.2f * (k & 1)), 3);
+                    S.tri(V3(p0.x, yt, p0.z), V3(ax, yt + 0.9f, az), V3(p1.x, yt, p1.z), wood * 0.6f, 3); S.tri(V3(p0.x, yb, p0.z), V3(p1.x, yb, p1.z), V3(ax, yb, az), dark, 3); }
+            }
+            if (tall) {   // a mast, with red lights for aircraft
+                float ax = cx + br.r(-bx + 2, bx - 2) * 0.4f, az = cz + br.r(-bz + 2, bz - 2) * 0.4f, mh = br.r(6, 13);
+                S.box(ax, az, 0.12f, 0.12f, 0, y, y + mh, steel, 3, steel, 3); S.box(ax, az, 0.6f, 0.06f, 0, y + mh * 0.6f, y + mh * 0.6f + 0.1f, steel, 3, steel, 3);
+                S.box(ax, az, 0.25f, 0.25f, 0, y + mh, y + mh + 0.45f, red, 6, red, 6); S.box(ax, az, 0.2f, 0.2f, 0, y + mh * 0.55f, y + mh * 0.55f + 0.35f, red, 6, red, 6);
+            }
+        };
+        // the street front of the ground floor: a sign band (it glows at night) and an awning over the shop windows
+        static const V3 AWN[6] = { {0.60f,0.10f,0.08f}, {0.08f,0.35f,0.18f}, {0.10f,0.20f,0.45f}, {0.75f,0.55f,0.10f}, {0.35f,0.12f,0.35f}, {0.85f,0.85f,0.82f} };
+        static const V3 NEON[5] = { {1.0f,0.25f,0.55f}, {0.25f,0.85f,1.0f}, {1.0f,0.65f,0.15f}, {0.45f,1.0f,0.35f}, {0.85f,0.4f,1.0f} };
+        auto front = [&](float cx, float cz, float bx, float bz, bool awnings) {
+            for (int f = 0; f < 4; f++) { if (!street[f]) continue;
+                V3 n(f == 0 ? 1.f : f == 1 ? -1.f : 0.f, 0, f == 2 ? 1.f : f == 3 ? -1.f : 0.f), along(n.z, 0, -n.x); float half = (f < 2 ? bz : bx) - 0.8f, out = f < 2 ? bx : bz;
+                V3 c0 = V3(cx, 0, cz) + n * (out + 0.06f);
+                V3 nc = NEON[(int)(br.f() * 4.99f)] * 0.32f, ac = AWN[(int)(br.f() * 5.99f)];
+                S.quad(c0 - along * half + V3(0, gy + 3.55f, 0), c0 + along * half + V3(0, gy + 3.55f, 0), c0 + along * half + V3(0, gy + 4.25f, 0), c0 - along * half + V3(0, gy + 4.25f, 0), nc, 6);
+                if (!awnings) continue;
+                for (float s = -half + 0.3f; s < half - 1.0f; s += 3.4f) { float e = std::min(s + 3.0f, half - 0.3f); V3 a = c0 + along * s, b = c0 + along * e;   // one canvas a shop window, sloping out over the pavement
+                    S.quad(a + V3(0, gy + 3.45f, 0), b + V3(0, gy + 3.45f, 0), b + n * 1.6f + V3(0, gy + 2.85f, 0), a + n * 1.6f + V3(0, gy + 2.85f, 0), ac, 3);
+                    S.quad(a + n * 1.6f + V3(0, gy + 2.85f, 0), b + n * 1.6f + V3(0, gy + 2.85f, 0), b + n * 1.6f + V3(0, gy + 2.55f, 0), a + n * 1.6f + V3(0, gy + 2.55f, 0), ac * 0.8f, 3); }
+            } };
+        // balconies on the street side of a block of flats: a slab and a railing at every other window, every floor
+        auto balconies = [&](float cx, float cz, float bx, float bz, float b1) {
+            if (!rich) return; V3 sl(0.55f, 0.55f, 0.56f), rl(0.20f, 0.21f, 0.23f);
+            for (int f = 0; f < 4; f++) { if (!street[f]) continue;
+                V3 n(f == 0 ? 1.f : f == 1 ? -1.f : 0.f, 0, f == 2 ? 1.f : f == 3 ? -1.f : 0.f), along(n.z, 0, -n.x); float half = f < 2 ? bz : bx, out = f < 2 ? bx : bz;
+                int bays = std::max(1, (int)roundf(2 * half / 3.4f)); float bw = 2 * half / bays;
+                for (float yf = ref + 2 * FL; yf < b1 - 1.5f; yf += FL) for (int k = (int)(br.f() * 2); k < bays; k += 2) {
+                    V3 c = V3(cx, yf, cz) + n * (out + 0.7f) + along * (-half + (k + 0.5f) * bw);
+                    S.box(c.x, c.z, n.x != 0 ? 0.7f : bw * 0.42f, n.z != 0 ? 0.7f : bw * 0.42f, 0, yf - 0.15f, yf + 0.02f, sl, 3, sl, 3);
+                    V3 o = c + n * 0.68f, s0 = along * (bw * 0.42f);
+                    S.quad(o - s0, o + s0, o + s0 + V3(0, 1.0f, 0), o - s0 + V3(0, 1.0f, 0), rl, 3);
+                } } };
+        switch (kind) {
+        case B_SETBACK: {   // two or three tiers, each stepped in from the one below
+            int nt = ht > 45 ? 3 : 2; float t1 = ref + roundf((ht * (nt == 3 ? 0.45f : 0.55f)) / FL) * FL, t2 = nt == 3 ? ref + roundf(ht * 0.75f / FL) * FL : top;
+            block(x, z, hx, hz, y0, t1, col, 1); parapet(x, z, hx, hz, t1, col); roof(x, z, hx, hz, t1, false, false);
+            block(x, z, hx - 2.2f, hz - 2.2f, t1, t2, col * 1.04f, 1);
+            if (nt == 3) { parapet(x, z, hx - 2.2f, hz - 2.2f, t2, col); block(x, z, hx - 4.4f, hz - 4.4f, t2, top, col * 1.08f, 1); roof(x, z, hx - 4.4f, hz - 4.4f, top, true, false); }
+            else roof(x, z, hx - 2.2f, hz - 2.2f, top, true, false);
+            front(x, z, hx, hz, true); break; }
+        case B_PODIUM: {   // three floors of shops filling the lot, an office tower set back on top
+            float p = ref + 3 * FL; block(x, z, hx, hz, y0, p, col * 0.9f, 1); parapet(x, z, hx, hz, p, col * 0.9f); roof(x, z, hx, hz, p, false, false);
+            V3 tc = br.f() < 0.5f ? V3(0.24f, 0.31f, 0.38f) : col; block(x, z, hx - 3.2f, hz - 3.2f, p, top, tc, br.f() < 0.5f ? 2.4f : 1.0f);
+            parapet(x, z, hx - 3.2f, hz - 3.2f, top, tc); roof(x, z, hx - 3.2f, hz - 3.2f, top, ht > 38, false); front(x, z, hx, hz, true); break; }
+        case B_GLASS: {   // an office block: blue-grey glass in close-set strips, a lighter crown, a canopy over the door
+            V3 gc = V3(0.22f, 0.30f, 0.38f) * br.r(0.85f, 1.15f); block(x, z, hx, hz, y0, top, gc, 2.4f);
+            mb.box(x, z, hx + 0.12f, hz + 0.12f, 0, top - 1.4f, top + 0.4f, gc * 1.6f, 3, gc * 0.8f, 3);
+            roof(x, z, hx - 0.5f, hz - 0.5f, top + 0.4f, ht > 38, false); front(x, z, hx, hz, false);
+            for (int f = 0; f < 4; f++) if (street[f]) { V3 n(f == 0 ? 1.f : f == 1 ? -1.f : 0.f, 0, f == 2 ? 1.f : f == 3 ? -1.f : 0.f); V3 c = V3(x, 0, z) + n * ((f < 2 ? hx : hz) + 1.2f);
+                S.box(c.x, c.z, n.x != 0 ? 1.2f : 3.0f, n.z != 0 ? 1.2f : 3.0f, 0, gy + 3.2f, gy + 3.45f, V3(0.75f, 0.76f, 0.78f), 3, V3(0.6f, 0.6f, 0.62f), 3); break; }
+            break; }
+        case B_ROUND: {   // a round tower of glass on a square plinth
+            float rr = std::min(hx, hz) - 0.4f, p = ref + 2 * FL; block(x, z, hx, hz, y0, p, col * 0.85f, 1); parapet(x, z, hx, hz, p, col * 0.85f);
+            int nw = std::max(12, (int)roundf(6.2832f * rr / 3.4f)); V3 gc = V3(0.26f, 0.33f, 0.40f) * br.r(0.9f, 1.1f);
+            for (int k = 0; k < nw; k++) { float a0 = k * 6.2832f / nw, a1 = (k + 1) * 6.2832f / nw; V3 q0(x + cosf(a0) * rr, 0, z + sinf(a0) * rr), q1(x + cosf(a1) * rr, 0, z + sinf(a1) * rr);
+                mb.quad(V3(q1.x, p, q1.z), V3(q0.x, p, q0.z), V3(q0.x, top, q0.z), V3(q1.x, top, q1.z), gc, 2, (k + 1) * 3.4f, (p - ref) * vs, k * 3.4f, (top - ref) * vs);
+                mb.tri(V3(q0.x, top, q0.z), V3(x, top, z), V3(q1.x, top, q1.z), gc * 0.5f, 3); }
+            addBox(x, z, rr * 0.8f, rr * 0.8f, 0, y0, top); roof(x, z, rr * 0.6f, rr * 0.6f, top, true, false); front(x, z, hx, hz, true); break; }
+        case B_FLATS: {   // a block of flats: brick, balconies on the street, a water tank on the roof, shops on the ground floor half the time
+            V3 bc = col * 0.6f + V3(0.30f, 0.14f, 0.09f) * (br.f() < 0.6f ? 1.0f : 0.4f); block(x, z, hx, hz, y0, top, bc, 1);
+            parapet(x, z, hx, hz, top, bc); roof(x, z, hx, hz, top, false, true); balconies(x, z, hx, hz, top); front(x, z, hx, hz, br.f() < 0.5f); break; }
+        case B_SHED: {   // a warehouse by the water: low, plain walls, big roller doors, a sawtooth roof with skylights
+            top = mx + std::min(std::max(ht, 7.0f), 11.0f); V3 wc = col * 0.5f + V3(0.20f, 0.21f, 0.22f), door(0.30f, 0.31f, 0.33f), sky(0.45f, 0.62f, 0.72f);
+            mb.box(x, z, hx, hz, 0, y0, top, wc, 3, wc * 0.6f, 3); addBox(x, z, hx, hz, 0, y0, top);
+            for (int f = 0; f < 4; f++) if (street[f] || f == 0) { V3 n(f == 0 ? 1.f : f == 1 ? -1.f : 0.f, 0, f == 2 ? 1.f : f == 3 ? -1.f : 0.f), along(n.z, 0, -n.x); V3 c = V3(x, 0, z) + n * ((f < 2 ? hx : hz) + 0.05f);
+                for (int k = -1; k <= 1; k += 2) { V3 dc2 = c + along * (k * 4.0f); S.quad(dc2 - along * 2.0f + V3(0, gy, 0), dc2 + along * 2.0f + V3(0, gy, 0), dc2 + along * 2.0f + V3(0, gy + 4.6f, 0), dc2 - along * 2.0f + V3(0, gy + 4.6f, 0), door, 3); } }
+            for (int k = 0; k < 3; k++) { float zz = z - hz + (k + 0.5f) * (2 * hz / 3), w = hz / 3;   // the teeth of the roof, glass on the north side
+                V3 a(x - hx, top, zz - w), b(x + hx, top, zz - w), c(x + hx, top + 2.2f, zz + w), d(x - hx, top + 2.2f, zz + w), e(x + hx, top, zz + w), g(x - hx, top, zz + w);
+                mb.quad(a, b, c, d, wc * 0.7f, 3); mb.quad(g, e, c, d, sky, 3); mb.tri(a, d, g, wc * 0.6f, 3); mb.tri(b, e, c, wc * 0.6f, 3); }
+            break; }
+        default: {   // a plain block (out of town: a smaller one, often with a water tank)
+            block(x, z, hx, hz, y0, top, col, 1); parapet(x, z, hx, hz, top, col); roof(x, z, hx, hz, top, ct && ht > 40, !ct || br.f() < 0.3f); if (ct) front(x, z, hx, hz, br.f() < 0.6f); break; }
+        }
+#ifdef FCF_XENOS_CULL
+        mb.cellTag = oldTag; smallMb.cellTag = oldSmall;
+#endif
+    }
     void build(int id_) {
-        id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB(); space = def->space && !flat; hasSlime = false; hasPlanet = false; hasUfo = false;
+        id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB(); space = def->space && !flat; hasSlime = false; hasPlanet = false; hasUfo = false; for (int& k : kinds) k = 0;
         tidyTown();
         boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); jumpObs.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
 #ifdef FCF_XENOS_CULL
@@ -1379,7 +1532,12 @@ struct World {
             if (d < ROADW + 5 + std::max(hx, hz) * 1.25f || excluded(x, z, 13)) continue;
             float mn = 1e9f, mx = -1e9f; for (int k = 0; k < 4; k++) { float hh = H(x + (k & 1 ? hx : -hx), z + (k & 2 ? hz : -hz)); mn = std::min(mn, hh); mx = std::max(mx, hh); }
             if (mn < 2.6f || mx - mn > 7) continue;
-            float ht = ct ? 11 + r2 * r2 * 52 : 7 + r2 * 11; building(x, z, hx, hz, 0, ht, false, pal[(int)(r3 * 7.99f)] * rng.r(0.8f, 1.1f));
+            float ht = ct ? 11 + r2 * r2 * 52 : 7 + r2 * 11; 
+#ifdef FCF_PLAIN_BUILDINGS   // (a build switch: the plain boxes of 2.23, if the town is ever too much for a machine)
+            building(x, z, hx, hz, 0, ht, false, pal[(int)(r3 * 7.99f)] * rng.r(0.8f, 1.1f));
+#else
+            cityBuilding(x, z, hx, hz, ht, pal[(int)(r3 * 7.99f)] * rng.r(0.8f, 1.1f), ct);
+#endif
             if (ct && fr.f() < 0.30f) {   // a dumpster or a stack of pallets against one wall, on the backstreet side (it leaves the middle of the street clear)
                 int sdn = (int)(fr.f() * 4) & 3; float ox = sdn == 0 ? hx + 0.85f : sdn == 1 ? -hx - 0.85f : fr.r(-hx + 2, hx - 2), oz = sdn == 2 ? hz + 0.85f : sdn == 3 ? -hz - 0.85f : fr.r(-hz + 2, hz - 2);
                 float px = x + ox, pz = z + oz, py = H(px, pz); bool bin = fr.f() < 0.65f; V3 col = bin ? (fr.f() < 0.5f ? V3(0.10f, 0.26f, 0.16f) : V3(0.12f, 0.18f, 0.32f)) : V3(0.50f, 0.38f, 0.22f);
@@ -1423,12 +1581,13 @@ struct World {
             int oldTag = setCellTag(smallMb, gx + 12, gz + 12); grassSquare(smallMb, gx, gz, 24, 2.4f, 1.5f, 0, ROADW + 8 + 26);
             smallMb.cellTag = oldTag;
         }
+        propTris = (int)((mb.idx.size() + smallMb.idx.size()) / 3);
         arrangeProps(mb, false); arrangeProps(smallMb, true);
  #endif
 #ifdef FCF_XENOS_CULL
         props.upload(mb, "props"); smallProps.upload(smallMb, "small-props");
 #else
-        props.upload(mb);
+        propTris = (int)(mb.idx.size() / 3); props.upload(mb);
 #endif
         }
         mb = MB(); smallMb = MB();

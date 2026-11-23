@@ -570,7 +570,7 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
         {.usage=XSDK_USAGE_COLOR,.usage_index=0,.format=XSDK_VERTEX_FLOAT2,.offset_bytes=8},
         {.usage=XSDK_USAGE_TEXCOORD,.usage_index=0,.format=XSDK_VERTEX_FLOAT4,.offset_bytes=16}};
     static const uint32_t meshStride[]={48}, partStride[]={44}, uiStride[]={32};
-    if(!strcmp(name,"world")||!strcmp(name,"car")||!strcmp(name,"water")||!strcmp(name,"depth")||!strcmp(name,"ground")||!strcmp(name,"road")||!strcmp(name,"roadwet")||!strcmp(name,"wall")||!strcmp(name,"misc")) {
+    if(!strcmp(name,"world")||!strcmp(name,"car")||!strcmp(name,"water")||!strcmp(name,"depth")||!strcmp(name,"ground")||!strcmp(name,"road")||!strcmp(name,"roadwet")||!strcmp(name,"wall")||!strcmp(name,"misc")||!strcmp(name,"slime")||!strcmp(name,"planet")) {   // (every program drawing a Mesh needs this, or it draws nothing or garbage: the space track's road and planet were missing it)
         if(!strcmp(name,"world")) {
             xsdk_log_write("gfx: %s vertex stride=%u elements=%u",name,(unsigned)meshStride[0],(unsigned)(sizeof M/sizeof M[0]));
             for(uint32_t i=0;i<sizeof M/sizeof M[0];i++) xsdk_log_write("gfx: %s element %u usage=%u index=%u format=%u offset=%u",name,(unsigned)i,(unsigned)M[i].usage,(unsigned)M[i].usage_index,(unsigned)M[i].format,(unsigned)M[i].offset_bytes);
@@ -579,6 +579,7 @@ static Prog makeProg(const char* name,const char*,const char*,const char*){
     }
     else if(!strcmp(name,"part")||!strcmp(name,"mark")||!strcmp(name,"ring")||!strcmp(name,"glass")) xsdk_shader_set_vertex_layout(&p.vs,P,4,partStride);
     else if(!strcmp(name,"ui")) xsdk_shader_set_vertex_layout(&p.vs,U,3,uiStride);
+    else if(strcmp(name,"sky")&&strcmp(name,"post")) xsdk_log_write("gfx: WARNING %s has no vertex layout",name);
     uint32_t vr=0,fr=0;
     for(uint32_t i=0;i<p.meta->nvu;i++) vr=std::max(vr,(p.meta->vu[i].offset+p.meta->vu[i].size+15)/16);
     for(uint32_t i=0;i<p.meta->nfu;i++) fr=std::max(fr,(p.meta->fu[i].offset+p.meta->fu[i].size+15)/16);
