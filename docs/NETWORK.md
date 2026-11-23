@@ -101,7 +101,7 @@ An online race cannot be paused: Esc opens a menu while the car coasts.
 ## Wire format
 
 UDP datagrams. Integers little-endian, floats IEEE-754 single, structs packed with no padding.
-Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 10) in `net.h` must be bumped
+Both ends are assumed little-endian (x86-64, ARM64). `PROTO` (currently 11) in `net.h` must be bumped
 whenever a struct changes or a flag bit gains a meaning; a client with a different version gets `S_REJECT` reason 2.
 
 Every packet starts with an 8-byte header:
@@ -160,6 +160,15 @@ results = seconds until the next lobby.
 Loss and ordering: nothing is retransmitted. States and snapshots are complete, so a lost one is
 replaced by the next; out-of-order ones are dropped by `seq` / `tick`. Join is repeated until
 answered. Leave is sent twice and backed by the timeout.
+
+## The space race (protocol 11)
+
+Track id **255** is the secret space track: no file is sent, every game builds it itself. On a roam server a player
+who parks under the golden UFO sends `C_SPACE` (13), a bare header (the game sends it a few times; the server takes
+the first, and ignores it for 15 s after a space race). The server stays in `ROAM` but counts ten seconds down in
+the snapshot's `phaseT` (games show "SPACE RACE IN N"), then goes to `COUNTDOWN` on track 255 with everyone in the
+race. There is no showdown after it. When the results are over, or everyone has left, it goes back to `ROAM` on the
+track it was on. Shared tracks are therefore numbered up to 254.
 
 ## Custom tracks and roam (protocol 10)
 

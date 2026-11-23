@@ -49,7 +49,7 @@ void main(){ vUV = aUV; vC = aC; gl_Position = vec4(aP.x/uScr.x*2.0-1.0, 1.0-aP.
 // shared by every lit fragment shader: sky model, fog, shadows, tonemapping
 static const char* FS_COMMON = R"(#version 330 core
 uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCamPos;
-uniform float uTime, uFogDen, uHDR, uNight, uHeadOn, uWet, uRain, uOvercast, uFogNoise, uBoltI, uUseEnv, uBright; uniform vec3 uHeadPos, uHeadDir, uBoltDir, uEnvPos;
+uniform float uTime, uFogDen, uHDR, uNight, uHeadOn, uWet, uRain, uOvercast, uFogNoise, uBoltI, uUseEnv, uBright, uSpace; uniform vec3 uHeadPos, uHeadDir, uBoltDir, uEnvPos;
 uniform samplerCube uEnv;   // reflection cubemap around the player's car (not bound while it is being rendered)
 uniform sampler2DShadow uShadow; uniform mat4 uLightVP;
 #ifdef FCF_PERF_NOISE
@@ -65,7 +65,27 @@ float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
 #endif
 }
 float fbm(vec2 p){ float a = 0.5, s = 0.0; for(int i=0;i<4;i++){ s += a*vnoise(p); p = p*2.03+7.1; a *= 0.5; } return s; }
+// Space (the secret track): black all round, three layers of stars of different sizes and colours, a faint band of
+// nebula across the sky, and the sun as a hard white disc
+vec3 spaceSky(vec3 d){
+  vec3 c = vec3(0.003, 0.004, 0.010);
+  float band = exp(-pow(dot(d, normalize(vec3(0.25, 0.9, 0.35)))*2.6, 2.0));
+  vec2 bp = vec2(d.x*2.1 + d.y*1.3, d.z*2.1 - d.y*0.7);
+  c += mix(vec3(0.10,0.025,0.16), vec3(0.015,0.07,0.15), fbm(bp*1.7 + 4.0))*band*smoothstep(0.35, 0.8, fbm(bp*2.3))*0.9;
+  for(int L=0; L<3; L++){
+    float sc = 55.0 + 65.0*float(L); vec3 q = d*sc, id = floor(q), f = fract(q) - 0.5;
+    float h = hash(id.xy + id.z*17.31 + float(L)*3.7);
+    if(h > 0.955){
+      vec3 o = vec3(hash(id.yz + 1.3), hash(id.zx + 2.1), hash(id.xy + 5.7)) - 0.5; float r = length(f - o*0.6);
+      float b = smoothstep(0.13, 0.0, r)*(0.5 + 3.5*pow(hash(id.zy + 9.1), 8.0))*(0.85 + 0.15*sin(uTime*2.3 + h*60.0));
+      c += mix(vec3(1.0,0.82,0.65), vec3(0.65,0.78,1.0), hash(id.xz + 4.2))*b;
+    }
+  }
+  float sd = max(dot(d, uSunDir), 0.0);
+  return c + uSunCol*(pow(sd, 2500.0)*60.0 + pow(sd, 200.0)*0.5 + pow(sd, 12.0)*0.03);
+}
 vec3 skyColor(vec3 d){
+  if(uSpace > 0.5) return spaceSky(d);
   float h = clamp(d.y, 0.0, 1.0);
   vec3 c = mix(uSkyHor, uSkyTop, pow(h, 0.55));
   float sd = max(dot(d, uSunDir), 0.0);
@@ -134,7 +154,7 @@ void main(){ vec3 d = normalize(uCamF + uCamR*vNdc.x*uTan.x + uCamU*vNdc.y*uTan.
 #ifdef FCF_FLAT_TEST
   oCol = vec4(mix(uSkyHor, uSkyTop, clamp(d.y, 0.0, 1.0)), 1.0);
 #else
-  vec3 c = skyColor(d); if(d.y<0.0) c = mix(c, uSkyHor*0.8, smoothstep(0.0,0.25,-d.y)); finish(c, 1.0);
+  vec3 c = skyColor(d); if(d.y<0.0 && uSpace < 0.5) c = mix(c, uSkyHor*0.8, smoothstep(0.0,0.25,-d.y)); finish(c, 1.0);
 #endif
 }
 )";
@@ -148,9 +168,52 @@ uniform sampler2D uDetail;   // unit 6: tileable ground detail (r grain, g speck
 void main(){
   vec3 n = normalize(vN); if(!gl_FrontFacing) n = -n;
   vec3 V = normalize(uCamPos-vP); float dist = length(uCamPos-vP);
-  vec3 alb = vC; float spec = 0.0; float gloss = 40.0; vec3 emis = vec3(0.0); vec3 refl = vec3(0.0);
+  vec3 alb = vC; float spec = 0.0; float gloss = 40.0; vec3 emis = vec3(0.0); vec3 refl = vec3(0.0); float alpha = 1.0;
   int m = int(vMat+0.5);
-  if(m==0){
+  if(m==9){
+    // The space road: green slime you can see through. Its surface heaves slowly (the normal follows a drifting noise),
+    // it shines like something wet, and inside it hang gold and silver stars at three depths, which shift against
+    // each other as you move (each layer is looked up where the eye's line reaches its depth)
+    vec2 fq = vP.xz*0.32 + vec2(uTime*0.05, uTime*0.11);
+    float h0 = fbm(fq), hx = fbm(fq + vec2(0.07, 0.0)), hz = fbm(fq + vec2(0.0, 0.07)), bl = vnoise(vP.xz*2.2 - uTime*0.3);
+    n = normalize(n + vec3(h0 - hx, 0.0, h0 - hz)*9.0 + vec3(bl - 0.5, 0.0, vnoise(vP.zx*2.2 + uTime*0.27) - 0.5)*0.12);
+    float F = 0.04 + 0.96*pow(1.0 - max(dot(n, V), 0.0), 5.0);
+    alb = mix(vec3(0.05, 0.55, 0.16), vec3(0.30, 0.95, 0.35), smoothstep(0.35, 0.75, h0))*(0.8 + 0.3*bl);
+    vec3 Rw = reflect(-V, n); refl = skyColor(normalize(Rw))*(0.15 + 0.85*F); spec = 1.6; gloss = 180.0;
+    float vy = max(abs(V.y), 0.12);
+    for(int L=0; L<3; L++){
+      float dep = 0.12 + 0.24*float(L), sc = 1.1 + 0.35*float(L);
+      vec2 pp = (vP.xz - V.xz*(dep/vy))/sc, id = floor(pp), f = fract(pp) - 0.5;
+      float hs = hash(id + float(L)*7.3); if(hs < 0.74) continue;
+      vec2 o = (vec2(hash(id + 1.7), hash(id + 3.1)) - 0.5)*0.5; vec2 q = f - o;
+      float rot = hash(id + 5.9)*6.2832 + uTime*(hash(id + 8.1) - 0.5)*0.6, a = atan(q.y, q.x) + rot, r = length(q);
+      float sz = 0.10 + 0.12*hash(id + 2.3), rad = sz*mix(0.42, 1.0, pow(0.5 + 0.5*cos(5.0*a), 2.0));
+      float st = 1.0 - smoothstep(rad*0.8, rad, r);
+      vec3 sc2 = hash(id + 4.4) > 0.5 ? vec3(1.0, 0.74, 0.22) : vec3(0.82, 0.88, 1.0);
+      emis += sc2*st*(0.9 + 0.6*sin(uTime*3.0 + hs*40.0))*(1.0 - 0.25*float(L));
+      alb = mix(alb, sc2, st*0.6);
+    }
+    emis += vec3(0.02, 0.18, 0.06)*(0.6 + 0.4*h0);   // its own faint glow
+    alpha = clamp(0.58 + 0.35*F, 0.0, 0.95);
+  } else if(m==10 || m==11){
+    // The planet (10: its sea and ice, 11: the islands' ground; the vertex colours are the map). Seen from a few km up:
+    // the sun lights it with a soft, slightly warm edge to the night; thin clouds drift over it and shade the ground
+    // under them; the sea catches the sun; the air glows blue round the rim; towns light up on the night side
+    vec3 rn = normalize(vP - vec3(0.0, 60.0, 0.0));   // straight up from the planet's middle (World: SPACE_Y)
+    if(dot(n, rn) < 0.0) n = -n;   // (the ground faces out, whichever way its triangles wind)
+    vec3 w3 = rn*rn; float dr = uTime*0.004;   // (clouds looked up on three planes, mixed by which way the ground faces: no stretching)
+    float cn = fbm(rn.yz*5.0 + vec2(dr, 0.0))*w3.x + fbm(rn.xz*5.0 + vec2(dr, 1.7))*w3.y + fbm(rn.xy*5.0 + vec2(-dr, 3.1))*w3.z;
+    float cl = smoothstep(0.56, 0.76, cn), cs = smoothstep(0.50, 0.72, fbm(rn.xz*5.0 + rn.y*2.0 + vec2(dr + 0.02, 1.7)));   // the cloud, and its shadow (a little off)
+    float sunUp = dot(rn, uSunDir), day = smoothstep(-0.08, 0.25, sunUp), night = 1.0 - smoothstep(-0.20, 0.05, sunUp);
+    if(m==10){ float sea = clamp((vC.b - max(vC.r, vC.g))*5.0, 0.0, 1.0);
+      vec2 wq = rn.xz*90.0 + uTime*0.05; n = normalize(n + vec3(vnoise(wq) - 0.5, 0.0, vnoise(wq.yx + 3.0) - 0.5)*0.06*sea);
+      spec = sea*(1.0 - cl)*1.1; gloss = 90.0; }
+    else { float town = clamp(vUV.x, 0.0, 1.0); emis = vec3(1.0, 0.72, 0.38)*town*night*(0.25 + 0.75*step(0.55, hash(floor(vP.xz*2.0))))*0.6; }
+    alb = mix(vC*(1.0 - 0.45*cs*day), vec3(0.95), cl*0.9);
+    alb *= mix(vec3(1.0), vec3(1.15, 0.92, 0.78), smoothstep(0.35, 0.0, abs(sunUp))*day);   // warm at the edge of the night
+    float rim = pow(1.0 - max(dot(rn, V), 0.0), 3.0);
+    emis += vec3(0.20, 0.45, 1.0)*rim*(0.08 + 1.3*day);
+  } else if(m==0){
     float nz = fbm(vP.xz*0.21), n2 = 0.5*vnoise(vP.xz*2.7) + 0.5*texture(uDetail, vP.xz*0.045).r;
     alb *= (0.72+0.56*nz)*(0.9+0.2*n2)*(1.0 - 0.28*uWet);
     if(vUV.x > 0.01){
@@ -264,7 +327,7 @@ void main(){
   float ndl = max(dot(n,uSunDir),0.0); float sh = shadow(vP, n);
   vec3 H = normalize(V+uSunDir);
   vec3 col = alb*(ambient(n) + uSunCol*ndl*sh + headlights(vP, n)) + refl + uSunCol*spec*sh*pow(max(dot(n,H),0.0), gloss)*(gloss>100.0?2.0:0.35) + emis;
-  finish(applyFog(col, vP), 1.0);
+  finish(applyFog(col, vP), alpha);
 }
 )";
 

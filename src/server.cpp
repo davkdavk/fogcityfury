@@ -50,7 +50,7 @@ static void loadTracks(const char* dir) {
     (void)dir; printf("--tracks: not on Windows yet\n");
 #endif
 }
-static const char* trackName(int t) { static const char* B[TRACKS] = { "HILLTOP HEIGHTS", "BAYSIDE BREAKER", "SUMMIT SWITCHBACKS", "MIDNIGHT MILE", "HARBOUR DEEP", "LAGOON LOOP", "TWIN ISLES" }; return t < TRACKS ? B[t] : CT[t - TRACKS].name.c_str(); }
+static const char* trackName(int t) { static const char* B[TRACKS] = { "HILLTOP HEIGHTS", "BAYSIDE BREAKER", "SUMMIT SWITCHBACKS", "MIDNIGHT MILE", "HARBOUR DEEP", "LAGOON LOOP", "TWIN ISLES" }; if (t == SPACE) return "SPACE RING"; return t < TRACKS ? B[t] : CT[t - TRACKS].name.c_str(); }
 // roam (--roam): the mini Wardens as the host's game last reported them, and the last hits on them
 // tracks shared by players (C_TRACK): the pieces so far, by player; wantTrack: the track to move to as soon as we are in the lobby
 struct Upload { uint32_t crc = 0; int total = 0; std::string data; std::vector<uint8_t> got; }; static Upload UP[MAXP]; static bool cfgUploads = true;
@@ -58,7 +58,10 @@ struct Upload { uint32_t crc = 0; int total = 0; std::string data; std::vector<u
 // say yes than no (the sharer is a yes). Then the lobby moves to it for one race, and afterwards back to returnTrack
 static const double VOTE_TIME = 20;
 static struct { bool open = false; int track = -1, by = -1; double left = 0, closedT = -9; bool passed = false; uint8_t ans[MAXP] = {}; char byName[NAMELEN + 1] = ""; } vote;
-static int pendTrack = -1, pendBy = -1, returnTrack = -1;   // pend: a shared track waiting for its vote (in the lobby)
+static int pendTrack = -1, pendBy = -1, returnTrack = -1;
+// the space race (a roam server): spaceT counts down the ten seconds after someone parks under the golden UFO (-1: not
+// counting); spaceRace: we are in it (the track is SPACE; returnTrack is where we go back to); spaceEnd: when it ended
+static double spaceT = -1, spaceEnd = -99; static bool spaceRace = false; static const double SPACE_WAIT = 10;   // pend: a shared track waiting for its vote (in the lobby)
 // the next track in the rotation (the server's own and --tracks ones; never a shared one)
 static int nextTrack(int t, bool customOnly) { int n = nTracks(); for (int k = 0; k < n; k++) { t = (t + 1) % n; if (t >= TRACKS && CT[t - TRACKS].shared) continue; if (customOnly && t < TRACKS) continue; return t; } return t; }
 static bool cfgRoam = false; static double cfgRoamMinutes = 0, roamT = 0; static MiniState M[MINIS]; static int nMinis = 0; static MiniHit H[HITS]; static uint16_t hitSeq = 0;
@@ -91,6 +94,11 @@ static void setPhase(Phase p, double t) {
         for (int k = 0; k < n; k++) { const Player& q = P[order[k]]; if (q.finished) say("  %d. %-16s %.2f s", k + 1, q.name, q.finishT); else say("  %d. %-16s DNF", k + 1, q.name); }
         if (sdFighters) { say("showdown:"); for (int pl = 1; pl <= SD_FIGHT; pl++) for (auto& q : S) if (q.player >= 0 && q.place == pl) say("  %d. %-16s %d down", pl, P[q.player].name, q.kills); }
     }
+}
+// back from a race nobody is left in, or from its results: from space, to the track we were on; a roam server roams again
+static void backToRest() {
+    if (spaceRace) { spaceRace = false; spaceEnd = now(); if (returnTrack >= 0) { track = returnTrack; returnTrack = -1; } }
+    setPhase(cfgRoam ? ROAM : LOBBY, -1);
 }
 // the race is over: the first three across the line go into the showdown. False if there are not two of them
 static bool startShowdown() {
@@ -207,12 +215,15 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
                 int nShared = 0, old = -1; reuse = -1; for (size_t i = 0; i < CT.size(); i++) if (CT[i].shared) { nShared++; int id = TRACKS + (int)i; if (id != track && id != vote.track && id != pendTrack && id != returnTrack && (old < 0 || CT[i].added < CT[old].added)) old = (int)i; }
                 // The new one takes its place and its id (ids never move, or games would mix up the tracks they have). A game that
                 // had the old one under that id and is still connected could be confused; that takes cfgSharedMax shares first
-                if ((nShared >= cfgSharedMax || TRACKS + (int)CT.size() > 255) && old >= 0) { say("dropping the oldest shared track (%s) to make room", CT[old].name.c_str()); reuse = old; }
+                if ((nShared >= cfgSharedMax || TRACKS + (int)CT.size() > 254) && old >= 0) { say("dropping the oldest shared track (%s) to make room", CT[old].name.c_str()); reuse = old; }
             }
-            if (k < 0 && (reuse >= 0 || TRACKS + (int)CT.size() <= 255)) { CustomTrack c; c.shared = true; c.added = t; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
+            if (k < 0 && (reuse >= 0 || TRACKS + (int)CT.size() <= 254)) { CustomTrack c; c.shared = true; c.added = t; char nm[NAMELEN + 16]; snprintf(nm, sizeof nm, "%.*s'S TRACK", NAMELEN, P[who].name); c.name = nm;
                 size_t a = u.data.find("\nname"); if (a != std::string::npos) { a = u.data.find_first_not_of(" \t", a + 5); size_t e = u.data.find('\n', a); if (a != std::string::npos && e != std::string::npos && e > a) c.name = u.data.substr(a, std::min(e - a, (size_t)32)); } cleanName(c.name, 23); c.text = u.data; c.crc = u.crc; if (reuse >= 0) { CT[reuse] = c; k = reuse; } else { CT.push_back(c); k = (int)CT.size() - 1; } say("%s shared a track (%d bytes): track %d, %s", P[who].name, u.total, TRACKS + k, CT[k].name.c_str()); } }
         if (k >= 0 && TRACKS + k != track && !vote.open) { pendTrack = TRACKS + k; pendBy = who; say("%s shared track %d: the lobby votes on it", P[who].name, TRACKS + k); }
         u = Upload();
+    } else if (h.type == C_SPACE && who >= 0 && h.id == who) {   // parked under the golden UFO: everyone to space in ten seconds
+        P[who].lastHeard = t;
+        if (phase == ROAM && spaceT < 0 && !spaceRace && t - spaceEnd > 15) { spaceT = SPACE_WAIT; say("%s found the golden UFO: everyone to space in %.0f s", P[who].name, SPACE_WAIT); }
     } else if (h.type == C_VOTE && len >= (int)sizeof(VoteMsg) && who >= 0 && h.id == who) {
         VoteMsg m; memcpy(&m, buf, sizeof m); P[who].lastHeard = t;
         if (vote.open && m.track == vote.track && (m.answer == 1 || m.answer == 2) && who != vote.by) vote.ans[who] = m.answer;
@@ -270,7 +281,7 @@ static void handle(const uint8_t* buf, int len, const sockaddr_in& from, double 
 
 // the current custom track's file, a piece at a time, to every game that has not got it yet
 static void sendTrackPieces() {
-    if (track < TRACKS) return; const CustomTrack& c = CT[track - TRACKS]; int n = (int)((c.text.size() + CHUNK - 1) / CHUNK);
+    if (track < TRACKS || track >= nTracks()) return; const CustomTrack& c = CT[track - TRACKS]; int n = (int)((c.text.size() + CHUNK - 1) / CHUNK);
     for (int i = 0; i < MAXP; i++) { Player& p = P[i]; if (!p.used || p.bot || p.have == track) continue;
         int k = p.chunkNext++ % n; TrackChunk m; memset(&m, 0, sizeof m); m.h = header(S_TRACK, 0xFF); m.track = (uint8_t)track; m.chunk = (uint8_t)k; m.nchunks = (uint8_t)n;
         m.len = (uint16_t)std::min((int)c.text.size() - k * CHUNK, CHUNK); m.total = (uint16_t)c.text.size(); m.crc = c.crc; memcpy(m.data, c.text.data() + k * CHUNK, m.len);
@@ -387,18 +398,24 @@ int main(int argc, char** argv) {
             phaseT = (cfgLobby > 0 && readySince >= 0) ? std::max(0.0, cfgLobby - (t - readySince)) : -1;
             if (!vote.open && n > 0 && (ready == n || (cfgLobby > 0 && readySince >= 0 && t - readySince >= cfgLobby))) setPhase(COUNTDOWN, cfgCountdown);   // (not while the lobby votes on a shared track)
             break;
-        case COUNTDOWN: phaseT -= dt; if (people == 0) setPhase(LOBBY, -1); else if (phaseT <= 0) setPhase(RACE, 0); break;
+        case COUNTDOWN: phaseT -= dt; if (people == 0) backToRest(); else if (phaseT <= 0) setPhase(RACE, 0); break;
         case RACE:
             raceT += dt;
-            if (people == 0) setPhase(LOBBY, -1);
-            else if (done == racing || (cfgShowdown && done >= SD_FIGHT) || (firstFinish >= 0 && raceT - firstFinish > cfgFinish) || raceT > 1200) { if (!startShowdown()) setPhase(RESULTS, cfgResults); }   // (with a showdown, the podium ends the race)
+            if (people == 0) backToRest();
+            else if (done == racing || (cfgShowdown && !spaceRace && done >= SD_FIGHT) || (firstFinish >= 0 && raceT - firstFinish > cfgFinish) || raceT > 1200) { if (spaceRace || !startShowdown()) setPhase(RESULTS, cfgResults); }   // (with a showdown, the podium ends the race)
             break;
-        case SHOWDOWN: if (people == 0) setPhase(LOBBY, -1); else stepShowdown(dt); break;
+        case SHOWDOWN: if (people == 0) backToRest(); else stepShowdown(dt); break;
         case ROAM:   // nothing to finish; with --roam-minutes, on to the next track now and then
             roamT += dt; for (auto& p : P) if (p.used) p.racing = true;
+            if (spaceT >= 0) {   // someone is under the golden UFO: the countdown goes out as the phase's time; then to space
+                spaceT -= dt; phaseT = std::max(0.0, spaceT);
+                if (n == 0) { spaceT = -1; phaseT = -1; }
+                else if (spaceT <= 0) { spaceT = -1; returnTrack = track; track = SPACE; spaceRace = true; setPhase(COUNTDOWN, cfgCountdown); }
+                break;
+            }
             if (cfgRoamMinutes > 0 && roamT > cfgRoamMinutes * 60) { if (!fixedTrack) track = nextTrack(track, customOnly); setPhase(ROAM, -1); }
             break;
-        case RESULTS: phaseT -= dt; if (phaseT <= 0) { if (returnTrack >= 0) { track = returnTrack; returnTrack = -1; } else if (!fixedTrack) track = nextTrack(track, customOnly); if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
+        case RESULTS: phaseT -= dt; if (phaseT <= 0 && spaceRace) backToRest(); else if (phaseT <= 0) { if (returnTrack >= 0) { track = returnTrack; returnTrack = -1; } else if (!fixedTrack) track = nextTrack(track, customOnly); if (wxMode) weather = (int)(now() * 977) % 4; setPhase(LOBBY, -1); } break;
         }
         stepVote(dt, t);
         if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); if (tick % 5 == 0 && (vote.open || t - vote.closedT < 1.5)) sendVote(); }   // (roam: 15 times a second)

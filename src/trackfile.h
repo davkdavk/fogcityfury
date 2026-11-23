@@ -157,7 +157,8 @@ static bool trackParse(const std::string& textAll, TrackDef& d, const TrackDef& 
 static bool trackLoad(const char* path, TrackDef& d, const TrackDef& base) { FILE* f = fopen(path, "r"); if (!f) return false; bool ok = trackRead(f, d, base); fclose(f); if (ok) d.file = path; return ok; }
 
 // Add a track to the list (it stays there until the game closes). Returns its number, or -1 if the list is full.
-static int trackAdd(const TrackDef& d) { if ((int)TRACKS.size() >= MAXT) return -1; TRACKS.push_back(d); trackNames(TRACKS.back()); return (int)TRACKS.size() - 1; }
+static int trackAdd(const TrackDef& d) { bool sp = false; for (const TrackDef& t : TRACKS) if (t.space) sp = true; if ((int)TRACKS.size() >= MAXT - (sp ? 0 : 1)) return -1;   // (one place kept for the space track)
+    TRACKS.push_back(d); trackNames(TRACKS.back()); return (int)TRACKS.size() - 1; }
 
 #ifndef FCF_GFX_XSDK
 #include <sys/stat.h>

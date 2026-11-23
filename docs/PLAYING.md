@@ -147,6 +147,19 @@ Flowers add up to **levels**, and each level unlocks a lasting bonus:
 
 The bonuses count offline. Online, everyone is equal.
 
+### The golden UFO and the space race
+
+Somewhere off the road on every track, a **golden UFO** hovers over a clearing, with a beam of light going
+up into the sky so you can find it from far away. It is only there in Roam (offline, or on a roam server).
+
+Drive (or walk) under it and stay still for two seconds. Ten seconds later you are racing on the secret
+**Space Ring**: a road of see-through green slime with gold and silver stars inside, wrapped round a planet
+covered in the game's islands, with nothing but stars underneath. The strip of rock each side is narrow:
+go over the edge and you fall into space (you are put back on the road a moment later).
+
+Offline it is you against the bots, and afterwards you go back to the title screen. On a roam server
+everyone goes to space together, and after the race the server goes back to roaming.
+
 ## Hidden keys
 
 Every built-in track (except Twin Isles) hides **five keys**: on roofs, down backstreets, at the end of

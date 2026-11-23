@@ -90,6 +90,13 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.2
+
+- A secret track: find the golden UFO in Roam (follow its beam of light), park under it, and race the Space Ring,
+  a road of see-through green slime with stars inside, round a planet made of the game's islands
+- On a roam server the golden UFO takes everyone to space together, then back to roaming (servers need updating:
+  protocol 11)
+
 ## What's new in 2.11
 
 - Anti-aliasing now also smooths edges inside surfaces (lit windows, road lines) and very bright edges, which

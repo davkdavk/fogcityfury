@@ -31,14 +31,17 @@
 
 namespace net {
 const uint32_t MAGIC = 0x59464346;   // bytes "FCFY"
-const uint16_t PROTO = 10;           // bump when any struct below changes, or a flag bit gains a meaning
+const uint16_t PROTO = 11;           // bump when any struct below changes, or a flag bit gains a meaning
 const int MAXP = 10, DEFPORT = 27015, NAMELEN = 16, TRACKS = 7, CARS = 4, PAINTS = 8;
+// SPACE: the track id of the secret space track (every game builds it itself). A player who parks under the golden UFO
+// on a roam server sends C_SPACE (a bare Header): ten seconds later everyone races in space, then it is back to roaming
+const uint8_t SPACE = 255;
 const int MAXCT = 24, TRACKFILE_MAX = 8192, CHUNK = 1024;   // custom tracks a server can rotate (track ids TRACKS and up); a track file's size limit; bytes in one S_TRACK piece
 const int MINIS = 4, HITS = 8;                               // online roam: mini Wardens at most; hits on them the server keeps re-sending
 const int BOTS = 4;   // computer-driven cars the server adds to a race, at most. The server has no map: one player's game (the host) drives them
 const int SD_FIGHT = 5, SD_DROPS = 12, SD_SLOW_KIND = 5;   // the showdown: fighters (the podium), pick-ups at most, the kind of pick-up (the grenade launcher) that takes three times as long to come back
 
-enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, C_MINIS = 9, C_MINIHIT = 10, C_TRACK = 11, C_VOTE = 12, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20, S_TRACK = 21, S_ROAM = 22, S_VOTE = 23 };
+enum Type : uint8_t { C_JOIN = 1, C_STATE = 2, C_LEAVE = 3, C_QUERY = 4, C_FOOT = 5, C_SDSETUP = 6, C_BOTS = 7, C_BOTFOOT = 8, C_MINIS = 9, C_MINIHIT = 10, C_TRACK = 11, C_VOTE = 12, C_SPACE = 13, S_WELCOME = 16, S_SNAPSHOT = 17, S_REJECT = 18, S_INFO = 19, S_SHOWDOWN = 20, S_TRACK = 21, S_ROAM = 22, S_VOTE = 23 };
 enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4, ROAM = 5 };   // ROAM: a roam server (--roam): everyone drives and walks the island together, no laps   // SHOWDOWN comes between RACE and RESULTS
 enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
 enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart

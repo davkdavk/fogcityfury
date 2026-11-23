@@ -17,6 +17,7 @@ static int srvTrack[256]; static bool srvTrackReady = false; static std::string 
 static std::vector<std::pair<uint32_t, int>> trackByCrc;   // custom tracks we have been sent, by their file's crc: a server's next round with the same track needs nothing sent
 static struct { int id = -1; uint32_t crc = 0; int total = 0, n = 0; std::string data; std::vector<uint8_t> got; } tbuf;
 static int netLocalTrack(int id) {
+    if (id == net::SPACE) return spaceTrack();   // the space track: every game builds it itself
     if (id < net::TRACKS) return id < NTRACKS ? id : 0;
     if (!srvTrackReady) { for (int& t : srvTrack) t = -1; srvTrackReady = true; }
     return srvTrack[id & 255];
@@ -117,6 +118,8 @@ static struct RoamMini { uint16_t uid = 0; uint8_t fireSeq = 0; bool seen = fals
 static uint16_t lastHitSeq = 0; static uint32_t roamFootSeq = 0, roamMiniSeq = 0; static float roamSendT = 0;
 static int killedByRemote[NSLOT]; static bool rammedRemote[NSLOT];
 
+// parked under the golden UFO on a roam server: ask for the space race (sent a few times; the server takes the first)
+static void netSpaceRequest() { if (!nc.on) return; net::Header h = net::header(net::C_SPACE, (uint8_t)nc.id); net::sendTo(nc.sock, nc.addr, &h, sizeof h); }
 static bool roamOnline() { return netRace && nc.on && nc.phase == net::ROAM; }
 static void netStartRoam() {
     footReset(); miniReset(); for (auto& f : roamPeople) f = Fighter(); for (auto& r : rmini) r = RoamMini(); lastHitSeq = 0;

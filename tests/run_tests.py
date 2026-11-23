@@ -411,7 +411,7 @@ def handling_low_speed_and_reverse():
 # ----------------------------------------------------------------------------- multiplayer
 # Wire format, mirrored from src/net.h. If these tests fail after a protocol change, update both and bump PROTO.
 SERVER = os.path.join(ROOT, "fogcityfury-server")
-NET_MAGIC, NET_PROTO = 0x59464346, 10
+NET_MAGIC, NET_PROTO = 0x59464346, 11
 HDR, CARSTATE, PSNAP = "<IHBB", "<10fBBBBHffBB", "<BB16s"
 CS_SIZE, PS_SIZE = 56, 74   # CarState, PlayerSnap (bytes)
 C_JOIN, C_STATE, C_LEAVE, C_FOOT, C_SDSETUP, S_WELCOME, S_SNAPSHOT, S_REJECT, S_SHOWDOWN = 1, 2, 3, 5, 6, 16, 17, 18, 20
@@ -660,6 +660,45 @@ def net_roam_server_shares_mini_wardens():
     check(h["netPhase"] == 5 and g["netPhase"] == 5 and h["state"] == 3 and g["state"] == 3, "both are in online roam", (h["netPhase"], g["netPhase"]))
     check(h["miniSpawned"] == 1 and g["miniSpawned"] == 0, "only the host's game lands them", (h["miniSpawned"], g["miniSpawned"]))
     check(h["miniKilled"] == 1 and g["roamFlowers"] >= 2, "the guest's fists beat it, and the guest gets the flowers", (h["miniKilled"], g["roamFlowers"]))
+
+
+@test
+def space_track_is_a_slime_ring_round_a_planet():
+    """The secret space track: a ring of see-through slime with a planet in the middle. The autopilot gets round it
+    without falling off; a car put past the edge falls into space and is put back on the road."""
+    d = sim("--space", "--state", 3, "--mode", 0, "--auto", seconds=40)
+    check(d["space"] == 1 and d["slimeTris"] > 5000, "the slime road is built", (d["space"], d["slimeTris"]))
+    check(d["spaceFalls"] == 0 and d["lap"] >= 1, "the autopilot drives it without falling off", (d["spaceFalls"], d["lap"]))
+    off = sim("--space", "--state", 3, "--mode", 0, "--pos", 600, 0, 0, seconds=4)
+    check(off["spaceFalls"] >= 1, "past the edge you fall off", off["spaceFalls"])
+
+
+@test
+def the_golden_ufo_leads_to_space():
+    """Every track has a golden UFO in free roam. Parking under it starts a ten-second countdown, then the space race."""
+    for t in range(7):
+        d = sim("--track", t, "--state", 3, "--mode", 1, seconds=0.2)
+        check(d["goldUfo"] == 1, "track %d has a golden UFO" % t, d["goldUfoAt"])
+    d = sim("--track", 0, "--state", 3, "--mode", 1, "--ufogo", seconds=16)
+    check(d["spaceLaunches"] == 1 and d["space"] == 1 and d["state"] == 3, "parked under it: off to space", (d["spaceLaunches"], d["space"], d["state"]))
+    r = sim("--track", 0, "--state", 3, "--mode", 0, "--ufogo", seconds=16)
+    check(r["goldUfo"] == 1 and r["spaceLaunches"] == 0 and r["space"] == 0, "not in an ordinary race", (r["spaceLaunches"], r["space"]))
+
+
+@test
+def net_golden_ufo_takes_a_roam_server_to_space():
+    """On a roam server, one player parks under the golden UFO: ten seconds later everyone is on the space track, and
+    when they have all gone the server goes back to roaming its own track."""
+    with Server("--roam", "--track", 0, "--countdown", 2, "--timeout", 3) as srv:
+        def client(name, secs, *extra):
+            return subprocess.Popen([BIN, "--sim", "--nosave", "--connect", "127.0.0.1:%d" % srv.port, "--name", name, "--ready", "--seconds", str(secs)] + [str(x) for x in extra], stdout=subprocess.PIPE, text=True)
+        a = client("finder", 22, "--ufogo"); time.sleep(1.0); b = client("other", 20)
+        fa, fb = [json.loads(p.communicate(timeout=120)[0].strip().splitlines()[-1]) for p in (a, b)]
+        time.sleep(5)
+    check(fa["space"] == 1 and fb["space"] == 1, "both are racing in space", (fa["space"], fb["space"]))
+    check(fa["netPhase"] in (1, 2) and fb["netPhase"] in (1, 2), "in the race", (fa["netPhase"], fb["netPhase"]))
+    check("found the golden UFO" in srv.log and "track 255 (SPACE RING)" in srv.log, "the server counted down and went to space", srv.log[-600:])
+    check("phase ROAM  track 0" in srv.log.split("SPACE RING")[-1], "and back to roaming once they left", srv.log[-400:])
 
 
 @test

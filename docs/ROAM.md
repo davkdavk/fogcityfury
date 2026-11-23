@@ -41,6 +41,10 @@ On a roam server (`fogcityfury-server --roam`) everyone shares the same mini War
 The flowers go to the player who landed the last blow; run one over and the penalty and the rocket are yours alone.
 Levels and perks stay your own. See NETWORK.md for how it works.
 
+Anyone who parks under the **golden UFO** (see PLAYING.md) sends the whole server to the secret space track: a
+ten-second countdown shows on every screen, everyone races one race in space, then the server roams its own track
+again.
+
 ## For developers
 
 - `src/minis.h`. Mini Wardens are fighters (`fighter.h`) in slots 1-4 with `mini` set, so they walk, aim, shoot and

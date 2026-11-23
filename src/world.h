@@ -11,6 +11,9 @@ struct TS { float x, z, y, tx, tz, curv; bool br = false, tun = false; };   // b
 struct Box { float cx, cz, hx, hz, ca, sa, y0, top; };
 struct Ramp { float x, z, ca, sa, len, hw, base, rise; float thick = 1e9f; };   // thick: bridge decks are this deep and open underneath; ordinary ramps are solid
 static const int GRID_SLOTS = 10; static float gridS(int k) { return -8.0f * (k + 1); } static float gridLat(int k) { return (k % 2) ? 3.2f : -3.2f; }   // starting grid: slot 0 is pole
+// the space track: the road's height (it rises and falls a little round the ring); far below (no ground); the edge of
+// the strip of rock each side (past it a car falls off); the planet in the middle of the ring
+static const float SPACE_Y = 60, SPACE_DEEP = -400, SPACE_EDGE = ROADW + 2.9f, PLANET_R = 300;
 static const float TUBE_W = ROADW + 1.2f, TUBE_SILL = 1.4f, TUBE_TOP = 8.6f, TUBE_TH = 0.5f; static const int TUBE_ARC = 14;   // the tunnel: inside half-width, a low wall (the sill), then a round arch to the apex; its thickness; facets in the arch
 static const float BR_LIFT = 7.5f; static const int BR_LW = 85, BR_SPAN = 38;   // bridge: height over the lower road, length of the climb, half-length of the deck (samples)
 struct Excl { float x, z, r; };
@@ -55,8 +58,9 @@ struct TrackDef {
     // -1 the other way. keyPts: three each: x, z, and height above the ground
     std::vector<float> jumps, keyPts;
     bool deleted = false;   // a custom track deleted on the track screen (its file is gone; it stays in the list, hidden, so no other track moves)
+    bool space = false;     // the secret space track (spaceTrack()): a ring of slime round a planet, nothing under it but stars
 };
-static const int MAXCUSTOM = 40, MAXT = NTRACKS + MAXCUSTOM;   // (the list never grows past MAXT, so a TrackDef never moves once made)
+static const int MAXCUSTOM = 40, MAXT = NTRACKS + 1 + MAXCUSTOM;   // (+1: the space track, made with the built-in ones)   // (the list never grows past MAXT, so a TrackDef never moves once made)
 static std::vector<TrackDef> TRACKS;
 
 static void initTracks() {
@@ -135,6 +139,17 @@ static void initTracks() {
     g.skyTop = V3(0.10f, 0.20f, 0.52f); g.skyHor = V3(0.62f, 0.58f, 0.62f); g.fogDen = 0.0007f; g.seed = 83;
     TRACKS.push_back(g);
     for (int i = 0; i < NTRACKS_KEYS; i++) TRACKS[i].deco = i;
+}
+// The space track: made the first time it is wanted, at the end of the list (after the custom tracks loaded so far;
+// trackAdd always leaves room for it, so the list never grows past MAXT). Hidden like a deleted track: the golden UFO
+// in free roam leads to it
+static int spaceTrack() {
+    for (int t = 0; t < (int)TRACKS.size(); t++) if (TRACKS[t].space) return t;
+    TrackDef s; s.name = "SPACE RING"; s.sub = "THE SECRET TRACK - DON'T FALL OFF"; s.space = true; s.deleted = true;
+        for (int k = 0; k < 18; k++) { float a = k * 6.2832f / 18, r = 430 + 22 * sinf(3 * a) + 12 * sinf(5 * a + 2); s.ctrl.push_back(cosf(a) * r); s.ctrl.push_back(sinf(a) * r); }
+        s.baseH = -400; s.noiseAmp = 0; s.landR = 0; s.cityThr = 2; s.night = 1; s.seed = 77; s.wardens = 0; s.song = 5; s.wx = 0; s.deco = -1;
+        s.sun = norm(V3(0.45f, 0.75f, 0.30f)); s.sunCol = V3(2.7f, 2.55f, 2.35f); s.skyTop = V3(0.035f, 0.04f, 0.09f); s.skyHor = V3(0.05f, 0.045f, 0.09f); s.fogDen = 0.00002f;
+    TRACKS.push_back(s); return (int)TRACKS.size() - 1;
 }
 
 static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
@@ -220,9 +235,14 @@ struct World {
     Mesh smallProps; WorldCell worldCells[NCELL]; MeshRange terrainLod0;   // terrainLod0: all the finest ground, one block
 #endif
     bool flat = false;   // test mode: an endless level tarmac plane (no walls, no water)
+    // the space track: no ground but a strip each side of the road; a car below spaceFall has fallen off. slime: the
+    // see-through road (drawn after everything solid; on the Xbox 360 it is solid and in the props instead)
+    bool space = false, hasSlime = false; float spaceFall = 0; Mesh slime;
+    // the golden UFO (free roam on the ordinary tracks): parked over a clearing off the road, its beam up into the sky
+    bool hasUfo = false; V3 ufoAt;
 
-    float baseHeight(float x, float z) const {
-        const TrackDef& d = *def;
+    float baseHeight(float x, float z) const { return islandH(*def, x, z); }
+    static float islandH(const TrackDef& d, float x, float z) {
         float hh = d.baseH + (fbm(x * 0.006f + d.seed * 13.7f, z * 0.006f, 4) - 0.47f) * 2 * d.noiseAmp;
         for (auto& g : d.hills) hh += g.a * expf(-((x - g.x) * (x - g.x) + (z - g.z) * (z - g.z)) / (2 * g.s * g.s));
         float wob = (fbm(x * 0.012f + 5, z * 0.012f + 9, 3) - 0.5f) * 60;
@@ -371,6 +391,7 @@ struct World {
     // ground height under (x,z) for something currently at height curY (roofs and ramps count if you are above them)
     float ground(float x, float z, float curY) {
         if (flat) return H(x, z);
+        if (space && RD(x, z) > SPACE_EDGE + 0.5f) return SPACE_DEEP;   // off the edge of the space track: nothing under you
         float g = RD(x, z) > ROADW + 0.7f ? drawnH(x, z) : H(x, z);   // off the ribbon, stand on the terrain exactly as it is drawn (it dips a little beside the road)
         for (int bi : cell(x, z)) {
             const Box& b = boxes[bi]; if (curY < b.top - 0.9f || b.top < g) continue;
@@ -635,7 +656,7 @@ struct World {
     // Grass: is this spot grass (not road, shoulder, paving, sand, rock or water)? col: the ground's colour there.
     // mow: 1 in the fields, about half on the verge between the kerb and the promenade in town (kept short)
     bool grassAt(float x, float z, V3& col, float& y, float* mow = nullptr) const {
-        if (flat || fabsf(x) > HALF - 8 || fabsf(z) > HALF - 8) return false;
+        if (flat || space || fabsf(x) > HALF - 8 || fabsf(z) > HALF - 8) return false;
         y = H(x, z); float d = RD(x, z); if (y < 2.3f || d < ROADW + 1.3f || excluded(x, z, 3) || (!shoreD.empty() && sampleGrid(shoreD, x, z) < BEACH + 3)) return false;
         bool verge = false;
         if (city(x, z)) { if (d > 13.4f || !pavedGround(x, z) || !openStrip(x, z)) return false; verge = true; }   // in town: only the verge along the main road
@@ -1022,8 +1043,229 @@ struct World {
         }
     }
 
+    // the starting grid: a painted box for every slot, staggered left and right behind the line
+    void paintGrid() {
+        for (int k = 0; k < GRID_SLOTS; k++) {   // starting grid: a painted box for every slot, staggered left and right behind the line
+            float s = gridS(k), lat = gridLat(k); V3 w(0.88f, 0.88f, 0.86f);
+            auto Q = [&](float s0, float l0, float s1, float l1) { V3 a, b, c2, d; float yw; at(s0, l0, a, yw); at(s0, l1, b, yw); at(s1, l1, c2, yw); at(s1, l0, d, yw); a.y += 0.07f; b.y += 0.07f; c2.y += 0.07f; d.y += 0.07f;
+#ifdef FCF_XENOS_CULL
+                int oldTag = setCellTag(mb, (a.x + b.x + c2.x + d.x) * 0.25f, (a.z + b.z + c2.z + d.z) * 0.25f);
+#endif
+                mb.quad(a, b, c2, d, w, 3);
+#ifdef FCF_XENOS_CULL
+                mb.cellTag = oldTag;
+#endif
+            };
+            Q(s + 2.55f, lat - 1.45f, s + 2.80f, lat + 1.45f);                                            // the line the nose stops at
+            Q(s + 0.4f, lat - 1.45f, s + 2.55f, lat - 1.27f); Q(s + 0.4f, lat + 1.27f, s + 2.55f, lat + 1.45f);   // and a short bracket down each side
+        }
+    }
+    // ---- the space track ----
+    // ---- the planet ----
+    // A globe of ocean seen from a few kilometres up: the seven islands of the ordinary tracks (twice over: once along
+    // the equator under the ring, once more further north and south, turned) at 1/22 of their size, each its own patch
+    // of ground with its beaches, fields, towns, road and buildings standing up off it. The rest is sea, with ice at the
+    // poles. On the Xbox 360: the equator's seven only, in less detail
+    static constexpr float PLANET_K = 0.045f, PLANET_UP = 2.0f;   // island metres to planet metres; heights exaggerated this much more
+    static const std::vector<V3>& islandRoad(int k) {   // track k's road as a fine line of points
+        static std::vector<std::vector<V3>> roads;
+        if (roads.empty()) for (int q = 0; q < NTRACKS; q++) {
+            const TrackDef& t = TRACKS[q]; std::vector<V3> r; int m = (int)t.ctrl.size() / 2;
+            auto C = [&](int i) { i = ((i % m) + m) % m; return V3(t.ctrl[i * 2], 0, t.ctrl[i * 2 + 1]); };
+            for (int i = 0; i < m; i++) { V3 p0 = C(i - 1), p1 = C(i), p2 = C(i + 1), p3 = C(i + 2);
+                for (int u6 = 0; u6 < 8; u6++) { float u = u6 / 8.f, u2 = u * u, u3 = u2 * u; r.push_back((p1 * 2 + (p2 - p0) * u + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * u2 + (p1 * 3 - p0 - p2 * 3 + p3) * u3) * 0.5f); } }
+            roads.push_back(r);
+        }
+        return roads[k];
+    }
+    static float islandRoadDist(int k, float x, float z) { const std::vector<V3>& r = islandRoad(k); float m = 1e9f; for (size_t i = 0; i < r.size(); i++) { const V3& a = r[i], & b = r[(i + 1) % r.size()]; m = std::min(m, distSeg(x, z, a.x, a.z, b.x, b.z)); } return m; }
+    static V3 planetColor(V3 d) {   // the open ocean and the ice
+        V3 c = V3(0.02f, 0.07f, 0.24f) * (0.85f + 0.3f * fbm(d.x * 4 + 3, d.z * 4 + d.y * 2, 3));
+        float ice = smooth(1.18f, 1.30f, fabsf(asinf(clampf(d.y, -1, 1))) + 0.08f * (vnoise(d.x * 9, d.z * 9) - 0.5f)); return c * (1 - ice) + V3(0.92f, 0.95f, 1.0f) * ice;
+    }
+    // island k's ground at (x, z) (its own metres): colour as on the track itself
+    static V3 islandColor(int k, float x, float z, float hh, float rdist, bool& town) {
+        const TrackDef& t = TRACKS[k]; town = false;
+        if (hh < 0) return V3(0.10f, 0.42f, 0.52f) * (1 - clampf(-hh / 8, 0, 1)) + V3(0.03f, 0.12f, 0.30f) * clampf(-hh / 8, 0, 1);
+        if (rdist < ROADW + 2) return V3(0.10f, 0.10f, 0.11f);
+        float nz = fbm(x * 0.02f, z * 0.02f, 3); V3 g = V3(0.20f, 0.36f, 0.12f) * (1 - nz) + V3(0.42f, 0.40f, 0.18f) * nz;
+        if (hh < 2) return V3(0.52f, 0.45f, 0.31f);
+        if (vnoise(x * 0.0055f + t.seed * 3.1f, z * 0.0055f + 1.7f) > t.cityThr) { town = true; return V3(0.23f, 0.23f, 0.245f); }
+        if (hh > 55) g = V3(0.36f, 0.33f, 0.28f);
+        return g * (0.85f + 0.3f * vnoise(x * 0.05f, z * 0.05f));   // (woods and fields)
+    }
+    // One island on the planet: a patch of ground following the globe (shallows and land; the deep sea is the globe's
+    // own), its road as a dark ribbon, and its buildings as boxes on the town lots (the same 27 m grid, sizes and
+    // colours as on the track: their windows light up as the track's do). lat, lon: where; rot: how it is turned
+    void planetIsland(int k, float lat, float lon, float rot, int N) {
+        const TrackDef& t = TRACKS[k]; const float R = PLANET_R, K = PLANET_K / R; V3 pc(0, SPACE_Y, 0);
+        float la = lat * 0.017453f, lo = lon * 0.017453f, cr = cosf(rot), sr = sinf(rot);
+        V3 cc(cosf(la) * cosf(lo), sinf(la), cosf(la) * sinf(lo)), e(-sinf(lo), 0, cosf(lo)), nn = ::cross(e, cc);
+        auto P = [&](float x, float z, float up) { float xr = x * cr - z * sr, zr = x * sr + z * cr; V3 d = norm(cc + e * (xr * K) - nn * (zr * K)); return pc + d * (R + 0.2f + up * PLANET_K * PLANET_UP); };
+        auto Hs = [&](float x, float z) { return islandH(t, x, z); };
+        auto Q = [](MB& m, V3 a, V3 b, V3 c, V3 d, V3 col, float mat, V3 want, float u0 = 0, float v0 = 0, float u1 = 1, float v1 = 1) { if (dot(::cross(b - a, d - a), want) < 0) m.quad(a, d, c, b, col, mat, u0, v0, u1, v1); else m.quad(a, b, c, d, col, mat, u0, v0, u1, v1); };
+#ifdef FCF_XENOS_CULL
+        int oldTag = setCellTag(mb, (pc + cc * R).x, (pc + cc * R).z);
+#endif
+        // the ground
+        const float S = 2 * HALF / N; std::vector<V3> pos((N + 1) * (N + 1)); std::vector<float> hh((N + 1) * (N + 1)); std::vector<V3> col((N + 1) * (N + 1)); std::vector<uint8_t> twn((N + 1) * (N + 1));
+        for (int j = 0; j <= N; j++) for (int i = 0; i <= N; i++) {
+            float x = -HALF + i * S, z = -HALF + j * S, h0 = Hs(x, z), rdist = islandRoadDist(k, x, z); int q = j * (N + 1) + i;
+            if (rdist < ROADW + 30 && h0 > 0) h0 = h0 * smooth(ROADW, ROADW + 30, rdist) + std::max(h0, 2.2f) * (1 - smooth(ROADW, ROADW + 30, rdist));
+            bool tw; hh[q] = h0; col[q] = islandColor(k, x, z, h0, rdist, tw); twn[q] = tw; pos[q] = P(x, z, std::max(h0, 0.0f));
+        }
+        unsigned base = (unsigned)mb.v.size();
+        for (int j = 0; j <= N; j++) for (int i = 0; i <= N; i++) {
+            int q = j * (N + 1) + i, i0 = std::max(i - 1, 0), i1 = std::min(i + 1, N), j0 = std::max(j - 1, 0), j1 = std::min(j + 1, N);
+            V3 nr = norm(::cross(pos[j1 * (N + 1) + i] - pos[j0 * (N + 1) + i], pos[j * (N + 1) + i1] - pos[j * (N + 1) + i0])); if (dot(nr, pos[q] - pc) < 0) nr = nr * -1;
+            mb.add(pos[q], nr, col[q], twn[q] ? 1.0f : 0.0f, 0, 11);
+        }
+        for (int j = 0; j < N; j++) for (int i = 0; i < N; i++) {
+            int q = j * (N + 1) + i; if (hh[q] < -6 && hh[q + 1] < -6 && hh[q + N + 1] < -6 && hh[q + N + 2] < -6) continue;   // (the deep is the globe's)
+            unsigned a = base + q, b = a + N + 1; mb.idx.insert(mb.idx.end(), { a, b, a + 1, a + 1, b, b + 1 });
+#ifdef FCF_XENOS_CULL
+            mb.triTags.push_back(mb.cellTag); mb.triTags.push_back(mb.cellTag);
+#endif
+        }
+        // the road
+        const std::vector<V3>& r = islandRoad(k); const V3 tar(0.09f, 0.09f, 0.10f);
+        for (size_t i = 0; i < r.size(); i++) {
+            const V3& a = r[i], & b = r[(i + 1) % r.size()]; V3 d = b - a; float L = len(d); if (L < 0.01f) continue; V3 sd = V3(d.z, 0, -d.x) * (ROADW / L);
+            float ya = std::max(Hs(a.x, a.z), 2.2f) + 0.6f, yb = std::max(Hs(b.x, b.z), 2.2f) + 0.6f;
+            Q(mb, P(a.x + sd.x, a.z + sd.z, ya), P(b.x + sd.x, b.z + sd.z, yb), P(b.x - sd.x, b.z - sd.z, yb), P(a.x - sd.x, a.z - sd.z, ya), tar, 3, P(a.x, a.z, ya) - pc);
+        }
+        // the buildings
+        static const V3 pal[8] = { {0.62f,0.52f,0.38f},{0.40f,0.46f,0.55f},{0.66f,0.36f,0.26f},{0.36f,0.44f,0.38f},{0.70f,0.64f,0.52f},{0.30f,0.28f,0.29f},{0.55f,0.34f,0.22f},{0.36f,0.50f,0.66f} };
+        Rng br; br.s = t.seed * 7919u + 17;
+        for (float gz = -660; gz <= 660; gz += 27) for (float gx = -660; gx <= 660; gx += 27) {
+            float r1 = br.f(), r2 = br.f(), r3 = br.f(), sh = br.f(), x = gx, z = gz;
+            float d = islandRoadDist(k, x, z); bool ct = vnoise(x * 0.0055f + t.seed * 3.1f, z * 0.0055f + 1.7f) > t.cityThr;
+            if (!((d < 75 && r1 < 0.62f) || (ct && r1 < 0.85f))) continue;
+            float hx = LOT - (sh < 0.3f ? 1.2f : 0.0f), hz = hx; if (d < ROADW + 5 + hx * 1.25f) continue;
+            float mn = 1e9f, mx = -1e9f; for (int c = 0; c < 4; c++) { float y = Hs(x + (c & 1 ? hx : -hx), z + (c & 2 ? hz : -hz)); mn = std::min(mn, y); mx = std::max(mx, y); }
+            if (mn < 2.6f || mx - mn > 7) continue;
+            float ht = ct ? 11 + r2 * r2 * 52 : 7 + r2 * 11; V3 wc = pal[(int)(r3 * 7.99f)] * (0.8f + 0.3f * br.f()), rc = wc * 0.55f;
+            float y0 = mn - 0.5f, y1 = mn + ht / PLANET_UP;   // (PLANET_UP exaggerates the ground, not the buildings)
+            V3 g[4], top[4]; float cx[4] = { -hx, hx, hx, -hx }, cz[4] = { -hz, -hz, hz, hz };
+            for (int c = 0; c < 4; c++) { g[c] = P(x + cx[c], z + cz[c], y0); top[c] = P(x + cx[c], z + cz[c], y1); }
+            V3 mid = P(x, z, y0);
+            for (int c = 0; c < 4; c++) { int c2 = (c + 1) & 3; V3 out = (g[c] + g[c2]) * 0.5f - mid; float wl = (c & 1 ? hz : hx) * 2;
+                Q(mb, g[c], g[c2], top[c2], top[c], wc, 2, out, 0, 0, wl, ht); }   // walls: u, v in the track's own metres, so the windows are the track's
+            Q(mb, top[0], top[1], top[2], top[3], rc, 3, top[0] - pc);
+        }
+#ifdef FCF_XENOS_CULL
+        mb.cellTag = oldTag;
+#endif
+    }
+    int slimeTris = 0;
+    // A ring of road made of see-through green slime (gold and silver stars inside it: FS_WORLD material 9), a strip of
+    // dark rock each side with a glowing edge, then a drop into nothing; the planet (material 10) in the middle of the ring
+    void spaceGeometry() {
+        cross.clear(); applyTunnel(); buildBranches(); applyBranchTunnels(); dryMask.clear();
+        // the ground is level with the road out to 18 m (so the grid never slopes away under the road); ground() makes
+        // the real edge, just past the rock
+        std::vector<float> by(GN * GN, SPACE_DEEP), rdh(GN * GN, 999); const int R = (int)(30 / CELL);
+        for (const TS& sk : ts) {
+            int ci = (int)((sk.x + HALF) / CELL), cj = (int)((sk.z + HALF) / CELL);
+            for (int j = std::max(0, cj - R); j <= std::min(GN - 1, cj + R); j++) for (int i = std::max(0, ci - R); i <= std::min(GN - 1, ci + R); i++) {
+                int q = j * GN + i; float dx = -HALF + i * CELL - sk.x, dz = -HALF + j * CELL - sk.z, d = sqrtf(dx * dx + dz * dz);
+                if (d < rd[q]) rd[q] = d; if (d < rdh[q]) { rdh[q] = d; by[q] = sk.y; }
+            }
+        }
+        for (int q = 0; q < GN * GN; q++) h[q] = hr[q] = rdh[q] < ROADW + 10 ? by[q] : SPACE_DEEP;
+        spaceFall = SPACE_Y - 40;
+        auto Q = [](MB& m, V3 a, V3 b, V3 c, V3 d, V3 col, float mat, V3 want) { if (dot(::cross(b - a, d - a), want) < 0) m.quad(a, d, c, b, col, mat); else m.quad(a, b, c, d, col, mat); };   // (facing `want`)
+        MB sm; const float SW = ROADW + 0.3f, E = SPACE_EDGE; const V3 up(0, 1, 0), rock(0.11f, 0.10f, 0.14f), glow(0.05f, 0.55f, 0.22f);
+        for (int i = 0; i < n; i++) {
+            const TS& a = ts[i], & b = ts[(i + 1) % n]; V3 sa(a.tz, 0, -a.tx), sb(b.tz, 0, -b.tx), pa(a.x, a.y, a.z), pb(b.x, b.y, b.z);
+#ifdef FCF_XENOS_CULL
+            int oldTag = setCellTag(mb, (a.x + b.x) * 0.5f, (a.z + b.z) * 0.5f); sm.cellTag = mb.cellTag;
+#endif
+#ifdef FCF_GFX_XSDK
+            MB& S = mb; const float SM = 3; V3 gc(0.08f, 0.50f, 0.16f);   // (the Xbox 360: solid green, with the props)
+#else
+            MB& S = sm; const float SM = 9; V3 gc(0.15f, 0.85f, 0.30f);
+#endif
+            { unsigned q = S.add(pa - sa * SW + up * 0.03f, up, gc, -SW, (float)i, SM); S.add(pa + sa * SW + up * 0.03f, up, gc, SW, (float)i, SM); S.add(pb + sb * SW + up * 0.03f, up, gc, SW, (float)i + 1, SM); S.add(pb - sb * SW + up * 0.03f, up, gc, -SW, (float)i + 1, SM);
+              S.idx.insert(S.idx.end(), { q, q + 1, q + 2, q, q + 2, q + 3 });
+#ifdef FCF_XENOS_CULL
+              S.triTags.push_back(S.cellTag); S.triTags.push_back(S.cellTag);
+#endif
+            }
+#ifndef FCF_GFX_XSDK
+            { V3 dn(0, -1, 0), lo = up * -0.9f; unsigned q = S.add(pa - sa * SW + lo, dn, gc * 0.7f, -SW, (float)i, SM); S.add(pa + sa * SW + lo, dn, gc * 0.7f, SW, (float)i, SM); S.add(pb + sb * SW + lo, dn, gc * 0.7f, SW, (float)i + 1, SM); S.add(pb - sb * SW + lo, dn, gc * 0.7f, -SW, (float)i + 1, SM);
+              S.idx.insert(S.idx.end(), { q, q + 2, q + 1, q, q + 3, q + 2 });   // the slab's underside, seen through it and from below
+#ifdef FCF_XENOS_CULL
+              S.triTags.push_back(S.cellTag); S.triTags.push_back(S.cellTag);
+#endif
+            }
+#endif
+            for (int sd = -1; sd <= 1; sd += 2) {   // the rock each side: its top, its outer face, its underside, its face under the slime; a glowing line along the edge
+                V3 ia = pa + sa * (SW * sd), oa = pa + sa * (E * sd), ib = pb + sb * (SW * sd), ob = pb + sb * (E * sd), t0(0, -0.02f, 0), lo(0, -1.6f, 0), out = sa * (float)sd;
+                V3 rc = rock * (0.8f + 0.4f * vnoise(i * 0.11f, sd * 5.0f + 1)) + V3(0.02f, 0, 0.03f) * vnoise(i * 0.5f, sd * 3.0f);
+                Q(mb, ia + t0, ib + t0, ob + t0, oa + t0, rc, 3, up); Q(mb, oa + t0, ob + t0, ob + lo, oa + lo, rc * 0.7f, 3, out);
+                Q(mb, oa + lo, ob + lo, ib + lo, ia + lo, rc * 0.5f, 3, up * -1); Q(mb, ia + t0, ib + t0, ib + lo, ia + lo, rc * 0.6f, 3, out * -1);
+                V3 g0 = pa + sa * ((E - 0.45f) * sd), g1 = pa + sa * ((E - 0.15f) * sd), h0 = pb + sb * ((E - 0.45f) * sd), h1 = pb + sb * ((E - 0.15f) * sd), gu(0, 0.005f, 0);
+                Q(mb, g0 + gu, h0 + gu, h1 + gu, g1 + gu, glow, 6, up);
+            }
+#ifdef FCF_XENOS_CULL
+            mb.cellTag = oldTag;
+#endif
+        }
+        for (int c = 0; c < NCP; c++) gate(c * n / NCP, c == 0);
+        paintGrid();
+        {   // the planet: a globe of sea and ice, then the islands on it
+#ifdef FCF_GFX_XSDK
+            const int SEG = 160, RING = 80, NI = 7, NG = 48;
+#else
+            const int SEG = 240, RING = 120, NI = 14, NG = 96;
+#endif
+            V3 pc(0, SPACE_Y, 0); unsigned base = (unsigned)mb.v.size();
+            for (int j = 0; j <= RING; j++) for (int i = 0; i <= SEG; i++) {
+                float la = -1.5708f + 3.14159f * j / RING, lo = 6.28318f * i / SEG; V3 d(cosf(la) * cosf(lo), sinf(la), cosf(la) * sinf(lo));
+                mb.add(pc + d * PLANET_R, d, planetColor(d), (float)i / SEG, (float)j / RING, 10);
+            }
+            for (int j = 0; j < RING; j++) for (int i = 0; i < SEG; i++) {
+                unsigned a = base + j * (SEG + 1) + i, b = a + SEG + 1;
+#ifdef FCF_XENOS_CULL
+                const Vtx& v = mb.v[a]; int oldTag = setCellTag(mb, v.px, v.pz);
+#endif
+                mb.idx.insert(mb.idx.end(), { a, b, a + 1, a + 1, b, b + 1 });
+#ifdef FCF_XENOS_CULL
+                mb.triTags.push_back(mb.cellTag); mb.triTags.push_back(mb.cellTag); mb.cellTag = oldTag;
+#endif
+            }
+            static const float ISL[14][4] = { {0,0,0,0}, {1,8,51,0.6f}, {2,-6,103,1.2f}, {3,4,154,2.0f}, {4,-8,206,2.7f}, {5,6,257,3.3f}, {6,-4,308,4.1f},
+                                              {0,38,25,1.0f}, {1,-40,77,2.2f}, {2,42,128,3.0f}, {3,-35,180,0.4f}, {4,36,231,1.7f}, {5,-38,283,2.9f}, {6,40,334,0.9f} };
+            for (int k = 0; k < NI; k++) planetIsland((int)ISL[k][0], ISL[k][1], ISL[k][2], ISL[k][3], NG);
+        }
+#ifdef FCF_XENOS_CULL
+        { V3 far(0, -20000, 0); smallMb.tri(far, far + V3(1, 0, 0), far + V3(0, 0, 1), V3(0, 0, 0), 3); }   // (the small props are never empty)
+        arrangeProps(mb, false); arrangeProps(smallMb, true);
+        props.upload(mb, "props"); smallProps.upload(smallMb, "small-props");
+#else
+        props.upload(mb);
+#endif
+        slimeTris = (int)sm.idx.size() / 3; hasSlime = slimeTris > 0; if (hasSlime) slime.upload(sm);
+    }
+    // the golden UFO: over a level clearing out of town, 35 to 150 m from the road, as high up as can be (so its beam is
+    // seen from far off). No tree grows under it
+    void findUfoSpot() {
+        hasUfo = false; if (flat) return; float best = -1e9f;
+        for (float z = -HALF + 40; z < HALF - 40; z += 12) for (float x = -HALF + 40; x < HALF - 40; x += 12) {
+            float d = RD(x, z); if (d < 35 || d > 150) continue; float y = H(x, z); if (y < 4 || dry(x, z) || city(x, z) || excluded(x, z, 10)) continue;
+            float lo = 1e9f, hi = -1e9f; for (int k = 0; k < 8; k++) { float a = k * 0.785f, hh = H(x + cosf(a) * 12, z + sinf(a) * 12); lo = std::min(lo, hh); hi = std::max(hi, hh); }
+            if (hi - lo > 3.5f || lo < 3) continue;
+            bool blocked = false;
+            for (int oz = -1; oz <= 1 && !blocked; oz++) for (int ox = -1; ox <= 1 && !blocked; ox++) for (int bi : cell(x + ox * GCELL, z + oz * GCELL)) { const Box& b = boxes[bi]; float r = std::max(b.hx, b.hz) + 14; if ((b.cx - x) * (b.cx - x) + (b.cz - z) * (b.cz - z) < r * r) { blocked = true; break; } }
+            if (blocked) continue;
+            float score = y * 0.6f - d * 0.05f + 6 * vnoise(x * 0.013f + def->seed, z * 0.013f);
+            if (score > best) { best = score; ufoAt = V3(x, y, z); hasUfo = true; }
+        }
+        if (hasUfo) addExcl(ufoAt.x, ufoAt.z, 16);
+    }
     void build(int id_) {
-        id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB();
+        id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB(); space = def->space && !flat; hasSlime = false; hasUfo = false;
         tidyTown();
         boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); jumpObs.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
 #ifdef FCF_XENOS_CULL
@@ -1044,7 +1286,7 @@ struct World {
             float target = i * step;
             while (true) { float sl = len(dense[(di + 1) % dense.size()] - dense[di]); if (acc + sl >= target || di + 1 >= dense.size()) { float t = sl > 0 ? clampf((target - acc) / sl, 0, 1) : 0; V3 p = dense[di] + (dense[(di + 1) % dense.size()] - dense[di]) * t; ts[i].x = p.x; ts[i].z = p.z; break; } acc += sl; di++; }
         }
-        for (int i = 0; i < n; i++) { const TS& a = ts[(i + n - 1) % n], & b = ts[(i + 1) % n]; V3 t = norm(V3(b.x - a.x, 0, b.z - a.z)); ts[i].tx = t.x; ts[i].tz = t.z; ts[i].y = std::max(H(ts[i].x, ts[i].z), 2.2f); }
+        for (int i = 0; i < n; i++) { const TS& a = ts[(i + n - 1) % n], & b = ts[(i + 1) % n]; V3 t = norm(V3(b.x - a.x, 0, b.z - a.z)); ts[i].tx = t.x; ts[i].tz = t.z; ts[i].y = space ? SPACE_Y + 6 * sinf(3 * atan2f(ts[i].z, ts[i].x) + 0.4f) + 3.5f * sinf(7 * atan2f(ts[i].z, ts[i].x) + 1.3f) : std::max(H(ts[i].x, ts[i].z), 2.2f); }
         for (int pass = 0; pass < 3; pass++) { std::vector<float> y(n); for (int i = 0; i < n; i++) { float s = 0; for (int k = -5; k <= 5; k++) s += ts[(i + k + n) % n].y; y[i] = s / 11; } for (int i = 0; i < n; i++) ts[i].y = y[i]; }
         for (int i = 0; i < n; i++) { const TS& a = ts[(i + n - 6) % n], & b = ts[(i + 6) % n]; ts[i].curv = fabsf(wrapPi(atan2f(b.tx, b.tz) - atan2f(a.tx, a.tz))) / 12; }
 #ifdef FCF_XENOS_CULL
@@ -1052,6 +1294,7 @@ struct World {
             int c = worldCell(s.x + dx * 8.0f, s.z + dz * 8.0f); worldCells[c].road = true;
         }
 #endif
+        if (space) spaceGeometry(); else {
         // --- crossings: where the road meets itself, the later pass climbs over the earlier one on a bridge ---
         cross.clear();
         for (int i = 0; i < n; i++) for (int j = i + 150; j < n; j++) {
@@ -1119,20 +1362,7 @@ struct World {
         for (int j : cross) bridge(j);
         buildTube();
         for (int c = 0; c < NCP; c++) if (!ts[c * n / NCP].tun) gate(c * n / NCP, c == 0);   // (no gantry inside a tunnel: it would stand through the roof; the checkpoint still counts)
-        for (int k = 0; k < GRID_SLOTS; k++) {   // starting grid: a painted box for every slot, staggered left and right behind the line
-            float s = gridS(k), lat = gridLat(k); V3 w(0.88f, 0.88f, 0.86f);
-            auto Q = [&](float s0, float l0, float s1, float l1) { V3 a, b, c2, d; float yw; at(s0, l0, a, yw); at(s0, l1, b, yw); at(s1, l1, c2, yw); at(s1, l0, d, yw); a.y += 0.07f; b.y += 0.07f; c2.y += 0.07f; d.y += 0.07f;
-#ifdef FCF_XENOS_CULL
-                int oldTag = setCellTag(mb, (a.x + b.x + c2.x + d.x) * 0.25f, (a.z + b.z + c2.z + d.z) * 0.25f);
-#endif
-                mb.quad(a, b, c2, d, w, 3);
-#ifdef FCF_XENOS_CULL
-                mb.cellTag = oldTag;
-#endif
-            };
-            Q(s + 2.55f, lat - 1.45f, s + 2.80f, lat + 1.45f);                                            // the line the nose stops at
-            Q(s + 0.4f, lat - 1.45f, s + 2.55f, lat - 1.27f); Q(s + 0.4f, lat + 1.27f, s + 2.55f, lat + 1.45f);   // and a short bracket down each side
-        }
+        paintGrid();
         buildShore(); decorate();
         // --- random buildings ---
         static const V3 pal[8] = { {0.62f,0.52f,0.38f},{0.40f,0.46f,0.55f},{0.66f,0.36f,0.26f},{0.36f,0.44f,0.38f},{0.70f,0.64f,0.52f},{0.30f,0.28f,0.29f},{0.55f,0.34f,0.22f},{0.36f,0.50f,0.66f} };
@@ -1173,6 +1403,7 @@ struct World {
 #endif
             smallMode = false;
         }
+        findUfoSpot();
         // --- trees ---
         for (int k = 0; k < 5500; k++) {
             float x = rng.r(-720, 720), z = rng.r(-720, 720), s = rng.r(0.9f, 1.9f);
@@ -1196,6 +1427,7 @@ struct World {
 #else
         props.upload(mb);
 #endif
+        }
         mb = MB(); smallMb = MB();
         // --- terrain mesh ---
         MB t; t.v.reserve(GN * GN);
@@ -1210,7 +1442,7 @@ struct World {
             float sn = 1 - smooth(0.8f, 2.0f, hh); if (!shoreD.empty() && d > ROADW + 3) sn = std::max(sn, 1 - smooth(BEACH - 5, BEACH + 2, shoreD[j * GN + i]));   // (custom tracks: a beach along every shore)
             c = c * (1 - sn) + V3(0.52f, 0.45f, 0.31f) * sn;
             if (hh < 0) c = c * clampf(1 + hh * 0.12f, 0.35f, 1);
-            t.add(V3(x, hr[j * GN + i], z), nrm, c, open ? 2.0f : paved ? 1.0f : 0.0f, std::min(d, 60.0f), 0);   // u: 1 town, 2 the open strip along the road; v = metres to the road
+            t.add(V3(x, space ? -20000.0f : hr[j * GN + i], z), nrm, c, open ? 2.0f : paved ? 1.0f : 0.0f, std::min(d, 60.0f), 0);   // u: 1 town, 2 the open strip along the road; v = metres to the road
         }
 #ifdef FCF_XENOS_CULL
         buildTerrainCells(t);
@@ -1222,7 +1454,7 @@ struct World {
 #else
         terrain.upload(t);
 #endif
-        MB w; seaSurface(w); water.upload(w);
+        MB w; seaSurface(w); if (space) for (Vtx& q : w.v) q.py = -20000; water.upload(w);   // (space: no sea, no ground: both far out of sight)
         if (g_noGL) return;
 #if defined(FCF_GFX_XSDK) && FCF_WATER_TEST == 1
         std::vector<uint8_t> packedHeight(h.size() * 4);

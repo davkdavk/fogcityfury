@@ -514,6 +514,7 @@ struct Crate { V3 p; float cd; };
 static std::vector<Wreck> wrecks; static std::vector<Debris> debris; static std::vector<Rocket> rockets; static std::vector<Crate> crates;
 static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;
 static int keyJingles = 0;   // test metric: key jingles played
+static int spaceFalls = 0; static bool cliSpace = false, cliUfoGo = false;   // (the space track: cars that fell off; --space, --ufogo)
 static bool fxaaOff = false, grassOff = false, ripAt = false; static float ripX = 0, ripZ = 0; static int grassTufts(); static bool cliEdTouch = false; static std::string edTouchResult;
 static bool touchHasAmmo() { return ammo > 0; }
 static bool selIsCustom();   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
@@ -589,7 +590,7 @@ static void netReact() {
     if (state == NETJOIN) { state = nc.skipMenus ? NETLOBBY : CARSEL; if (nc.track >= 0) loadTrack(nc.track); }
     if (!nc.gotSnap) return;
     bool inRace = state == RACE || state == PAUSED || state == RESULTS;
-    if ((nc.phase == net::COUNTDOWN || nc.phase == net::RACE) && nc.racing && !(netRace && inRace)) netStartRace();
+    if ((nc.phase == net::COUNTDOWN || nc.phase == net::RACE) && nc.racing && (!(netRace && inRace) || (exploreMode && nc.track >= 0 && W.id != nc.track))) netStartRace();   // (from roaming: the space race)
     if (nc.phase == net::RACE && netRace && state == RACE && countdown > 0.3f) countdown = 0.02f;      // the server's clock wins
     if (nc.phase == net::SHOWDOWN && nc.sdGot && netRace && !netShd && inRace && (nc.sd.siteKind != net::SITE_UNKNOWN || nc.sdSlotOf(nc.id) == 0 || (nc.sd.fighter[0] < net::MAXP && netBotOf(nc.sd.fighter[0]) >= 0))) netShdEnter();                 // the podium gets out and fights; everyone else watches
     if (nc.phase == net::RESULTS && netRace && (state == RACE || state == PAUSED)) { state = RESULTS; resultsT = 0; }
@@ -929,6 +930,10 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
         float roof = W.H(np.x, np.z) + TUBE_TOP - 1.9f; if (np.y > roof) { np.y = roof; if (c.vel.y > 0) { c.vel.y *= -0.3f; c.airT = std::min(c.airT, 0.3f); } }
     }
     c.pos = np;
+    if (W.space && np.y < W.spaceFall) {   // off the edge of the space track: lost in space, back on the road in a moment (no wreck)
+        spaceFalls++; c.dead = true; c.sunk = true; c.deadT = 1.0f; if (&c == &player) tone(240, 1.1f, 0.6f, 1, -180);
+        return;
+    }
     if (W.HW(np.x, np.z) < -1.1f && np.y < -0.85f) {   // sunk (not in the tunnel: it is dry)
         tm.sinks++; c.dead = true; c.sunk = true; c.deadT = 1.4f; tone(500, 0.7f, 0.8f, 1, -300); waterSplash(np, 1.2f);
         for (int i = 0; i < 40; i++) spawn(V3(np.x, 0.1f, np.z) + V3(grng.r(-1.5f, 1.5f), 0, grng.r(-1.5f, 1.5f)), V3(grng.r(-4, 4), grng.r(5, 14), grng.r(-4, 4)), grng.r(0.6f, 1.2f), 0.6f, 1.5f, V3(0.85f, 0.92f, 1), 0.7f, 0, -14);
@@ -1119,6 +1124,83 @@ static void finishRace(bool tu) {
 #include "minis.h"
 #include "netshd.h"
 #include "netroam.h"
+// ---- the golden UFO and the space race ----
+// In free roam (offline, or on a roam server) a golden UFO hovers over a clearing on every track, its beam reaching up
+// into the sky. Park under it for two seconds: ten seconds later you (offline) or everyone (online: the server counts
+// down) race the secret space track. After the race: offline back to the title screen, online back to roaming.
+namespace secret {
+static Mesh ufo, beam; static bool built = false;
+static const float HOLD = 2.0f, WAIT = 10.0f;
+static float launchT = -1, holdT = 0, sendT = 0;   // offline: seconds to the launch (-1: none); parked under it this long; online: still telling the server
+static int savedTrack = -1, savedMode = 1, launches = 0; static bool on = false;   // offline: in the space race, and where to go back to
+static bool shown() { return W.hasUfo && exploreMode && !W.space && (state == RACE || state == PAUSED); }
+static V3 ufoPos() { return W.ufoAt + V3(0, 5.5f + 0.35f * sinf(T * 1.3f), 0); }
+static bool online() { return netRace && nc.on; }
+static float countdownLeft() { return online() ? (nc.phase == net::ROAM && nc.phaseT > 0 ? nc.phaseT : -1.0f) : launchT; }
+static void build() {
+    built = true; using namespace mech; const V3 GOLD(1, 1, 1), DARK(0.35f, 0.25f, 0.08f), GLOW(1.1f, 0.85f, 0.35f);
+    { MB m;   // the Wardens' saucer, all in gold (paint: the program's uPaint, with chrome)
+        cyl(m, V3(0, 0, 0), V3(0, 0.9f, 0), 2.2f, 4.6f, 28, GOLD, 1); cyl(m, V3(0, 0.9f, 0), V3(0, 1.25f, 0), 4.6f, 4.5f, 28, GOLD, 1);
+        cyl(m, V3(0, 1.25f, 0), V3(0, 1.9f, 0), 4.5f, 2.4f, 28, GOLD, 1); cyl(m, V3(0, 1.9f, 0), V3(0, 2.15f, 0), 2.4f, 2.2f, 24, DARK, 0);
+        cyl(m, V3(0, 2.15f, 0), V3(0, 3.0f, 0), 2.0f, 0.7f, 20, GLOW, 3);
+        for (int i = 0; i < 12; i++) { float a = i * 0.5236f; abox(m, V3(cosf(a) * 4.62f, 1.07f, sinf(a) * 4.62f), V3(0.22f, 0.12f, 0.22f), i % 2 ? V3(1.2f, 0.95f, 0.4f) : V3(1.0f, 1.0f, 1.0f), 3); }
+        cyl(m, V3(0, -0.06f, 0), V3(0, 0.02f, 0), 1.8f, 1.8f, 20, GLOW, 4);
+        ufo.upload(m, "gold-ufo");
+    }
+    { MB m;   // the beam: three crossed sheets (so it never shows edge on), bright up the middle, fading out to the sides and up high
+        const int NY = 10; const float TOP = 900;
+        for (int k = 0; k < 3; k++) { float a = k * 1.0472f; V3 sd(cosf(a), 0, sinf(a));
+            for (int j = 0; j < NY; j++) { float y0 = TOP * powf((float)j / NY, 1.6f), y1 = TOP * powf((float)(j + 1) / NY, 1.6f), w0 = 1.6f + y0 * 0.006f, w1 = 1.6f + y1 * 0.006f;
+                V3 c0 = V3(1.0f, 0.78f, 0.30f) * (0.55f * expf(-y0 / 420)), c1 = V3(1.0f, 0.78f, 0.30f) * (0.55f * expf(-y1 / 420)), z(0, 0, 0), dn(0, -1, 0);
+                unsigned q = m.add(sd * -w0 + V3(0, y0, 0), dn, z, 0, 0, 6); m.add(V3(0, y0, 0), dn, c0, 0, 0, 6); m.add(sd * w0 + V3(0, y0, 0), dn, z, 0, 0, 6);
+                m.add(sd * -w1 + V3(0, y1, 0), dn, z, 0, 0, 6); m.add(V3(0, y1, 0), dn, c1, 0, 0, 6); m.add(sd * w1 + V3(0, y1, 0), dn, z, 0, 0, 6);
+                m.idx.insert(m.idx.end(), { q, q + 1, q + 4, q, q + 4, q + 3, q + 1, q + 2, q + 5, q + 1, q + 5, q + 4 });
+#ifdef FCF_XENOS_CULL
+                for (int t = 0; t < 4; t++) m.triTags.push_back(-1);
+#endif
+            } }
+        beam.upload(m, "ufo-beam");
+    }
+}
+static void drawUfo(Prog& p, bool lit) {
+    if (!shown() || len(W.ufoAt - camPos) > 1600) return; if (!built) build();
+    if (lit) { p.v3("uPaint", V3(1.0f, 0.72f, 0.20f)); p.f1("uChrome", 0.55f); p.f1("uBrake", 0.6f + 0.4f * sinf(T * 5)); p.f1("uBurnt", 0); p.f1("uGone", 0); }
+    p.m4("uModel", mul(translate(ufoPos()), mul(rotY(T * 0.4f), scale(1.6f, 1.6f, 1.6f)))); ufo.draw();
+    if (lit) { p.f1("uChrome", 0); p.f1("uBrake", 0); }
+}
+static void drawBeam(Prog& p) {   // (p: the world program, already set up; drawn added onto what is behind it)
+    if (!shown()) return; if (!built) build();
+    gfx::blend(gfx::B_ADD); gfx::depthWrite(false); p.m4("uModel", translate(ufoPos() + V3(0, 3.0f, 0))); beam.draw(); p.m4("uModel", ident()); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
+}
+static void launch() {   // offline: off to space
+    savedTrack = W.id; savedMode = selMode; on = true; launches++; launchT = -1; selMode = 0; champOn = false;
+    loadTrack(spaceTrack()); startRace(); say("SPACE RACE - DON'T FALL OFF", V3(0.5f, 1, 0.6f), 3.5f);
+}
+static void comeBack() {   // offline: the space race is over (or quit): back where we were
+    if (!on) return; on = false; selMode = savedMode; exploreMode = false; if (savedTrack >= 0) { selTrack = savedTrack; loadTrack(savedTrack); }
+}
+static void step(float dt) {
+    if (W.space) weather = W_CLEAR;
+    bool roam = state == RACE && exploreMode && !W.space && W.hasUfo && countdown <= 0;
+    if (!roam) { holdT = 0; if (state != RACE && state != PAUSED) launchT = -1; return; }
+    if (cliUfoGo) { cliUfoGo = false; placeOnGrid(player, 0, 0); player.pos = V3(W.ufoAt.x, W.ground(W.ufoAt.x, W.ufoAt.z, W.ufoAt.y + 2), W.ufoAt.z); }   // (--ufogo, tests: start under it)
+    V3 c = avatarPos(); float dx = c.x - W.ufoAt.x, dz = c.z - W.ufoAt.z; bool counting = countdownLeft() > 0;
+    bool under = dx * dx + dz * dz < 9 * 9 && !player.dead && (me.on || len(player.vel) < 4);
+    if (under && !counting) holdT += dt; else holdT = std::max(0.0f, holdT - dt * 2);
+    if (holdT >= HOLD) { holdT = 0; tone(330, 0.5f, 0.5f, 2, 330); tone(495, 0.7f, 0.4f, 2, 495, 0.15f); if (online()) sendT = 2; else launchT = WAIT; }
+    if (sendT > 0) { static float gap = 0; sendT -= dt; gap -= dt; if (counting) sendT = 0; else if (gap <= 0) { gap = 0.25f; netSpaceRequest(); } }
+    if (!online() && launchT >= 0) { launchT -= dt; if (launchT <= 0) launch(); }
+}
+static void hud(float Wd, float Hd) {
+    if (!shown() || state != RACE) return; char b[64];
+    float left = countdownLeft();
+    if (left > 0) { snprintf(b, sizeof b, "SPACE RACE IN %d", (int)ceilf(left)); ui.text(Wd / 2, 150, 6, V3(1, 0.8f, 0.3f), b, 1, 1, 0.12f);
+        ui.text(Wd / 2, 215, 2.5f, V3(0.85f, 0.9f, 1), online() ? "EVERYONE IS GOING TO SPACE" : "GET READY", 1); return; }
+    float d = len(avatarPos() - W.ufoAt);
+    if (holdT > 0.05f) { snprintf(b, sizeof b, "HOLD STILL...  %d%%", (int)(holdT / HOLD * 100)); ui.text(Wd / 2, Hd - 200, 3.5f, V3(1, 0.8f, 0.3f), b, 1); }
+    else if (d < 160) ui.text(Wd / 2, Hd - 200, 2.6f, V3(1, 0.85f, 0.4f), "THE GOLDEN UFO - PARK UNDER IT TO GO TO SPACE", 1);
+}
+}   // namespace secret
 #include "champ.h"
 #ifndef FCF_GFX_XSDK
 #define FCF_EDITOR 1
@@ -1189,6 +1271,7 @@ static void rippleWakes() {
     V3 a = avatarPos(); if (me.on && a.y < 0.6f) ripple::add(a.x, a.z, 0.3f);
 }
 static void update(float dt) {
+    secret::step(dt);
     rippleWakes();
     T += dt; frameNo++;
     if (logoT >= 0) { float t0 = logoT; logoT += dt; logoSounds(t0, logoT); if (logoT >= LOGO_LEN) logoT = -1; }
@@ -1477,6 +1560,7 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
 #ifdef FCF_PERF_NOISE
     p.i1("uNoise", 7);
 #endif
+    p.f1("uSpace", W.space ? 1.0f : 0.0f);
     p.f1("uNight", d.night); V3 hf(sinf(player.yaw), 0, cosf(player.yaw)); p.v3("uHeadPos", player.pos + V3(0, 0.75f, 0) + hf * 1.6f); p.v3("uHeadDir", norm(hf + V3(0, -0.07f + sinf(player.pitch), 0))); p.f1("uHeadOn", player.dead ? 0.0f : 1.0f);
 }
 // the nitro jets: glowing cones from both exhaust tips, flickering in length, added onto what is behind them.
@@ -1557,7 +1641,7 @@ static void keepInTube(V3& c) {
     c.x += t.tz * (l2 - lat); c.z -= t.tx * (l2 - lat); c.y = clampf(c.y, t.y + 0.5f, t.y + std::max(arch, 1.2f));
 }
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); } if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
-    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); mini::drawBlooms(p, lit, T); netRoamDraw(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); if (mech::on) wfx::draw(p, lit, mechT); }   // (past 900 m the fog has it)
+    if (netRace) for (auto& r : nc.r) if (r.present && r.racing) { drawCar(r.car, p, lit); if (lit) drawJets(r.car, p); } drawShowdown(p, lit); mini::drawBlooms(p, lit, T); netRoamDraw(p, lit); for (int u = 0; u < mech::count(); u++) if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT); if (mech::on) wfx::draw(p, lit, mechT); secret::drawUfo(p, lit); }   // (past 900 m the fog has it)
 
 #ifdef FCF_GFX_XSDK
 static bool traceDrawGroups = false;
@@ -1673,7 +1757,7 @@ static Ring rings[] = { { 16, 3, 0.6f, 1.0f, 5, 1, -2, -1, 26, 46 }, { 32, 3, 1.
 #endif
 static int built = 0, tufts = 0;
 static void draw(V3 cam) {
-    if (grassOff || W.flat) return;
+    if (grassOff || W.flat || W.space) return;
     { const Ring& last = rings[sizeof rings / sizeof rings[0] - 1]; pGrass.f2("uGrassEnd", last.out1 * 0.45f, last.out1 * 0.92f); }
     for (Ring& r : rings) {
         const int N = 2 * r.R + 1; if (r.tiles.empty()) r.tiles.resize(N * N);
@@ -1854,6 +1938,10 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         for (int i = 0; i < 8; i++) { const ripple::R& r = ripple::rs[i]; float age = T - r.t0; bool on = age >= 0 && age < ripple::LIFE; char nm[8]; snprintf(nm, sizeof nm, "uRip%d", i); pWater.v4(nm, r.x, r.z, on ? age : 0.0f, on ? r.amp : 0.0f); }
 #endif
         W.water.draw(); }
+#ifndef FCF_GFX_XSDK
+    if (W.space && W.hasSlime && (DRAW_MASK & DM_PROPS)) { traceDraw("slime"); gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); setCommon(pWorld, VP, cam, hdr); W.slime.draw(); gfx::depthWrite(true); gfx::blend(gfx::B_OFF); }   // the see-through road, over the planet and the stars
+#endif
+    if (mainPass && secret::shown() && (DRAW_MASK & DM_EFFECTS)) { traceDraw("ufo beam"); setCommon(pWorld, VP, cam, hdr); secret::drawBeam(pWorld); }
     if ((DRAW_MASK & DM_WATER) && mainPass && !W.glassV.empty() && len(cam - glassMid()) < 900) {   // the tunnel's glass, over the sea and the fish outside it
         traceDraw("glass"); setCommon(pGlass, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
         gfx::data(partBuf, W.glassV.data(), W.glassV.size() * 4, true); gfx::draw(partBuf, 0, (int)(W.glassV.size() / 11)); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
@@ -2217,7 +2305,7 @@ static void drawHUD() {
             snprintf(b, sizeof b, "LAP %d/%d", std::min(std::max(player.lap, 1), raceLaps), raceLaps); ui.text(36, 106, 2.5f, white, b);
             if (netRace) { char t2[32]; fmtTime(t2, raceT); ui.text(Wd / 2, 26, 5, white, t2, 1, 1, 0.12f); ui.text(Wd / 2, 70, 2, V3(0.5f, 0.9f, 1), "ONLINE", 1); } else if (rampage) { char t3[32]; fmtTime(t3, raceT); ui.text(Wd / 2, 26, 5, white, t3, 1, 1, 0.12f); ui.text(Wd / 2, 100, 2, white, "RACE TIME", 1); } else {
             V3 tc = timeLeft < 10 ? (fmodf(T, 0.5f) < 0.25f ? V3(1, 0.2f, 0.1f) : white) : yel; snprintf(b, sizeof b, "%02d", (int)ceilf(timeLeft)); ui.text(Wd / 2, 22, 10, tc, b, 1, 1, 0.12f); ui.text(Wd / 2, 100, 2, white, "TIME", 1); }
-        } else { panel(20, 20, 230, 50); ui.text(36, 36, 3, V3(0.4f, 1, 0.6f), "FREE ROAM"); if (!netRace || nc.phase == net::ROAM) mini::hud(20, 80); }
+        } else { panel(20, 20, 230, 50); ui.text(36, 36, 3, V3(0.4f, 1, 0.6f), "FREE ROAM"); if (!netRace || nc.phase == net::ROAM) mini::hud(20, 80); secret::hud(Wd, Hd); }
         panel(Wd - 300, 20, 280, 86); fmtTime(t, player.lap > 0 ? raceT - lapStart : 0); snprintf(b, sizeof b, "LAP  %s", t); ui.text(Wd - 284, 34, 3, white, b);
         if (bestLap[W.id] > 0) fmtTime(t, bestLap[W.id]); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST %s", t); ui.text(Wd - 284, 58, 3, yel, b);
         for (int k = 0; k < (int)W.keys.size(); k++) keyIcon(Wd - 284 + k * 44, 84, 3.6f, (keysGot[W.id] >> k & 1) ? yel : V3(0.35f, 0.35f, 0.4f), (keysGot[W.id] >> k & 1) ? 1 : 0.7f);
@@ -2227,7 +2315,7 @@ static void drawHUD() {
         if (state == RACE && introT <= 0 && countdown > 0 && countdown < 3.4f) { snprintf(b, sizeof b, "%d", (int)ceilf(countdown - 0.4f)); if (countdown > 0.4f) ui.text(Wd / 2, 200, 26, yel, b, 1, 1, 0.12f); }
         if (msgT > 0 && state != RESULTS) ui.text(Wd / 2, 210, 6, msgCol, msg, 1, clampf(msgT * 2, 0, 1), 0.2f);
         if (wrongT > 1.2f && fmodf(T, 0.6f) < 0.4f) ui.text(Wd / 2, 300, 7, V3(1, 0.15f, 0.1f), "WRONG WAY", 1, 1, 0.12f);
-        if (player.dead && state == RACE) ui.text(Wd / 2, 300, 6, player.sunk ? V3(0.5f, 0.8f, 1) : org, player.sunk ? "SPLASH!" : "WRECKED!", 1, 1, 0.12f);
+        if (player.dead && state == RACE) ui.text(Wd / 2, 300, 6, player.sunk ? V3(0.5f, 0.8f, 1) : org, player.sunk ? (W.space ? "LOST IN SPACE!" : "SPLASH!") : "WRECKED!", 1, 1, 0.12f);
         if (netRace && state != RESULTS) for (auto& r : nc.r) {   // name tags over the other players
             if (!r.present || !r.racing) continue; V3 q = r.car.pos + V3(0, 2.3f, 0); const float* m = lastVP.m;
             float cx = m[0] * q.x + m[4] * q.y + m[8] * q.z + m[12], cy = m[1] * q.x + m[5] * q.y + m[9] * q.z + m[13], cw = m[3] * q.x + m[7] * q.y + m[11] * q.z + m[15];
@@ -2448,8 +2536,8 @@ static void onKey(SDL_Keycode k, int sc = 0) {
 #ifdef FCF_EDITOR
     case EDIT: ed::key(k); break;
 #endif
-    case PAUSED: if (k == SDLK_ESCAPE || k == SDLK_RETURN) state = RACE; if (bindHit(B_RESET, sc)) { state = RACE; doReset(); } if (k == SDLK_q) { writeSave(); if (netRace) netLeave(""); else { champOn = champDone = false; state = TRACKSEL; setupCars(false); } } break;
-    case RESULTS: if (netRace) { if (k == SDLK_ESCAPE) netLeave(""); } else if ((k == SDLK_RETURN || k == SDLK_ESCAPE) && resultsT > 1) { if (champOn) champAdvance(k == SDLK_ESCAPE); else { state = TRACKSEL; setupCars(false); } } break;
+    case PAUSED: if (k == SDLK_ESCAPE || k == SDLK_RETURN) state = RACE; if (bindHit(B_RESET, sc)) { state = RACE; doReset(); } if (k == SDLK_q) { writeSave(); if (netRace) netLeave(""); else if (secret::on) { secret::comeBack(); state = TITLE; setupCars(false); } else { champOn = champDone = false; state = TRACKSEL; setupCars(false); } } break;
+    case RESULTS: if (netRace) { if (k == SDLK_ESCAPE) netLeave(""); } else if ((k == SDLK_RETURN || k == SDLK_ESCAPE) && resultsT > 1) { if (champOn) champAdvance(k == SDLK_ESCAPE); else if (secret::on) { secret::comeBack(); state = TITLE; setupCars(false); } else { state = TRACKSEL; setupCars(false); } } break;
     case NETJOIN:
         if (nc.on) { if (k == SDLK_ESCAPE) netClose(""); break; }                       // connecting: Esc gives up
         if (srvMode != 0 && padUI && !touchOn) {                                        // with a controller: the letter grid
@@ -2529,7 +2617,7 @@ static void printJSON(FILE* o) {
 #else
     fprintf(o, "\"edPinches\":0,\"edTool\":-1,\"edTouch\":\"\",");
 #endif
-    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"ufoSplashes\":%d,\"ufos\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, wfx::splashed, (int)wfx::ufos.size(), grassNear(), W.beachLand());
+    fprintf(o, "\"grassTufts\":%d,\"ripples\":%d,\"space\":%d,\"slimeTris\":%d,\"spaceFalls\":%d,\"spaceLaunches\":%d,\"goldUfo\":%d,\"goldUfoAt\":[%.1f,%.1f,%.1f],\"ufoSplashes\":%d,\"ufos\":%d,\"grassNear\":%d,\"beachLand\":%d,", grassTufts(), ripple::made, (int)W.space, W.slimeTris, spaceFalls, secret::launches, (int)W.hasUfo, W.ufoAt.x, W.ufoAt.y, W.ufoAt.z, wfx::splashed, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
@@ -2698,7 +2786,7 @@ int main(int argc, char** argv) {
         else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true; }
         else if (a == "--save") noSave = false; else if (a == "--top") { debugTop = true; topH = F(1); camTgt = V3(F(2), 0, F(3)); i += 3; } else if (a == "--auto") autoDrive = true; else if (a == "--bright") vidBright = std::max(50, std::min(150, atoi(argv[++i]))); else if (a == "--autocut") { autoDrive = true; autoCut = atoi(argv[++i]); } else if (a == "--gas") gasOnly = 1; else if (a == "--drift") gasOnly = 2; else if (a == "--nosave") noSave = true; else if (a == "--noui") hideUI = true; else if (a == "--nologo") noLogo = true; else if (a == "--logo") logoT = (float)atof(argv[++i]); else if (a == "--padui") padUI = true;
-        else if (a == "--nofxaa") fxaaOff = true; else if (a == "--ripat") { ripAt = true; ripX = F(1); ripZ = F(2); i += 2; } else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
+        else if (a == "--nofxaa") fxaaOff = true; else if (a == "--space") cliSpace = true; else if (a == "--ufogo") cliUfoGo = true; else if (a == "--ripat") { ripAt = true; ripX = F(1); ripZ = F(2); i += 2; } else if (a == "--pos") { posSet = true; px = F(1); pz = F(2); pyaw = F(3); i += 3; } else if (a == "--cam") { fixedCam = true; camPos = V3(F(1), F(2), F(3)); camTgt = V3(F(4), F(5), F(6)); i += 6; }
         else if (a == "--size") { w = atoi(argv[i + 1]); h = atoi(argv[i + 2]); i += 2; sizeSet = true; } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
         else if (a == "--hold") { int sc = SDL_GetScancodeFromName(argv[++i]); if (sc) heldKeys.push_back(sc); }
@@ -2753,6 +2841,7 @@ int main(int argc, char** argv) {
             for (int t = NTRACKS; t < (int)TRACKS.size(); t++) weatherOf[t] = TRACKS[t].wx;
             for (int t = NTRACKS; t < (int)TRACKS.size(); t++) { std::string n = TRACKS[t].file; size_t sl = n.find_last_of("/\\"); if (sl != std::string::npos) n = n.substr(sl + 1); for (auto& ck : customKeysSaved) if (ck.first == n) keysGot[t] = ck.second; }
         }
+        if (cliSpace) { selTrack = spaceTrack(); selMode = 0; }
         W.build(selTrack); setupCars(true);
         if (startState == 8) { state = OPTS; optReturn = TITLE; }
         if (startState == 1) { state = CARSEL; setupCars(false); } if (startState == 2) { state = TRACKSEL; setupCars(false); } if (startState == 3) { if (cliChamp) champBegin(); else startRace(); if (!fullCountdown) { countdown = 0.01f; introT = 0; } }

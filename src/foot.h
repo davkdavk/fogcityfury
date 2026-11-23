@@ -469,7 +469,7 @@ static void footLeaveCar() {
 static void footEnterCar() { for (int g = 0; g < NGUNS; g++) roamAmmo[g] = me.ammo[g]; roamHp = me.alive ? me.hp : footMaxHp; me.on = false; footMouseFire = false; camInit = false; }
 static void shdToggle();
 static void footToggle() {
-    if (state != RACE) return;
+    if (state != RACE || W.space) return;   // (no getting out in space)
     if (showdownOn) { shdToggle(); return; }
     if (me.on) {
         if (!me.alive) return;
