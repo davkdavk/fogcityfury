@@ -410,6 +410,9 @@ static void takeDrop(Fighter& f, const Drop& d) {
 namespace mini { static FootIn think(Fighter& f, float dt); static FootIn youThink(Fighter& f, float dt); static void step(float dt); }
 static void footFrame(float dt) {
     hitFlash = std::max(0.0f, hitFlash - dt); hurtFlash = std::max(0.0f, hurtFlash - dt); footKick *= expf(-9 * dt);
+    headFlash = std::max(0.0f, headFlash - dt); killFlash = std::max(0.0f, killFlash - dt);
+    { float back = footRecoil * (1 - expf(-7 * dt)); footRecoil -= back; footPitch += back; }   // (the recoil drifts back down)
+    for (size_t i = 0; i < dmgNums.size();) { dmgNums[i].age += dt; dmgNums[i].p.y += dt * (1.4f - dmgNums[i].age); if (dmgNums[i].age > 0.95f) dmgNums.erase(dmgNums.begin() + i); else i++; }
     if (sdNow && netRace && state == RACE && countdown <= 0 && !showdownOn) { sdNow = false; netRush = true; player.lap = raceLaps + 1; finishRace(false); }   // tests, online: as if we had just crossed the line
     if (sdNow && !netRace && state == RACE && countdown <= 0 && !showdownOn && !shdResult) { sdNow = false; finalPlace = sdPlace; champRaceEnd(); if (!showdownStart(sdPlace)) { state = RESULTS; resultsT = 0; } }   // tests: as if you had just finished the race in that place
     stepShowdown(dt); mini::step(dt); stepShells(dt); stepBlood(dt);
@@ -464,9 +467,9 @@ static void footFrame(float dt) {
     } else if (me.on) {
         float sens = footAdsNow ? 0.55f : 1.0f; footYaw -= footMouseX * 0.0032f * sens; footPitch = clampf(footPitch + footMouseY * 0.0026f * sens, footAdsNow ? -1.05f : -1.05f, 0.9f);
         if (!footAdsNow && footPitch < -0.15f) footPitch += (-0.15f - footPitch) * (1 - expf(-5 * dt));   // (out of the sights the view comes back down)
-        if (cliAimMini) { V3 q; if (jetdrop::firstAt(q)) cliAimAt = q + V3(0, 1.1f, 0); }   // (--aimmini: at a rooftop mini Warden)
+        if (cliAimMini) { V3 q; if (jetdrop::firstAt(q)) cliAimAt = q + V3(0, cliAimHead ? 1.75f : 1.1f, 0); }   // (--aimmini: at a rooftop mini Warden)
         if (cliAimDol) { V3 q; if (dolphin::firstAt(q)) cliAimAt = q; }   // (--aimdolphin)
-        if (cliAim && me.alive) { V3 d = cliAimAt - (me.pos + V3(0, 1.55f, 0) + yawRight(footYaw) * 0.6f); footYaw = atan2f(d.x, d.z); footPitch = -atan2f(d.y, sqrtf(d.x * d.x + d.z * d.z)); }   // (--aimat, tests)
+        if (cliAim && me.alive) { V3 d = cliAimAt - (me.pos + V3(0, 1.55f, 0) + yawRight(footYaw) * (0.55f + 0.4f * footAdsK)); footYaw = atan2f(d.x, d.z); footPitch = -atan2f(d.y, sqrtf(d.x * d.x + d.z * d.z)); }   // (--aimat, tests)
         if (me.alive && me.target >= 0 && me.aim > 0.5f) { V3 d = tgtPos(me.target) - me.pos; footYaw += wrapPi(atan2f(d.x, d.z) - footYaw) * (1 - expf(-3.2f * dt)); }
         else if (me.alive) footYaw -= footTurn * 1.15f * dt * clampf(me.run / FOOT_RUN, 0, 1);
         else if (showdownOn) footYaw += 0.25f * dt;
@@ -485,7 +488,8 @@ static void footFrame(float dt) {
 static void footReset() {
     for (auto& f : fighters) f = Fighter(); for (int i = 0; i < NSLOT; i++) { fighters[i].id = i; if (i >= NFIGHT) fighters[i].alive = false; }   // (the places past the five are for free roam's mini Wardens: out of it here)
     netShd = shdSpectate = carHidden = false; shdWatch = 0;
-    showdownOn = false; shdPhase = SH_OFF; shdCut = false; shdResult = false; shdWinner = -1; shdRacePlace = 0; drops.clear(); splats.clear(); gibs.clear(); shells.clear(); footMouseFire = footMouseAds = footAdsNow = false; footAdsK = 0; tstick.on = false; hitFlash = hurtFlash = footKick = 0;
+    showdownOn = false; shdPhase = SH_OFF; shdCut = false; shdResult = false; shdWinner = -1; shdRacePlace = 0; drops.clear(); splats.clear(); gibs.clear(); shells.clear(); footMouseFire = footMouseAds = footAdsNow = false; footAdsK = 0;
+    dmgNums.clear(); headFlash = killFlash = footRecoil = 0; headshots = 0; tstick.on = false; hitFlash = hurtFlash = footKick = 0;
     layTownDrops();   // (2.4: ammunition and medkits about the town)
     roamHp = footMaxHp; roamCarTarget = false; for (int g = 0; g < NGUNS; g++) roamAmmo[g] = gunUnlocked(g) ? GUNS[g].clip * (g == G_SMG ? 2 : 1) : 0;
 }
@@ -580,11 +584,19 @@ static void drawFootHUD(float Hb) {
     }
     // down the sights: a crosshair in the middle (red over something it would hit), and how far
     if (footAdsK > 0.3f && me.alive && !shdSpectate) {
-        float cx = Wd / 2, cy = Hd / 2, k = footAdsK, gap = 7 + 5 * me.run / FOOT_RUN; V3 c = footAimHot ? V3(1, 0.3f, 0.2f) : white;
+        float cx = Wd / 2, cy = Hd / 2, k = footAdsK, gap = 7 + 5 * me.run / FOOT_RUN + 26 * me.bloom; V3 c = footAimHot ? V3(1, 0.3f, 0.2f) : white;   // (it opens with the bloom)
         if (project(footAimPt, sx, sy, cw)) { cx = sx; cy = sy; }
         for (int a = 0; a < 4; a++) { float dx = a == 0 ? 1 : a == 1 ? -1 : 0, dy = a == 2 ? 1 : a == 3 ? -1 : 0; ui.line(cx + dx * gap, cy + dy * gap, cx + dx * (gap + 11), cy + dy * (gap + 11), 2.5f, c, 0.9f * k); }
         ui.disc(cx, cy, 2.2f, c, k); if (hitFlash > 0) { float q = 6 + 22 * hitFlash; for (int a = -1; a <= 1; a += 2) for (int b2 = -1; b2 <= 1; b2 += 2) ui.line(cx + a * q * 0.4f, cy + b2 * q * 0.4f, cx + a * q, cy + b2 * q, 2.5f, white, 0.95f); }
         snprintf(b, sizeof b, "%.0f M", len(footAimPt - me.pos)); ui.text(cx + 22, cy + 14, 1.4f, dim, b, 0, k);
+    }
+    // 2.6 damage numbers rising off what you hit (white body, yellow head, blue armour), and the headshot / kill markers
+    for (const DmgNum& d : dmgNums) { if (!project(d.p, sx, sy, cw)) continue; float a = clampf(1.3f - d.age * 1.4f, 0, 1), sc = (d.kind == 1 ? 3.4f : 2.6f) * (1 + 0.25f * clampf(1 - d.age * 6, 0, 1));
+        V3 c = d.kind == 1 ? V3(1, 0.85f, 0.15f) : d.kind == 2 ? V3(0.45f, 0.75f, 1) : white; snprintf(b, sizeof b, "%d", (int)lroundf(d.v)); ui.text(sx + (d.who % 3 - 1) * 10, sy, sc, c, b, 1, a, 0.12f); }
+    if ((headFlash > 0 || killFlash > 0) && me.alive && !shdSpectate) {
+        float cx = Wd / 2, cy = Hd / 2; if (footAdsK > 0.3f && project(footAimPt, sx, sy, cw)) { cx = sx; cy = sy; } else if (me.target >= 0 && tgtAlive(me.target) && project(tgtPos(me.target), sx, sy, cw)) { cx = sx; cy = sy; }
+        V3 c = killFlash > 0 ? V3(1, 0.25f, 0.15f) : V3(1, 0.85f, 0.15f); float q = killFlash > 0 ? 14 + 40 * killFlash : 8 + 30 * headFlash;
+        for (int a = -1; a <= 1; a += 2) for (int b2 = -1; b2 <= 1; b2 += 2) ui.line(cx + a * q * 0.35f, cy + b2 * q * 0.35f, cx + a * q, cy + b2 * q, killFlash > 0 ? 4 : 3, c, 0.95f);
     }
     // weapon and ammunition
     if (shdSpectate) { snprintf(b, sizeof b, touchOn ? "WATCHING %s" : "WATCHING %s   -   %s: NEXT FIGHTER", fighters[shdWatch].name, keyName(binds[B_CAM][0])); ui.text(Wd / 2, Hb - 60, 2.6f, white, b, 1); }

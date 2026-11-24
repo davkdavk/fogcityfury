@@ -86,6 +86,8 @@ static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx) {
     for (int i = 0; i < (int)ms.size(); i++) for (float h : { 0.5f, 1.1f, 1.7f }) { V3 q = ms[i].p + V3(0, h, 0) - o; float tt = dot(q, d); if (tt > 0 && tt < t && len(q - d * tt) < 0.5f) { t = tt; idx = i; any = true; } }
     return any;
 }
+static int downedCount() { return downed; }
+static V3 posOf(int idx) { return idx >= 0 && idx < (int)ms.size() ? ms[idx].p : V3(); }
 static bool firstAt(V3& p) { if (ms.empty()) return false; p = ms[0].p; return true; }
 static void kill(int idx, V3 dir) {   // down: it comes apart into Warden pieces (foot.h does a mini Warden's), off the roof if it was up there
     M& m = ms[idx]; Fighter t; t.on = true; t.mini = true; t.pos = m.p; t.paint = 0; gibFighter(t, m.p - dir * 2.0f + V3(0, 0.5f, 0));

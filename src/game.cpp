@@ -250,7 +250,7 @@ static std::string tracksDir() {
 namespace director { static void reset(); static void placeWardens(); }
 namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)
 namespace dolphin { static bool spawn(V3 at, V3 to, float k); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void laugh(int idx, V3 at); static void blastAt(V3 p, float r); static bool firstAt(V3& p); }   // (dolphin.h)
-namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void hurt(int idx, float dmg, V3 dir); static void blastAt(V3 p, float r, float dmg); static bool firstAt(V3& p); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
+namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void hurt(int idx, float dmg, V3 dir); static void blastAt(V3 p, float r, float dmg); static bool firstAt(V3& p); static V3 posOf(int idx); static int downedCount(); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
 #include "combat.h"   // wreckage and debris, crates, shields, the multiplayer race start and leave, splashes, explosions, rockets
 #include "events.h"   // the race director: scripted events from a track's event file
 #include "collapse.h"   // buildings that come down (a rocket aimed at one, or an event's cue)
@@ -487,7 +487,7 @@ int main(int argc, char** argv) {
             mini::group = atoi(argv[++i]);
         } else if (a == "--minishold") mini::hold = true;
         else if (a == "--outcar") mini::outcar = true;
-        else if (a == "--onfoot") cliOnFoot = true; else if (a == "--aimmini") { cliAim = true; cliAimMini = true; } else if (a == "--aimdolphin") { cliAim = true; cliAimDol = true; } else if (a == "--ads") cliAds = true;
+        else if (a == "--onfoot") cliOnFoot = true; else if (a == "--aimmini") { cliAim = true; cliAimMini = true; } else if (a == "--aimhead") { cliAim = true; cliAimMini = true; cliAimHead = true; } else if (a == "--aimdolphin") { cliAim = true; cliAimDol = true; } else if (a == "--ads") cliAds = true;
         else if (a == "--aimat" && i + 3 < argc) { cliAim = true; cliAimAt.x = (float)atof(argv[++i]); cliAimAt.y = (float)atof(argv[++i]); cliAimAt.z = (float)atof(argv[++i]); }
         else if (a == "--flowers")
             mini::flowers = atoi(argv[++i]); // tests: a mini Warden straight away (40 m ahead, on the road); as if that many flowers were picked up

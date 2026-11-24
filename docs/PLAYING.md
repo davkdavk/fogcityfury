@@ -138,6 +138,11 @@ and the usual lock-on aiming is back.
 buildings, away from the road, about 30 on each track. Each box of rounds tops up every gun you have, and
 a medkit gives back 50 health. Each comes back 40 seconds after it is taken.
 
+**Hits:** a shot to the head does double damage (a yellow marker and a bright tink), and numbers rise off
+whatever you hit (white body, yellow head, blue armour). The crosshair opens as you fire fast, so short
+bursts land better than holding the trigger down. Each gun kicks the view up a little; it settles back on its
+own. The pistol, SMG and shotgun lose damage at range, but the rifle doesn't.
+
 **Rooftop snipers:** on some tracks, mini Wardens wait at the edge of a roof. They leave drivers alone, but
 once you're on foot they shoot at you when they can see you. Aim down the sights and any gun brings them
 down.

@@ -9,6 +9,16 @@ static const float BOT_SPREAD = 2.3f, BOT_REACT = 0.45f;                    // h
 static const char* DRIVER[NAI] = { "VEGA", "MOSS", "KATO", "REYES", "DUKE", "NOVAK", "IBARRA", "QUINN", "OKORO" };
 static bool footAuto = false, faceAi = false;                                // tests: --footai (a bot plays for you), --faceai (get out facing the nearest racer)
 static float hitFlash = 0, hurtFlash = 0, hurtAng = 0, footKick = 0;        // HUD: hit marker, the red edge and where the shot came from; camera recoil
+// 2.6 the feel of a hit: a headshot (head flash, a bright tink), a kill (a bigger marker, a two-note sting), damage
+// numbers rising off whatever you hit (white body, yellow head, blue armour; a shotgun's pellets add up into one),
+// and the view's recoil (footRecoil: how far it has been thrown up, drifting back)
+static float headFlash = 0, killFlash = 0, footRecoil = 0; static int headshots = 0, dmgNumCount = 0, recoilShots = 0;
+struct DmgNum { V3 p; float v, age; int kind, who; }; static std::vector<DmgNum> dmgNums;   // kind 0 body, 1 head, 2 armour
+static bool headHit = false;   // (the shot being dealt is a headshot)
+static void dmgNum(V3 at, float v, int kind, int who) {
+    for (auto& d : dmgNums) if (d.who == who && d.kind == kind && d.age < 0.12f) { d.v += v; return; }   // (a shotgun's pellets: one number)
+    dmgNums.push_back({ at + V3(0, 0.3f, 0), v, 0, kind, who }); dmgNumCount++; if (dmgNums.size() > 24) dmgNums.erase(dmgNums.begin());
+}
 static int footPickups = 0, forceGun = -1;                                    // forceGun: --gun N (tests): you step out holding it
 struct Shell { V3 p, v; float life, age; int by; bool fake = false; };     // a launcher round in flight (fake: somebody else's online, drawn but harmless here)
 static std::vector<Shell> shells;
@@ -178,14 +188,16 @@ static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = f
         sfx(t.pos, 2600, 0.05f, 0.3f, 2); if (by == 0) { hitFlash = 0.1f; static float told = -99; if (T - told > 6) { told = T; say("USE FISTS, PISTOL, SMG OR SHOTGUN ON A MINI WARDEN", V3(1, 0.8f, 0.3f), 2.0f); } }
         return;
     }
+    if (headHit) dmg *= 2;   // a headshot: double
     float a = pierce ? 0.0f : std::min(t.armour, dmg * 0.7f); t.armour -= a; t.hp -= dmg - a; t.hurtT = 0.25f;
+    if (by == 0 && &t != &me) { if (a > 0.5f) dmgNum(t.pos + V3(0, 1.9f, 0), a, 2, t.id); if (dmg - a > 0.05f) dmgNum(t.pos + V3(0, 1.9f, 0), dmg - a, headHit ? 1 : 0, t.id); }
     if (by >= 0 && by != t.id) { t.hitBy = by; t.hitByT = 0; t.vel = t.vel + V3(dir.x, 0, dir.z) * 1.0f; }
     if (t.mini) { for (int i = 0; i < 6; i++) spawn(t.pos + V3(0, 1.1f, 0), V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.3f, 0.07f, 0, V3(4, 2.6f, 0.8f), 1, 1, -9); }   // a mini Warden sparks, it does not bleed
     else if (!pierce) bleed(t.pos + V3(0, 1.15f, 0), len(dir) > 0.1f ? dir : V3(0, 0.3f, 0), dmg);
-    if (by == 0 && &t != &me) { me.hits++; hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); }
+    if (by == 0 && &t != &me) { me.hits++; hitFlash = 0.2f; if (headHit) { me.heads++; headshots++; headFlash = 0.3f; tone(3300, 0.06f, 0.32f, 2, 900); } else tone(1900, 0.035f, 0.22f, 2); }
     if (mine(t)) { hurtFlash = 0.45f; if (by >= 0) hurtAng = wrapPi(atan2f(-dir.x, -dir.z) - footYaw); shake = std::max(shake, 0.22f); rumble(0.6f, 120); tone(150, 0.12f, 0.45f, 1); }
     else sfx(t.pos, 420, 0.06f, 0.25f, 1);
-    if (t.hp <= 0) killFighter(t, by);
+    if (t.hp <= 0) { if (by == 0 && &t != &me) { killFlash = 0.5f; tone(660, 0.09f, 0.4f, 2); tone(990, 0.18f, 0.4f, 2, 0, 0.08f); } killFighter(t, by); }
 }
 static void hurtCar(Car& c, float dmg, V3 at) {
     if (c.dead) return; if (&c == &player) dmg *= carArmourMul; c.hp -= dmg; hitFlash = 0.2f;
@@ -196,10 +208,11 @@ static void hurtCar(Car& c, float dmg, V3 at) {
 
 // ---- shooting ----
 static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
-    bool racers = racersAreTargets(); int what = 0, tg = -1; float bt = rayWorld(o, d, g.range, !racers, &what);
+    bool racers = racersAreTargets(); int what = 0, tg = -1; bool head = false; float bt = rayWorld(o, d, g.range, !racers, &what);
     for (int i = 0; i < NSLOT; i++) {
         const Fighter& t = fighters[i]; if (i == f.id || !t.on || !t.alive || t.rollT > 0.12f) continue;        // a roll goes under the shot
-        for (float h : { 0.45f, 0.95f, 1.45f }) { V3 q = t.pos + V3(0, h, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 0.40f) { bt = tt; tg = i; } }
+        for (float h : { 0.45f, 0.95f, 1.45f }) { V3 q = t.pos + V3(0, h, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 0.40f) { bt = tt; tg = i; head = false; } }
+        { V3 q = t.pos + V3(0, t.mini ? 1.62f : 1.74f, 0) - o; float tt = dot(q, d); if (tt > 0 && tt <= bt + 0.3f && len(q - d * tt) < 0.17f) { bt = std::min(bt, tt); tg = i; head = true; } }   // the head: small, double damage
     }
     if (racers) for (int k = 0; k < NAI; k++) { if (ai[k].dead) continue; V3 q = ai[k].pos + V3(0, 0.7f, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 1.5f) { bt = std::max(tt - 1.2f, 0.5f); tg = 8 + k; } }
     { float t2; int k2; if (jetdrop::hitLine(o, d, bt, t2, k2)) { bt = t2; tg = 100 + k2; } if (dolphin::hitLine(o, d, bt, t2, k2)) { bt = t2; tg = 200 + k2; } }   // (2.4: a rooftop mini Warden, a dolphin)
@@ -208,10 +221,15 @@ static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
     if (o.y > 0 && end.y < 0.05f && d.y < -0.001f) { V3 w = o + d * (o.y / -d.y); ripple::add(w.x, w.z, 0.5f); }   // into the water: a ring where it went in
     spawn(o + d * std::min(2.0f, bt * 0.5f), d * 150, clampf(bt / 150, 0.035f, 0.13f), 0.55f, 0, V3(3.2f, 2.5f, 1.2f), 0.9f, 1, 0, 3.2f);   // tracer
     if (tg >= 200) dolphin::laugh(tg - 200, end);
-    else if (tg >= 100) jetdrop::hurt(tg - 100, g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f), d);
+    else if (tg >= 100) {   // a rooftop mini Warden: its head too (2.6), and the numbers
+        V3 hq = jetdrop::posOf(tg - 100) + V3(0, 1.75f, 0) - o; float ht = dot(hq, d); bool hh = ht > 0 && len(hq - d * ht) < 0.2f;
+        float dm = g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f) * (hh ? 2.0f : 1.0f);
+        if (&f == &me) { dmgNum(end, dm, hh ? 1 : 0, 100 + tg); if (hh) { me.heads++; headshots++; headFlash = 0.3f; tone(3300, 0.06f, 0.32f, 2, 900); } }
+        int before = jetdrop::downedCount(); jetdrop::hurt(tg - 100, dm, d); if (jetdrop::downedCount() > before && &f == &me) { killFlash = 0.5f; tone(660, 0.09f, 0.4f, 2); tone(990, 0.18f, 0.4f, 2, 0, 0.08f); } }
     else if (tg >= 8) hurtCar(ai[tg - 8], g.carDmg, end);
     else if (tg == 7) hurtCar(player, g.carDmg * 0.25f, end);
-    else if (tg >= 0) { shotGun = (int)(&g - GUNS); damageFighter(fighters[tg], g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f) * (f.mini ? 0.4f : 1.0f), f.id, d); shotGun = -1; }   // (a mini Warden's little gun)
+    else if (tg >= 0) { int gi = (int)(&g - GUNS); const GunFeel& fe = FEEL[gi]; float fall = bt <= fe.falloff ? 1.0f : 1 - (1 - fe.fallMin) * clampf((bt - fe.falloff) / std::max(g.range - fe.falloff, 1.0f), 0, 1);   // (falling off with range)
+        shotGun = gi; headHit = head; damageFighter(fighters[tg], g.dmg * fall * (&f == &me && !f.bot ? footDmgMul : 1.0f) * (f.mini ? 0.4f : 1.0f), f.id, d); headHit = false; shotGun = -1; }   // (a mini Warden's little gun)
     else if (bt < g.range - 0.01f) {
         for (int i = 0; i < 3; i++) spawn(end, V3(grng.r(-3, 3), grng.r(0.5f, 4), grng.r(-3, 3)) - d * 2.0f, 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
         spawn(end, V3(0, 0.6f, 0) - d * 0.8f, 0.5f, 0.18f, 0.9f, V3(0.42f, 0.40f, 0.38f), 0.5f, 0, 0.5f);
@@ -223,7 +241,9 @@ static void fireGun(Fighter& f, float aimYaw) {
     V3 fw = yawDir(f.yaw), rt = yawRight(f.yaw), o = f.pos + V3(0, 1.40f, 0) + fw * 0.55f + rt * 0.16f;
     bool ads = &f == &me && !f.bot && footAdsNow;   // down the sights: to the middle of the screen, steadier
     V3 d = norm((ads ? footAimPt : f.target >= 0 ? tgtPos(f.target) : o + yawDir(aimYaw) * 40) - o);
-    float s = g.spread * (1 + f.run / FOOT_RUN * 1.3f) * (f.bot ? BOT_SPREAD : footAimMul) * (ads ? 0.3f : 1.0f);
+    float s = g.spread * (1 + f.run / FOOT_RUN * 1.3f + f.bloom * 2.5f) * (f.bot ? BOT_SPREAD : footAimMul) * (ads ? 0.3f : 1.0f);
+    if (ads && f.run < 0.4f && f.bloom < 0.05f && g.pellets == 1) s = 0;   // (settled, still, down the sights: the first shot goes exactly where it points)
+    f.bloom = std::min(1.0f, f.bloom + FEEL[gi].bloomAdd); f.sinceShot = 0;
     if (gi == G_FISTS) {   // a punch: whoever is within reach in front
         gunSound(gi, o); bool hit = false;
         for (auto& t : fighters) { if (&t == &f || !t.on || !t.alive || t.rollT > 0.12f || hit) continue; V3 dd = t.pos - f.pos; dd.y = 0; float L = len(dd);
@@ -241,7 +261,8 @@ static void fireGun(Fighter& f, float aimYaw) {
     gunSound(gi, o);
     spawn(o + fw * 0.25f, fw * 2.0f, 0.06f, 0.30f + 0.2f * g.kick, 0, V3(5, 3.6f, 1.4f), 1, 1, 0);                                            // muzzle flash
     spawn(o - fw * 0.2f, rt * grng.r(1.5f, 2.5f) + V3(0, grng.r(1.5f, 2.5f), 0), 0.5f, 0.035f, 0, V3(0.9f, 0.7f, 0.25f), 1, 0, -14);       // spent case
-    if (&f == &me) { footKick = std::min(1.5f, footKick + g.kick); shake = std::max(shake, 0.07f * g.kick); rumble(0.25f + 0.3f * g.kick, 70); }
+    if (&f == &me) { footKick = std::min(1.5f, footKick + g.kick); shake = std::max(shake, 0.07f * g.kick); rumble(0.25f + 0.3f * g.kick, 70);
+        if (!f.bot) { float up = FEEL[gi].climb * (ads ? 0.7f : 1.0f); footPitch -= up; footRecoil += up; footYaw += FEEL[gi].side * ((recoilShots++ % 2) ? 1.0f : -0.6f); } }   // the view climbs; it drifts back
 }
 static void explodeShell(V3 p, int by, bool fake) {
     blast(p, V3(), clampf(1.1f - len(p - earPos()) / 60, 0.1f, 0.8f)); if (fake) return;
@@ -266,6 +287,7 @@ static void stepShells(float dt) {
 
 // ---- one step of one fighter ----
 static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canMove) {
+    f.sinceShot += dt; if (f.sinceShot > 0.18f) f.bloom = std::max(0.0f, f.bloom - dt * FEEL[f.gun].bloomBack * (f.run < 0.5f ? 1.0f : 0.6f));   // (holding the trigger keeps it open)
     f.cd = std::max(0.0f, f.cd - dt); f.hurtT = std::max(0.0f, f.hurtT - dt); f.kick = std::max(0.0f, f.kick - dt * 7); f.rollCD = std::max(0.0f, f.rollCD - dt); f.hitByT += dt;
     float g0 = W.ground(f.pos.x, f.pos.z, f.pos.y + 0.6f);
     if (!f.alive) {   // down: slide to a stop and lie where they fell
@@ -278,6 +300,9 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     }
     f.prevRoll = in.roll; bool rolling = f.rollT > 0; if (rolling) f.rollT = std::max(0.0f, f.rollT - dt);
     // aiming: you lock on to whoever is nearest the middle of your view; a bot has already chosen
+    // 2.6 the trigger, for you: a tap just before the gun is ready is kept (a fifth of a second) and fires the moment it is
+    static bool prevFire = false; static float tapBuf = 0; bool you = &f == &me && !f.bot;
+    if (you) { if (in.fire && !prevFire) tapBuf = 0.2f; else tapBuf = std::max(0.0f, tapBuf - dt); prevFire = in.fire; if (tapBuf > 0 && canFire) in.fire = true; }
     bool trigger = in.fire && canFire && !rolling; float aimYaw = f.bot ? f.yaw : footYaw; bool ads = in.ads && !f.bot && !rolling;
     if (!f.bot) { if (ads) f.target = -1; else if (trigger || f.aimHold > 0) f.target = pickFoe(f, footYaw, 1.05f); else f.target = -1; }   // (down the sights: no lock, you aim)
     if (f.target >= 0 && !tgtAlive(f.target)) f.target = -1;
@@ -292,7 +317,7 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     bool vyJet = false; V3 want = rolling ? yawDir(f.rollYaw) * top : mv * top, hv(f.vel.x, 0, f.vel.z), dv = want - hv; float dl = len(dv), acc = (rolling ? 70.0f : ml > 0.05f ? 38.0f : 30.0f) * dt;
     if (f.mini && f.jetT > 0) { f.jetT -= dt; vyJet = true; } else hv = dl <= acc ? want : hv + dv * (acc / dl);   // (a jetpack burst: it flies, it does not run)
     // facing: the target while aiming, otherwise the way you run
-    float tgtYaw = rolling ? f.rollYaw : aiming ? aimYaw : ml > 0.1f ? atan2f(mv.x, mv.z) : f.yaw, turn = (aiming ? 16.0f : 11.0f) * dt;
+    float tgtYaw = rolling ? f.rollYaw : aiming ? aimYaw : ml > 0.1f ? atan2f(mv.x, mv.z) : f.yaw, turn = (aiming ? (&f == &me && !f.bot ? 26.0f : 16.0f) : 11.0f) * dt;   // (you snap round to aim)
     f.yaw = wrapPi(f.yaw + clampf(wrapPi(tgtYaw - f.yaw), -turn, turn));
     // move: walls, cars, deep water and steps too high all stop you
     V3 np = f.pos + hv * dt; float imp = 0; np.y = f.pos.y; W.collide(np, hv, FOOT_R, imp); pushFromCars(np, hv, FOOT_R);
@@ -304,7 +329,7 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     // animation state
     float sp = sqrtf(hv.x * hv.x + hv.z * hv.z); f.run += (sp - f.run) * (1 - expf(-12 * dt)); f.stride += sp * dt * 2.3f;
     f.moveAng = sp > 0.5f ? wrapPi(atan2f(hv.x, hv.z) - f.yaw) : f.moveAng * expf(-8 * dt);
-    f.aim += ((aiming ? 1.0f : 0.0f) - f.aim) * (1 - expf(-14 * dt));
+    f.aim += ((aiming ? 1.0f : 0.0f) - f.aim) * (1 - expf(-(you ? 24.0f : 14.0f) * dt));   // (yours comes up quicker: no wait before the first shot)
     float ph = fmodf(f.stride, (float)M_PI);   // a footfall each half cycle
     if (ph < f.stepPh && sp > 1.5f && !rolling) {
         if (&f == &me) tone(wading ? 500.0f : 900.0f, 0.03f, 0.10f, 1);
@@ -312,7 +337,7 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     }
     f.stepPh = ph;
     // the trigger: only once the gun is up and pointing the right way
-    if (trigger && f.cd <= 0 && f.aim > 0.7f && fabsf(wrapPi(aimYaw - f.yaw)) < 0.3f) fireGun(f, aimYaw);
+    if (trigger && f.cd <= 0 && f.aim > (you ? 0.45f : 0.7f) && fabsf(wrapPi(aimYaw - f.yaw)) < (you ? 0.5f : 0.3f)) { fireGun(f, aimYaw); if (you) tapBuf = 0; }
 }
 
 // your input, on foot: running is relative to the camera. `turn` is how hard the stick or keys pull sideways (the camera swings that way)

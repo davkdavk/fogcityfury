@@ -787,6 +787,20 @@ def manic_is_a_time_trial():
     check(e["manicRecord"] > 0 and abs(e["manicRecord"] - d["raceT"]) < 0.05, "the record is kept for next time", (e["manicRecord"], d["raceT"]))
 
 @test
+def headshots_numbers_bloom_and_recoil():
+    """2.6: a round to the head does double (the rifle drops a rooftop sniper in one where the body takes two); each
+    hit you land puts up a number; firing opens the crosshair (bloom) and the view climbs (recoil), both settling."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("event s1 minis  at -471 70 -174  to -480 9 -175  k 2  stay  on time 1\n")
+    body = sim("--track", 0, "--state", 3, "--onfoot", "--ads", "--aimmini", "--gun", 2, "--events", f, seconds=20)
+    head = sim("--track", 0, "--state", 3, "--onfoot", "--ads", "--aimhead", "--gun", 2, "--events", f, seconds=20)
+    check(body["jetDowned"] == 2 and body["headshots"] == 0 and body["dmgNums"] == 4, "body shots: two each, a number each", (body["jetDowned"], body["headshots"], body["dmgNums"]))
+    check(head["jetDowned"] == 2 and head["headshots"] == 2 and head["dmgNums"] == 2, "headshots: one each", (head["jetDowned"], head["headshots"], head["dmgNums"]))
+    smg = sim("--track", 0, "--state", 3, "--onfoot", "--ads", "--aimat", -400, 30, -100, "--gun", 3, seconds=6)
+    check(smg["meBloom"] > 0.3, "holding the SMG's trigger opens the crosshair", smg["meBloom"])
+
+@test
 def net_roam_server_shares_mini_wardens():
     """A --roam server: everyone free-roams the same city. The host's game runs the mini Wardens; a guest sees them,
     punches one out and gets its flowers."""

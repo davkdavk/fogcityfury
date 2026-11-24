@@ -7,6 +7,12 @@ enum Gun { G_FISTS, G_PISTOL, G_RIFLE, G_SMG, G_SHOTGUN, G_LAUNCHER, NGUNS };
 // (0 = never runs out). keys: hidden keys found, over all levels, before you can use this gun: one key for the pistol,
 // two for the rifle, and so on. With no keys at all you fight with your fists. carDmg: against a racer's car.
 struct GunSpec { const char* name; float cd, dmg, range, spread; int pellets, clip, keys; float kick, carDmg; };
+// 2.6 the feel of each gun: how much a shot opens the crosshair (bloom) and how fast it settles (per second); how far
+// a shot throws the view up (radians, it drifts back) and sideways (alternating, so a burst wanders); full damage out
+// to falloff metres, down to fallMin of it at the gun's range
+struct GunFeel { float bloomAdd, bloomBack, climb, side, falloff, fallMin; };
+static const GunFeel FEEL[6] = { { 0, 5, 0, 0, 99, 1 }, { 0.22f, 3.0f, 0.020f, 0.006f, 30, 0.7f }, { 0.35f, 2.2f, 0.045f, 0.010f, 90, 1.0f },
+                                 { 0.10f, 2.6f, 0.012f, 0.009f, 18, 0.55f }, { 0.45f, 2.0f, 0.060f, 0.012f, 9, 0.35f }, { 0.3f, 2, 0.05f, 0, 99, 1 } };
 static const GunSpec GUNS[NGUNS] = {
     { "FISTS",    0.45f,  14, 1.9f, 0,     1,  0,  0, 0.6f,   3 },
     { "PISTOL",   0.30f,  15, 60, 0.012f, 1,  0,  1, 0.5f,  34 },
@@ -35,7 +41,8 @@ struct Fighter {
     float strafe = 1, strafeT = 0, reactT = 0, burstT = 0, stuckT = 0, sideT = 0, hitByT = 99; int hitBy = -1, lastTgt = -1; V3 lastPos;
     bool flinched = false, wantMove = false; float ringT = 0;   // ringT: time spent outside the ring since it last burned them
     // score
-    int kills = 0, shots = 0, hits = 0, place = 0;
+    int kills = 0, shots = 0, hits = 0, place = 0, heads = 0;   // heads: headshots landed
+    float bloom = 0, sinceShot = 9;   // 2.6 (sinceShot: seconds since it last fired; the bloom only settles once it stops): how far the crosshair has opened from firing fast (0 settled .. 1 wide): the spread grows with it
     // online: remote if somebody else's game simulates this fighter. Health belongs to the victim's game: ours only reports what it dealt
     bool remote = false; float dealtTo[5] = {}; uint16_t claim = 0; size_t pathI = 0;   // dealtTo[i]: the damage this (locally run) fighter has done to remote fighter i so far; claim: the pick-ups it stands on
     // the showdown, before the fight: the car has reached the ring; where along the track a bot's car is to stop
@@ -68,6 +75,6 @@ static float footYaw = 0, footPitch = 0.20f, footMouseX = 0, footMouseY = 0; sta
 // zooms, you face where it looks and strafe, and a shot goes exactly to the middle of the screen (footAimPt: what the
 // view's centre line meets), high or low: rooftops too. footAdsK: how far in it is (for the camera and the HUD)
 static bool footMouseAds = false, footAdsNow = false, footAimHot = false; static V3 footAimPt; static float footAdsK = 0;
-static bool cliOnFoot = false, cliAds = false, cliAim = false, cliAimMini = false, cliAimDol = false; static V3 cliAimAt;   // tests: --onfoot, --ads, --aimat X Y Z
+static bool cliOnFoot = false, cliAds = false, cliAim = false, cliAimMini = false, cliAimDol = false, cliAimHead = false; static V3 cliAimAt;   // tests: --onfoot, --ads, --aimat X Y Z
 // a thumb-stick drawn where the left thumb lands (touch screens)
 static struct TouchStick { bool on = false; SDL_FingerID id = 0; float ox = 0, oy = 0, x = 0, y = 0; } tstick;

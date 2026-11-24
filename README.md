@@ -92,6 +92,19 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.6
+
+Gunplay, part 1 of 4: how a hit feels.
+- **Headshots:** a small head hitbox takes double damage, with a bright tink and a yellow marker. A rifle round to
+  the head drops a rooftop sniper in one.
+- **Damage numbers** rise off whatever you hit: white for the body, yellow for the head, blue for armour. A
+  shotgun's pellets add up into one number.
+- **Crosshair bloom:** firing fast opens it. Settled, still and down the sights, your first shot goes exactly
+  where you aim.
+- **Recoil:** each gun throws the view up its own amount, with a little sideways wander, and it drifts back.
+- **Kills** get a bigger red marker and a two-note sting.
+- **Damage falls off with range** for the pistol, SMG and shotgun; the rifle holds its damage to its full range.
+
 ## What's new in 2.5
 
 - **MANIC**, a new mode: a time trial over the laps you set.
