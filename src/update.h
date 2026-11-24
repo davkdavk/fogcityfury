@@ -79,10 +79,12 @@ static void update(float dt) {
     } else if (state == TITLE) in = autoInput(player);
     if ((state == TITLE || (state == RACE && autoDrive && go)) && !player.dead && !me.on) { static float stuck = 0; stuck = fabsf(player.vf) < 3 ? stuck + dt : 0; if (stuck > 2) { respawn(player); stuck = 0; } }   // the autopilot cannot reverse
     else if (state == RESULTS) { in.brake = player.vf > 1 ? 0.6f : 0; resultsT += dt; if (simMode && champOn && !champDone && resultsT > 3) champAdvance(false); }   // (sims: the rounds go on by themselves)
-    if (autoDrive && showdownOn && shdPhase == SH_DRIVE && shdOffRoad && !me.on && state == RACE) {   // the autopilot (tests) goes to an off-road ring the way the bots do: round to the turn-off, then straight at it
-        static bool off = false; if (shdT < 0.1f) off = false; float de = flatDist(player.pos, shdExitP); if (de < 22) off = true;
-        if (off) { V3 d = shdSite - player.pos; in = Input(); in.steer = clampf(wrapPi(atan2f(d.x, d.z) - player.yaw) * 3, -1, 1); in.gas = player.vf < 13 ? 1.0f : 0.0f; in.brake = player.vf > 17 ? 0.6f : 0.0f; }
-        else if (de < 160 && player.vf > 20) { in.gas = 0; in.brake = 0.7f; }
+    if (autoDrive && showdownOn && shdPhase == SH_DRIVE && !me.on && !shdSpectate && state == RACE) {   // the autopilot (tests) drives the bots' way: the car map, the farthest point in plain sight
+        V3 aim; float left; if (cfAim(player.pos, aim, left)) {
+            V3 d = aim - player.pos; float err = wrapPi(atan2f(d.x, d.z) - player.yaw), L = flatDist(aim, player.pos);
+            float want = std::min({ 24.0f, sqrtf(2 * 4.0f * left) + 4.0f, sqrtf(2 * 5.0f * L) + 6.0f }); want = std::min(want, std::max(5.0f, 24.0f - 28.0f * fabsf(err)));
+            in = Input(); in.steer = clampf(err * 2.5f, -1, 1); in.gas = player.vf < want ? 1.0f : 0.0f; in.brake = player.vf > want + 3 ? 0.7f : 0.0f;
+        }
     }
     if (showdownOn && shdPhase == SH_DRIVE && !me.on && state == RACE && flatDist(player.pos, shdSite) < 12) { in = Input(); in.brake = player.vf > 1 ? 1.0f : 0.0f; in.hb = player.vf <= 1; }   // the middle of the ring: pull up
     if (me.on || (shdSpectate && showdownOn)) { in = Input(); in.hb = true; }                                                                                         // on foot: the car stands where you left it
@@ -171,7 +173,9 @@ static void update(float dt) {
     }
     shieldPopT = std::max(0.0f, shieldPopT - dt * 2); if (state != RACE && state != PAUSED) player.shield = 0;
     if (mech::on) {   // the Wardens walk their beats; their feet shake the ground near us. Smoke and dust are pushed straight in: no draw from the race's random numbers
-        mechT = (state == RACE || state == RESULTS || state == PAUSED) ? raceT + 6 : T;
+        static float shdHeld = 0, lastRaceT = 0; if (raceT < lastRaceT - 0.5f) shdHeld = 0; lastRaceT = raceT;   // the race clock stops for the showdown; the Wardens and UFOs don't
+        if (showdownOn && state == RACE) shdHeld += dt;
+        mechT = (state == RACE || state == RESULTS || state == PAUSED) ? raceT + 6 + shdHeld : T;
         for (int u = 0; u < mech::count(); u++) {
             mech::Unit& m = mech::unit[u]; int foot = mech::update(m, mechT, player.pos); if (g_noGL) tm.mechFootErr = std::max(tm.mechFootErr, mech::footError(m));
             if (foot) {

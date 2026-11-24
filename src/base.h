@@ -30,6 +30,8 @@
 #include <algorithm>
 #include <memory>
 #include <unordered_map>
+#include <queue>
+#include <functional>
 
 static inline float clampf(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
 static inline float lerpf(float a, float b, float t) { return a + (b - a) * t; }

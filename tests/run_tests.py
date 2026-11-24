@@ -2193,6 +2193,20 @@ def showdown_bots_always_make_it_back_into_the_ring():
 
 
 @test
+def showdown_bots_drive_the_shortest_way_into_the_ring():
+    # every track, the ring off the road and on it near and far: the five find their own way in (round water, down the
+    # alleys) long before the drive times out, and the Wardens' clock keeps going while they do
+    for track in range(NTRACKS):
+        for site in (None, 0.1, 0.55):
+            a = ["--track", track, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--sdplace", 7] + (["--sdsite", site] if site is not None else [])
+            d = sim(*a, seconds=75)
+            check(d["driveLate"] == 0 and 0 < d["driveTook"] < 70, "track %d, ring %s: all five drove into the ring" % (track, "off the road" if site is None else "at %.2f" % site), (d["driveTook"], d["driveLate"]))
+    a = sim("--track", 3, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--sdplace", 7, seconds=4)
+    b = sim("--track", 3, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--sdplace", 7, seconds=8)
+    check(b["mechT"] - a["mechT"] > 3.5, "the Wardens and UFOs keep moving through the showdown", (a["mechT"], b["mechT"]))
+
+
+@test
 def showdown_always_ends_with_one_winner():
     off = []
     for track in range(NTRACKS):

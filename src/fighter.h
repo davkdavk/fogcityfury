@@ -47,7 +47,7 @@ struct Fighter {
     bool remote = false; float dealtTo[5] = {}; uint16_t claim = 0; size_t pathI = 0;   // dealtTo[i]: the damage this (locally run) fighter has done to remote fighter i so far; claim: the pick-ups it stands on
     // the showdown, before the fight: the car has reached the ring; where along the track a bot's car is to stop
     bool gibbed = false;   // blown apart by a grenade: there is no body left to draw
-    bool arrived = false, leftRoad = false; V3 park; float stopS = 0, lockT = 0;   // (a bot: leftRoad once it has turned off the road for the ring; park: where its car is to stop)   // lockT: seconds until "you cannot use that yet" may be said again
+    bool arrived = false, leftRoad = false; V3 park, drvAim; float stopS = 0, lockT = 0, drvT = 0;   // (a bot: leftRoad once it has turned off the road for the ring; park: where its car is to stop)   // lockT: seconds until "you cannot use that yet" may be said again
 };
 static Fighter fighters[NSLOT]; static Fighter& me = fighters[0];   // fighters[0] is always the player
 // your attributes, from the levels earned in free roam (minis.h sets them every frame; online they stay at these)
