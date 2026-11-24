@@ -167,14 +167,14 @@ static void add(float x, float z, float amp) { if (W.HW(x, z) > -0.03f) return; 
 // a UFO. No random numbers: the same splash every time
 static void waterSplash(V3 p, float k) {
     ripple::add(p.x, p.z, clampf(0.6f + k * 0.7f, 0.5f, 2.5f)); if (g_noGL) return;
-    int n = (int)((22 + 26 * std::min(k, 2.5f)) * optMist * 0.01f); V3 w(0.88f, 0.94f, 1.0f); float r0 = 0.6f + 0.9f * k;   // (optMist: the options' SPLASH MIST)
+    int n = (int)((22 + 26 * std::min(k, 2.5f)) * optMist * 0.01f * MIST_GAIN); V3 w(0.88f, 0.94f, 1.0f); float r0 = 0.6f + 0.9f * k;   // (optMist: the options' SPLASH MIST)
     for (int i = 0; i < n && parts.size() < 5200; i++) {
         float a = i * 2.39996f, u = (i + 0.5f) / n, r = r0 * sqrtf(u);
         V3 at(p.x + cosf(a) * r, 0.15f, p.z + sinf(a) * r);
         if (i % 3) spawn(at, V3(cosf(a) * (0.6f + 1.4f * u), (7 + 9 * (1 - u)) * sqrtf(k) + (i % 5) * 0.6f, sinf(a) * (0.6f + 1.4f * u)), 1.2f + (i % 4) * 0.3f, 0.3f + 0.3f * k, 1.1f + 0.5f * k, w, 0.30f, 0, -6.5f);   // the column
         else spawn(at, V3(cosf(a) * (5 + 4 * k), 2.5f + (i % 3), sinf(a) * (5 + 4 * k)), 0.8f + (i % 3) * 0.2f, 0.4f + 0.3f * k, 2.0f, w, 0.5f, 0, -11);                                                          // the skirt
     }
-    for (int i = 0; i < (int)(8 * optMist * 0.01f + 0.5f) && parts.size() < 5200; i++) { float a = i * 0.785f; spawn(V3(p.x + cosf(a) * r0, 0.3f, p.z + sinf(a) * r0), V3(cosf(a) * 1.2f, 1.6f, sinf(a) * 1.2f), 2.4f, 1.2f * (0.6f + 0.4f * k), 1.6f, w, 0.10f, 0, 0.15f); }   // mist that hangs
+    for (int i = 0; i < (int)(8 * optMist * 0.01f * MIST_GAIN + 0.5f) && parts.size() < 5200; i++) { float a = i * 0.785f; spawn(V3(p.x + cosf(a) * r0, 0.3f, p.z + sinf(a) * r0), V3(cosf(a) * 1.2f, 1.6f, sinf(a) * 1.2f), 2.4f, 1.2f * (0.6f + 0.4f * k), 1.6f, w, 0.10f, 0, 0.15f); }   // mist that hangs
 }
 static void blast(V3 p, V3 vel, float k) {
     fireball(p, vel); if (p.y < 2.5f && W.HW(p.x, p.z) < -0.03f) waterSplash(p, 1.0f); tone(900, 0.9f, 0.9f * k, 1, -700); tone(70, 0.6f, 0.8f * k, 0, -40);

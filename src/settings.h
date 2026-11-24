@@ -36,6 +36,14 @@ static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBt
 static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold == b) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
 static const int RES[][2] = { { 854, 480 }, { 1024, 576 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } }; static const int NRES = 8;
 static const int AA_OPT[4] = { 0, 2, 4, 8 }, AF_OPT[5] = { 1, 2, 4, 8, 16 }, NVIDROWS = 9;
+// (2.29.1) the water sliders do three times what they did: the rings' waves stand 3x higher, a splash throws 3x the spray;
+// the 360 draws its spray at 1.5x (overlapping see-through puffs are what its GPU likes least)
+static const float RINGS_GAIN = 3.0f;
+#ifdef FCF_GFX_XSDK
+static const float MIST_GAIN = 1.5f;
+#else
+static const float MIST_GAIN = 3.0f;
+#endif
 static int optRings = 100, optMist = 100, optGrass = 100;   // effects, %: the size of the rings on the water, how much spray a splash throws up, how thick the grass grows (0: off)
 static int vidBright = 85;   // brightness, %: scales the light going into the tone curve (50-150; 85 since 1.72, 100 was the old look)
 #ifdef __ANDROID__

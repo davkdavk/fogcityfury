@@ -402,7 +402,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
     }
     if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2);
 #ifndef FCF_GFX_XSDK
-        pWater.f1("uRipScale", std::max(0.1f, optRings * 0.01f));
+        pWater.f1("uRipScale", std::max(0.1f, optRings * 0.01f)); pWater.f1("uRipAmp", optRings * 0.01f * RINGS_GAIN);
         for (int i = 0; i < 8; i++) {
             const ripple::R& r = ripple::rs[i];
             float age = T - r.t0;

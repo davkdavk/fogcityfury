@@ -90,6 +90,11 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.29.1
+
+- The water sliders do three times what they did: WATER RINGS raises the rings' waves 3x (and still sets their size),
+  SPLASH MIST throws 3x the spray (1.5x on the Xbox 360, where overlapping spray is what its GPU likes least)
+
 ## What's new in 2.29
 
 - **Buildings come down.** A rocket aimed at a building with "brings it down" set, or a collapse event, drops it into
