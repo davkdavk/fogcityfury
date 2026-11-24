@@ -231,6 +231,17 @@ static bool trialSave(int t, int laps, float secs) {   // true: a new record
     if (!noSave) { FILE* f = fopen(trialPath().c_str(), "w"); if (f) { for (auto& p : trialBest) fprintf(f, "%d %d %.3f\n", p.first / 16, p.first % 16, p.second); fclose(f); } }
     return true;
 }
+// your best lap's ghost for a track: <save>.ghostN: "lapseconds count" then count lines "x y z yaw pitch roll" (20 a second)
+static std::string ghostPath(int t) { return savePath() + ".ghost" + std::to_string(t); }
+static void loadGhost(int t) {
+    ghostBest.clear(); ghostBestT = 0; ghostTrack = t; if (noSave) return; FILE* f = fopen(ghostPath(t).c_str(), "r"); if (!f) return; int n = 0;
+    if (fscanf(f, "%f %d", &ghostBestT, &n) == 2 && n > 0 && n < 20000) for (int i = 0; i < n; i++) { GhostS g; if (fscanf(f, "%f %f %f %f %f %f", &g.x, &g.y, &g.z, &g.yaw, &g.pitch, &g.roll) != 6) break; ghostBest.push_back(g); }
+    fclose(f); if ((int)ghostBest.size() < 20) { ghostBest.clear(); ghostBestT = 0; }
+}
+static void saveGhost(int t) {
+    if (noSave) return; FILE* f = fopen(ghostPath(t).c_str(), "w"); if (!f) return; fprintf(f, "%.3f %d\n", ghostBestT, (int)ghostBest.size());
+    for (const GhostS& g : ghostBest) fprintf(f, "%.2f %.2f %.2f %.4f %.4f %.4f\n", g.x, g.y, g.z, g.yaw, g.pitch, g.roll); fclose(f);
+}
 static void saveCfg() {
 #ifdef FCF_GFX_XSDK
     return;

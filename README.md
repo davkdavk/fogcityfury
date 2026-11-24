@@ -92,6 +92,15 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.6.1
+
+- **MANIC is you against your own ghost.**
+  - You're alone on the track, starting from the middle of the start line.
+  - Your best lap on that track drives alongside as a see-through ghost, in step with your current lap.
+  - Under the clock, GHOST shows how far ahead (green) or behind you are, live; checkpoint splits compare against
+    the ghost too.
+  - Beat your best lap and that lap becomes the new ghost. It's kept per track in `<save>.ghostN`.
+
 ## What's new in 2.6
 
 Gunplay, part 1 of 4: how a hit feels.

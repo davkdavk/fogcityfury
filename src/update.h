@@ -95,7 +95,7 @@ static void update(float dt) {
                 if (!r.present || !r.racing || r.car.dead || player.dead) continue; const Car& a = r.car;
                 Contact k; if (carContact(player, a, k)) bumpPlayer(k, a.vel, 1);   // their own game knocks them about
             }
-            if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn) for (auto& a : ai) {   // the racers stop for the showdown
+            if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn && !trialMode) for (auto& a : ai) {   // the racers stop for the showdown (manic: there are none)
                 if (a.dead) { a.deadT -= h; if (a.deadT <= 0) { a.dead = false; a.stot += 8; a.lat = a.latT = a.lat > 0 ? a.lat - 4.5f : a.lat + 4.5f; } continue; }   // hit by a rocket: back on the road beside its wreck
                 stepAI(a, h, go, player.progress);
                 float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz); int ak = (int)(&a - ai); whooshCD[ak] -= h;
@@ -125,18 +125,22 @@ static void update(float dt) {
                     if (bestLapRace > 0) { float dl = lt - bestLapRace; snprintf(db, sizeof db, "LAP %d  %s  %c%.2f", player.lap, tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 2.2f); }
                     else { snprintf(db, sizeof db, "LAP %d  %s", player.lap, tb); say(db, V3(1, 1, 1), 2.2f); }
                     if (bestLapRace == 0 || lt < bestLapRace) for (int k = 0; k < NCP && k < 8; k++) trialBestSplit[k] = trialSplit[k];
+                    if (ghostBestT <= 0 || lt < ghostBestT) { ghostBest = ghostCur; ghostBestT = lt; saveGhost(W.id); say("NEW GHOST", V3(0.6f, 0.9f, 1), 1.2f); }   // your best lap ever on this track: the ghost from now on
                 }
                 if (player.lap > 0) { lastLap = raceT - lapStart; if (bestLapRace == 0 || lastLap < bestLapRace) bestLapRace = lastLap; if (bestLap[W.id] == 0 || lastLap < bestLap[W.id]) { bestLap[W.id] = lastLap; if (!exploreMode) say("NEW LAP RECORD!", V3(1, 0.9f, 0.2f)); } }
-                player.lap++; lapStart = raceT;
+                player.lap++; lapStart = raceT; ghostCur.clear();
                 if (trialMode) { if (player.lap > raceLaps) finishRace(false); }
                 else if (!exploreMode) { if (player.lap > raceLaps) { finishRace(false); } else if (player.lap == raceLaps && raceLaps > 1) say("FINAL LAP", V3(1, 0.4f, 0.2f)); else if (player.lap > 1) { say("LAP", V3(1, 1, 1), 0.01f); timeLeft += 11; } }
             } else if (trialMode) {   // a split: this lap so far, against the same point on your best lap
                 int c = player.nextCp % NCP; float sp = raceT - lapStart; if (c < 8) trialSplit[c] = sp; char tb[32], db[64]; fmtTime(tb, sp);
-                if (c < 8 && trialBestSplit[c] > 0) { float dl = sp - trialBestSplit[c]; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 1.6f); }
+                float gt = ghostTimeAt(player.pos.x, player.pos.z, sp);
+                if (gt >= 0) { float dl = sp - gt; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 1.6f); }   // (against the ghost)
+                else if (c < 8 && trialBestSplit[c] > 0) { float dl = sp - trialBestSplit[c]; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 1.6f); }
                 else { snprintf(db, sizeof db, "SPLIT %s", tb); say(db, V3(0.75f, 0.85f, 1), 1.6f); }
             } else if (!exploreMode) { timeLeft += 11; say("CHECKPOINT  +11", V3(0.4f, 1, 0.5f), 1.6f); }
             tone(660, 0.15f, 0.4f, 2); tone(990, 0.3f, 0.4f, 2, 0, 0.1f); player.nextCp++;
         }
+        if (trialMode && player.lap > 0) while ((float)ghostCur.size() <= (raceT - lapStart) * 20 && ghostCur.size() < 20000) ghostCur.push_back({ player.pos.x, player.pos.y, player.pos.z, player.yaw, player.pitch, player.roll });   // (the lap, for the ghost)
         int onBr = -1, whichBr = -1; float lp = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &onBr, &whichBr); int pi = (int)lp; float pp = lp;   // on the alternate route: the matching point of the loop
         if (player.lap == 0) pp -= n; else { if (player.nextCp % NCP == 1 && pi > n * 0.8f) pp -= n; if (player.nextCp % NCP == 0 && pi < n * 0.2f) pp += n; pp += (player.lap - 1) * n; }
         player.progress = pp;

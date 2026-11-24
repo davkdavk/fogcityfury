@@ -302,7 +302,7 @@ static void drawHUD() {
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
         snprintf(b, sizeof b, "WEATHER  %s %-7s %s  %s", selRow == 1 ? "<" : " ", WX[selWeather].name, selRow == 1 ? ">" : " ", WX[selWeather].sub);
         ui.text(96, ry[1], 2.8f, wcol[selWeather], b);
-        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE", "CHAMP", "MANIC" }; static const char* MODE_BLURB[NMODES] = { "A RACE AGAINST 9 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "RACE, THEN THE PODIUM FIGHTS ON FOOT", "FOUR TRACKS, POINTS, A SHOWDOWN EACH ROUND", "TIME TRIAL: GHOST CARS, NO WEAPONS" };
+        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE", "CHAMP", "MANIC" }; static const char* MODE_BLURB[NMODES] = { "A RACE AGAINST 9 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "RACE, THEN THE PODIUM FIGHTS ON FOOT", "FOUR TRACKS, POINTS, A SHOWDOWN EACH ROUND", "TIME TRIAL AGAINST YOUR OWN GHOST" };
         snprintf(b, sizeof b, "MODE     %s %-7s %s  %s", selRow == 2 ? "<" : " ", MODE_NAME[selMode], selRow == 2 ? ">" : " ", MODE_BLURB[selMode]);
         ui.text(96, ry[2], 2.8f, selMode ? V3(0.4f, 1, 0.6f) : org, b);
         if (selMode == 3) ui.text(96, ry[3], 2.8f, V3(0.45f, 0.47f, 0.52f), "LAPS     1 / 2 / 2 / 3, SET BY THE CHAMPIONSHIP");
@@ -377,6 +377,8 @@ static void drawHUD() {
                 char t4[32]; fmtTime(t4, raceT); ui.text(Wd / 2, 26, 5, white, t4, 1, 1, 0.12f);
                 if (trialRecord > 0) { fmtTime(t4, trialRecord); snprintf(b, sizeof b, "RECORD %s", t4); } else snprintf(b, sizeof b, "NO RECORD YET");
                 ui.text(Wd / 2, 100, 2, V3(0.5f, 0.9f, 1), b, 1);
+                float lt = raceT - lapStart, gt = player.lap > 0 ? ghostTimeAt(player.pos.x, player.pos.z, lt) : -1;   // live: ahead of your ghost (green) or behind it
+                if (gt >= 0 && lt > 1) { float dl = lt - gt; snprintf(b, sizeof b, "GHOST %c%.2f", dl < 0 ? '-' : '+', fabsf(dl)); ui.text(Wd / 2, 124, 2.6f, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.55f, 0.3f), b, 1); }
             } else if (netRace) {
                 char t2[32];
                 fmtTime(t2, raceT);

@@ -64,7 +64,7 @@ static void drawCar(const Car& c, Prog& p, bool lit) {
         (cm ? carWheel[c.type][x < 0 ? 1 : 0] : wheelMesh).draw();
     }
 }
-static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode : st == TITLE; }
+static bool showAI() { State st = viewState(); return nc.on ? false : (st == RACE || st == RESULTS || st == PAUSED) ? !exploreMode && !trialMode : st == TITLE; }   // (manic: no field)
 // ---- the fish outside the tunnel's glass ----
 // Three shoals and a shark, swimming up and down the glass stretch at their own paces, a little way out from it. Each
 // shoal is one mesh (its fish set out in a loose cluster), so a shoal is one draw; they are drawn only near the glass.
@@ -116,7 +116,11 @@ static void keepInTube(V3& c) {
     c.x += t.tz * (l2 - lat); c.z -= t.tx * (l2 - lat); c.y = clampf(c.y, t.y + 0.5f, t.y + std::max(arch, 1.2f));
 }
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); }
-    if (showAI() && (lit || !trialMode)) { if (lit && trialMode) p.f1("uGone", 0.55f); for (auto& a : ai) drawCar(a, p, lit); if (lit && trialMode) p.f1("uGone", 0); }   // (manic: the field are ghosts, see-through, no shadows)
+    if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
+    if (trialMode && lit && !ghostBest.empty() && player.lap > 0 && (state == RACE || state == PAUSED)) {   // manic: your best lap's ghost, see-through, in step with this lap
+        float u = (raceT - lapStart) * 20; int k = (int)u; if (k + 1 < (int)ghostBest.size()) { float f = u - k; const GhostS &a = ghostBest[k], &b = ghostBest[k + 1];
+            Car g = player; g.pos = V3(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f, a.z + (b.z - a.z) * f); g.yaw = a.yaw + wrapPi(b.yaw - a.yaw) * f; g.pitch = a.pitch + (b.pitch - a.pitch) * f; g.roll = a.roll + (b.roll - a.roll) * f;
+            g.paint = 6; g.dead = false; g.shield = 0; g.brOn = false; p.f1("uGone", 0.55f); drawCar(g, p, lit); p.f1("uGone", 0); } }
     if (netRace)
         for (auto& r : nc.r)
             if (r.present && r.racing) {

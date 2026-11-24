@@ -770,8 +770,9 @@ def a_shot_dolphin_laughs():
 
 @test
 def manic_is_a_time_trial():
-    """2.5 MANIC (--mode 4): set laps against the clock. The field drives as ghosts (no contact), no rocket crates or
-    shield pick-ups, nobody fires, no countdown clock; each lap timed; the best total kept per track and lap count."""
+    """2.5 MANIC (--mode 4): set laps against the clock, alone from the middle of the start line (2.6.1) with your best
+    lap as a ghost; no rocket crates or shield pick-ups, nobody fires, no countdown clock; each lap timed; the best
+    total kept per track and lap count, and the best lap's ghost per track."""
     import tempfile
     home = tempfile.mkdtemp(); env = dict(os.environ, HOME=home, XDG_DATA_HOME=home, APPDATA=home)
     def run():
@@ -783,8 +784,11 @@ def manic_is_a_time_trial():
     check(d["bumps"] == 0 and d["wrecks"] == 0 and d["rocketsAtMe"] == 0, "no contact, nothing fired at you", (d["bumps"], d["wrecks"], d["rocketsAtMe"]))
     check(d["crateCount"] == 0 and d["shieldPUs"] == 0 and d["ammo"] == 0, "no rockets or shields on the track", (d["crateCount"], d["shieldPUs"], d["ammo"]))
     check(d["manicNew"] == 1, "the first run is a record", d["manicNew"])
+    check(d["aiMoved"] < 1, "alone on the track: the field stays parked, out of sight", d["aiMoved"])
+    check(d["ghostN"] > 400 and abs(d["ghostT"] - min(d["manicLaps"])) < 0.05, "the best lap becomes the ghost", (d["ghostN"], d["ghostT"], d["manicLaps"]))
     e = run()
     check(e["manicRecord"] > 0 and abs(e["manicRecord"] - d["raceT"]) < 0.05, "the record is kept for next time", (e["manicRecord"], d["raceT"]))
+    check(e["ghostN"] > 400 and e["ghostT"] <= d["ghostT"] + 1e-3, "and the ghost: loaded, raced, kept if it is still the best", (e["ghostN"], e["ghostT"], d["ghostT"]))
 
 @test
 def headshots_numbers_bloom_and_recoil():

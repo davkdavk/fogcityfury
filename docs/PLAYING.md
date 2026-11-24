@@ -81,13 +81,14 @@ Choose the mode on the track screen.
 - **Rampage.** A race, and then the top five finishers fight it out on foot somewhere on the island. The
   last one standing wins the podium.
 - **Champ (championship).** Four rampage races in a row on different tracks, with points for each.
-- **Manic.** A time trial: your laps against the clock over the laps you set.
-  - The other cars still drive round, but as see-through ghosts you pass straight through.
-  - There are no rockets or shields on the track, nobody fires, and there's no countdown clock.
-  - Each lap's time shows as you cross the line (green if it beats your best), and each checkpoint shows a
-    split against your best lap so far.
-  - The results list every lap and your total. The best total for each track and lap count is kept as the
-    record to beat.
+- **Manic.** A time trial against your own ghost over the laps you set.
+  - You're alone on the track, starting from the middle of the start line. There are no rockets or shields,
+    and no countdown clock.
+  - Your best lap on that track drives with you as a see-through ghost, and GHOST under the clock shows,
+    live, how far ahead (green) or behind you are.
+  - Each lap's time shows as you cross the line, and each checkpoint gives a split against the ghost.
+  - Beat your best lap and it becomes the new ghost. The results list every lap and your total, and the best
+    total for each track and lap count is kept as the record.
 - **Online.** Race other people (see [Playing online](#playing-online)).
 
 There are seven tracks: Hilltop Heights, Bayside Breaker, Summit Switchbacks, Midnight Mile, Harbour Deep,

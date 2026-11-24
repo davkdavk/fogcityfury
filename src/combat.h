@@ -74,7 +74,7 @@ static void footReset();
 static void setupCars(bool race) {
     footReset();
     for (int k = 0; k < NAI; k++) { ai[k].type = (selCar + 1 + k) % NCARS; ai[k].paint = (selPaint + 1 + k) % 7; placeOnGrid(ai[k], gridS(k), gridLat(k)); aiGrid[k] = ai[k].pos; ai[k].aiTop = SPECS[selCar].top * (0.995f - 0.014f * k); }
-    player.type = selCar; player.paint = selPaint; placeOnGrid(player, race ? gridS(NAI) : -6.0f, race ? gridLat(NAI) : 0);
+    player.type = selCar; player.paint = selPaint; placeOnGrid(player, race ? (trialMode ? -3.0f : gridS(NAI)) : -6.0f, race && !trialMode ? gridLat(NAI) : 0);   // (manic: alone, the middle of the start line)
     camInit = false; parts.clear(); marks.clear(); marksDirty = true; markOn[0] = markOn[1] = false;
     wrecks.clear(); debris.clear(); rockets.clear(); crates.clear(); ammo = startAmmo; lockTgt = -1; resetHint = 0; rocketLap = -1;
     player.shield = startShield ? SHIELD_TIME : 0; shieldPopT = 0; for (auto& a : ai) { a.shield = 0; a.botAmmo = startBotAmmo; a.botRLap = -99; a.botFireCD = 3; }
@@ -109,7 +109,7 @@ static void startRace() {
     exploreMode = selMode == 1;
     rampage = selMode == 2 || champOn; trialMode = selMode == 4 && !champOn;
     trialLaps.clear(); for (int k = 0; k < 8; k++) trialSplit[k] = trialBestSplit[k] = 0; trialNewRecord = false;
-    if (trialMode) { static bool loaded = false; if (!loaded) { loaded = true; loadTrial(); } trialRecord = trialBestFor(W.id, raceLaps); }
+    if (trialMode) { static bool loaded = false; if (!loaded) { loaded = true; loadTrial(); } trialRecord = trialBestFor(W.id, raceLaps); loadGhost(W.id); ghostCur.clear(); }
     setupCars(!exploreMode);
     raceT = 0;
     countdown = exploreMode ? 0 : 3.6f;
@@ -122,7 +122,7 @@ static void startRace() {
     if (exploreMode) say("FREE ROAM - FIND THE KEYS", V3(1, 0.85f, 0.3f), 3.5f);
     if (champOn) { char cb[64]; snprintf(cb, sizeof cb, "CHAMPIONSHIP  -  ROUND %d OF 4", champRound + 1); say(cb, V3(1, 0.85f, 0.2f), 3.5f); }
     else if (rampage) say("RAMPAGE  -  TOP 5 GO TO THE SHOWDOWN", V3(1, 0.4f, 0.2f), 3.5f);
-    else if (trialMode) say("MANIC  -  YOUR LAPS AGAINST THE CLOCK", V3(0.5f, 0.9f, 1), 3.5f);
+    else if (trialMode) say(ghostBest.empty() ? "MANIC  -  SET A LAP FOR YOUR GHOST" : "MANIC  -  BEAT YOUR GHOST", V3(0.5f, 0.9f, 1), 3.5f);
 }
 
 // ---- multiplayer: react to what the server says ----

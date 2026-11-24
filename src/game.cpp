@@ -149,10 +149,19 @@ static int xsdkPasses = 0;   // debug bring-up: 0 direct, 1 post, 2 shadows, 3 r
 static int xsdkPasses = 3;
 #endif
 static const int NMODES = 5;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races), 4 manic
-// Manic (2.5): a time trial, your laps against the clock. The field still drives round, but as ghosts (no contact, drawn see-
-// through); no rockets or shields on the track and nobody fires; no countdown clock. Each lap's time, the split at each
-// checkpoint against your best lap, and the best total for that track and lap count (kept in the save's .trial file)
-static bool trialMode = false; static std::vector<float> trialLaps; static float trialSplit[8] = {}, trialBestSplit[8] = {}, trialRecord = 0; static bool trialNewRecord = false;
+// Manic (2.5; 2.6.1: against your own ghost): a time trial, your laps against the clock, alone on the track from the
+// middle of the start line. A see-through ghost car drives your best lap on this track (kept in the save's .ghostN file,
+// recorded 20 times a second) in step with your lap; no rockets or shields, nobody fires, no countdown clock. Each lap's
+// time, the split at each checkpoint against your best lap, and the best total for that track and lap count (.trial)
+struct GhostS { float x, y, z, yaw, pitch, roll; };
+static std::vector<GhostS> ghostCur, ghostBest; static float ghostBestT = 0; static int ghostTrack = -1;
+static bool trialMode = false;
+// how far into its lap the ghost was where you are now (seconds), searching near `hint` (its own clock): -1 none
+static float ghostTimeAt(float x, float z, float hint) {
+    if (ghostBest.size() < 20) return -1; int c = (int)(hint * 20), best = -1; float bd = 1e18f;
+    for (int k = std::max(0, c - 200); k < std::min((int)ghostBest.size(), c + 200); k++) { float dx = ghostBest[k].x - x, dz = ghostBest[k].z - z, d = dx * dx + dz * dz; if (d < bd) { bd = d; best = k; } }
+    return best >= 0 && bd < 30 * 30 ? best / 20.0f : -1;
+} static std::vector<float> trialLaps; static float trialSplit[8] = {}, trialBestSplit[8] = {}, trialRecord = 0; static bool trialNewRecord = false;
 static void miniReset();   // minis.h
 static bool delAsk = false;   // the track screen is asking whether to delete the custom track shown
 static std::vector<std::pair<std::string, unsigned>> customKeysSaved;   // from the config: keys found on custom tracks, by file name (applied once they are loaded)
