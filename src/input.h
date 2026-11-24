@@ -198,6 +198,9 @@ static void printJSON(FILE* o) {
     fprintf(o, "\"fallen\":%d,\"lots\":%d,\"leaps\":%d,\"dolphinSplashes\":%d,\"dolphinRings\":%d,", fall::fallenTotal, (int)W.lots.size(), dolphin::leaps, dolphin::splashesIn, dolphin::ringsOut);
     fprintf(o, "\"podDolphins\":%d,\"dolphinsNow\":%d,\"podLeaps\":%d,\"swum\":%.0f,\"dolphinMinDepth\":%.2f,\"jetDrops\":%d,\"jetLanded\":%d,\"jetShots\":%d,\"wxNow\":%d,\"wxTurns\":%d,\"wxMix\":%.2f,\"sea\":%.2f,\"pods\":%d,\"drift\":%.0f,\"eventsFrom\":\"%s\",\"netEventFiles\":%d,",
             dolphin::poddies, (int)dolphin::dols.size(), dolphin::fromPod, dolphin::swum, dolphin::minDepth, jetdrop::drops, jetdrop::landed, jetdrop::shots, weather, director::turns, wxMixK, seaNow(), (int)director::pods.size(), director::drift, director::loadedFrom.c_str(), netEventFiles);
+    fprintf(o, "\"meOn\":%d,\"meAlive\":%d,\"meHp\":%.1f,\"mePos\":[%.1f,%.1f,%.1f],\"townDrops\":%d,\"jetDowned\":%d,\"jetNow\":%d,\"snipes\":%d,\"snipeHits\":%d,\"laughs\":%d,\"adsK\":%.2f,\"aimPt\":[%.1f,%.1f,%.1f],\"meAmmoTotal\":%d,\"drop0\":[%.1f,%.1f,%d],",
+            (int)me.on, (int)me.alive, me.hp, me.pos.x, me.pos.y, me.pos.z, townDrops, jetdrop::downed, (int)jetdrop::ms.size(), jetdrop::snipes, jetdrop::snipeHits, dolphin::laughs, footAdsK, footAimPt.x, footAimPt.y, footAimPt.z,
+            [] { int n = 0; for (int g = 0; g < NGUNS; g++) n += me.ammo[g]; return n; }(), drops.empty() ? 0.0f : drops[0].p.x, drops.empty() ? 0.0f : drops[0].p.z, drops.empty() ? -1 : drops[0].kind);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
     fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);

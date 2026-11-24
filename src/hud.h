@@ -500,6 +500,7 @@ static void render(int fbw, int fbh) {
 #else
         W.terrain.draw(); W.props.draw();
 #endif
+        if (pDepth.has("uHideN")) pDepth.f1("uHideN", 0);   // (the cars' and the UFO's shadows keep their shape)
         drawCars(pDepth, false, true); drawWreckage(pDepth, false);
         gfx::offset(0, 0);
     }

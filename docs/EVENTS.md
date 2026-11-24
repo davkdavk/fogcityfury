@@ -29,7 +29,7 @@ Kinds now (the editor's name in brackets where it differs): **rocket** (flies to
 **shake**, **say** (MESSAGE: words on screen), **collapse** (BUILDING FALLS: the building there comes down),
 **dolphin** (DOLPHIN LEAP: at `at` towards `to`; the nearest pod dolphin takes it, or one swims in; `k` its size),
 **weather** (`wx clear|rain|fog|storm  over SECONDS`; offline only), **minis** (`k` mini Wardens, 1-4, on the roof at `at`
-jetpack down to `to`). A rocket also has:
+jetpack down to `to`; with `stay` they keep the roof's edge and snipe at you when you are on foot). A rocket also has:
 
 | Setting | Values |
 | --- | --- |

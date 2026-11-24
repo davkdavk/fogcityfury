@@ -116,6 +116,7 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 | TEXT | messages only: click it and type |
 | TURNS TO / OVER | weather only: clear, rain, fog or storm, and how many seconds the change takes |
 | SIZE | a dolphin's size; for mini Wardens, HOW MANY (1–4) |
+| THEN THEY | mini Wardens only: JETPACK DOWN to the road, or STAY UP AND SNIPE from the roof's edge (they shoot at you on foot) |
 
 ## Keys
 

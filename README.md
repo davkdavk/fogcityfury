@@ -92,6 +92,23 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.4
+
+- **Aim down the sights on foot:** hold the right mouse button (on a pad, the left trigger).
+  - The camera comes in over your shoulder and zooms, with a crosshair that turns red over a target and shows the
+    range.
+  - You face where you look, and left and right **strafe**.
+  - Shots go exactly where the crosshair is, high or low, so rooftops are in reach.
+- **Rooftop snipers:** mini Wardens can now stay up at the edge of a roof. Once you're on foot and in their sight,
+  they shoot at you. Any gun brings them down, and they come apart into Warden pieces. Hilltop Heights and Midnight
+  Mile have them. In fcfedit, a MINI WARDENS moment's THEN THEY setting is now JETPACK DOWN or STAY UP AND SNIPE.
+- **Pick-ups in town:** boxes of rounds and medkits on the paths between the buildings, away from the road. There
+  are about 30 a track, and each comes back 40 seconds after it is taken.
+- **Dolphins laugh:** shoot one (or lob a grenade at it) and it chatters and whistles at you. It can't be hurt.
+- Fixed: the golden UFO, cars and their shadows no longer warp over a building that has come down. Only the
+  town's own shapes are flattened where it stood.
+- Test flags: `--onfoot`, `--ads`, `--aimat X Y Z`, `--aimmini`, `--aimdolphin`.
+
 ## What's new in 2.3
 
 - **Dolphins** (Tarnyloo's *Dolphin*, CC-BY 3.0): pods live in the sea all race. They wander, keep to deep water,

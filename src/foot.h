@@ -202,11 +202,14 @@ static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
         for (float h : { 0.45f, 0.95f, 1.45f }) { V3 q = t.pos + V3(0, h, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 0.40f) { bt = tt; tg = i; } }
     }
     if (racers) for (int k = 0; k < NAI; k++) { if (ai[k].dead) continue; V3 q = ai[k].pos + V3(0, 0.7f, 0) - o; float tt = dot(q, d); if (tt < 0 || tt > bt) continue; if (len(q - d * tt) < 1.5f) { bt = std::max(tt - 1.2f, 0.5f); tg = 8 + k; } }
+    { float t2; int k2; if (jetdrop::hitLine(o, d, bt, t2, k2)) { bt = t2; tg = 100 + k2; } if (dolphin::hitLine(o, d, bt, t2, k2)) { bt = t2; tg = 200 + k2; } }   // (2.4: a rooftop mini Warden, a dolphin)
     if (roamCarTarget && f.mini && !me.on && !player.dead) { V3 q = player.pos + V3(0, 0.7f, 0) - o; float tt = dot(q, d); if (tt > 0 && tt < bt && len(q - d * tt) < 1.5f) { bt = std::max(tt - 1.2f, 0.5f); tg = 7; } }   // a mini Warden shooting at your car
     V3 end = o + d * bt;
     if (o.y > 0 && end.y < 0.05f && d.y < -0.001f) { V3 w = o + d * (o.y / -d.y); ripple::add(w.x, w.z, 0.5f); }   // into the water: a ring where it went in
     spawn(o + d * std::min(2.0f, bt * 0.5f), d * 150, clampf(bt / 150, 0.035f, 0.13f), 0.55f, 0, V3(3.2f, 2.5f, 1.2f), 0.9f, 1, 0, 3.2f);   // tracer
-    if (tg >= 8) hurtCar(ai[tg - 8], g.carDmg, end);
+    if (tg >= 200) dolphin::laugh(tg - 200, end);
+    else if (tg >= 100) jetdrop::hurt(tg - 100, g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f), d);
+    else if (tg >= 8) hurtCar(ai[tg - 8], g.carDmg, end);
     else if (tg == 7) hurtCar(player, g.carDmg * 0.25f, end);
     else if (tg >= 0) { shotGun = (int)(&g - GUNS); damageFighter(fighters[tg], g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f) * (f.mini ? 0.4f : 1.0f), f.id, d); shotGun = -1; }   // (a mini Warden's little gun)
     else if (bt < g.range - 0.01f) {
@@ -218,8 +221,9 @@ static void shootLine(Fighter& f, V3 o, V3 d, const GunSpec& g) {
 static void fireGun(Fighter& f, float aimYaw) {
     const GunSpec& g = GUNS[f.gun]; int gi = f.gun; f.cd = g.cd; f.kick = 1; f.shots++;
     V3 fw = yawDir(f.yaw), rt = yawRight(f.yaw), o = f.pos + V3(0, 1.40f, 0) + fw * 0.55f + rt * 0.16f;
-    V3 d = norm((f.target >= 0 ? tgtPos(f.target) : o + yawDir(aimYaw) * 40) - o);
-    float s = g.spread * (1 + f.run / FOOT_RUN * 1.3f) * (f.bot ? BOT_SPREAD : footAimMul);
+    bool ads = &f == &me && !f.bot && footAdsNow;   // down the sights: to the middle of the screen, steadier
+    V3 d = norm((ads ? footAimPt : f.target >= 0 ? tgtPos(f.target) : o + yawDir(aimYaw) * 40) - o);
+    float s = g.spread * (1 + f.run / FOOT_RUN * 1.3f) * (f.bot ? BOT_SPREAD : footAimMul) * (ads ? 0.3f : 1.0f);
     if (gi == G_FISTS) {   // a punch: whoever is within reach in front
         gunSound(gi, o); bool hit = false;
         for (auto& t : fighters) { if (&t == &f || !t.on || !t.alive || t.rollT > 0.12f || hit) continue; V3 dd = t.pos - f.pos; dd.y = 0; float L = len(dd);
@@ -229,7 +233,7 @@ static void fireGun(Fighter& f, float aimYaw) {
         return;
     }
     if (gi == G_LAUNCHER) {   // lobbed, to come down at the target's feet (or 22 m ahead)
-        V3 aimAt = f.target >= 0 ? (f.target >= 8 ? ai[f.target - 8].pos : fighters[f.target].pos) : f.pos + yawDir(aimYaw) * 22.0f; V3 h(aimAt.x - o.x, 0, aimAt.z - o.z); float dist = std::max(len(h), 2.0f), t = dist / 26.0f;
+        V3 aimAt = ads ? footAimPt : f.target >= 0 ? (f.target >= 8 ? ai[f.target - 8].pos : fighters[f.target].pos) : f.pos + yawDir(aimYaw) * 22.0f; V3 h(aimAt.x - o.x, 0, aimAt.z - o.z); float dist = std::max(len(h), 2.0f), t = dist / 26.0f;
         shells.push_back({ o, h * (26.0f / dist) + V3(0, (aimAt.y + 0.2f - o.y) / t + 0.5f * 14.0f * t, 0), 4.0f, 0, f.id });
     }
     else for (int k = 0; k < g.pellets; k++) shootLine(f, o, norm(d + rt * grng.r(-s, s) + V3(0, grng.r(-s, s) * 0.7f, 0)), g);
@@ -247,6 +251,7 @@ static void explodeShell(V3 p, int by, bool fake) {
         else damageFighter(t, GUNS[G_LAUNCHER].dmg * (1 - (L - GIB_R) / (BLAST_R - GIB_R)), by, dir);
     }
     if (racersAreTargets()) for (auto& a : ai) { float L = len(a.pos - p); if (L < 7) hurtCar(a, GUNS[G_LAUNCHER].carDmg * (1 - L / 7), a.pos + V3(0, 0.8f, 0)); }
+    jetdrop::blastAt(p, BLAST_R, GUNS[G_LAUNCHER].dmg); dolphin::blastAt(p, BLAST_R);
 }
 static void stepShells(float dt) {
     for (size_t i = 0; i < shells.size();) {
@@ -273,12 +278,12 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     }
     f.prevRoll = in.roll; bool rolling = f.rollT > 0; if (rolling) f.rollT = std::max(0.0f, f.rollT - dt);
     // aiming: you lock on to whoever is nearest the middle of your view; a bot has already chosen
-    bool trigger = in.fire && canFire && !rolling; float aimYaw = f.bot ? f.yaw : footYaw;
-    if (!f.bot) { if (trigger || f.aimHold > 0) f.target = pickFoe(f, footYaw, 1.05f); else f.target = -1; }
+    bool trigger = in.fire && canFire && !rolling; float aimYaw = f.bot ? f.yaw : footYaw; bool ads = in.ads && !f.bot && !rolling;
+    if (!f.bot) { if (ads) f.target = -1; else if (trigger || f.aimHold > 0) f.target = pickFoe(f, footYaw, 1.05f); else f.target = -1; }   // (down the sights: no lock, you aim)
     if (f.target >= 0 && !tgtAlive(f.target)) f.target = -1;
     if (f.target >= 0) { V3 d = tgtPos(f.target) - f.pos; aimYaw = atan2f(d.x, d.z); }
     if (trigger) f.aimHold = 0.6f; else f.aimHold = std::max(0.0f, f.aimHold - dt);
-    bool aiming = (trigger || f.aimHold > 0) && !rolling;
+    bool aiming = ((trigger || f.aimHold > 0) && !rolling) || ads;
     // speed: a roll is a burst; aiming slows you to a walk; sprinting drains stamina; water drags
     if (f.stamina <= 0.02f) f.winded = true; else if (f.stamina > 0.3f) f.winded = false;
     f.sprinting = in.sprint && !aiming && !rolling && ml > 0.5f && !f.winded;
@@ -316,17 +321,19 @@ static FootIn readFootInput(float& turn, float dt) {
     auto key = [&](int sc) { if (!sc) return false; for (int h : heldKeys) if (h == sc) return true; return k[sc] != 0; };
     auto dn = [&](int b) { return key(binds[b][0]) || key(binds[b][1]) || touchHolds(b); };
     if (dn(B_GAS)) fwd += 1; if (dn(B_BRAKE)) fwd -= 1; if (dn(B_RIGHT)) str += 1; if (dn(B_LEFT)) str -= 1;
-    in.sprint = dn(B_NITRO); in.roll = dn(B_HB); in.fire = dn(B_FIRE) || footMouseFire;
+    in.sprint = dn(B_NITRO); in.roll = dn(B_HB); in.fire = dn(B_FIRE) || footMouseFire; in.ads = footMouseAds || cliAds;
     if (tstick.on) { fwd = clampf((tstick.oy - tstick.y) / 70, -1, 1); str = clampf((tstick.x - tstick.ox) / 70, -1, 1); }
     if (pad) {
         auto ax = [&](plat::PadAxis a) { float v = plat::padAxisRaw(pad, a) / 32767.f; return fabsf(v) > 0.16f ? v : 0.0f; };
         float lx = ax(plat::AX_LX), ly = ax(plat::AX_LY); if (lx != 0 || ly != 0) { str = lx; fwd = -ly; }
         footYaw -= ax(plat::AX_RX) * 2.8f * dt; footPitch = clampf(footPitch + ax(plat::AX_RY) * 1.6f * dt, -0.15f, 0.9f);
         if (plat::padAxisRaw(pad, plat::AX_TRIG_R) > 9000 || plat::padButton(pad, plat::BT_LB)) in.fire = true;
+        if (plat::padAxisRaw(pad, plat::AX_TRIG_L) > 9000) in.ads = true;   // (the left trigger: down the sights)
         if (plat::padButton(pad, plat::BT_RB) || plat::padButton(pad, plat::BT_LSTICK)) in.sprint = true;
         if (plat::padButton(pad, plat::BT_A) || plat::padButton(pad, plat::BT_X)) in.roll = true;
     }
-    turn = str; V3 m = yawDir(footYaw) * fwd + yawRight(footYaw) * str; float L = len(m); if (L > 1) m = m * (1 / L);
+    turn = in.ads ? 0.0f : str; footAdsNow = in.ads;   // (down the sights, sideways is a strafe: the camera holds)
+    V3 m = yawDir(footYaw) * fwd + yawRight(footYaw) * str; float L = len(m); if (L > 1) m = m * (1 / L);
     in.mx = m.x; in.mz = m.z; return in;
 }
 
@@ -478,7 +485,7 @@ static void footLeaveCar() {
     footYaw = player.yaw; footPitch = 0.20f; player.vel = V3(); player.vf = 0; player.yawRate = 0; player.steer = 0;
     if (faceAi) { float best = 1e9f; for (auto& a : ai) { float d = flatDist(a.pos, me.pos); if (d < best) { best = d; footYaw = me.yaw = atan2f(a.pos.x - me.pos.x, a.pos.z - me.pos.z); } } }
 }
-static void footEnterCar() { for (int g = 0; g < NGUNS; g++) roamAmmo[g] = me.ammo[g]; roamHp = me.alive ? me.hp : footMaxHp; me.on = false; footMouseFire = false; camInit = false; }
+static void footEnterCar() { for (int g = 0; g < NGUNS; g++) roamAmmo[g] = me.ammo[g]; roamHp = me.alive ? me.hp : footMaxHp; me.on = false; footMouseFire = footMouseAds = footAdsNow = false; camInit = false; }
 static void shdToggle();
 static void footToggle() {
     if (state != RACE || W.space) return;   // (no getting out in space)

@@ -165,11 +165,12 @@ static void resume() {
 
 // ---- the panel: the selected event's settings ----
 static const float PX = 0, PW = 430, VX = 190;   // (the panel: from the right edge; VX: where the values start)   // (from the right edge: x = uiW - PW)
-enum Row { R_KIND, R_ON, R_TIME, R_LAPS, R_DELAY, R_TIMES, R_CHANCE, R_BY, R_SIZE, R_HEIGHT, R_TEXT, R_TARGET, R_FROM, R_FELLS, R_WX, R_OVER, NROW };
+enum Row { R_KIND, R_ON, R_TIME, R_LAPS, R_DELAY, R_TIMES, R_CHANCE, R_BY, R_SIZE, R_HEIGHT, R_TEXT, R_TARGET, R_FROM, R_FELLS, R_WX, R_OVER, R_STAY, NROW };
 static bool rowShown(const Event& e, int r) {
     if (r == R_TIME) return e.on == director::ON_TIME;
     if (r == R_SIZE) return e.kind != director::ROCKET && e.kind != director::SAY && e.kind != director::COLLAPSE && e.kind != director::WEATHER;   // (mini Wardens: how many)
     if (r == R_WX || r == R_OVER) return e.kind == director::WEATHER;
+    if (r == R_STAY) return e.kind == director::MINIS;
     if (r == R_TEXT) return e.kind == director::SAY;
     if (r == R_HEIGHT) return e.kind != director::SAY && e.kind != director::SHAKE && e.kind != director::COLLAPSE && e.kind != director::DOLPHIN && e.kind != director::WEATHER && e.kind != director::MINIS && !(e.kind == director::ROCKET && e.from);
     if (r == R_TARGET || r == R_FROM || r == R_FELLS) return e.kind == director::ROCKET;
@@ -208,6 +209,7 @@ static void stepRow(Event& e, int r, int dir, float lapX) {
     case R_BY: e.by = wrap(e.by + dir, director::NBY); break;
     case R_SIZE: if (e.kind == director::MINIS) e.k = (float)wrap((int)lroundf(e.k) - 1 + dir, 4) + 1; else e.k = std::max(0.1f, std::min(5.0f, e.k + dir * 0.25f)); break;
     case R_WX: e.wx = wrap(e.wx + dir, 4); break;
+    case R_STAY: e.stay = !e.stay; break;
     case R_OVER: e.over = std::max(1.0f, std::min(60.0f, e.over + dir * (half ? 1.0f : 5.0f))); break;
     case R_HEIGHT: e.at.y += dir * (half ? 0.5f : 2.0f); break;
     case R_TEXT: typing = true; plat::textInput(true); break;
@@ -344,7 +346,7 @@ static std::string stepWords(const Event& e) {
     case director::SAY: snprintf(b, sizeof b, "MESSAGE \"%s\"", e.text.c_str()); break;
     case director::DOLPHIN: snprintf(b, sizeof b, "A DOLPHIN LEAPS%s", director::pods.empty() ? " (ONE SWIMS IN)" : " (THE NEAREST OF THE POD)"); break;
     case director::WEATHER: snprintf(b, sizeof b, "THE WEATHER TURNS TO %s (OVER %.0f S)", WXUP[e.wx & 3], e.over); break;
-    case director::MINIS: snprintf(b, sizeof b, "%d MINI WARDEN%s JETPACK OFF THE ROOF", (int)lroundf(e.k), lroundf(e.k) == 1 ? "" : "S"); break;
+    case director::MINIS: snprintf(b, sizeof b, e.stay ? "%d MINI WARDEN%s ON THE ROOF, SNIPING" : "%d MINI WARDEN%s JETPACK OFF THE ROOF", (int)lroundf(e.k), lroundf(e.k) == 1 ? "" : "S"); break;
     default: snprintf(b, sizeof b, "%s", KNAME[e.kind]); break;
     }
     std::string s = b; if (e.delay > 0) { char d[32]; snprintf(d, sizeof d, "  (%.1f S LATER)", e.delay); s += d; } return s;
@@ -559,7 +561,7 @@ static void draw(float Wd) {
         const Event& e = director::evs[selEv]; float x = Wd - PW;
         ui.rect(x, 80, PW, rowY(NROW) - 70, V3(0.02f, 0.03f, 0.06f), 0.75f); ui.rect(x, 80, PW, 3, KCOL[e.kind], 1);
         snprintf(b, sizeof b, "EVENT %s", e.id.c_str()); for (char* q = b; *q; q++) *q = (char)toupper(*q); ui.text(x + 16, 90, 2.6f, WHT, b);
-        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET", "FIRED FROM", "COLLAPSE", "TURNS TO", "OVER" };
+        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET", "FIRED FROM", "COLLAPSE", "TURNS TO", "OVER", "THEN THEY" };
         for (int r = 0; r < NROW; r++) {
             if (!rowShown(e, r)) continue; float y = rowY(r); ui.text(x + 16, y, 2.2f, GREY, r == R_SIZE && e.kind == director::MINIS ? "HOW MANY" : RN[r]);
             switch (r) {
@@ -573,6 +575,7 @@ static void draw(float Wd) {
             case R_BY: snprintf(b, sizeof b, "%s", e.by == director::PLAYER ? "THE PLAYER" : e.by == director::ANY ? "ANY CAR" : e.by == director::LEADER ? "THE LEADER" : "A COMPUTER CAR"); break;
             case R_SIZE: if (e.kind == director::MINIS) snprintf(b, sizeof b, "%d", (int)lroundf(e.k)); else snprintf(b, sizeof b, "%.2f", e.k); break;
             case R_WX: snprintf(b, sizeof b, "%s", WXUP[e.wx & 3]); break;
+            case R_STAY: snprintf(b, sizeof b, "%s", e.stay ? "STAY UP AND SNIPE" : "JETPACK DOWN"); break;
             case R_OVER: snprintf(b, sizeof b, "%.0f S", e.over); break;
             case R_HEIGHT: snprintf(b, sizeof b, "%.1f M UP", e.at.y - W.H(e.at.x, e.at.z)); break;
             case R_TEXT: snprintf(b, sizeof b, "\"%s%s\"", e.text.c_str(), typing && fmodf(T, 0.8f) < 0.4f ? "_" : ""); break;
@@ -690,6 +693,7 @@ static void script(const char* p) {
         else if (t[0] == "pod" && t.size() >= 3) { push(); director::Pod pd; pd.id = "pod" + std::to_string(freshPod()); pd.x = (float)atof(t[1].c_str()); pd.z = (float)atof(t[2].c_str()); if (t.size() >= 4) pd.r = (float)atof(t[3].c_str()); if (t.size() >= 5) pd.n = atoi(t[4].c_str()); director::pods.push_back(pd); selPod = (int)director::pods.size() - 1; selEv = selLine = selW = -1; }
         else if (t[0] == "autoline" && t.size() >= 3 && selEv >= 0) {   // autoline ID BACK: a line BACK m before the selected event (a mini Warden drop: before where they land), and it sets it off
             push(); Event& e = director::evs[selEv]; lineBefore(e.kind == director::MINIS ? e.to : spotOf(e), (float)atof(t[2].c_str()), t[1]); e.on = director::ON_LINE; e.ref = t[1]; }
+        else if (t[0] == "stay" && selEv >= 0) { push(); director::evs[selEv].stay = true; }
         else if (t[0] == "drift" && t.size() >= 2) { push(); director::drift = (float)atof(t[1].c_str()); }
         else if (t[0] == "enter") key(SDLK_RETURN);
         else if (t[0] == "list") listOn = true;

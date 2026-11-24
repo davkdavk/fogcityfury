@@ -55,6 +55,7 @@ can be changed in **Options** (F1).
 | Change camera | C | Y |
 | Get out of the car / back in | G | |
 | Change weapon (on foot) | Q | |
+| Aim down the sights (on foot) | Right mouse button (hold) | Left trigger (hold) |
 | Music on / off | M | |
 | Pause | Esc | Start |
 | Full screen | F11 | |
@@ -119,6 +120,22 @@ Press **G** to get out of the car and walk, run and fight; press it again near y
 a rampage showdown everyone is on foot. **F** fires, **Q** changes weapon, and **Shift** sprints (it uses
 stamina). Weapons are fists, pistol, rifle, SMG, shotgun and grenade launcher; you start with your fists
 and pick the others up.
+
+**Aiming down the sights:** hold the **right mouse button** (on a pad, the **left trigger**). The camera
+comes in over your shoulder and zooms, a crosshair appears (it turns red over something you would hit),
+and you face where you look. Left and right now **strafe** instead of turning, and your shots go exactly
+where the crosshair is, high or low, so you can pick off mini Wardens sniping from the rooftops. Let go
+and the usual lock-on aiming is back.
+
+**Pick-ups in town:** boxes of rounds (olive, with a brass band) and medkits lie on the paths between the
+buildings, away from the road, about 30 on each track. Each box of rounds tops up every gun you have, and
+a medkit gives back 50 health. Each comes back 40 seconds after it is taken.
+
+**Rooftop snipers:** on some tracks, mini Wardens wait at the edge of a roof. They leave drivers alone, but
+once you're on foot they shoot at you when they can see you. Aim down the sights and any gun brings them
+down.
+
+**Dolphins** can't be hurt. Shoot one and it laughs at you.
 
 ## Free roam
 

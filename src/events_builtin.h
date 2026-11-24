@@ -10,7 +10,8 @@ static const Builtin BUILTIN[] = {
 "line warden1  -267.0 -276.7  -238.0 -317.3\n"
 "event misfire1 rocket  at 0.0 0.0 0.0  to -147.0 21.0 -93.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1\n"
 "event say0 say  at 0.0 0.0 0.0  text \"WARDEN MISFIRE!\"  laps 1  delay 0.4  times once  chance 100  by player  on after misfire1\n"
-"event leap1 dolphin  at -535.0 0.0 -320.0  to -515.0 0.0 -335.0  k 1  laps all  delay 6  times lap  chance 100  by player  on lap\n" },
+"event leap1 dolphin  at -535.0 0.0 -320.0  to -515.0 0.0 -335.0  k 1  laps all  delay 6  times lap  chance 100  by player  on lap\n"
+"event snipers1 minis  at -471.0 70.0 -174.0  to -480.0 9.0 -175.0  k 2  stay  laps 1  delay 0  times once  chance 100  by player  on lap\n" },
 { "track1",
 "# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
 "drift 120\n"
@@ -30,7 +31,8 @@ static const Builtin BUILTIN[] = {
 "line drop1  -105.8 143.2  -83.0 127.1\n"
 "event minis1 minis  at -12.0 77.0 177.0  to -32.1 14.9 198.6  k 3  laps 1  delay 0  times once  chance 100  by player  on drop1\n"
 "event weather1 weather  at 0.0 0.0 0.0  wx rain  over 10  laps 2  delay 0  times once  chance 100  by player  on lap\n"
-"event message1 say  at 0.0 0.0 0.0  text \"RAIN ROLLING IN\"  laps 2  delay 0  times once  chance 100  by player  on lap\n" },
+"event message1 say  at 0.0 0.0 0.0  text \"RAIN ROLLING IN\"  laps 2  delay 0  times once  chance 100  by player  on lap\n"
+"event snipers1 minis  at 258.0 67.0 -66.0  to 236.0 10.0 -79.0  k 2  stay  laps 1  delay 0  times once  chance 100  by player  on lap\n" },
 { "track4",
 "# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
 "warden 1  452.0 -274.0\n"

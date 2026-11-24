@@ -136,6 +136,29 @@ static void step(float dt) {
         wake(o, dt); i++;
     }
 }
+// 2.4: shoot a dolphin and nothing happens to it, except that it laughs at you: a dolphin's chatter (quick rising
+// clicks, then a whistle that wobbles up and down), and it bobs up to have a look. It cannot be hurt by anything.
+static int laughs = 0; static float lastLaugh = -99;   // laughs: test metric
+static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx) {
+    bool any = false; t = maxT;
+    for (int i = 0; i < (int)dols.size(); i++) {
+        const Dol& q = dols[i]; float yaw = q.mode == LEAP ? atan2f(q.dir.x, q.dir.z) : q.yaw; V3 f(sinf(yaw), 0, cosf(yaw)), c(q.p.x, q.y + surf(q.p), q.p.z);
+        if (c.y < surf(q.p) - 1.2f * q.k) continue;   // (deep down: the water takes the round)
+        for (float a : { -0.9f, 0.0f, 0.9f }) { V3 w = c + f * (a * SCALE * q.k) - o; float tt = dot(w, d); if (tt > 0 && tt < t && len(w - d * tt) < 0.55f * SCALE * q.k) { t = tt; idx = i; any = true; } }
+    }
+    return any;
+}
+static bool firstAt(V3& p) { if (dols.empty()) return false; p = V3(dols[0].p.x, dols[0].y + surf(dols[0].p) + 0.2f, dols[0].p.z); return true; }
+static void laugh(int idx, V3 at) {
+    laughs++; ripple::add(at.x, at.z, 0.3f);
+    if (!g_noGL) for (int i = 0; i < 6; i++) ::spawn(V3(at.x, std::max(at.y, 0.1f), at.z), V3(grng.r(-1.5f, 1.5f), grng.r(1.5f, 3.5f), grng.r(-1.5f, 1.5f)), 0.5f, 0.07f, 0.1f, V3(0.85f, 0.92f, 1), 0.7f, 0, -6);
+    if (idx >= 0 && idx < (int)dols.size() && dols[idx].mode == ROAM) dols[idx].nextBreath = std::min(dols[idx].nextBreath, 2.3f);   // (up it comes for a look)
+    if (T - lastLaugh < 1.2f) return; lastLaugh = T; float v = 0.45f * nearK(at);
+    for (int i = 0; i < 9; i++) tone(1500.0f + 180.0f * i + (i % 2) * 400.0f, 0.045f, v, 2, 600, i * 0.055f);   // the chatter
+    tone(2600, 0.55f, v * 0.8f, 0, 1400, 0.52f); tone(3400, 0.35f, v * 0.6f, 0, -1600, 1.0f);                       // the whistle, up and down
+    static float told = -99; if (T - told > 5) { told = T; say("THE DOLPHIN LAUGHS AT YOU", V3(0.55f, 0.85f, 0.95f), 1.8f); }
+}
+static void blastAt(V3 p, float r) { for (int i = 0; i < (int)dols.size(); i++) { V3 c(dols[i].p.x, dols[i].y, dols[i].p.z); if (len(c - p) < r) { laugh(i, p); break; } } }
 // drawn with the car program, as the Wardens are (plain material: lit, with a sheen of the sky at a glancing angle)
 static void draw(Prog& p, bool lit) {
     (void)lit;

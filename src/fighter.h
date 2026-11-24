@@ -20,7 +20,7 @@ static const int NSLOT = 7;                  // places for fighters: you, then t
 static const float ROLL_LEN = 0.55f;         // a dodge roll, seconds
 static const float GIB_R = 3.5f, BLAST_R = 7.5f;   // a grenade: kills outright within GIB_R metres, hurts out to BLAST_R
 // what a fighter wants to do this step. mx, mz: where to run, in world axes (length up to 1)
-struct FootIn { float mx = 0, mz = 0; bool fire = false, sprint = false, roll = false; };
+struct FootIn { float mx = 0, mz = 0; bool fire = false, sprint = false, roll = false, ads = false; };   // ads: aiming down the sights (you only)
 struct Fighter {
     float jetT = 0, jetCD = 0;   // a mini Warden's jetpack: seconds of burst left; seconds till it can fire again
     bool on = false, alive = true, bot = false, mini = false;   // mini: a mini Warden (free roam, minis.h)
@@ -64,5 +64,10 @@ static bool footView() { return shdSpectate ? fighters[shdWatch].on : fighters[0
 
 // the camera on foot (kept in the simulation, not the renderer: running is relative to it)
 static float footYaw = 0, footPitch = 0.20f, footMouseX = 0, footMouseY = 0; static bool footMouseFire = false;
+// Aiming down the sights (2.4: the right mouse button, the left trigger): the camera comes in over the shoulder and
+// zooms, you face where it looks and strafe, and a shot goes exactly to the middle of the screen (footAimPt: what the
+// view's centre line meets), high or low: rooftops too. footAdsK: how far in it is (for the camera and the HUD)
+static bool footMouseAds = false, footAdsNow = false, footAimHot = false; static V3 footAimPt; static float footAdsK = 0;
+static bool cliOnFoot = false, cliAds = false, cliAim = false, cliAimMini = false, cliAimDol = false; static V3 cliAimAt;   // tests: --onfoot, --ads, --aimat X Y Z
 // a thumb-stick drawn where the left thumb lands (touch screens)
 static struct TouchStick { bool on = false; SDL_FingerID id = 0; float ox = 0, oy = 0, x = 0, y = 0; } tstick;

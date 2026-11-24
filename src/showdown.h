@@ -13,13 +13,13 @@ static const float SH_PREP_LEN = net::SD_PREP_LEN, SH_DRIVE_MAX = net::SD_DRIVE_
 static const float SH_RING0 = net::SD_RING0, SH_RING_MID = net::SD_RING_MID, SH_RING_END = net::SD_RING_END, SH_SHRINK = net::SD_SHRINK;      // ring radius: at first, after SH_SHRINK seconds of fighting, once two are left
 static const float SH_BURN = 6, SH_BURN_EVERY = 0.5f;                                      // health lost each half second outside the ring
 static_assert(G_LAUNCHER == net::SD_SLOW_KIND, "the server slows the grenade launcher's return by its number");
-enum { D_MED = NGUNS, D_ARMOUR };                                                          // pick-ups: a gun (its Gun number), a medkit, body armour
+enum { D_MED = NGUNS, D_ARMOUR, D_AMMO };   // (D_AMMO: 2.4, out in the town: a box of rounds for every gun you have)                                                          // pick-ups: a gun (its Gun number), a medkit, body armour
 struct Drop { V3 p; int kind; int idx = -1; float back = 0; };   // idx: its number (online, on the server); back: seconds until it is there again (0: it is there)
 static std::vector<Drop> drops;
 static V3 shdSite; static float shdSiteS = 0, shdT = 0, shdRing = SH_RING0, shdRingTgt = SH_RING0, shdOverT = 0, footTurn = 0;
 static float sdSite = -1, shdPrepAt = -1; static int shdBack = 0;   // --sdsite U (tests): put the ring that far round the lap. Test metrics: when the countdown began, pick-ups that have come back
 static int shdWinner = -1, shdRacePlace = 0, sdPlace = 1; static bool shdResult = false, sdNow = false;   // shdResult: the results screen shows the showdown; sdNow, sdPlace: --sdnow, --sdplace N (tests)
-static Mesh padMesh, medMesh, vestMesh; static Prog pRing;
+static Mesh padMesh, medMesh, vestMesh, ammoMesh; static Prog pRing;
 static bool testStick = false; static float stickX = 0, stickY = 0;
 static const char* ORD[NFIGHT + 1] = { "", "1ST", "2ND", "3RD", "4TH", "5TH" };
 static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr);
@@ -48,7 +48,26 @@ static void shdDrops() {
     }
 }
 // may this fighter take this pick-up? A gun needs its keys; a medkit or armour is only for someone who needs it
-static bool canTake(const Fighter& f, const Drop& d) { return d.back <= 0 && (d.kind == D_MED ? f.hp < 100 : d.kind == D_ARMOUR ? f.armour < 50 : gunUnlocked(d.kind)); }
+static bool ammoRoom(const Fighter& f) { for (int g = 0; g < NGUNS; g++) if (GUNS[g].clip && (gunUnlocked(g) || f.ammo[g] > 0) && f.ammo[g] < GUNS[g].clip * 3) return true; return false; }
+static bool canTake(const Fighter& f, const Drop& d) { return d.back <= 0 && (d.kind == D_MED ? f.hp < 100 : d.kind == D_ARMOUR ? f.armour < 50 : d.kind == D_AMMO ? ammoRoom(f) : gunUnlocked(d.kind)); }
+// 2.4: pick-ups out in the town, for when you are on foot in a race or free roam: ammunition and medkits on the paths
+// between the buildings (beside a building, off the road, on dry ground, 40 m or more apart), two boxes of rounds to
+// each medkit, back 40 s after they are taken. Where they lie comes from the track: the same every time
+static int townDrops = 0;   // test metric
+static void layTownDrops() {
+    drops.clear(); townDrops = 0; if (W.space || W.flat || W.boxes.empty() || W.ts.empty()) return;
+    int nb = (int)W.boxes.size();
+    for (int k = 0; k < nb * 2 && (int)drops.size() < 30; k++) {
+        const Box& b = W.boxes[(int)(((unsigned)k * 7919u + (unsigned)W.id * 131u) % (unsigned)nb)]; unsigned h = (unsigned)k * 2654435761u + (unsigned)W.id * 40503u; h ^= h >> 15; h *= 0x846ca68bU; h ^= h >> 16;
+        int side = h % 4; float ox = side == 0 ? b.hx + 2.4f : side == 1 ? -b.hx - 2.4f : 0, oz = side == 2 ? b.hz + 2.4f : side == 3 ? -b.hz - 2.4f : 0;
+        V3 p(b.cx + ox * b.ca + oz * b.sa, 0, b.cz - ox * b.sa + oz * b.ca); p.y = W.H(p.x, p.z);
+        if (W.dry(p.x, p.z) || W.HW(p.x, p.z) < 0.5f || solidAt(p + V3(0, 1.0f, 0), false) || solidAt(p + V3(0, 0.3f, 0), false)) continue;
+        int ni = W.nearest(p.x, p.z); if (flatDist(p, V3(W.ts[ni].x, 0, W.ts[ni].z)) < 13) continue;   // (off the road)
+        bool clear = true; for (const Drop& o : drops) if (flatDist(o.p, p) < 40) clear = false; if (!clear) continue;
+        Drop d = { p, drops.size() % 3 == 2 ? (int)D_MED : (int)D_AMMO }; drops.push_back(d);
+    }
+    townDrops = (int)drops.size();
+}
 // the site. Usually somewhere off the road: open, dry, fairly level ground between 45 and 150 m from the track, with a
 // straight clear run in from the road (which is how the bots get there). If nowhere like that turns up, or a place on the
 // road is asked for (u: how far round the lap, 0..1), it is a stretch of road, never on a bridge.
@@ -379,9 +398,11 @@ static void stepShowdown(float dt) {
 
 // a fighter takes a pick-up: what it gives them, and the burst of sparks (a remote fighter's own game does the giving)
 static void takeDrop(Fighter& f, const Drop& d) {
-    if (!f.remote) { if (d.kind == D_MED) f.hp = std::min(100.0f, f.hp + 50); else if (d.kind == D_ARMOUR) f.armour = 50; else { f.ammo[d.kind] += GUNS[d.kind].clip; if (d.kind > f.gun) f.gun = d.kind; } }
+    if (!f.remote) { if (d.kind == D_MED) f.hp = std::min(100.0f, f.hp + 50); else if (d.kind == D_ARMOUR) f.armour = 50;
+        else if (d.kind == D_AMMO) { for (int g = 0; g < NGUNS; g++) if (GUNS[g].clip && (gunUnlocked(g) || f.ammo[g] > 0)) f.ammo[g] = std::min(GUNS[g].clip * 3, f.ammo[g] + GUNS[g].clip); }
+        else { f.ammo[d.kind] += GUNS[d.kind].clip; if (d.kind > f.gun) f.gun = d.kind; } }
     for (int k = 0; k < 16; k++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(0, 1), grng.r(-1, 1))); spawn(d.p + V3(0, 0.8f, 0), dd * grng.r(1, 5), grng.r(0.3f, 0.6f), 0.14f, 0, d.kind == D_MED ? V3(1, 4, 1.4f) : d.kind == D_ARMOUR ? V3(1, 2.4f, 4) : V3(4, 2.6f, 0.8f), 1, 1, -3); }
-    if (mine(f) && !f.remote) { footPickups++; say(d.kind == D_MED ? "MEDKIT  +50" : d.kind == D_ARMOUR ? "BODY ARMOUR" : GUNS[d.kind].name, V3(1, 0.9f, 0.3f), 1.4f); tone(330, 0.1f, 0.4f, 2); tone(495, 0.1f, 0.4f, 2, 0, 0.08f); tone(660, 0.18f, 0.4f, 2, 0, 0.16f); rumble(0.3f, 120); }
+    if (mine(f) && !f.remote) { footPickups++; say(d.kind == D_MED ? "MEDKIT  +50" : d.kind == D_ARMOUR ? "BODY ARMOUR" : d.kind == D_AMMO ? "AMMO" : GUNS[d.kind].name, V3(1, 0.9f, 0.3f), 1.4f); tone(330, 0.1f, 0.4f, 2); tone(495, 0.1f, 0.4f, 2, 0, 0.08f); tone(660, 0.18f, 0.4f, 2, 0, 0.16f); rumble(0.3f, 120); }
     else sfx(d.p, 495, 0.1f, 0.3f, 2);
 }
 
@@ -395,9 +416,10 @@ static void footFrame(float dt) {
     if (testStick) { tstick.on = me.on; tstick.ox = 170; tstick.oy = 560; tstick.x = 170 + stickX * 70; tstick.y = 560 - stickY * 70; }   // --stick X,Y (tests): a thumb held on the stick
     bool act = state == RACE, canFire = !showdownOn || shdPhase == SH_FIGHT, canMove = act && (!showdownOn || shdPhase != SH_OVER);
     footTurn = 0;
+    if (cliOnFoot && act && countdown <= 0 && !me.on && !showdownOn) { cliOnFoot = false; footLeaveCar(); }   // (--onfoot, tests: out of the car once the race is on)
     for (auto& f : fighters) {
         if (!f.on) continue; if (f.remote) { if (!f.mini) netStepRemote(f, dt); continue; } FootIn in;   // (a remote mini Warden: netroam.h moves it)
-        if (act && f.alive) { if (f.mini) in = mini::think(f, dt); else if (f.bot) in = &f == &me && !showdownOn && exploreMode ? mini::youThink(f, dt) : botThink(f, dt); else if (!(simMode && heldKeys.empty() && fingers.empty() && !tstick.on)) in = readFootInput(footTurn, dt); }
+        if (act && f.alive) { if (f.mini) in = mini::think(f, dt); else if (f.bot) in = &f == &me && !showdownOn && exploreMode ? mini::youThink(f, dt) : botThink(f, dt); else if (!(simMode && heldKeys.empty() && fingers.empty() && !tstick.on)) in = readFootInput(footTurn, dt); else if (&f == &me && cliAds) { in.ads = in.fire = true; footAdsNow = true; } }   // (--ads, tests: down the sights, firing)
         stepFighter(f, in, dt, canFire, canMove);
     }
     for (int i = 0; i < NFIGHT; i++) for (int j = i + 1; j < NFIGHT; j++) {   // nobody stands inside anybody
@@ -405,9 +427,11 @@ static void footFrame(float dt) {
         float dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz); if (d < 0.75f && d > 0.001f) { float pn = (0.75f - d) * 0.5f / d; a.pos.x -= dx * pn; a.pos.z -= dz * pn; b.pos.x += dx * pn; b.pos.z += dz * pn; }
     }
     for (auto& f : fighters) f.claim = 0;
+    if (!showdownOn) for (auto& d : drops) if (d.back > 0) d.back = std::max(0.0f, d.back - dt);   // (the town's come back by themselves)
     // pick-ups: run over one to take it (a medkit or armour only if you need it; a gun only if you have the keys for it)
     for (auto& f : fighters) {
         f.lockT = std::max(0.0f, f.lockT - dt); if (!f.on || !f.alive || !act || f.remote) continue;
+        if (!showdownOn && !mine(f)) continue;   // (the town's pick-ups are yours: a mini Warden does not shop)
         for (auto& d : drops) {
             if (d.back > 0 || flatDist(f.pos, d.p) > 1.3f || fabsf(f.pos.y - d.p.y) > 2) continue;
             if (!canTake(f, d)) {
@@ -415,15 +439,16 @@ static void footFrame(float dt) {
                 continue;
             }
             if (netShd) { if (d.idx >= 0) f.claim |= (uint16_t)(1u << d.idx); continue; }   // online: ask the server for it
-            takeDrop(f, d); d.back = SH_RESPAWN * (d.kind == G_LAUNCHER ? 3 : 1);   // the grenade launcher is slow to come back
+            takeDrop(f, d); d.back = showdownOn ? SH_RESPAWN * (d.kind == G_LAUNCHER ? 3 : 1) : 40.0f;   // the grenade launcher is slow to come back
         }
     }
     if (showdownOn && shdPhase == SH_DRIVE) for (int k = 0; k < 2; k++) spawn(shdSite + V3(grng.r(-0.5f, 0.5f), grng.r(0, 45), grng.r(-0.5f, 0.5f)), V3(0, 6, 0), 1.0f, 0.5f, 0, V3(4, 1.6f, 0.4f), 0.9f, 1, 0);   // a beacon over the middle of the ring, to drive at
+    static unsigned sparkSeed = 12345u; auto sr = [&]() { sparkSeed = sparkSeed * 1664525u + 1013904223u; return (sparkSeed >> 8) * (1.0f / 16777216.0f); };   // (its own dice: the town's pick-ups must not change the race's)
     for (auto& d : drops)
-        if (d.back <= 0 && grng.f() < dt * 5)
-            spawn(d.p + V3(grng.r(-0.3f, 0.3f), 0.2f, grng.r(-0.3f, 0.3f)), V3(0, 2.2f, 0), 0.9f, 0.09f, 0,
+        if (d.back <= 0 && (showdownOn ? grng.f() : sr()) < dt * 5 && (showdownOn || flatDist(d.p, avatarPos()) < 160))
+            spawn(d.p + (showdownOn ? V3(grng.r(-0.3f, 0.3f), 0.2f, grng.r(-0.3f, 0.3f)) : V3(sr() * 0.6f - 0.3f, 0.2f, sr() * 0.6f - 0.3f)), V3(0, 2.2f, 0), 0.9f, 0.09f, 0,
                     d.kind == D_MED      ? V3(0.6f, 3, 1)
-                    : d.kind == D_ARMOUR ? V3(0.6f, 1.6f, 3)
+                    : d.kind == D_ARMOUR ? V3(0.6f, 1.6f, 3) : d.kind == D_AMMO ? V3(2.6f, 2.2f, 0.5f)
                                          : V3(3, 2, 0.6f),
                     0.9f, 1, 0); // a column of sparks marks each one
     // out of the car in a race: the racers do not stop for you
@@ -437,19 +462,31 @@ static void footFrame(float dt) {
         if (!fighters[shdWatch].on || (!fighters[shdWatch].alive && fighters[shdWatch].deadT > 1.8f)) for (int i = 0; i < NFIGHT; i++) if (fighters[i].on && fighters[i].alive) { shdWatch = i; break; }
         const Fighter& w = fighters[shdWatch]; if (w.on && w.alive) footYaw = wrapPi(footYaw + wrapPi(w.yaw - footYaw) * (1 - expf(-2.5f * dt))); else if (w.on) footYaw = wrapPi(footYaw + 0.25f * dt);
     } else if (me.on) {
-        footYaw -= footMouseX * 0.0032f; footPitch = clampf(footPitch + footMouseY * 0.0026f, -0.15f, 0.9f);
+        float sens = footAdsNow ? 0.55f : 1.0f; footYaw -= footMouseX * 0.0032f * sens; footPitch = clampf(footPitch + footMouseY * 0.0026f * sens, footAdsNow ? -1.05f : -1.05f, 0.9f);
+        if (!footAdsNow && footPitch < -0.15f) footPitch += (-0.15f - footPitch) * (1 - expf(-5 * dt));   // (out of the sights the view comes back down)
+        if (cliAimMini) { V3 q; if (jetdrop::firstAt(q)) cliAimAt = q + V3(0, 1.1f, 0); }   // (--aimmini: at a rooftop mini Warden)
+        if (cliAimDol) { V3 q; if (dolphin::firstAt(q)) cliAimAt = q; }   // (--aimdolphin)
+        if (cliAim && me.alive) { V3 d = cliAimAt - (me.pos + V3(0, 1.55f, 0) + yawRight(footYaw) * 0.6f); footYaw = atan2f(d.x, d.z); footPitch = -atan2f(d.y, sqrtf(d.x * d.x + d.z * d.z)); }   // (--aimat, tests)
         if (me.alive && me.target >= 0 && me.aim > 0.5f) { V3 d = tgtPos(me.target) - me.pos; footYaw += wrapPi(atan2f(d.x, d.z) - footYaw) * (1 - expf(-3.2f * dt)); }
         else if (me.alive) footYaw -= footTurn * 1.15f * dt * clampf(me.run / FOOT_RUN, 0, 1);
         else if (showdownOn) footYaw += 0.25f * dt;
         footYaw = wrapPi(footYaw);
     }
     footMouseX = footMouseY = 0;
+    // down the sights: what the middle of the view rests on (the camera looks along this line), for the shot and the crosshair
+    footAdsK += ((footAdsNow && me.on && me.alive ? 1.0f : 0.0f) - footAdsK) * (1 - expf(-12 * dt));
+    if (me.on) { V3 D(sinf(footYaw) * cosf(footPitch), -sinf(footPitch), cosf(footYaw) * cosf(footPitch)), pv = me.pos + V3(0, 1.55f, 0) + yawRight(footYaw) * (0.55f + 0.4f * footAdsK);
+        float t = rayWorld(pv, D, 250, false), t2; int k2; footAimHot = false;
+        for (int i = 1; i < NSLOT; i++) { const Fighter& o = fighters[i]; if (!o.on || !o.alive) continue; for (float hh : { 0.5f, 1.0f, 1.5f }) { V3 q = o.pos + V3(0, hh, 0) - pv; float tt = dot(q, D); if (tt > 0 && tt < t && len(q - D * tt) < 0.45f) { t = tt; footAimHot = true; } } }
+        if (jetdrop::hitLine(pv, D, t, t2, k2)) { t = t2; footAimHot = true; } if (dolphin::hitLine(pv, D, t, t2, k2)) t = t2;
+        footAimPt = pv + D * std::max(t, 1.0f); }
 }
 // a new race (or a trip back to the menus): everyone back in their cars, pockets refilled
 static void footReset() {
     for (auto& f : fighters) f = Fighter(); for (int i = 0; i < NSLOT; i++) { fighters[i].id = i; if (i >= NFIGHT) fighters[i].alive = false; }   // (the places past the five are for free roam's mini Wardens: out of it here)
     netShd = shdSpectate = carHidden = false; shdWatch = 0;
-    showdownOn = false; shdPhase = SH_OFF; shdCut = false; shdResult = false; shdWinner = -1; shdRacePlace = 0; drops.clear(); splats.clear(); gibs.clear(); shells.clear(); footMouseFire = false; tstick.on = false; hitFlash = hurtFlash = footKick = 0;
+    showdownOn = false; shdPhase = SH_OFF; shdCut = false; shdResult = false; shdWinner = -1; shdRacePlace = 0; drops.clear(); splats.clear(); gibs.clear(); shells.clear(); footMouseFire = footMouseAds = footAdsNow = false; footAdsK = 0; tstick.on = false; hitFlash = hurtFlash = footKick = 0;
+    layTownDrops();   // (2.4: ammunition and medkits about the town)
     roamHp = footMaxHp; roamCarTarget = false; for (int g = 0; g < NGUNS; g++) roamAmmo[g] = gunUnlocked(g) ? GUNS[g].clip * (g == G_SMG ? 2 : 1) : 0;
 }
 
@@ -457,13 +494,14 @@ static void footReset() {
 static void footCamera(V3& eye, V3& tgt, V3& up, float& fov, float dt) {
     static V3 eyeS; static bool init = false; static float lastT = -1;
     const Fighter* s = shdSpectate ? &fighters[shdWatch] : &me; float yaw = footYaw, pitch = footPitch - footKick * 0.035f, dist = 4.6f - 0.9f * s->aim + (s->sprinting ? 0.5f : 0.0f), shoulder = s->alive ? 0.55f : 0.0f;
+    if (!shdSpectate && footAdsK > 0.01f) { dist += (2.1f - dist) * footAdsK; shoulder += 0.4f * footAdsK; }   // down the sights: in close over the shoulder
     if (showdownOn && !shdSpectate && !me.alive && me.deadT > 1.8f) for (auto& f : fighters) if (f.on && f.alive) { s = &f; break; }            // you are out: watch the others
     if (showdownOn && shdPhase == SH_OVER && shdWinner >= 0) { s = &fighters[shdWinner]; yaw = s->yaw + (float)M_PI + 0.5f * sinf(shdOverT * 0.45f); pitch = 0.10f; dist = 4.4f; shoulder = 0; }
     V3 D(sinf(yaw) * cosf(pitch), -sinf(pitch), cosf(yaw) * cosf(pitch)), pivot = s->pos + V3(0, s->alive ? 1.55f : 0.8f, 0) + yawRight(yaw) * shoulder;
     dist = clampf(rayWorld(pivot, D * -1.0f, dist + 0.4f, false) - 0.4f, 0.7f, dist);
     V3 want = pivot - D * dist; want.y = std::max(want.y, W.H(want.x, want.z) + 0.35f);
     if (!init || T - lastT > 0.25f || len(want - eyeS) > 8) { eyeS = want; init = true; } lastT = T;
-    eyeS = eyeS + (want - eyeS) * (1 - expf(-22 * dt)); eye = eyeS; tgt = pivot + D * 12.0f; up = V3(0, 1, 0); fov = 60 + (me.sprinting ? 5.0f : 0.0f) - 6 * me.aim + fovKick;
+    eyeS = eyeS + (want - eyeS) * (1 - expf(-22 * dt)); eye = eyeS; tgt = pivot + D * 12.0f; up = V3(0, 1, 0); fov = 60 + (me.sprinting ? 5.0f : 0.0f) - 6 * me.aim * (1 - footAdsK) - 24 * footAdsK + fovKick;   // (and zoomed)
 }
 
 // ---- drawing ----
@@ -478,6 +516,9 @@ static void buildShowdownMeshes() {
     { MB m; V3 kev(0.07f, 0.10f, 0.16f), plate(0.25f, 0.5f, 1.0f);
       loft(m, { { -0.24f, 0.02f, 0.02f, 0 }, { -0.22f, 0.17f, 0.12f, 0 }, { 0.0f, 0.19f, 0.13f, 0 }, { 0.16f, 0.20f, 0.13f, 0 }, { 0.22f, 0.12f, 0.10f, 0 }, { 0.24f, 0.02f, 0.02f, 0 } }, 12, [&](int, float, V3& c, float& mat) { c = kev; mat = 5; });
       m.abox(V3(0, 0.0f, 0.118f), V3(0.10f, 0.11f, 0.012f), plate, 3); vestMesh.upload(m); }
+    { MB m; V3 olive(0.22f, 0.26f, 0.12f), brass(1.0f, 0.75f, 0.25f), dark(0.05f, 0.05f, 0.05f);   // a box of rounds: olive, a brass band, a handle, rounds poking out of the top
+      m.abox(V3(0, 0, 0), V3(0.24f, 0.14f, 0.12f), olive, 0); m.abox(V3(0, 0.02f, 0), V3(0.245f, 0.025f, 0.125f), brass, 3); m.abox(V3(0, 0.17f, 0), V3(0.09f, 0.015f, 0.02f), dark, 5);
+      for (int i = 0; i < 5; i++) m.abox(V3(-0.16f + i * 0.08f, 0.17f, 0.06f), V3(0.018f, 0.04f, 0.018f), brass, 3); ammoMesh.upload(m); }
 }
 static void drawShowdown(Prog& p, bool lit) {
     drawFighters(p, lit);
@@ -488,6 +529,7 @@ static void drawShowdown(Prog& p, bool lit) {
         if (d.back > 0) continue;   // taken: only its pad is left until it comes back
         if (d.kind == D_MED) { p.m4("uModel", mul(translate(q), mul(rotY(spin), scale(1.5f, 1.5f, 1.5f)))); medMesh.draw(); }
         else if (d.kind == D_ARMOUR) { p.m4("uModel", mul(translate(q), mul(rotY(spin), scale(1.5f, 1.5f, 1.5f)))); vestMesh.draw(); }
+        else if (d.kind == D_AMMO) { p.m4("uModel", mul(translate(q), mul(rotY(spin), scale(1.5f, 1.5f, 1.5f)))); ammoMesh.draw(); }
         else { p.m4("uModel", mul(translate(q), mul(rotY(spin), mul(rotX(-0.35f), scale(2.3f, 2.3f, 2.3f))))); gunMesh[d.kind].draw(); }
     }
 }
@@ -536,6 +578,14 @@ static void drawFootHUD(float Hb) {
         for (int a = -1; a <= 1; a += 2) for (int b2 = -1; b2 <= 1; b2 += 2) { ui.rect(a < 0 ? sx - r : sx + r - g, b2 < 0 ? sy - r : sy + r - t, g, t, lc, 0.95f); ui.rect(a < 0 ? sx - r : sx + r - t, b2 < 0 ? sy - r : sy + r - g, t, g, lc, 0.95f); }
         if (hitFlash > 0) { float k = 7 + 30 * hitFlash; for (int a = -1; a <= 1; a += 2) for (int b2 = -1; b2 <= 1; b2 += 2) ui.line(sx + a * k * 0.4f, sy + b2 * k * 0.4f, sx + a * k, sy + b2 * k, 3, white, 0.95f); }   // hit marker
     }
+    // down the sights: a crosshair in the middle (red over something it would hit), and how far
+    if (footAdsK > 0.3f && me.alive && !shdSpectate) {
+        float cx = Wd / 2, cy = Hd / 2, k = footAdsK, gap = 7 + 5 * me.run / FOOT_RUN; V3 c = footAimHot ? V3(1, 0.3f, 0.2f) : white;
+        if (project(footAimPt, sx, sy, cw)) { cx = sx; cy = sy; }
+        for (int a = 0; a < 4; a++) { float dx = a == 0 ? 1 : a == 1 ? -1 : 0, dy = a == 2 ? 1 : a == 3 ? -1 : 0; ui.line(cx + dx * gap, cy + dy * gap, cx + dx * (gap + 11), cy + dy * (gap + 11), 2.5f, c, 0.9f * k); }
+        ui.disc(cx, cy, 2.2f, c, k); if (hitFlash > 0) { float q = 6 + 22 * hitFlash; for (int a = -1; a <= 1; a += 2) for (int b2 = -1; b2 <= 1; b2 += 2) ui.line(cx + a * q * 0.4f, cy + b2 * q * 0.4f, cx + a * q, cy + b2 * q, 2.5f, white, 0.95f); }
+        snprintf(b, sizeof b, "%.0f M", len(footAimPt - me.pos)); ui.text(cx + 22, cy + 14, 1.4f, dim, b, 0, k);
+    }
     // weapon and ammunition
     if (shdSpectate) { snprintf(b, sizeof b, touchOn ? "WATCHING %s" : "WATCHING %s   -   %s: NEXT FIGHTER", fighters[shdWatch].name, keyName(binds[B_CAM][0])); ui.text(Wd / 2, Hb - 60, 2.6f, white, b, 1); }
     if (me.alive && !shdSpectate) { float x = Wd - 300, y = Hb - 118; panel(x, y, 280, 98, 0.55f); const GunSpec& g = GUNS[me.gun]; ui.text(x + 14, y + 16, 3.2f, yel, g.name);
@@ -553,7 +603,7 @@ static void drawFootHUD(float Hb) {
       ui.rect(x, y, w * clampf(me.hp / 100, 0, 1), 16, hpCol(me.hp), 0.95f); if (me.armour > 0) ui.rect(x, y - 7, w * clampf(me.armour / 50, 0, 1) * 0.5f, 5, V3(0.35f, 0.7f, 1), 0.95f);
       ui.rect(x, y + 19, w * me.stamina, 4, V3(0.4f, 0.9f, 1), me.stamina < 0.25f ? 0.5f + 0.5f * sinf(T * 16) : 0.8f);
       snprintf(b, sizeof b, "%d", (int)ceilf(me.hp)); ui.text(x - 12, y - 2, 3, white, b, 2); }
-    if (!arena) { if (me.alive && !touchOn) { snprintf(b, sizeof b, "%s: BACK IN THE CAR    %s: FIRE    %s: SWAP GUN", keyName(binds[B_EXIT][0]), keyName(binds[B_FIRE][0]), keyName(binds[B_WEAPON][0])); ui.text(Wd / 2, Hb - 84, 1.8f, dim, b, 1); } return; }
+    if (!arena) { if (me.alive && !touchOn) { snprintf(b, sizeof b, pad ? "%s: BACK IN THE CAR    %s: FIRE    LT: AIM    %s: SWAP GUN" : "%s: BACK IN THE CAR    %s: FIRE    RIGHT MOUSE: AIM    %s: SWAP GUN", keyName(binds[B_EXIT][0]), keyName(binds[B_FIRE][0]), keyName(binds[B_WEAPON][0])); ui.text(Wd / 2, Hb - 84, 1.8f, dim, b, 1); } return; }
     // radar: the ring, the fighters and the pick-ups, turned so that up is the way the camera looks
     { float cx = 125, cy = Hb - 125, sc = 92.0f / SH_RING0; V3 F = yawDir(footYaw), R = yawRight(footYaw); panel(20, Hb - 230, 210, 210, 0.45f);
       auto at = [&](V3 q, float& x, float& y) { V3 d = q - shdSite; float u = dot(d, R) * sc, v = -dot(d, F) * sc, L = sqrtf(u * u + v * v); if (L > 98) { u *= 98 / L; v *= 98 / L; } x = cx + u; y = cy + v; };

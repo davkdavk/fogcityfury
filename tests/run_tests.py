@@ -708,7 +708,7 @@ def mini_wardens_jetpack_off_a_roof():
     d = sim("--track", 0, "--state", 3, "--events", f, seconds=8)
     check(d["jetDrops"] == 3 and d["jetLanded"] == 3, "three came down", (d["jetDrops"], d["jetLanded"]))
     m = sim("--track", 3, "--state", 3, "--auto", "--nobotguns", seconds=110)
-    check(m["jetLanded"] == 3 and m["jetShots"] >= 1, "Midnight Mile's drop: they land and shoot", (m["jetLanded"], m["jetShots"]))
+    check(m["jetLanded"] == 3 and m["jetShots"] >= 1 and m["jetDrops"] == 5, "Midnight Mile's drop: they land and shoot (and two snipers stay up)", (m["jetLanded"], m["jetShots"], m["jetDrops"]))
 
 
 @test
@@ -726,6 +726,47 @@ def the_editor_makes_dolphins_minis_and_weather():
     t = open(f).read()
     check(t.count("\npod ") == 2 and t.count(" dolphin ") == 4, "a pod and two leaps (with Bayside's own pod and two)", t[:300])
     check(" minis " in t and " weather " in t and "drift 90" in t, "the minis, the weather and the drift", t[:400])
+
+@test
+def aim_down_the_sights_and_drop_the_rooftop_snipers():
+    """2.4: mini Wardens that stay on a roof ("stay") shoot you once you are on foot and in their sight; down the
+    sights (--ads: aiming, firing) a shot goes to the middle of the view, up on to the roof, and brings them down."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("event s1 minis  at -471 70 -174  to -480 9 -175  k 2  stay  on time 1\n")
+    d = sim("--track", 0, "--state", 3, "--onfoot", "--events", f, seconds=25)
+    check(d["meOn"] == 1 and d["jetNow"] == 2 and d["jetLanded"] == 0, "on foot; two snipers stay up", (d["meOn"], d["jetNow"], d["jetLanded"]))
+    check(d["snipes"] >= 10 and 0 < d["snipeHits"] < d["snipes"] and d["meHp"] < 100, "they shoot at you, some hit", (d["snipes"], d["snipeHits"], d["meHp"]))
+    a = sim("--track", 0, "--state", 3, "--onfoot", "--ads", "--aimmini", "--gun", 2, "--events", f, seconds=20)
+    check(a["adsK"] > 0.95 and a["aimPt"][1] > 60, "down the sights, looking up at the roof", (a["adsK"], a["aimPt"]))
+    check(a["jetDowned"] == 2 and a["jetNow"] == 0 and a["gibs"] == 2, "both brought down, in pieces", (a["jetDowned"], a["jetNow"], a["gibs"]))
+    c = sim("--track", 0, "--state", 3, "--events", f, seconds=25)
+    check(c["snipes"] == 0, "drivers they leave alone", c["snipes"])
+
+
+@test
+def ammo_and_medkits_lie_about_the_town():
+    """2.4: about 30 pick-ups on every track, on the paths between buildings (not the road): boxes of rounds and
+    medkits. Walk over a box of rounds and every gun you have gets a clip more."""
+    for t in range(7):
+        d = sim("--track", t, "--state", 3, seconds=0.3)
+        check(d["townDrops"] >= 20, "track %d has its pick-ups" % t, d["townDrops"])
+    d = sim("--track", 0, "--state", 3, seconds=0.3); x, z, kind = d["drop0"]
+    check(kind == 8, "the first is a box of rounds", kind)
+    far = sim("--track", 0, "--state", 3, "--pos", x - 4.2, z, 0, "--onfoot", "--keys", 6, seconds=4)
+    on = sim("--track", 0, "--state", 3, "--pos", x - 2.2, z, 0, "--onfoot", "--keys", 6, seconds=4)
+    check(far["footPickups"] == 0 and on["footPickups"] == 1 and on["meAmmoTotal"] > far["meAmmoTotal"], "walk over it: more rounds", (far["meAmmoTotal"], on["meAmmoTotal"], on["footPickups"]))
+
+
+@test
+def a_shot_dolphin_laughs():
+    """2.42: dolphins cannot be hurt; shot (or near a grenade) one laughs at you and comes up for a look."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("pod p1  -600 -200  r 25  n 2  k 1\n")
+    d = sim("--track", 0, "--state", 3, "--pos", -570, -200, 4.2, "--onfoot", "--ads", "--aimdolphin", "--gun", 2, "--events", f, seconds=20)
+    check(d["footShots"] > 10 and d["laughs"] > 5, "shot at, it laughs", (d["footShots"], d["laughs"]))
+    check(d["dolphinsNow"] == 2, "and they are both still there", d["dolphinsNow"])
 
 @test
 def net_roam_server_shares_mini_wardens():
@@ -1973,8 +2014,8 @@ def the_race_director_plays_a_tracks_events():
     one building down, three leaps. The file is built into the game too (src/events_builtin.h, for the 360 and
     Android), and that copy is up to date. 2.3: every built-in track has a scripted moment."""
     d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=230)
-    check(d["eventsLoaded"] == 3 and d["eventLines"] == 1 and d["pods"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"], d["pods"]))
-    check(d["lap"] >= 3 and d["events"] == 5, "three laps: the misfire and its message once, a leap a lap", (d["lap"], d["events"]))
+    check(d["eventsLoaded"] == 4 and d["eventLines"] == 1 and d["pods"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"], d["pods"]))
+    check(d["lap"] >= 3 and d["events"] == 6, "three laps: the misfire and its message once, a leap a lap, the rooftop snipers (2.4)", (d["lap"], d["events"]))
     check(d["fallen"] == 1 and d["finished"] == 1 and d["wrecks"] == 0, "the misfire brings the tower down, and the race goes on", (d["fallen"], d["finished"], d["wrecks"]))
     check(d["leaps"] == 3 and d["podLeaps"] == 3, "the pod's dolphins take the leaps", (d["leaps"], d["podLeaps"]))
     sys.path.insert(0, os.path.join(ROOT, "tools")); import embed_events
@@ -2048,9 +2089,9 @@ def a_warden_misfire_is_one_click_in_the_editor():
     if not os.path.exists(f): return
     txt = open(f).read()
     check("line warden2 " in txt and "from warden2" in txt and "on warden2" in txt and "on after misfire2" in txt, "Warden 2's misfire: its line, its rocket, its words", txt[:400])
-    check(txt.count("\nline ") == 2 and txt.count("\nevent ") == 6, "two lines (Wardens 1 and 2) and six events (Hilltop's three, three new)", txt.count("\nevent "))
+    check(txt.count("\nline ") == 2 and txt.count("\nevent ") == 7, "two lines (Wardens 1 and 2) and seven events (Hilltop's four, three new)", txt.count("\nevent "))
     r = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=120)
-    check(r["eventsLoaded"] == 6 and r["events"] >= 6, "a race sets off all six", (r["eventsLoaded"], r["events"]))
+    check(r["eventsLoaded"] == 7 and r["events"] >= 7, "a race sets off all seven", (r["eventsLoaded"], r["events"]))
 
 @test
 def the_ronin_120_comes_from_blender_and_races():

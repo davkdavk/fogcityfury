@@ -42,6 +42,7 @@ struct Line { std::string id; float ax = 0, az = 0, bx = 0, bz = 0; };
 struct Event {
     std::string id; int kind = BLAST; V3 at, to; float k = 1; std::string text; bool fells = false;   // fells: a rocket brings down the building it is aimed at
     int wx = 1; float over = 10;   // weather: what it turns to, and how many seconds that takes
+    bool stay = false;   // mini Wardens: they stay up on the roof and snipe (2.4)
     int from = 0;   // a rocket fired from: 0 its own spot (at), 1-4 that Warden's cannon, 5 the nearest Warden's (wherever it has walked to)
     unsigned laps = 0; float delay = 0; int times = ONCE, chance = 100, by = PLAYER, on = ON_LAP; std::string ref; float time = 0;
     int fired = 0, lastLap = -99; float lastT = -99;   // (the race so far)
@@ -102,6 +103,7 @@ static void parse(const std::string& body) {
             else if (w == "k" && k + 1 < t.size()) { e.k = f(1); k++; }
             else if (w == "text" && k + 1 < t.size()) { e.text = t[++k]; }
             else if (w == "fells") { e.fells = true; }
+            else if (w == "stay") { e.stay = true; }
             else if (w == "wx" && k + 1 < t.size()) { e.wx = std::max(0, lookup(WXNAME, 4, t[++k], 1)); }
             else if (w == "over" && k + 1 < t.size()) { e.over = std::max(0.5f, f(1)); k++; }
             else if (w == "from" && k + 1 < t.size()) { const std::string& v = t[++k]; e.from = v == "nearest" ? 5 : v.compare(0, 6, "warden") == 0 ? std::max(0, std::min(4, atoi(v.c_str() + 6))) : 0; }
@@ -131,6 +133,7 @@ static std::string write() {
         snprintf(b, sizeof b, "event %s %s  at %.1f %.1f %.1f", e.id.c_str(), KIND[e.kind], e.at.x, e.at.y, e.at.z); s += b;
         if (e.kind == DOLPHIN || e.kind == MINIS) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f", e.to.x, e.to.y, e.to.z); s += b; }
         if (e.kind == WEATHER) { snprintf(b, sizeof b, "  wx %s  over %.3g", WXNAME[e.wx & 3], e.over); s += b; }
+        if (e.kind == MINIS && e.stay) s += "  stay";
         if (e.kind == ROCKET) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f%s", e.to.x, e.to.y, e.to.z, e.fells ? "  fells" : ""); s += b; if (e.from == 5) s += "  from nearest"; else if (e.from > 0) { snprintf(b, sizeof b, "  from warden%d", e.from); s += b; } }
         if (e.kind != ROCKET && e.kind != SAY && e.kind != COLLAPSE && e.kind != WEATHER) { snprintf(b, sizeof b, "  k %.2g", e.k); s += b; }
         if (e.kind == SAY) s += "  text \"" + e.text + "\"";
@@ -225,7 +228,7 @@ static void happen(int ev) {
     case COLLAPSE: fall::collapse(e.at); break;
     case DOLPHIN: dolphin::spawn(e.at, e.to, e.k); break;
     case WEATHER: if (!netRace && !W.space) turnWeather(e.wx, e.over); break;   // (online the server's weather holds)
-    case MINIS: jetdrop::spawn(e.at, e.to, std::max(1, std::min(4, (int)lroundf(e.k)))); break;
+    case MINIS: jetdrop::spawn(e.at, e.to, std::max(1, std::min(4, (int)lroundf(e.k))), e.stay); break;
     }
     for (int k = 0; k < (int)evs.size(); k++) if (evs[k].on == ON_AFTER && evs[k].ref == e.id) trigger(k, lapNo(-1));
 }

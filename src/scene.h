@@ -12,7 +12,10 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
     V3 skyT = d.skyTop * (1 - w.grey) + grey * (w.grey * 0.85f), skyH = d.skyHor * (1 - w.grey) + grey * w.grey;
     p.v3("uSunDir", d.sun); p.v3("uSunCol", sunC * (1 - 0.35f * w.grey)); p.v3("uSkyTop", skyT + V3(0.25f, 0.25f, 0.32f) * bolt); p.v3("uSkyHor", skyH + V3(0.25f, 0.25f, 0.32f) * bolt);
     p.f1("uWet", w.wet); p.f1("uRain", w.rain); p.f1("uOvercast", w.grey); p.f1("uFogNoise", weather == W_FOG ? 1.0f : w.rain > 0 ? 0.4f : 0.0f); p.f1("uBoltI", bolt); p.v3("uBoltDir", boltDir);
-    p.i1("uDetail", 6); if (p.has("uCarTex")) p.i1("uCarTex", 9); fall::setHide(p);   // (fallen buildings: the world's vertex shaders flatten them)
+    p.i1("uDetail", 6); if (p.has("uCarTex")) p.i1("uCarTex", 9);
+    // fallen buildings: the world's vertex shaders flatten what stood on their lots. Only the town: the car program
+    // draws things that move over them (cars, the golden UFO, dolphins, Wardens), and those keep their shape (2.4)
+    if (&p == &pCar || &p == &pGlass || &p == &pPart) { if (p.has("uHideN")) p.f1("uHideN", 0); } else fall::setHide(p);
     if (p.has("uKeySt")) {
         if (W.keyStreet.size() == 4) p.v4("uKeySt", W.keyStreet[0], W.keyStreet[1], W.keyStreet[2], W.keyStreet[3]);
         else p.v4("uKeySt", 0, 0, 0, 0);
@@ -423,7 +426,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         gfx::blend(gfx::B_ALPHA); setCommon(pWorld, VP, cam, hdr);
 #endif
         W.slime.draw(); gfx::depthWrite(true); gfx::blend(gfx::B_OFF); }
-    if (mainPass && secret::shown() && (DRAW_MASK & DM_EFFECTS)) { traceDraw("ufo beam"); setCommon(pWorld, VP, cam, hdr); secret::drawBeam(pWorld); }
+    if (mainPass && secret::shown() && (DRAW_MASK & DM_EFFECTS)) { traceDraw("ufo beam"); setCommon(pWorld, VP, cam, hdr); if (pWorld.has("uHideN")) pWorld.f1("uHideN", 0); secret::drawBeam(pWorld); }   // (the beam is not the town: no flattening)
     if ((DRAW_MASK & DM_WATER) && mainPass && !W.glassV.empty() && len(cam - glassMid()) < 900) {   // the tunnel's glass, over the sea and the fish outside it
         traceDraw("glass"); setCommon(pGlass, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
         gfx::data(partBuf, W.glassV.data(), W.glassV.size() * 4, true); gfx::draw(partBuf, 0, (int)(W.glassV.size() / 11)); gfx::depthWrite(true); gfx::blend(gfx::B_OFF);
