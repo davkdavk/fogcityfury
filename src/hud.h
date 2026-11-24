@@ -493,7 +493,7 @@ static void render(int fbw, int fbh) {
         lightVP = mul(ortho(-R, R, -R, R, 1, 900), lookAt(focus + W.def->sun * 400, focus, V3(0, 1, 0)));
         gfx::use(shadowFBO, SHADOW, SHADOW); gfx::clear(false, true);
         gfx::offset(2.0f, 4.0f);
-        pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident());
+        pDepth.use(); pDepth.m4("uVP", lightVP); pDepth.m4("uModel", ident()); fall::setHide(pDepth);
 #ifdef FCF_XENOS_CULL
         // chunked: the terrain buffer holds every level of detail; its finest level is one block (World::terrainLod0)
         gfx::drawMeshRange(W.terrain.buf, W.terrainLod0.first, W.terrainLod0.count); W.props.draw(); W.smallProps.draw();

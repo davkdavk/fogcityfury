@@ -195,6 +195,7 @@ static void printJSON(FILE* o) {
             (int)W.boxes.size(), W.propTris, wfx::rounds, wfx::aimErr, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
+    fprintf(o, "\"fallen\":%d,\"lots\":%d,", fall::fallenTotal, (int)W.lots.size());
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
     fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);

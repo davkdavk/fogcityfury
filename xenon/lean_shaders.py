@@ -69,8 +69,19 @@ layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2)
 layout(location=3) in vec2 aUV; layout(location=4) in float aM;
 uniform mat4 uVP, uModel;
 uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCamPos; uniform float uFogDen, uWet, uOvercast;
+uniform float uHideN; uniform vec4 uHide0, uHide1, uHide2, uHide3;   // fallen buildings (collapse.h): x, z, half sizes; ground in uHideY
+uniform vec4 uHideY;
 out vec3 vP, vL, vC; out vec2 vUV; out float vMat; out vec2 vFx; out vec4 vFog;
-void main(){ vec4 w = uModel*vec4(aP,1.0); vP = w.xyz; vec3 n = normalize(mat3(uModel)*aN);
+// a fallen building: whatever stood on its lot (above its ground) is flattened onto the ground; its rubble is drawn apart
+float hideAt(vec3 p, vec4 b, float gy){ vec2 d = abs(p.xz - b.xy); return step(d.x, b.z)*step(d.y, b.w)*step(gy + 0.4, p.y); }
+void hide(inout vec4 w){
+  float g = w.y; vec3 p = w.xyz;
+  float h0 = hideAt(p, uHide0, uHideY.x)*step(0.5, uHideN), h1 = hideAt(p, uHide1, uHideY.y)*step(1.5, uHideN);
+  float h2 = hideAt(p, uHide2, uHideY.z)*step(2.5, uHideN), h3 = hideAt(p, uHide3, uHideY.w)*step(3.5, uHideN);
+  g = mix(g, uHideY.x + 0.05, h0); g = mix(g, uHideY.y + 0.05, h1); g = mix(g, uHideY.z + 0.05, h2); g = mix(g, uHideY.w + 0.05, h3);
+  w.y = g;
+}
+void main(){ vec4 w = uModel*vec4(aP,1.0); hide(w); vP = w.xyz; vec3 n = normalize(mat3(uModel)*aN);
   float clear = 1.0 - 0.92*uOvercast, up = max(uSunDir.y, 0.0);
   // sky light from above, the sun, and sunlight bounced warm off the ground onto whatever faces down or sideways
   vL = (mix(uSkyHor*0.55 + vec3(0.05,0.045,0.04), uSkyTop*0.6 + uSkyHor*0.35, n.y*0.5+0.5) + uSunCol*max(dot(n, uSunDir), 0.0)

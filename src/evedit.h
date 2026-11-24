@@ -3,7 +3,7 @@
 //
 //   map view (TAB: fly view)   mouse: left picks and drags, right drags the map, wheel zooms
 //   L  a trigger line (click its two ends)        1-5  an event: rocket, blast, splash, shake, say (click where)
-//   6  where a Warden starts walking (Wardens 1-4, beside the road)
+//   6  where a Warden starts walking (Wardens 1-4, beside the road)   7  a building that comes down (click it)
 //   DEL removes the selection    CTRL+Z undo    CTRL+S save    P preview a race with the events (F4 comes back)
 //   PGUP / PGDN the previous / next track (saves first)    ESC drops the tool or the selection
 //   the panel on the right: click a setting to step it on, right-click to step it back
@@ -23,7 +23,7 @@ static bool keyW = false, keyA = false, keyS = false, keyD = false, keyQ = false
 // state is already the frame's end by the time a key is handled (CTRL+S arrived with CTRL let go)
 static bool ctrlDown = false, shiftDown = false, altDown = false;
 static const V3 YEL(1, 0.82f, 0.15f), WHT(1, 1, 1), CYA(0.3f, 0.9f, 1), RED(1, 0.3f, 0.25f), GREY(0.72f, 0.77f, 0.86f), ORG(1, 0.55f, 0.15f);
-static const V3 KCOL[director::NKIND] = { V3(1, 0.4f, 0.2f), V3(1, 0.75f, 0.2f), V3(0.35f, 0.75f, 1), V3(0.8f, 0.6f, 1), V3(0.5f, 1, 0.55f) };
+static const V3 KCOL[director::NKIND] = { V3(1, 0.4f, 0.2f), V3(1, 0.75f, 0.2f), V3(0.35f, 0.75f, 1), V3(0.8f, 0.6f, 1), V3(0.5f, 1, 0.55f), V3(0.85f, 0.8f, 0.72f) };
 
 static void tell(const char* s) { snprintf(note, sizeof note, "%s", s); noteT = 3.5f; }
 static void push() { undo.push_back(director::write()); if (undo.size() > 80) undo.erase(undo.begin()); dirty = true; }
@@ -100,14 +100,14 @@ static void resume() {
 
 // ---- the panel: the selected event's settings ----
 static const float PX = 0, PW = 430, VX = 190;   // (the panel: from the right edge; VX: where the values start)   // (from the right edge: x = uiW - PW)
-enum Row { R_KIND, R_ON, R_TIME, R_LAPS, R_DELAY, R_TIMES, R_CHANCE, R_BY, R_SIZE, R_HEIGHT, R_TEXT, R_TARGET, NROW };
-static float rowY(int r) { return 120 + r * 40.0f; }
+enum Row { R_KIND, R_ON, R_TIME, R_LAPS, R_DELAY, R_TIMES, R_CHANCE, R_BY, R_SIZE, R_HEIGHT, R_TEXT, R_TARGET, R_FROM, R_FELLS, NROW };
+static float rowY(int r) { return 120 + r * 34.0f; }
 static bool rowShown(const Event& e, int r) {
     if (r == R_TIME) return e.on == director::ON_TIME;
-    if (r == R_SIZE) return e.kind != director::ROCKET && e.kind != director::SAY;
+    if (r == R_SIZE) return e.kind != director::ROCKET && e.kind != director::SAY && e.kind != director::COLLAPSE;
     if (r == R_TEXT) return e.kind == director::SAY;
-    if (r == R_HEIGHT) return e.kind != director::SAY && e.kind != director::SHAKE;
-    if (r == R_TARGET) return e.kind == director::ROCKET;
+    if (r == R_HEIGHT) return e.kind != director::SAY && e.kind != director::SHAKE && e.kind != director::COLLAPSE && !(e.kind == director::ROCKET && e.from);
+    if (r == R_TARGET || r == R_FROM || r == R_FELLS) return e.kind == director::ROCKET;
     return true;
 }
 // what can set an event off: a lap, a time, any line, another event
@@ -140,7 +140,9 @@ static void stepRow(Event& e, int r, int dir, float lapX) {
     case R_SIZE: e.k = std::max(0.1f, std::min(5.0f, e.k + dir * 0.25f)); break;
     case R_HEIGHT: e.at.y += dir * (half ? 0.5f : 2.0f); break;
     case R_TEXT: typing = true; plat::textInput(true); break;
-    case R_TARGET: break;   // (set by dragging the red target ring onto a building)
+    case R_TARGET: break;
+    case R_FROM: e.from = wrap(e.from + dir, 6); break;
+    case R_FELLS: e.fells = !e.fells; break;   // (set by dragging the red target ring onto a building)
     }
 }
 static bool onSave(float x, float y) { return y > 10 && y < 54 && x > uiW - 170 && x < uiW - 20; }   // the SAVE button, top right
@@ -223,6 +225,7 @@ static void key(SDL_Keycode k, bool down = true) {
     switch (k) {
     case SDLK_TAB: fly = !fly; debugTop = !fly; fixedCam = fly; if (fly) { flyPos = V3(camTgt.x, W.H(camTgt.x, camTgt.z) + 70, camTgt.z + 90); flyYaw = (float)M_PI; flyPitch = -0.5f; } break;
     case SDLK_l: tool = LINE; grab = -1; tell("CLICK ONE END OF THE LINE"); break;
+    case SDLK_7: tool = PLACE; placeKind = director::COLLAPSE; tell("CLICK THE BUILDING THAT COMES DOWN"); break;
     case SDLK_1: case SDLK_2: case SDLK_3: case SDLK_4: case SDLK_5: tool = PLACE; placeKind = (int)(k - SDLK_1); { char b[80]; snprintf(b, sizeof b, "CLICK WHERE THE %s GOES", director::KIND[placeKind]); for (char* c = b; *c; c++) *c = (char)toupper(*c); tell(b); } break;
     case SDLK_6: tool = WARDEN; tell("CLICK BESIDE THE ROAD WHERE A WARDEN STARTS WALKING"); break;
     case SDLK_DELETE: case SDLK_BACKSPACE:
@@ -281,7 +284,7 @@ static void draw(float Wd) {
         const Event& e = director::evs[selEv]; float x = Wd - PW;
         ui.rect(x, 80, PW, rowY(NROW) - 70, V3(0.02f, 0.03f, 0.06f), 0.75f); ui.rect(x, 80, PW, 3, KCOL[e.kind], 1);
         snprintf(b, sizeof b, "EVENT %s", e.id.c_str()); for (char* q = b; *q; q++) *q = (char)toupper(*q); ui.text(x + 16, 90, 2.6f, WHT, b);
-        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET" };
+        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET", "FIRED FROM", "BRINGS IT DOWN" };
         for (int r = 0; r < NROW; r++) {
             if (!rowShown(e, r)) continue; float y = rowY(r); ui.text(x + 16, y, 2.2f, GREY, RN[r]);
             switch (r) {
@@ -297,6 +300,8 @@ static void draw(float Wd) {
             case R_HEIGHT: snprintf(b, sizeof b, "%.1f M UP", e.at.y - W.H(e.at.x, e.at.z)); break;
             case R_TEXT: snprintf(b, sizeof b, "\"%s%s\"", e.text.c_str(), typing && fmodf(T, 0.8f) < 0.4f ? "_" : ""); break;
             case R_TARGET: { int bi = director::boxAt(e.to.x, e.to.z); if (bi >= 0) snprintf(b, sizeof b, "BUILDING %d, %.0f M", bi, W.boxes[bi].top - W.boxes[bi].y0); else snprintf(b, sizeof b, "OPEN GROUND"); break; }
+            case R_FROM: if (e.from == 0) snprintf(b, sizeof b, "ITS OWN SPOT"); else if (e.from == 5) snprintf(b, sizeof b, "THE NEAREST WARDEN"); else snprintf(b, sizeof b, "WARDEN %d%s", e.from, e.from <= mech::count() ? "" : " (NOT ON THIS TRACK)"); break;
+            case R_FELLS: snprintf(b, sizeof b, "%s", e.fells ? (director::boxAt(e.to.x, e.to.z) >= 0 || fall::lotAt(e.to) >= 0 ? "YES, IT FALLS" : "YES (AIM AT A BUILDING)") : "NO"); break;
             }
             if (r != R_LAPS) { for (char* q = b; *q; q++) *q = (char)toupper(*q); ui.text(x + VX, y, 2.2f, WHT, b); }
         }
@@ -313,7 +318,7 @@ static void draw(float Wd) {
     snprintf(b, sizeof b, "%d LINES  %d EVENTS  %s", (int)director::lines.size(), (int)director::evs.size(), fly ? "FLY VIEW" : "MAP VIEW"); ui.text(Wd - 190, 22, 2.2f, GREY, b, 2);
     { bool hov = onSave(mx, my); ui.rect(Wd - 170, 10, 150, 44, dirty ? ORG : V3(0.25f, 0.27f, 0.32f), hov ? 1 : 0.85f); ui.text(Wd - 95, 20, 2.6f, dirty ? V3(0, 0, 0) : WHT, dirty ? "SAVE *" : "SAVED", 1); }
     ui.rect(0, 656, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
-    ui.text(20, 666, 1.45f, WHT, "L LINE  1 ROCKET 2 BLAST 3 SPLASH 4 SHAKE 5 SAY  6 WARDEN  DEL REMOVE  CTRL+Z UNDO  CTRL+S SAVE  P PREVIEW  TAB FLY/MAP  PGUP/DN TRACK");
+    ui.text(20, 666, 1.45f, WHT, "L LINE  1 ROCKET 2 BLAST 3 SPLASH 4 SHAKE 5 SAY  6 WARDEN 7 COLLAPSE  DEL  CTRL+Z UNDO  CTRL+S SAVE  P PREVIEW  TAB FLY/MAP  PGUP/DN TRACK");
     if (noteT > 0) ui.text(20, 694, 2.0f, ORG, note);
     else ui.text(20, 694, 1.6f, GREY, fly ? "FLY: W A S D MOVE   Q E DOWN/UP   RIGHT DRAG LOOKS   SHIFT FAST" : "MAP: LEFT PICKS AND DRAGS   RIGHT DRAG MOVES THE MAP   WHEEL ZOOMS");
 }
@@ -335,6 +340,7 @@ static void script(const char* p) {
             if (kq == "on") setTrig(e, t.size() > 3 ? v + " " + t[3] : v); else if (kq == "laps") e.laps = director::lapsOf(v); else if (kq == "delay") e.delay = (float)atof(v.c_str());
             else if (kq == "times") e.times = director::lookup(director::TIMES, director::NTIMES, v, 0); else if (kq == "chance") e.chance = atoi(v.c_str());
             else if (kq == "by") e.by = director::lookup(director::BY, director::NBY, v, 0); else if (kq == "k") e.k = (float)atof(v.c_str()); else if (kq == "text") e.text = v;
+            else if (kq == "from") e.from = v == "nearest" ? 5 : v == "spot" ? 0 : std::max(0, std::min(4, atoi(v.c_str()))); else if (kq == "fells") e.fells = v == "yes";
             else if (kq == "to" && t.size() >= 5) e.to = V3((float)atof(v.c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str())); else if (kq == "time") e.time = (float)atof(v.c_str()); }
         else if (t[0] == "warden" && t.size() >= 4) { int u = atoi(t[1].c_str()) - 1; if (u >= 0 && u < 4) { push(); director::wardenAt[u] = { true, (float)atof(t[2].c_str()), (float)atof(t[3].c_str()) }; selW = u; selEv = selLine = -1; } }
         else if (t[0] == "aim" && t.size() >= 3 && selEv >= 0) { float x = (float)atof(t[1].c_str()), z = (float)atof(t[2].c_str()); push(); aimAt(director::evs[selEv], V3(x, W.H(x, z), z), true); }   // as a mouse drop

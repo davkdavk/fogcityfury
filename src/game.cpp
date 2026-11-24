@@ -220,9 +220,11 @@ static std::string tracksDir() {
 }
 #include "serverlist.h"   // the server list on the online screen: lookups, asking each server what it runs, joining
 #include "settings.h"   // settings (key bindings, video and effects options, fogcityfury.cfg), the touch-screen layout, the save file
-namespace director { static void reset(); static void placeWardens(); }   // (events.h, after combat.h: a race start resets the scripted events)
+namespace director { static void reset(); static void placeWardens(); }
+namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)   // (events.h, after combat.h: a race start resets the scripted events)
 #include "combat.h"   // wreckage and debris, crates, shields, the multiplayer race start and leave, splashes, explosions, rockets
 #include "events.h"   // the race director: scripted events from a track's event file
+#include "collapse.h"   // buildings that come down (a rocket aimed at one, or an event's cue)
 #include "driving.h"   // respawning, the player's car physics, the computer drivers, cars bumping each other, input, finishing a race
 #include "foot.h"
 #include "showdown.h"

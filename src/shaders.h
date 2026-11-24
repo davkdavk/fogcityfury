@@ -5,8 +5,19 @@ static const char* VS_MESH = R"(#version 330 core
 layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC;
 layout(location=3) in vec2 aUV; layout(location=4) in float aM;
 uniform mat4 uVP, uModel;
+uniform float uHideN; uniform vec4 uHide0, uHide1, uHide2, uHide3;   // fallen buildings (collapse.h): x, z, half sizes; ground in uHideY
+uniform vec4 uHideY;
 out vec3 vP, vN, vC; out vec2 vUV; out float vMat;
-void main(){ vec4 w = uModel*vec4(aP,1.0); vP = w.xyz; vN = mat3(uModel)*aN; vC = aC; vUV = aUV; vMat = aM; gl_Position = uVP*w; }
+// a fallen building: whatever stood on its lot (above its ground) is flattened onto the ground; its rubble is drawn apart
+float hideAt(vec3 p, vec4 b, float gy){ vec2 d = abs(p.xz - b.xy); return step(d.x, b.z)*step(d.y, b.w)*step(gy + 0.4, p.y); }
+void hide(inout vec4 w){
+  float g = w.y; vec3 p = w.xyz;
+  float h0 = hideAt(p, uHide0, uHideY.x)*step(0.5, uHideN), h1 = hideAt(p, uHide1, uHideY.y)*step(1.5, uHideN);
+  float h2 = hideAt(p, uHide2, uHideY.z)*step(2.5, uHideN), h3 = hideAt(p, uHide3, uHideY.w)*step(3.5, uHideN);
+  g = mix(g, uHideY.x + 0.05, h0); g = mix(g, uHideY.y + 0.05, h1); g = mix(g, uHideY.z + 0.05, h2); g = mix(g, uHideY.w + 0.05, h3);
+  w.y = g;
+}
+void main(){ vec4 w = uModel*vec4(aP,1.0); hide(w); vP = w.xyz; vN = mat3(uModel)*aN; vC = aC; vUV = aUV; vMat = aM; gl_Position = uVP*w; }
 )";
 
 // Grass: the mesh shader, plus the wind and the fade. aUV.x: how far up its blade this corner is (the root stays put,

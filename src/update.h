@@ -174,7 +174,8 @@ static void update(float dt) {
     lockTgt = state == RACE && ammo > 0 && !player.dead && !me.on ? pickTarget() : -1;
     netBotsFrame(dt);   // online, if the server has made us the host: the bots' cars
     if (driving) { stepRockets(dt); stepWreckage(dt, state != TITLE); footFrame(dt); }
-    if (state == RACE && countdown <= 0 && !netRace) director::step(dt);   // scripted events (online: 2.3, when the server sends them)
+    if (state == RACE && countdown <= 0 && !netRace) director::step(dt);
+    if (state == RACE || state == PAUSED || state == RESULTS) fall::step(dt);   // scripted events (online: 2.3, when the server sends them)
     // --- keys ---
     if (state == RACE) for (size_t k = 0; k < W.keys.size(); k++) {
         if (keysGot[W.id] >> k & 1) continue; V3 d = W.keys[k] - (avatarPos() + V3(0, 0.8f, 0));

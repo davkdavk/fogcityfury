@@ -1889,17 +1889,41 @@ def the_wardens_minigun_tracks_and_fires_bursts():
 
 @test
 def the_race_director_plays_a_tracks_events():
-    """Hilltop Heights' events (events/track0.fcfe): a trigger line, a rocket fired each lap as the player crosses it,
-    a shake chained after the rocket, and a message on lap 2 only. Three laps: 3 rockets, 3 shakes, 1 message. The
-    file is built into the game too (src/events_builtin.h, for the 360 and Android), and that copy is up to date."""
+    """Hilltop Heights' events (events/track0.fcfe): on lap 1 a Warden's misfire (a rocket from the nearest Warden's
+    cannon) brings down the tower ahead, with a message after it; every lap a rocket streaks across the road at the
+    second line, a shake chained after it; a message on lap 2. Three laps: 9 events, one building down. The file is
+    built into the game too (src/events_builtin.h, for the 360 and Android), and that copy is up to date."""
     d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=230)
-    check(d["eventsLoaded"] == 3 and d["eventLines"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"]))
-    check(d["lap"] >= 3 and d["events"] == 7, "three laps: a rocket and a shake each lap, the message once", (d["lap"], d["events"]))
+    check(d["eventsLoaded"] == 5 and d["eventLines"] == 2, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"]))
+    check(d["lap"] >= 3 and d["events"] == 9, "three laps: the misfire and its message once, a rocket and a shake each lap, the lap-2 message", (d["lap"], d["events"]))
+    check(d["fallen"] == 1 and d["finished"] == 1 and d["wrecks"] == 0, "the misfire brings the tower down, and the race goes on", (d["fallen"], d["finished"], d["wrecks"]))
     sys.path.insert(0, os.path.join(ROOT, "tools")); import embed_events
     check(embed_events.build() == open(os.path.join(ROOT, "src", "events_builtin.h")).read(), "src/events_builtin.h matches events/ (run tools/embed_events.py)")
     e = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=20)
     check(e["eventsLoaded"] == 0 and e["events"] == 0, "a track without an event file has none", (e["eventsLoaded"], e["events"]))
 
+
+@test
+def buildings_come_down():
+    """collapse.h: an event's cue, or a rocket aimed at a building with "fells", brings it down (a building at most
+    once; four a race, as the shaders take four). A rocket can leave a Warden's cannon ("from"). The space track has
+    no town to bring down."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    def run(body, track=0, secs=6):
+        open(f, "w").write(body); return sim("--track", track, "--state", 3, "--events", f, seconds=secs)
+    d = run("event c1 collapse at -147 0 -93 on time 1\nevent c2 collapse at -147 0 -93 on time 2\n")
+    check(d["lots"] > 100 and d["fallen"] == 1, "a building comes down on its cue, and only once", (d["lots"], d["fallen"]))
+    d = run("event r rocket at -200 30 -150 to -147 21 -93 fells on time 1\n")
+    check(d["fallen"] == 1, "a rocket aimed at it with fells brings it down", d["fallen"])
+    d = run("event r rocket at -200 30 -150 to -147 21 -93 on time 1\n")
+    check(d["fallen"] == 0, "without fells it only blows up", d["fallen"])
+    d = run("event r rocket to -147 21 -93 fells from nearest on time 1\n", secs=8)
+    check(d["fallen"] == 1, "a rocket from the nearest Warden's cannon brings it down", d["fallen"])
+    d = run("".join("event c%d collapse at %d 0 %d on time 1\n" % (i, x, z) for i, (x, z) in enumerate([(-147, -93), (-12, 69), (-93, -39), (-66, 15), (-12, -66), (-120, -66)])))
+    check(d["fallen"] == 4, "four a race at most", d["fallen"])
+    open(f, "w").write("event c collapse at 0 0 0 on time 1\n"); e = sim("--space", "--state", 3, "--events", f, seconds=6)
+    check(e["lots"] == 0 and e["fallen"] == 0, "the space track has no town to bring down", (e["lots"], e["fallen"]))
 
 @test
 def the_event_editor_saves_files_the_game_races():

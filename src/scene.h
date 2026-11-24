@@ -12,7 +12,7 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr) {
     V3 skyT = d.skyTop * (1 - w.grey) + grey * (w.grey * 0.85f), skyH = d.skyHor * (1 - w.grey) + grey * w.grey;
     p.v3("uSunDir", d.sun); p.v3("uSunCol", sunC * (1 - 0.35f * w.grey)); p.v3("uSkyTop", skyT + V3(0.25f, 0.25f, 0.32f) * bolt); p.v3("uSkyHor", skyH + V3(0.25f, 0.25f, 0.32f) * bolt);
     p.f1("uWet", w.wet); p.f1("uRain", w.rain); p.f1("uOvercast", w.grey); p.f1("uFogNoise", weather == W_FOG ? 1.0f : w.rain > 0 ? 0.4f : 0.0f); p.f1("uBoltI", bolt); p.v3("uBoltDir", boltDir);
-    p.i1("uDetail", 6); if (p.has("uCarTex")) p.i1("uCarTex", 9);
+    p.i1("uDetail", 6); if (p.has("uCarTex")) p.i1("uCarTex", 9); fall::setHide(p);   // (fallen buildings: the world's vertex shaders flatten them)
     if (p.has("uKeySt")) {
         if (W.keyStreet.size() == 4) p.v4("uKeySt", W.keyStreet[0], W.keyStreet[1], W.keyStreet[2], W.keyStreet[3]);
         else p.v4("uKeySt", 0, 0, 0, 0);
@@ -146,7 +146,8 @@ static void drawWreckage(Prog& p, bool lit) {
         for (int k = 0; k < 4; k++) if (w.wheels >> k & 1) { p.m4("uModel", mul(M, mul(translate(V3((k & 1 ? 1 : -1) * S.tw, S.wr * 0.8f, k < 2 ? S.wbF : -S.wbR)), scale(w.type == 2 ? 0.19f : 0.16f, S.wr, S.wr)))); wheelMesh.draw(); }
     }
     if (lit) p.f1("uBurnt", 1);
-    for (auto& d : debris) { float gone = goneOf(d.age); if (!lit && gone > 0.5f) continue; if (lit) p.f1("uGone", gone); p.m4("uModel", mul(translate(d.p), mul(rotY(d.rot.y), mul(rotX(d.rot.x), mul(rotZ(d.rot.z), scale(d.sc.x, d.sc.y, d.sc.z)))))); (d.kind == 0 ? wheelMesh : boxMesh).draw(); }
+    for (auto& d : debris) { float gone = goneOf(d.age); if (!lit && gone > 0.5f) continue; if (lit) { p.f1("uGone", gone); p.f1("uBurnt", d.kind == 2 ? 0.0f : 1.0f); }   // (kind 2: a fallen building's concrete)
+        p.m4("uModel", mul(translate(d.p), mul(rotY(d.rot.y), mul(rotX(d.rot.x), mul(rotZ(d.rot.z), scale(d.sc.x, d.sc.y, d.sc.z)))))); (d.kind == 0 ? wheelMesh : boxMesh).draw(); }
     if (lit) { p.f1("uBurnt", 0); p.f1("uGone", 0); p.f1("uBrake", 0); p.f1("uChrome", 0); }
     for (auto& r : rockets) { float hl = sqrtf(r.v.x * r.v.x + r.v.z * r.v.z); p.m4("uModel", mul(translate(r.p), mul(rotY(atan2f(r.v.x, r.v.z)), mul(rotX(-atan2f(r.v.y, hl)), scale(1.7f, 1.7f, 1.7f))))); rocketMesh.draw(); }
     if (state != TITLE && cratesOn() && !showdownOn) for (size_t k = 0; k < crates.size(); k++) {
@@ -288,7 +289,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
 #ifdef FCF_GFX_XSDK   // (no depth prepass on phones: their tiled GPUs sort hidden pixels out themselves)
         traceDraw("terrain+props depth prepass");
         gfx::blend(gfx::B_OFF); gfx::depthTest(true); gfx::depthWrite(true); gfx::colorWrite(false);
-        pDepth.use(); pDepth.m4("uVP", VP); pDepth.m4("uModel", ident());
+        pDepth.use(); pDepth.m4("uVP", VP); pDepth.m4("uModel", ident()); fall::setHide(pDepth);
 #ifdef FCF_XENOS_CULL
         drawWorldCells((DRAW_MASK & DM_TERRAIN) != 0, (DRAW_MASK & DM_PROPS) != 0, cam);
 #else
@@ -352,6 +353,14 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
 #ifndef FCF_XENOS_CULL
         if (mainPass && (DRAW_MASK & DM_PROPS) && !grassOff) { setCommon(pGrass, VP, cam, hdr); grass::draw(cam); }
 #endif
+#endif
+    }
+    if ((DRAW_MASK & DM_PROPS) && fall::n) {   // fallen buildings (collapse.h): the block sinking into its dust, then the rubble
+        traceDraw("fallen buildings"); gfx::depthWrite(true);
+#ifdef FCF_XENOS_LEAN
+        setCommon(pWall, VP, cam, hdr); setCommon(pMisc, VP, cam, hdr); fall::draw(pWall, pMisc);
+#else
+        setCommon(pWorld, VP, cam, hdr); fall::draw(pWorld, pWorld);
 #endif
     }
     if ((DRAW_MASK & DM_EFFECTS) && mainPass && !marks.empty()) {   // skid marks

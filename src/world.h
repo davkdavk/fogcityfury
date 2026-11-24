@@ -229,6 +229,8 @@ struct World {
         if (onBranch) *onBranch = bj; if (whichBranch) *whichBranch = bk; return brs[bk].S((float)bj);
     }
     struct Disc { float x, z, r, y0, top; }; std::vector<Disc> discs;   // round solids the game sets each frame (World::collide; foot.h solidAt)
+    struct Lot { float x, z, hx, hz, gy, top; V3 col; };   // a town building, for bringing it down (collapse.h): its lot, ground, roof, colour
+    std::vector<Lot> lots;
     std::vector<Box> boxes; std::vector<Ramp> ramps; std::vector<V3> keys; std::vector<Recipe> recipes; std::vector<Excl> excl; std::vector<int> cross;   // cross: middle sample of each bridge
     std::vector<float> keyStreet;   // x0, z0, x1, z1 of the backstreet that leads to the warehouse (empty if it stands by the road)
     std::vector<int> grid[GCN * GCN];
@@ -1330,6 +1332,7 @@ struct World {
         br.f(); br.f();
         float mn = 1e9f, mx = -1e9f; for (int k = 0; k < 5; k++) { float lx = k == 4 ? 0 : (k & 1 ? hx : -hx), lz = k == 4 ? 0 : (k & 2 ? hz : -hz); float hh = H(x + lx, z + lz); mn = std::min(mn, hh); mx = std::max(mx, hh); }
         const float y0 = mn - 1.5f, ref = (mn + mx) * 0.5f, gy = mx; float top = mx + ht;
+        lots.push_back({ x, z, hx, hz, gy, top, col });
 #ifdef FCF_GFX_XSDK
         const bool rich = false;   // (the Xbox 360: no balconies, less roof plant)
 #else
@@ -1471,7 +1474,7 @@ struct World {
     void build(int id_) {
         id = id_; gen++; def = &TRACKS[id]; rng.s = def->seed * 7919u + 17; mb = MB(); space = def->space && !flat; hasSlime = false; hasPlanet = false; hasUfo = false; for (int& k : kinds) k = 0;
         tidyTown();
-        boxes.clear(); ramps.clear(); keys.clear(); recipes.clear(); jumpObs.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
+        boxes.clear(); lots.clear(); ramps.clear(); keys.clear(); recipes.clear(); jumpObs.clear(); excl.clear(); ts.clear(); keyStreet.clear(); keyLot.clear(); smallMode = false; for (auto& g : grid) g.clear();
 #ifdef FCF_XENOS_CULL
         for (auto& c : worldCells) c = WorldCell();
 #endif

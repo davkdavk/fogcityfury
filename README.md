@@ -90,6 +90,16 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.29
+
+- **Buildings come down.** A rocket aimed at a building with "brings it down" set, or a collapse event, drops it into
+  its own dust: concrete slabs thrown out, rubble left on the lot (and cars meet the rubble, not the old walls). Up to
+  four a race
+- **Warden misfires:** a rocket can be fired from a Warden's cannon (Warden 1-4, or the nearest), wherever it has walked
+  to, with a flash at the muzzle
+- In fcfedit: FIRED FROM and BRINGS IT DOWN on rockets, key 7 for a collapse
+- Hilltop Heights: on the first lap a Warden's cannon misfires and the tower ahead on the left comes down
+
 ## What's new in 2.28.1
 
 - fcfedit saves again: CTRL+S (and CTRL+Z, SHIFT for fine steps, ALT to drop a target off a building) were read after

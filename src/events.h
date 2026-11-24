@@ -18,14 +18,15 @@
 //   by     whose crossing or lap counts: player, any (car), leader, ai                 [player]
 //   on     a line's id; lap (a lap starting); time S (race time); after <event id>    [lap]
 // and what it does: at (x y z), to (x y z: a rocket's target), k (size), text (for say).
-// Kinds: rocket (flies from `at` to `to` and blows up there, or on the first wall it meets), blast, splash, shake, say.
+// Kinds: rocket (flies from `at` to `to` and blows up there, or on the first wall it meets; `fells`: and brings down the
+// building it is aimed at), blast, splash, shake, say, collapse (the building at `at` comes down: collapse.h).
 // More kinds come as the actor library grows (2.29: the dolphin and others, buildings that fall).
 #pragma once
 #include "events_builtin.h"   // the built-in tracks' event files, built in (tools/embed_events.py)
 namespace director {
 
-enum Kind { ROCKET, BLAST, SPLASH, SHAKE, SAY, NKIND };
-static const char* KIND[NKIND] = { "rocket", "blast", "splash", "shake", "say" };
+enum Kind { ROCKET, BLAST, SPLASH, SHAKE, SAY, COLLAPSE, NKIND };
+static const char* KIND[NKIND] = { "rocket", "blast", "splash", "shake", "say", "collapse" };
 enum Times { ONCE, EACH_LAP, ALWAYS, NTIMES };
 static const char* TIMES[NTIMES] = { "once", "lap", "always" };
 enum By { PLAYER, ANY, LEADER, BYAI, NBY };
@@ -34,7 +35,8 @@ enum On { ON_LINE, ON_LAP, ON_TIME, ON_AFTER };
 
 struct Line { std::string id; float ax = 0, az = 0, bx = 0, bz = 0; };
 struct Event {
-    std::string id; int kind = BLAST; V3 at, to; float k = 1; std::string text;
+    std::string id; int kind = BLAST; V3 at, to; float k = 1; std::string text; bool fells = false;   // fells: a rocket brings down the building it is aimed at
+    int from = 0;   // a rocket fired from: 0 its own spot (at), 1-4 that Warden's cannon, 5 the nearest Warden's (wherever it has walked to)
     unsigned laps = 0; float delay = 0; int times = ONCE, chance = 100, by = PLAYER, on = ON_LAP; std::string ref; float time = 0;
     int fired = 0, lastLap = -99; float lastT = -99;   // (the race so far)
 };
@@ -85,6 +87,8 @@ static void parse(const std::string& body) {
             else if (w == "to" && k + 3 < t.size()) { e.to = V3(f(1), f(2), f(3)); k += 3; }
             else if (w == "k" && k + 1 < t.size()) { e.k = f(1); k++; }
             else if (w == "text" && k + 1 < t.size()) { e.text = t[++k]; }
+            else if (w == "fells") { e.fells = true; }
+            else if (w == "from" && k + 1 < t.size()) { const std::string& v = t[++k]; e.from = v == "nearest" ? 5 : v.compare(0, 6, "warden") == 0 ? std::max(0, std::min(4, atoi(v.c_str() + 6))) : 0; }
             else if (w == "laps" && k + 1 < t.size()) { e.laps = lapsOf(t[++k]); }
             else if (w == "delay" && k + 1 < t.size()) { e.delay = std::max(0.0f, f(1)); k++; }
             else if (w == "times" && k + 1 < t.size()) { e.times = lookup(TIMES, NTIMES, t[++k], ONCE); }
@@ -107,8 +111,8 @@ static std::string write() {
     for (const Line& l : lines) { snprintf(b, sizeof b, "line %s  %.1f %.1f  %.1f %.1f\n", l.id.c_str(), l.ax, l.az, l.bx, l.bz); s += b; }
     for (const Event& e : evs) {
         snprintf(b, sizeof b, "event %s %s  at %.1f %.1f %.1f", e.id.c_str(), KIND[e.kind], e.at.x, e.at.y, e.at.z); s += b;
-        if (e.kind == ROCKET) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f", e.to.x, e.to.y, e.to.z); s += b; }
-        if (e.kind != ROCKET && e.kind != SAY) { snprintf(b, sizeof b, "  k %.2g", e.k); s += b; }
+        if (e.kind == ROCKET) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f%s", e.to.x, e.to.y, e.to.z, e.fells ? "  fells" : ""); s += b; if (e.from == 5) s += "  from nearest"; else if (e.from > 0) { snprintf(b, sizeof b, "  from warden%d", e.from); s += b; } }
+        if (e.kind != ROCKET && e.kind != SAY && e.kind != COLLAPSE) { snprintf(b, sizeof b, "  k %.2g", e.k); s += b; }
         if (e.kind == SAY) s += "  text \"" + e.text + "\"";
         snprintf(b, sizeof b, "  laps %s  delay %.2g  times %s  chance %d  by %s  on ", lapsText(e.laps).c_str(), e.delay, TIMES[e.times], e.chance, BY[e.by]); s += b;
         if (e.on == ON_LAP) s += "lap"; else if (e.on == ON_TIME) { snprintf(b, sizeof b, "time %.3g", e.time); s += b; } else if (e.on == ON_AFTER) s += "after " + e.ref; else s += e.ref;
@@ -184,11 +188,20 @@ static void trigger(int ev, int lap) {
 static void happen(int ev) {
     Event& e = evs[ev]; firedTotal++;
     switch (e.kind) {
-    case ROCKET: { Rocket r{ e.at, norm(e.to - e.at) * 42, 8.0f, -1 }; r.aimed = true; r.aim = e.to; rockets.push_back(r); tone(420, 0.55f, 0.6f * nearK(e.at), 1, 3800); break; }
+    case ROCKET: {
+        V3 at = e.at; int u = -1, nu = mech::count();
+        if (e.from == 5) { float bd = 1e9f; for (int k = 0; k < nu; k++) { float d = len(mech::unit[k].at - e.to); if (d < bd) { bd = d; u = k; } } }
+        else if (e.from > 0 && e.from <= nu) u = e.from - 1;
+        if (u >= 0) {   // a Warden's misfire: out of its cannon, wherever it has walked to, with a flash at the muzzle
+            V3 d; mech::muzzle(mech::unit[u], mechT, at, d);
+            for (int i = 0; i < 18; i++) { float a = i * 2.39996f; spawn(at, d * 14 + V3(cosf(a) * 5, 2 + (i % 4), sinf(a) * 5), 0.25f, 0.5f, 1.5f, V3(5, 2.6f, 0.6f), 1, 1, 0); }
+        }
+        Rocket r{ at, norm(e.to - at) * 42, 8.0f, -1 }; r.aimed = true; r.aim = e.to; r.fells = e.fells; rockets.push_back(r); tone(420, 0.55f, 0.6f * nearK(e.at), 1, 3800); break; }
     case BLAST: blast(e.at, V3(), nearK(e.at) * e.k); break;
     case SPLASH: waterSplash(e.at, e.k); break;
     case SHAKE: shake = std::max(shake, e.k); rumble(std::min(1.0f, e.k), 300); break;
     case SAY: say(e.text.c_str(), V3(1, 0.85f, 0.3f), 2.2f); break;
+    case COLLAPSE: fall::collapse(e.at); break;
     }
     for (int k = 0; k < (int)evs.size(); k++) if (evs[k].on == ON_AFTER && evs[k].ref == e.id) trigger(k, lapNo(-1));
 }

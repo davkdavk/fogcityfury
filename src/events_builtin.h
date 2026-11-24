@@ -5,8 +5,13 @@ struct Builtin { const char* key; const char* body; };
 static const Builtin BUILTIN[] = {
 { "track0",
 "# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
-"# Hilltop Heights: a rocket streaks across the road ahead as you pass the gate, and bursts over it\n"
+"# Hilltop Heights: on the first lap a Warden's cannon misfires and brings down the tower ahead on the left; every lap a\n"
+"# rocket streaks across the road ahead as you pass the gate\n"
+"warden 1  -200.0 -118.0\n"
+"line gate0  -267.0 -276.7  -238.0 -317.3\n"
 "line gate1  -143.7 -108.2  -125.5 -165.4\n"
+"event misfire1 rocket  at 0.0 0.0 0.0  to -147.0 21.0 -93.0  fells  from nearest  laps 1  delay 0  times once  chance 100  by player  on gate0\n"
+"event say0 say  at 0.0 0.0 0.0  text \"WARDEN MISFIRE!\"  laps 1  delay 0.4  times once  chance 100  by player  on after misfire1\n"
 "event rocket1 rocket  at 8.0 62.0 -199.5  to -25.0 22.0 -95.0  laps all  delay 0  times lap  chance 100  by player  on gate1\n"
 "event shake1 shake  at 0.0 0.0 0.0  k 0.5  laps all  delay 1.6  times lap  chance 100  by player  on after rocket1\n"
 "event say1 say  at 0.0 0.0 0.0  text \"INCOMING FROM THE ROOFTOPS!\"  laps 2  delay 0  times once  chance 100  by player  on lap\n" },
