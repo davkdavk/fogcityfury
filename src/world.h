@@ -880,6 +880,16 @@ struct World {
     // the sea's surface: one big sheet, but with a hole wherever the tube's inside reaches up through the waterline
     // (near its ends, where the road is less than the tube's height under the sea), or the sea would show inside it.
     // There the sheet is laid in 1.5 m squares and the squares over the tube's inside are left out; the roof covers them.
+    // How much of the swell (shaders.h VS_WATER) the sea gets at a point: none in the shallows (it builds over the first
+    // ten metres of depth), none over a tunnel's patch of sea (it fades in over 14 m round it), none far out (past 650 m,
+    // gone by 800: the fine mesh ends there). The sea mesh carries it in each vertex's colour; game.cpp seaY uses it too
+    std::vector<float> patch;   // the tunnels' patches: x0 x1 z0 z1 each
+    float seaAmp(float x, float z) const {
+        if (dry(x, z)) return 0; float a = clampf((-H(x, z) - 0.5f) / 9.5f, 0, 1);
+        a *= clampf((800 - std::max(fabsf(x), fabsf(z))) / 150, 0, 1);
+        for (size_t k = 0; k + 3 < patch.size(); k += 4) { float dx = std::max(std::max(patch[k] - x, x - patch[k + 1]), 0.0f), dz = std::max(std::max(patch[k + 2] - z, z - patch[k + 3]), 0.0f); a *= clampf(sqrtf(dx * dx + dz * dz) / 14, 0, 1); }
+        return a;
+    }
     void seaSurface(MB& w) {
         std::vector<float> rx0, rx1, rz0, rz1; std::vector<std::pair<int, int>> runs;
         std::vector<Tun> runTun;   // (the tunnel each run belongs to)
@@ -908,13 +918,25 @@ struct World {
             }
             const float M = TUBE_W + 3; rx0.push_back(floorf((a0 - M) / 1.5f) * 1.5f); rx1.push_back(ceilf((a1 + M) / 1.5f) * 1.5f); rz0.push_back(floorf((b0 - M) / 1.5f) * 1.5f); rz1.push_back(ceilf((b1 + M) / 1.5f) * 1.5f);
         }
-        // the rest of the sheet, in rectangles round the patches
-        std::vector<float> xs = { -5000, 5000 }, zs = { -5000, 5000 }; for (size_t k = 0; k < rx0.size(); k++) { xs.push_back(rx0[k]); xs.push_back(rx1[k]); zs.push_back(rz0[k]); zs.push_back(rz1[k]); }
+        patch.clear(); for (size_t k = 0; k < rx0.size(); k++) { patch.push_back(rx0[k]); patch.push_back(rx1[k]); patch.push_back(rz0[k]); patch.push_back(rz1[k]); }
+        // the rest of the sheet, in rectangles round the patches: within 800 m a fine grid (8 m) the swell can move, beyond
+        // that one flat quad each
+        std::vector<float> xs = { -5000, -800, 800, 5000 }, zs = { -5000, -800, 800, 5000 }; for (size_t k = 0; k < rx0.size(); k++) { xs.push_back(rx0[k]); xs.push_back(rx1[k]); zs.push_back(rz0[k]); zs.push_back(rz1[k]); }
         std::sort(xs.begin(), xs.end()); std::sort(zs.begin(), zs.end());
         for (size_t i = 0; i + 1 < xs.size(); i++) for (size_t j = 0; j + 1 < zs.size(); j++) {
             float x0 = xs[i], x1 = xs[i + 1], z0 = zs[j], z1 = zs[j + 1]; if (x1 - x0 < 0.01f || z1 - z0 < 0.01f) continue; float cx = (x0 + x1) / 2, cz = (z0 + z1) / 2; bool inPatch = false;
             for (size_t k = 0; k < rx0.size(); k++) if (cx > rx0[k] && cx < rx1[k] && cz > rz0[k] && cz < rz1[k]) inPatch = true;
-            if (!inPatch) w.quad(V3(x0, 0, z0), V3(x0, 0, z1), V3(x1, 0, z1), V3(x1, 0, z0), V3(1, 1, 1), 0);
+            if (inPatch) continue;
+            if (fabsf(cx) > 800 || fabsf(cz) > 800) { w.quad(V3(x0, 0, z0), V3(x0, 0, z1), V3(x1, 0, z1), V3(x1, 0, z0), V3(0, 1, 1), 0); continue; }
+            int nx = std::max(1, (int)ceilf((x1 - x0) / 8)), nz = std::max(1, (int)ceilf((z1 - z0) / 8)); unsigned base = (unsigned)w.v.size();
+            for (int b = 0; b <= nz; b++) for (int a = 0; a <= nx; a++) { float x = x0 + (x1 - x0) * a / nx, z = z0 + (z1 - z0) * b / nz; w.add(V3(x, 0, z), V3(0, 1, 0), V3(seaAmp(x, z), 1, 1), 0, 0, 0); }
+            for (int b = 0; b < nz; b++) for (int a = 0; a < nx; a++) {
+                unsigned i0 = base + b * (nx + 1) + a, i1 = i0 + 1, i2 = i0 + (nx + 1), i3 = i2 + 1;
+                w.idx.push_back(i0); w.idx.push_back(i2); w.idx.push_back(i3); w.idx.push_back(i0); w.idx.push_back(i3); w.idx.push_back(i1);
+#ifdef FCF_XENOS_CULL
+                w.triTags.push_back(-1); w.triTags.push_back(-1);
+#endif
+            }
         }
         for (size_t k = 0; k < runs.size(); k++) for (float x = rx0[k]; x < rx1[k] - 0.01f; x += 1.5f) for (float z = rz0[k]; z < rz1[k] - 0.01f; z += 1.5f) {
             const std::vector<TS>& ts = tunPath(runTun[k]); float cx = x + 0.75f, cz = z + 0.75f, bd = 1e18f; int bi = runs[k].first;   // over the tube's inside? (nearest sample of the run, and the patch's own overlap)
@@ -931,19 +953,19 @@ struct World {
                 return e > 0 ? e + 0.08f : 0.0f;
             };
             float latC; float eC = edgeAt(V3(cx, 0, cz), latC);
-            if (eC <= 0 && fabsf(latC) > TUBE_W + 3) { w.quad(V3(x, 0, z), V3(x, 0, z + 1.5f), V3(x + 1.5f, 0, z + 1.5f), V3(x + 1.5f, 0, z), V3(1, 1, 1), 0); continue; }
+            if (eC <= 0 && fabsf(latC) > TUBE_W + 3) { w.quad(V3(x, 0, z), V3(x, 0, z + 1.5f), V3(x + 1.5f, 0, z + 1.5f), V3(x + 1.5f, 0, z), V3(0, 1, 1), 0); continue; }
             const int NS = 4; const float cs = 1.5f / NS;
             for (int sj = 0; sj < NS; sj++) for (int si = 0; si < NS; si++) {
                 float x0 = x + si * cs, z0 = z + sj * cs; V3 c[4] = { V3(x0, 0, z0), V3(x0, 0, z0 + cs), V3(x0 + cs, 0, z0 + cs), V3(x0 + cs, 0, z0) };
                 float kv[4]; bool any = false, all = true; float lm; edgeAt(V3(x0 + cs * 0.5f, 0, z0 + cs * 0.5f), lm); float sd = lm >= 0 ? 1.0f : -1.0f;   // which side of the tube this cell is on: keep sd*lat >= e
                 for (int q = 0; q < 4; q++) { float la, e = edgeAt(c[q], la); kv[q] = sd * la - e; if (kv[q] >= 0) any = true; else all = false; }
-                if (all) { w.quad(c[0], c[1], c[2], c[3], V3(1, 1, 1), 0); continue; }
+                if (all) { w.quad(c[0], c[1], c[2], c[3], V3(0, 1, 1), 0); continue; }
                 if (!any) continue;
                 std::vector<V3> poly;
                 for (int q = 0; q < 4; q++) { V3 a = c[q], b = c[(q + 1) % 4]; float ka = kv[q], kb = kv[(q + 1) % 4];
                     if (ka >= 0) poly.push_back(a);
                     if ((ka >= 0) != (kb >= 0)) { float u = ka / (ka - kb); poly.push_back(a + (b - a) * u); } }
-                for (size_t q = 1; q + 1 < poly.size(); q++) w.tri(poly[0], poly[q], poly[q + 1], V3(1, 1, 1), 0);
+                for (size_t q = 1; q + 1 < poly.size(); q++) w.tri(poly[0], poly[q], poly[q + 1], V3(0, 1, 1), 0);   // (V3(0,..): no swell over a tunnel)
             }
         }
     }

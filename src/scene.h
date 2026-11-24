@@ -126,6 +126,8 @@ static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !ca
         if (!lit || len(mech::unit[u].at - camPos) < 900) mech::draw(mech::unit[u], u, p, lit, mechT);
     if (mech::on) wfx::draw(p, lit, mechT);
     secret::drawUfo(p, lit);
+    dolphin::draw(p, lit);
+    jetdrop::draw(p, lit);
 } // (past 900 m the fog has it)
 
 #ifdef FCF_GFX_XSDK
@@ -400,7 +402,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         pCar.v3("uPaint", PAINTS[7]); pCar.f1("uChrome", 1); pCar.f1("uBrake", 0);
         for (size_t k = 0; k < W.keys.size(); k++) if (!(keysGot[W.id] >> k & 1)) { pCar.m4("uModel", mul(translate(W.keys[k] + V3(0, 0.25f * sinf(T * 2 + k), 0)), mul(rotY(T * 2.2f + k), scale(1.9f, 1.9f, 1.9f)))); keyMesh.draw(); }
     }
-    if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2);
+    if(DRAW_MASK & DM_WATER) { traceDraw("water"); gfx::blend(gfx::B_ALPHA); setCommon(pWater, VP, cam, hdr); pWater.i1("uHeight", 2); pWater.f1("uSea", seaNow()); pWater.f1("uSwell", W.space ? 0.0f : swellNow()); pWater.f1("uTide", W.space ? 0.0f : tideNow(T));
 #ifndef FCF_GFX_XSDK
         pWater.f1("uRipScale", std::max(0.1f, optRings * 0.01f)); pWater.f1("uRipAmp", optRings * 0.01f * RINGS_GAIN);
         for (int i = 0; i < 8; i++) {

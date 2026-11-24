@@ -20,8 +20,16 @@ chains, preview and save. This page is the reference for what the editor writes.
 | chance | 0-100%; the roll comes from the track and the event, so every game agrees | 100% |
 | whose car | the player, any car, the leader, a computer car | the player |
 
+Lines before the lines and events:
+
+    pod p1  210 -380  r 60  n 3  k 1        dolphins roaming this ring of sea all race: middle, radius, how many, size
+    drift 90                                the weather turns by itself about every 90 s (clear, rain, storm; clear, fog)
+
 Kinds now (the editor's name in brackets where it differs): **rocket** (flies to its target and bursts there, or on the first wall it meets), **blast** (EXPLOSION), **splash**,
-**shake**, **say** (MESSAGE: words on screen), **collapse** (BUILDING FALLS: the building there comes down). A rocket also has:
+**shake**, **say** (MESSAGE: words on screen), **collapse** (BUILDING FALLS: the building there comes down),
+**dolphin** (DOLPHIN LEAP: at `at` towards `to`; the nearest pod dolphin takes it, or one swims in; `k` its size),
+**weather** (`wx clear|rain|fog|storm  over SECONDS`; offline only), **minis** (`k` mini Wardens, 1-4, on the roof at `at`
+jetpack down to `to`). A rocket also has:
 
 | Setting | Values |
 | --- | --- |

@@ -18,11 +18,12 @@ static void update(float dt) {
     T += dt; frameNo++;
     if (logoT >= 0) { float t0 = logoT; logoT += dt; logoSounds(t0, logoT); if (logoT >= LOGO_LEN) logoT = -1; }
     if (pendingTrack >= 0 && (pendingT -= dt) <= 0) flushPendingTrack();
-    netPump(dt, state == NETLOBBY); netTrackPieces(); netShareFrame(dt); netVoteFrame(dt); netReact(); netRoamFrame(dt);
+    netPump(dt, state == NETLOBBY); netTrackPieces(); netEventPieces(); netShareFrame(dt); netVoteFrame(dt); netReact(); netRoamFrame(dt);
     if (state == NETJOIN && !nc.on) srvPump(dt);
-    if (nc.on && (netRace || state == NETLOBBY)) weather = nc.weather % NWX;   // online: the server picks
-    else if (state == TRACKSEL || state == CARSEL) weather = selWeather;
-    else if (state == TITLE || state == EDIT || state == EVEDIT) weather = W_CLEAR;
+    if (wxMixK < 1) { wxMixK = std::min(1.0f, wxMixK + dt / wxTurn); if (wxMixK >= 1) wxFrom = weather; }   // (weather turning mid-race)
+    if (nc.on && (netRace || state == NETLOBBY)) { if (weather != nc.weather % NWX) settleWeather(); weather = nc.weather % NWX; }   // online: the server picks
+    else if (state == TRACKSEL || state == CARSEL) { weather = selWeather; settleWeather(); }
+    else if (state == TITLE || state == EDIT || state == EVEDIT) { weather = W_CLEAR; settleWeather(); }
 #ifdef FCF_EDITOR
 #ifdef FCF_EDITOR
     if (state == EVEDIT) evx::update(dt);
@@ -174,8 +175,8 @@ static void update(float dt) {
     lockTgt = state == RACE && ammo > 0 && !player.dead && !me.on ? pickTarget() : -1;
     netBotsFrame(dt);   // online, if the server has made us the host: the bots' cars
     if (driving) { stepRockets(dt); stepWreckage(dt, state != TITLE); footFrame(dt); }
-    if (state == RACE && countdown <= 0 && !netRace) director::step(dt);
-    if (state == RACE || state == PAUSED || state == RESULTS) fall::step(dt);   // scripted events (online: 2.3, when the server sends them)
+    if (state == RACE && countdown <= 0) director::step(dt);   // (online too, 2.3: the server sends its file, netroam.h)
+    if (state == RACE || state == PAUSED || state == RESULTS) { fall::step(dt); if (state == RACE) { dolphin::step(dt); jetdrop::step(dt); } }   // scripted events
     // --- keys ---
     if (state == RACE) for (size_t k = 0; k < W.keys.size(); k++) {
         if (keysGot[W.id] >> k & 1) continue; V3 d = W.keys[k] - (avatarPos() + V3(0, 0.8f, 0));

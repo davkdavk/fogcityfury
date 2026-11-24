@@ -1,0 +1,5 @@
+# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)
+drift 120
+pod pod1  -455.0 -530.0  r 55  n 3  k 1
+event leap1 dolphin  at -430.0 0.0 -540.0  to -400.0 0.0 -550.0  k 1  laps all  delay 4  times lap  chance 100  by player  on lap
+event leap2 dolphin  at -470.0 0.0 -515.0  to -500.0 0.0 -500.0  k 1  laps all  delay 14  times lap  chance 100  by player  on lap

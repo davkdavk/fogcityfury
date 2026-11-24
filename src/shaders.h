@@ -20,6 +20,24 @@ void hide(inout vec4 w){
 void main(){ vec4 w = uModel*vec4(aP,1.0); hide(w); vP = w.xyz; vN = mat3(uModel)*aN; vC = aC; vUV = aUV; vMat = aM; gl_Position = uVP*w; }
 )";
 
+// The sea: swells. Three long waves (70, 41 and 23 m, each at the speed deep water carries it, from three directions)
+// lift and drop the surface; aC.x says how much at this vertex (0 at the shore, over a tunnel and far out, 1 in open
+// water: world.h seaSurface). uSwell: how big (from the weather); uTide: the whole sea rising and falling, slowly.
+// game.cpp seaY() is the same sum, for things that float.
+static const char* VS_WATER = R"(#version 330 core
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC;
+layout(location=3) in vec2 aUV; layout(location=4) in float aM;
+uniform mat4 uVP, uModel; uniform float uTime, uSwell, uTide;
+out vec3 vP, vN, vC; out vec2 vUV; out float vMat;
+void main(){
+  vec4 w = uModel*vec4(aP,1.0); float a = uSwell*aC.x, t = uTime;
+  vec2 k1 = vec2(0.0718, 0.0539), k2 = vec2(-0.0459, 0.1460), k3 = vec2(0.2594, -0.0819);
+  float p1 = dot(w.xz, k1) - 0.938*t, p2 = dot(w.xz, k2) - 1.226*t + 1.7, p3 = dot(w.xz, k3) - 1.637*t + 4.1;
+  w.y += a*(0.55*sin(p1) + 0.30*sin(p2) + 0.15*sin(p3)) + uTide;
+  vec2 g = a*(k1*(0.55*cos(p1)) + k2*(0.30*cos(p2)) + k3*(0.15*cos(p3)));
+  vP = w.xyz; vN = normalize(vec3(-g.x, 1.0, -g.y)); vC = aC; vUV = aUV; vMat = aM; gl_Position = uVP*w; }
+)";
+
 // Grass: the mesh shader, plus the wind and the fade. aUV.x: how far up its blade this corner is (the root stays put,
 // the tip moves most); aUV.y: a number of the blade's own; aN: the corner's offset from its tuft's root. Gusts roll
 // across the field (the slow wave), each blade flutters in them. uGrassFade: tufts grow from nothing between x and y
@@ -382,8 +400,9 @@ void main(){
 static const char* FS_WATER = R"(
 in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
 uniform sampler2D uHeight;
-float wh(vec2 p){ float t = uTime;
-  return fbm(p*0.09 + vec2(t*0.11, t*0.07))*1.4 + vnoise(p*0.55 + vec2(-t*0.5, t*0.33))*0.35 + vnoise(p*1.7 + vec2(t*0.9, -t*0.6))*0.10; }
+uniform float uSea;   // how rough the sea is, from the weather (0 flat calm, 0.18 a clear day, 1 a storm): the swell, its speed, whitecaps
+float wh(vec2 p){ float t = uTime*(1.0 + 0.8*uSea);
+  return fbm(p*0.09 + vec2(t*0.11, t*0.07))*(1.4 + 2.2*uSea) + vnoise(p*0.55 + vec2(-t*0.5, t*0.33))*(0.35 + 0.5*uSea) + vnoise(p*1.7 + vec2(t*0.9, -t*0.6))*0.10; }
 #ifdef FCF_RIPPLE
 // Rings from splashes (x, z, age in seconds, strength; strength 0: none). Each is one band of waves that spreads and
 // fades. Returns the slope of the water in x and z, and its height
@@ -398,16 +417,16 @@ void main(){
   vec2 huv = (vP.xz+768.0)/1536.0;
   float th = texture(uHeight, clamp(huv, 0.0, 1.0)).r;
   if(huv.x<0.0||huv.x>1.0||huv.y<0.0||huv.y>1.0) th = -30.0;
-  float depth = -th;
+  float depth = vP.y - th;   // (the swell and the tide: VS_WATER)
   if(depth < -0.02) discard;
   float dist = length(uCamPos-vP);
   float e = 0.35;
   float h0 = wh(vP.xz), hx = wh(vP.xz+vec2(e,0.0)), hz = wh(vP.xz+vec2(0.0,e));
   float k = 0.9/(1.0+dist*0.012);
-  vec3 n = vec3(-(hx-h0)/e*k, 1.0, -(hz-h0)/e*k); float crest = 0.0;
+  vec3 n = vec3(-(hx-h0)/e*k + vN.x/vN.y, 1.0, -(hz-h0)/e*k + vN.z/vN.y); float crest = max(uSea - 0.35, 0.0)*smoothstep(0.62, 0.9, h0/(1.6 + 2.4*uSea))*1.6;   // (whitecaps on the swell's tops, rough weather only)
 #ifdef FCF_RIPPLE
   vec3 rp = rip(uRip0, vP.xz) + rip(uRip1, vP.xz) + rip(uRip2, vP.xz) + rip(uRip3, vP.xz) + rip(uRip4, vP.xz) + rip(uRip5, vP.xz) + rip(uRip6, vP.xz) + rip(uRip7, vP.xz);
-  n.xz -= rp.xy*1.3; crest = max(rp.z, 0.0);
+  n.xz -= rp.xy*1.3; crest = max(crest, max(rp.z, 0.0));
 #endif
   n = normalize(n);
   vec3 V = normalize(uCamPos-vP);

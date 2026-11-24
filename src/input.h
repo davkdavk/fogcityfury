@@ -195,7 +195,9 @@ static void printJSON(FILE* o) {
             (int)W.boxes.size(), W.propTris, wfx::rounds, wfx::aimErr, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
-    fprintf(o, "\"fallen\":%d,\"lots\":%d,", fall::fallenTotal, (int)W.lots.size());
+    fprintf(o, "\"fallen\":%d,\"lots\":%d,\"leaps\":%d,\"dolphinSplashes\":%d,\"dolphinRings\":%d,", fall::fallenTotal, (int)W.lots.size(), dolphin::leaps, dolphin::splashesIn, dolphin::ringsOut);
+    fprintf(o, "\"podDolphins\":%d,\"dolphinsNow\":%d,\"podLeaps\":%d,\"swum\":%.0f,\"dolphinMinDepth\":%.2f,\"jetDrops\":%d,\"jetLanded\":%d,\"jetShots\":%d,\"wxNow\":%d,\"wxTurns\":%d,\"wxMix\":%.2f,\"sea\":%.2f,\"pods\":%d,\"drift\":%.0f,\"eventsFrom\":\"%s\",\"netEventFiles\":%d,",
+            dolphin::poddies, (int)dolphin::dols.size(), dolphin::fromPod, dolphin::swum, dolphin::minDepth, jetdrop::drops, jetdrop::landed, jetdrop::shots, weather, director::turns, wxMixK, seaNow(), (int)director::pods.size(), director::drift, director::loadedFrom.c_str(), netEventFiles);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
     fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);
@@ -408,3 +410,23 @@ static void branchScan(int t) {
     printf("]}\n");
 }
 
+
+// --survey: for making a track's event file. Along the lap (every 40 m of road): the deepest sea within 25-110 m of the
+// road, and the tallest building within 12-45 m of it; one JSON line each
+static void survey() {
+    printf("{\"track\":%d,\"n\":%d,\"sea\":[", W.id, W.n); bool first = true; float acc = 0;
+    for (int i = 0; i < W.n; i++) {
+        if (i) acc += sqrtf((W.ts[i].x - W.ts[i - 1].x) * (W.ts[i].x - W.ts[i - 1].x) + (W.ts[i].z - W.ts[i - 1].z) * (W.ts[i].z - W.ts[i - 1].z)); if (i && acc < 40) continue; acc = 0;
+        const TS& s = W.ts[i]; float bd = 0; V3 bp;
+        for (int side = -1; side <= 1; side += 2) for (float lat = 25; lat <= 110; lat += 5) { float x = s.x + s.tz * lat * side, z = s.z - s.tx * lat * side, d = -W.HW(x, z); if (d > bd) { bd = d; bp = V3(x, 0, z); } }
+        if (bd > 5) { printf("%s[%d,%.0f,%.0f,%.1f]", first ? "" : ",", i, bp.x, bp.z, bd); first = false; }
+    }
+    printf("],\"towers\":["); first = true; acc = 0;
+    for (int i = 0; i < W.n; i++) {
+        if (i) acc += sqrtf((W.ts[i].x - W.ts[i - 1].x) * (W.ts[i].x - W.ts[i - 1].x) + (W.ts[i].z - W.ts[i - 1].z) * (W.ts[i].z - W.ts[i - 1].z)); if (i && acc < 40) continue; acc = 0;
+        const TS& s = W.ts[i]; int best = -1; float bh = 18;
+        for (int b = 0; b < (int)W.boxes.size(); b++) { const Box& x = W.boxes[b]; float d = sqrtf((x.cx - s.x) * (x.cx - s.x) + (x.cz - s.z) * (x.cz - s.z)), h = x.top - x.y0; if (d > 12 && d < 45 && h > bh && fall::lotAt(V3(x.cx, x.top, x.cz)) >= 0) { bh = h; best = b; } }
+        if (best >= 0) { const Box& x = W.boxes[best]; printf("%s[%d,%.0f,%.0f,%.0f,%.0f,%.0f,%.0f]", first ? "" : ",", i, x.cx, x.cz, x.top, bh, s.x, s.z); first = false; }
+    }
+    printf("]}\n");
+}

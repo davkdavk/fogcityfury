@@ -27,7 +27,7 @@ struct Player { bool bot = false;   // computer-driven: it has no address; the h
     bool suspect = false;   // claimed an impossible finish this race
     double loadNote = -99;  // when its game last said it was building a track (F_LOADING): it is given LOAD_GRACE seconds
     bool used = false; sockaddr_in addr; char name[NAMELEN + 1]; double lastHeard = 0; CarState s; bool ready = false, racing = false, finished = false; double finishT = 0; int finishOrder = 0; uint32_t seq = 0;
-    uint8_t have = 255; int chunkNext = 0;                     // the custom track its game has; the next piece of the current one to send it
+    uint8_t have = 255; int chunkNext = 0, evNext = 0;         // the custom track its game has; the next piece of the current one to send it; of its event file
     bool footOn = false; FootState foot; uint32_t footSeq = 0; double footHeard = -9; };   // roam: its player on foot
 static Player P[MAXP];
 // wxMode 1: a new random weather for every race
@@ -38,6 +38,23 @@ struct Slot { int player = -1; bool heard = false, alive = false; int place = 0,
 // custom tracks (--tracks DIR): their files' text, sent to the games that need them. Track ids TRACKS and up
 struct CustomTrack { std::string name, text; uint32_t crc = 0; bool shared = false; double added = 0; }; static std::vector<CustomTrack> CT;   // shared: a player's (C_TRACK), never in the rotation
 static int nTracks() { return TRACKS + (int)CT.size(); }
+// Event files (events.h: the race director's script for a track): read from --events DIR (default events/ beside the
+// server, if there is one) as trackN.fcfe for a built-in track and <name>.fcfe for a custom one (or beside the custom
+// track's file). The current track's goes out in pieces (S_EVENTS); a track with none sends nothing, and the games use
+// what they have built in.
+struct EvFile { std::string text; uint32_t crc = 0; }; static std::unordered_map<int, EvFile> EV;
+static bool readText(const std::string& p, std::string& out) { FILE* f = fopen(p.c_str(), "rb"); if (!f) return false; char b[1024]; size_t k; out.clear(); while ((k = fread(b, 1, sizeof b, f)) > 0 && out.size() <= (size_t)TRACKFILE_MAX) out.append(b, k); fclose(f); return true; }
+static void loadEvents(const char* dir, const char* tracksDir) {
+    for (int t = 0; t < nTracks(); t++) {
+        std::string body, p; bool got = false;
+        if (t < TRACKS) got = dir && readText(std::string(dir) + "/track" + std::to_string(t) + ".fcfe", body);
+        else { std::string n = CT[t - TRACKS].name; if (n.size() > 5) n = n.substr(0, n.size() - 5);
+            got = (dir && readText(std::string(dir) + "/" + n + ".fcfe", body)) || (tracksDir && readText(std::string(tracksDir) + "/" + n + ".fcfe", body)); }
+        if (!got || body.empty()) continue;
+        if (body.size() > (size_t)TRACKFILE_MAX) { printf("skipping the event file for track %d: over %d bytes\n", t, TRACKFILE_MAX); continue; }
+        EvFile e; e.text = body; e.crc = crc32(body.data(), (int)body.size()); EV[t] = e; printf("  events for track %d (%d bytes)\n", t, (int)body.size());
+    }
+}
 static void loadTracks(const char* dir) {
 #ifndef _WIN32
     std::vector<std::string> names; if (DIR* dp = opendir(dir)) { while (dirent* e = readdir(dp)) { std::string n = e->d_name; if (n.size() > 5 && n.compare(n.size() - 5, 5, ".fcft") == 0) names.push_back(n); } closedir(dp); }
@@ -305,6 +322,13 @@ static void sendTrackPieces() {
         m.len = (uint16_t)std::min((int)c.text.size() - k * CHUNK, CHUNK); m.total = (uint16_t)c.text.size(); m.crc = c.crc; memcpy(m.data, c.text.data() + k * CHUNK, m.len);
         sendTo(sock, p.addr, &m, (int)(sizeof m - CHUNK + m.len)); }
 }
+static void sendEventPieces(uint32_t tick) {   // twice a second a piece each (a file is a few pieces): games that join late get it too
+    if (tick % 10 != 0) return; auto it = EV.find(track); if (it == EV.end()) return; const EvFile& e = it->second; int n = (int)((e.text.size() + CHUNK - 1) / CHUNK);
+    for (int i = 0; i < MAXP; i++) { Player& p = P[i]; if (!p.used || p.bot) continue;
+        int k = p.evNext++ % n; TrackChunk m; memset(&m, 0, sizeof m); m.h = header(S_EVENTS, 0xFF); m.track = (uint8_t)track; m.chunk = (uint8_t)k; m.nchunks = (uint8_t)n;
+        m.len = (uint16_t)std::min((int)e.text.size() - k * CHUNK, CHUNK); m.total = (uint16_t)e.text.size(); m.crc = e.crc; memcpy(m.data, e.text.data() + k * CHUNK, m.len);
+        sendTo(sock, p.addr, &m, (int)(sizeof m - CHUNK + m.len)); }
+}
 static void sendVote() {
     Vote m; memset(&m, 0, sizeof m); m.h = header(S_VOTE, 0xFF); m.track = (uint8_t)vote.track; m.by = (uint8_t)std::max(0, vote.by); m.open = vote.open; m.passed = vote.passed; m.left = (float)vote.left;
     for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot) { m.voters++; if (vote.ans[i] == 1) m.yes++; if (vote.ans[i] == 2) m.no++; }
@@ -358,10 +382,10 @@ static void sendSnapshots(uint32_t tick) {
 }
 
 int main(int argc, char** argv) {
-    int port = DEFPORT, trackArg = 0; const char* tracksDir = nullptr; bool customOnly = false;
+    int port = DEFPORT, trackArg = 0; const char* tracksDir = nullptr; const char* eventsDir = nullptr; bool customOnly = false;
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto next = [&] { return i + 1 < argc ? argv[++i] : (char*)"0"; };
-        if (a == "--port") port = atoi(next()); else if (a == "--laps") laps = std::max(1, std::min(20, atoi(next()))); else if (a == "--track") trackArg = atoi(next()); else if (a == "--tracks") tracksDir = next(); else if (a == "--custom-only") customOnly = true;
+        if (a == "--port") port = atoi(next()); else if (a == "--laps") laps = std::max(1, std::min(20, atoi(next()))); else if (a == "--track") trackArg = atoi(next()); else if (a == "--tracks") tracksDir = next(); else if (a == "--events") eventsDir = next(); else if (a == "--custom-only") customOnly = true;
         else if (a == "--roam") cfgRoam = true;
         else if (a == "--no-uploads") cfgUploads = false;
         else if (a == "--rate") cfgRate = std::max(10.0, atof(next()));
@@ -402,11 +426,18 @@ int main(int argc, char** argv) {
                    "  --rate N           packets a second one address may send before the rest are dropped (default 150)\n"
                    "  --min-lap S        a finish faster than S seconds a lap is not believed (default 12)\n"
                    "  --roam             a roam server: no laps, everyone drives and walks the island together (mini Wardens included)\n"
+                   "  --events DIR       event files (trackN.fcfe, <custom name>.fcfe) to send the games (default: events/ if there)\n"
                    "  --roam-minutes M   roam: move on to the next track every M minutes (default: stay)\n", DEFPORT, TRACKS - 1, TRACKS);
             return a == "--help" ? 0 : 2;
         }
     }
     if (tracksDir) { loadTracks(tracksDir); printf("%d custom track(s) from %s\n", (int)CT.size(), tracksDir); for (size_t k = 0; k < CT.size(); k++) printf("  %d: %s\n", TRACKS + (int)k, CT[k].name.c_str()); }
+#ifndef _WIN32
+    { DIR* dp = eventsDir ? nullptr : opendir("events"); if (dp) { closedir(dp); eventsDir = "events"; } }
+#else
+    if (!eventsDir) { FILE* f = fopen("events/track0.fcfe", "rb"); if (f) { fclose(f); eventsDir = "events"; } }
+#endif
+    if (eventsDir || tracksDir) { printf("event files from %s\n", eventsDir ? eventsDir : tracksDir); loadEvents(eventsDir, tracksDir); }
     if (customOnly && CT.empty()) { fprintf(stderr, "--custom-only: no custom tracks\n"); return 2; }
     track = ((trackArg % nTracks()) + nTracks()) % nTracks(); if (customOnly && track < TRACKS) track = TRACKS;   // (no shared tracks yet: all of these are in the rotation)
     sock = openUdp(port); if (sock < 0) { fprintf(stderr, "cannot bind UDP port %d\n", port); return 1; }
@@ -462,7 +493,7 @@ int main(int argc, char** argv) {
             break;
         }
         stepVote(dt, t);
-        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); if (tick % 5 == 0 && (vote.open || t - vote.closedT < 1.5)) sendVote(); }   // (roam: 15 times a second)
+        if (t - lastSnap >= 0.05) { lastSnap = t; sendSnapshots(tick++); if (phase == SHOWDOWN) sendShowdown(tick); sendTrackPieces(); sendEventPieces(tick); if (phase == ROAM && tick % 4 != 0) sendRoam(tick); if (tick % 5 == 0 && (vote.open || t - vote.closedT < 1.5)) sendVote(); }   // (roam: 15 times a second)
         sleepMs(4);
     }
     say("shutting down"); closeSock(sock); return 0;

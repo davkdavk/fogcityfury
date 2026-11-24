@@ -23,6 +23,7 @@ static struct NetClient {
     char host[96] = "127.0.0.1:27015", name[net::NAMELEN + 1] = "PLAYER", error[64] = "";
     Remote r[net::MAXP]; net::Snapshot snap;
     std::vector<net::TrackChunk> pieces;    // pieces of a custom track file, waiting to be put together (netroam.h)
+    std::vector<net::TrackChunk> evPieces;  // pieces of the server's event file for its track (netroam.h)
     net::Vote vote; bool voteGot = false; float voteSeen = 9; uint8_t voteAnswer = 0, voteTrack = 255;   // a shared track's vote (S_VOTE): our answer, 0 none yet
     net::Roam roam; bool roamGot = false; uint32_t roamTick = 0;   // online roam: everyone on foot and the mini Wardens, as the server last sent them
     net::Showdown sd; bool sdGot = false; uint32_t sdTick = 0;   // the showdown as the server last described it (netshd.h acts on it)
@@ -87,6 +88,9 @@ static void netPump(float dt, bool inLobby) {
             memset(&m, 0, sizeof m);
             memcpy(&m, buf, std::min(n, (int)sizeof m));
             if (m.len <= net::CHUNK && n >= (int)offsetof(net::TrackChunk, data) + m.len) nc.pieces.push_back(m);
+        } else if (h.type == net::S_EVENTS && n >= (int)offsetof(net::TrackChunk, data) && nc.connected && nc.evPieces.size() < 64) {
+            net::TrackChunk m; memset(&m, 0, sizeof m); memcpy(&m, buf, std::min(n, (int)sizeof m));
+            if (m.len <= net::CHUNK && n >= (int)offsetof(net::TrackChunk, data) + m.len) nc.evPieces.push_back(m);
         } else if (h.type == net::S_VOTE && n >= (int)sizeof(net::Vote) && nc.connected) {
             memcpy(&nc.vote, buf, sizeof nc.vote);
             nc.vote.name[sizeof nc.vote.name - 1] = 0;

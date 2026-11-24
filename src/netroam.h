@@ -62,6 +62,24 @@ static void netVoteFrame(float dt) {
     static float sendT = 0; sendT -= dt;
     if (nc.voteAnswer && sendT <= 0) { sendT = 0.25f; net::VoteMsg m; memset(&m, 0, sizeof m); m.h = net::header(net::C_VOTE, (uint8_t)nc.id); m.track = nc.vote.track; m.answer = nc.voteAnswer; net::sendTo(nc.sock, nc.addr, &m, sizeof m); }
 }
+// the server's event file for its track (S_EVENTS), put together: the race director plays it online (events.h load).
+// A race that has just started takes it at once; otherwise the next race does
+static struct { int id = -1; uint32_t crc = 0, have = 0; int total = 0, n = 0; std::string data; std::vector<uint8_t> got; } ebuf;
+static int netEventFiles = 0;   // test metric: event files received whole
+static void netEventPieces() {
+    for (const net::TrackChunk& m : nc.evPieces) {
+        if (m.nchunks == 0 || m.chunk >= m.nchunks || m.total > net::TRACKFILE_MAX || (int)m.chunk * net::CHUNK + m.len > m.total) continue;
+        if (ebuf.id != m.track || ebuf.crc != m.crc || ebuf.total != m.total) { if (ebuf.have == m.crc && ebuf.id == m.track) continue;
+            ebuf.id = m.track; ebuf.crc = m.crc; ebuf.total = m.total; ebuf.n = m.nchunks; ebuf.data.assign(m.total, 0); ebuf.got.assign(m.nchunks, 0); ebuf.have = 0; }
+        if (ebuf.have == m.crc) continue;
+        memcpy(&ebuf.data[m.chunk * net::CHUNK], m.data, m.len); ebuf.got[m.chunk] = 1;
+        bool all = true; for (uint8_t g : ebuf.got) if (!g) all = false; if (!all) continue;
+        if (net::crc32(ebuf.data.data(), ebuf.total) != ebuf.crc) { ebuf.id = -1; continue; }
+        ebuf.have = ebuf.crc; netEventFiles++; director::netBody = ebuf.data; director::netTrack = netLocalTrack(m.track);
+        if (netRace && state == RACE && W.id == director::netTrack && raceT < 8) { director::reset(); fall::reset(); dolphin::reset(); jetdrop::reset(); }
+    }
+    nc.evPieces.clear();
+}
 static void netTrackPieces() {
     if (!nc.on) { srvTrackReady = false; nc.pieces.clear(); return; }
     if (srvTrackHost != nc.host) { srvTrackHost = nc.host; srvTrackReady = false; tbuf.id = -1; }   // another server: its track ids mean other tracks

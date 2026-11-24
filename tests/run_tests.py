@@ -649,6 +649,85 @@ def net_two_game_clients_race_each_other():
 
 
 @test
+def net_server_sends_its_event_file():
+    """2.3: a server with an event file for its track sends it (S_EVENTS, in pieces); the game puts it together and its
+    race director plays it in the online race (here a message, a blast and a dolphin pod on Hilltop Heights)."""
+    import tempfile
+    d = tempfile.mkdtemp()
+    open(os.path.join(d, "track0.fcfe"), "w").write('pod p1  -544 -311  r 40  n 2  k 1\nevent s1 say  text "FROM THE SERVER"  on time 2\n'
+                                                     'event b1 blast  at -300 20 -260  k 1  on time 3\n')
+    with Server("--laps", 1, "--countdown", 1, "--events", d) as srv:
+        p = subprocess.Popen([BIN, "--sim", "--connect", "127.0.0.1:%d" % srv.port, "--name", "eve", "--ready", "--auto", "--seconds", "12"], stdout=subprocess.PIPE, text=True)
+        r = json.loads(p.communicate(timeout=60)[0].strip().splitlines()[-1])
+    check(r["netRace"] == 1 and r["netError"] == "", "in the online race", (r["netRace"], r["netError"]))
+    check(r["netEventFiles"] >= 1 and r["eventsFrom"] == "server", "the game has the server's event file", (r["netEventFiles"], r["eventsFrom"]))
+    check(r["eventsLoaded"] == 2 and r["events"] == 2 and r["pods"] == 1 and r["podDolphins"] == 2, "and plays it: both events, the pod", (r["eventsLoaded"], r["events"], r["pods"], r["podDolphins"]))
+    check("events for track 0" in srv.log, "the server read it", srv.log[-300:])
+
+@test
+def dolphins_roam_the_sea_and_leap_where_told():
+    """2.3 dolphin.h: a pod lives in its ring of sea all race, wandering, keeping to deep water and surfacing to breathe;
+    a leap event takes the nearest one there (a small ring as it comes out, a splash as it goes back in). With no pod,
+    one swims in for the leap. A leap on dry land is ignored."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("pod p1  -455 -530  r 55  n 3  k 1\nevent l1 dolphin  at -430 0 -540  to -400 0 -550  on time 2\n"
+                       "event l2 dolphin  at -470 0 -515  to -500 0 -500  on time 9\n")
+    d = sim("--track", 1, "--state", 3, "--events", f, seconds=25)
+    check(d["pods"] == 1 and d["podDolphins"] == 3 and d["dolphinsNow"] == 3, "a pod of three, all still there", (d["pods"], d["podDolphins"], d["dolphinsNow"]))
+    check(d["swum"] > 200 and d["dolphinMinDepth"] > 2.5, "they roam, in deep water", (d["swum"], d["dolphinMinDepth"]))
+    check(d["podLeaps"] == 2 and d["leaps"] == 2 and d["dolphinSplashes"] == 2 and d["dolphinRings"] == 2, "two leaps by the pod: out with a ring, in with a splash", (d["podLeaps"], d["leaps"], d["dolphinSplashes"], d["dolphinRings"]))
+    open(f, "w").write("event l1 dolphin  at -430 0 -540  to -400 0 -550  on time 1\nevent l2 dolphin  at -200 0 -118  to -190 0 -118  on time 1\n")
+    e = sim("--track", 1, "--state", 3, "--events", f, seconds=18)
+    check(e["leaps"] == 1 and e["podLeaps"] == 0 and e["dolphinsNow"] == 0, "no pod: one swims in, leaps and goes; the one on land never comes", (e["leaps"], e["podLeaps"], e["dolphinsNow"]))
+
+
+@test
+def weather_turns_in_a_race():
+    """2.3: a weather event turns it (over its seconds, blending fog, light, grip and the sea); a track whose weather
+    drifts turns it now and then by itself, telling you. Online the server's weather holds."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("event w1 weather  wx storm  over 4  on time 2\n")
+    d = sim("--track", 1, "--state", 3, "--weather", 0, "--events", f, seconds=4)
+    check(d["wxNow"] == 3 and 0.2 < d["wxMix"] < 0.8, "half way through turning to storm", (d["wxNow"], d["wxMix"]))
+    d = sim("--track", 1, "--state", 3, "--weather", 0, "--events", f, seconds=9)
+    check(d["wxNow"] == 3 and d["wxMix"] == 1 and d["sea"] > 0.95, "a storm, and a rough sea", (d["wxNow"], d["wxMix"], d["sea"]))
+    open(f, "w").write("drift 20\n")
+    d = sim("--track", 1, "--state", 3, "--weather", 0, "--events", f, seconds=70)
+    check(d["drift"] == 20 and d["wxTurns"] >= 2, "drifting weather turns by itself", (d["drift"], d["wxTurns"]))
+
+
+@test
+def mini_wardens_jetpack_off_a_roof():
+    """2.3 jetdrop.h: a minis event puts mini Wardens on a roof; one by one they jetpack down to the roadside, and
+    take a shot at you as you come by."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("event m1 minis  at -147 30 -93  to -170 0 -110  k 3  on time 1\n")
+    d = sim("--track", 0, "--state", 3, "--events", f, seconds=8)
+    check(d["jetDrops"] == 3 and d["jetLanded"] == 3, "three came down", (d["jetDrops"], d["jetLanded"]))
+    m = sim("--track", 3, "--state", 3, "--auto", "--nobotguns", seconds=110)
+    check(m["jetLanded"] == 3 and m["jetShots"] >= 1, "Midnight Mile's drop: they land and shoot", (m["jetLanded"], m["jetShots"]))
+
+
+@test
+def the_editor_makes_dolphins_minis_and_weather():
+    """2.3 fcfedit: the DOLPHINS moment (click the sea for the pod, then each leap spot), MINI WARDENS (where cars set it
+    off, the roof, where they land) and WEATHER CHANGE, saved and loaded back."""
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    script = ("moment 7; click -455 -530; click -430 -540; click -470 -515; enter; "
+              "moment 8; lapstart; click -363 -93; click -396 -97; moment 9; lapstart; drift 90; save")
+    subprocess.run([BIN, "--sim", "--seconds", "0.1", "--evedit", "--track", "1", "--evscript", script], cwd=tmp, capture_output=True, timeout=120)
+    f = os.path.join(tmp, "events", "track1.fcfe")
+    check(os.path.exists(f), "saved")
+    if not os.path.exists(f): return
+    t = open(f).read()
+    check(t.count("\npod ") == 2 and t.count(" dolphin ") == 4, "a pod and two leaps (with Bayside's own pod and two)", t[:300])
+    check(" minis " in t and " weather " in t and "drift 90" in t, "the minis, the weather and the drift", t[:400])
+
+@test
 def net_roam_server_shares_mini_wardens():
     """A --roam server: everyone free-roams the same city. The host's game runs the mini Wardens; a guest sees them,
     punches one out and gets its flowers."""
@@ -1889,17 +1968,20 @@ def the_wardens_minigun_tracks_and_fires_bursts():
 
 @test
 def the_race_director_plays_a_tracks_events():
-    """Hilltop Heights' events (events/track0.fcfe): on lap 1, at gate0, a Warden's misfire (a rocket from the nearest
-    Warden's cannon) brings down the tower ahead, with a message after it. Three laps: 2 events, one building down. The file is
-    built into the game too (src/events_builtin.h, for the 360 and Android), and that copy is up to date."""
+    """Hilltop Heights' events (events/track0.fcfe): on lap 1, at Warden 1's line, its misfire brings down the tower
+    ahead, with a message after it; a pod of two dolphins off the start, one leaping every lap. Three laps: 5 events,
+    one building down, three leaps. The file is built into the game too (src/events_builtin.h, for the 360 and
+    Android), and that copy is up to date. 2.3: every built-in track has a scripted moment."""
     d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=230)
-    check(d["eventsLoaded"] == 2 and d["eventLines"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"]))
-    check(d["lap"] >= 3 and d["events"] == 2, "three laps: the misfire and its message, once", (d["lap"], d["events"]))
+    check(d["eventsLoaded"] == 3 and d["eventLines"] == 1 and d["pods"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"], d["pods"]))
+    check(d["lap"] >= 3 and d["events"] == 5, "three laps: the misfire and its message once, a leap a lap", (d["lap"], d["events"]))
     check(d["fallen"] == 1 and d["finished"] == 1 and d["wrecks"] == 0, "the misfire brings the tower down, and the race goes on", (d["fallen"], d["finished"], d["wrecks"]))
+    check(d["leaps"] == 3 and d["podLeaps"] == 3, "the pod's dolphins take the leaps", (d["leaps"], d["podLeaps"]))
     sys.path.insert(0, os.path.join(ROOT, "tools")); import embed_events
     check(embed_events.build() == open(os.path.join(ROOT, "src", "events_builtin.h")).read(), "src/events_builtin.h matches events/ (run tools/embed_events.py)")
-    e = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=20)
-    check(e["eventsLoaded"] == 0 and e["events"] == 0, "a track without an event file has none", (e["eventsLoaded"], e["events"]))
+    for t in range(1, 7):
+        e = sim("--track", t, "--state", 3, seconds=1)
+        check(e["eventsLoaded"] + e["pods"] > 0, "track %d has a scripted moment" % t, (e["eventsLoaded"], e["pods"]))
 
 
 @test
@@ -1939,10 +2021,10 @@ def the_event_editor_saves_files_the_game_races():
     check(os.path.exists(f), "the editor saved events/track1.fcfe")
     if not os.path.exists(f): return
     txt = open(f).read()
-    check(txt.count("\nline ") == 1 and txt.count("\nevent ") == 5, "one line and five events in the file", txt[:300])
+    check(txt.count("\nline ") == 1 and txt.count("\nevent ") == 7, "one line and five events in the file (and Bayside's two leaps)", txt[:300])
     check("on after rocket1" in txt and "laps 2" in txt and "chance 0" in txt and 'text "LAP TWO"' in txt, "with their settings")
     runs = [sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=230) for _ in range(2)]
-    check(runs[0]["eventsLoaded"] == 5 and runs[0]["events"] == 4, "a race fires the four that can happen", (runs[0]["eventsLoaded"], runs[0]["events"]))
+    check(runs[0]["eventsLoaded"] == 7 and runs[0]["events"] >= 4, "a race fires the ones that can happen", (runs[0]["eventsLoaded"], runs[0]["events"]))
     check(runs[0] == runs[1], "the same way twice")
     p = subprocess.run([BIN, "--sim", "--seconds", "60", "--auto", "--evedit", "--track", "0", "--evscript", "event shake 0 0 0; set on time 3; preview"],
                        cwd=tmp, capture_output=True, text=True, timeout=200)
@@ -1966,9 +2048,9 @@ def a_warden_misfire_is_one_click_in_the_editor():
     if not os.path.exists(f): return
     txt = open(f).read()
     check("line warden2 " in txt and "from warden2" in txt and "on warden2" in txt and "on after misfire2" in txt, "Warden 2's misfire: its line, its rocket, its words", txt[:400])
-    check(txt.count("\nline ") == 2 and txt.count("\nevent ") == 5, "two lines (Wardens 1 and 2) and five events", txt.count("\nevent "))
+    check(txt.count("\nline ") == 2 and txt.count("\nevent ") == 6, "two lines (Wardens 1 and 2) and six events (Hilltop's three, three new)", txt.count("\nevent "))
     r = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=120)
-    check(r["eventsLoaded"] == 5 and r["events"] == 5, "a race sets off all five", (r["eventsLoaded"], r["events"]))
+    check(r["eventsLoaded"] == 6 and r["events"] >= 6, "a race sets off all six", (r["eventsLoaded"], r["events"]))
 
 @test
 def the_ronin_120_comes_from_blender_and_races():

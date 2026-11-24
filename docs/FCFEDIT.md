@@ -58,6 +58,9 @@ Press `N` (or **+ NEW MOMENT**), choose what happens, then click what the orange
 | **Screen shake** | where cars set it off |
 | **Message** | where cars set it off, then type the words and press `Enter` |
 | **Building falls** | where cars set it off → the building (it comes down by itself, no rocket) |
+| **Dolphins** | the open sea where the pod lives → each spot where they leap (`Enter` when done) |
+| **Mini Wardens** | where cars set it off → the roof → where they land beside the road (`Enter`: the nearest roadside) |
+| **Weather change** | where cars set it off, then choose what it turns to (TURNS TO) and how long it takes (OVER) |
 
 For "where cars set it off" you can also:
 - click a line you already have, to reuse it
@@ -67,6 +70,34 @@ For "where cars set it off" you can also:
 
 **Chaining.** Select any step and click **+ THEN…** under its settings. Whatever you make next happens after that step
 (half a second later; change it with DELAY). For example: misfire → screen shake → "LOOK OUT!".
+
+## Dolphins
+
+![A pod's ring of sea and two leap spots](img/fcfedit-dolphins.jpg)
+
+Press `D` (or choose **DOLPHINS** in a new moment) and click open sea.
+
+- **The pod.** Its dolphins live inside the dashed ring for the whole race: wandering, keeping to deep water and
+  surfacing every few seconds to breathe.
+  - Drag the middle of the ring to move it, and the square on its edge to size it.
+  - The pod's panel sets HOW MANY (1–6) and SIZE.
+- **Leap spots.** Each click after the pod is one. Every lap, a few seconds apart, the nearest dolphin swims to the
+  spot and leaps the way its arc points. Drag the small ring at the end of the arc to change the direction.
+  - Like any event, a leap can instead be set off by a line, a time or another event.
+  - With no pod near, a dolphin swims in for the leap and away again.
+- **+ LEAP SPOTS** on the pod's panel adds more.
+
+## The event list and timeline
+
+![The event list: each moment and its laps](img/fcfedit-list.jpg)
+
+Press `E` for the event list. It shows:
+- every pod
+- every moment (with the number of steps chained after it)
+- the laps each moment can happen on
+
+Click a name to select it, or click a lap square to turn that lap on or off. **WEATHER DRIFTS** at the top sets
+how often the track's weather turns by itself (off, 60, 90, 150 or 240 s).
 
 ## The settings panel
 
@@ -83,6 +114,8 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 | WHOSE CAR | the player, any car, the leader, a computer car |
 | TARGET / FIRED FROM / COLLAPSE | rockets only: what it hits, which Warden fires it, whether that building comes down |
 | TEXT | messages only: click it and type |
+| TURNS TO / OVER | weather only: clear, rain, fog or storm, and how many seconds the change takes |
+| SIZE | a dolphin's size; for mini Wardens, HOW MANY (1–4) |
 
 ## Keys
 
@@ -93,7 +126,9 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 | `N` | new moment |
 | `6` | place a Warden (then click it for **+ MISFIRE**) |
 | `L` | draw a line by hand (click its two ends) |
-| `1`–`5`, `7` | place a single event by hand: rocket, explosion, splash, shake, message, building falls |
+| `1`–`5`, `7`–`9`, `0` | place a single event by hand: rocket, explosion, splash, shake, message, building falls, dolphin leap, mini Wardens, weather |
+| `D` | dolphins: a pod, then its leap spots |
+| `E` | the event list and timeline |
 | `DEL` | remove the selection (removing a step also removes the steps chained after it) |
 | `CTRL+Z` / `CTRL+S` | undo / save |
 | `P`, then `F4` | preview a race with the events as they are now, then come back |
@@ -110,12 +145,14 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 
 The files are plain text, so you can read, diff or edit them by hand ([EVENTS.md](EVENTS.md) has the format).
 
+## Online
+
+A server sends its own event files to the games in its races: `fogcityfury-server --events DIR`, or an `events/`
+folder beside the server. It reads `trackN.fcfe` for a built-in track and `<name>.fcfe` for a custom one (or the
+file beside the custom track). Without one, games use the event files they have built in. Weather events don't play
+online, because the server's weather holds.
+
 ## Limits for now
 
-- Events play in offline races. In 2.3 the server sends its track's event file to everyone in an online race.
-- At most four buildings come down in one race.
-- Coming in 2.3:
-  - dolphins
-  - mini Wardens jetpacking off rooftops
-  - weather that changes mid-race
-  - paths and a timeline in the editor
+- At most four buildings come down in one race, six dolphins in a pod, twelve dolphins in all, eight mini Wardens.
+- Mini Wardens dropped by an event are actors, not fighters: you can't shoot them yet (that's planned for 2.4).

@@ -92,6 +92,30 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.3
+
+- **Dolphins** (Tarnyloo's *Dolphin*, CC-BY 3.0): pods live in the sea all race. They wander, keep to deep water,
+  and surface to breathe with their back and fin cutting the water and a wake behind. At the spots a track sets, the
+  nearest one races over, comes out nose first with a small ring, arches over and dives back in with a big splash.
+- **Swells and a tide:** the sea's surface moves now. Long rolling swells (gentle on a clear day, bigger in a
+  storm, never Wave Race big) fade out in the shallows, and the whole sea rises and falls slowly. The rougher the
+  weather, the faster the chop and the more whitecaps.
+- **Weather that changes mid-race:** a WEATHER event turns it (the sky, fog, rain, grip and sea all blend over a few
+  seconds), and a track can let its weather drift by itself, telling you what's coming.
+- **Mini Wardens off the rooftops:** they jetpack down to the roadside and take a shot at you as you pass.
+- **Every track has a scripted moment:** towers come down on Hilltop Heights, Summit Switchbacks, Harbour Deep and
+  Lagoon Loop. Dolphins leap on six tracks, minis drop on Midnight Mile and Twin Isles, the rain rolls in on
+  Midnight Mile's second lap, and the weather drifts on Bayside Breaker and Twin Isles.
+- **Online:** a server sends its event files (`--events DIR`, or `events/` beside it), so online races play the
+  same moments.
+- **fcfedit:**
+  - **DOLPHINS** (`D`): click the sea for the pod, then each spot where they leap.
+  - **MINI WARDENS:** where cars set it off, the roof, then where they land.
+  - **WEATHER CHANGE.**
+  - **The event list and timeline** (`E`): every moment, and the laps it happens on. Click a lap to turn it on or
+    off, and turn drifting weather on or off from there.
+  - Paths are drawn for everything that moves: a rocket's line, a leap's arc and a jetpack's drop.
+
 ## What's new in 2.29.2
 
 - **fcfedit is much easier to use** (new guide: [docs/FCFEDIT.md](docs/FCFEDIT.md)):
@@ -594,3 +618,7 @@ architecture, the handling model and the testing guide.
     tests/          test suite
     tools/shot.sh   headless screenshots
     docs/           architecture, handling, testing
+
+## Credits
+
+- "Dolphin" by **Tarnyloo** (Blend Swap #83681), CC-BY 3.0: the dolphins. See [models/dolphin/README.md](models/dolphin/README.md).

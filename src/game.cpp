@@ -29,8 +29,30 @@ static const WxDef WX[NWX] = {
     { "RAIN",   "WET ROAD - LESS GRIP",        2.3f, 0.52f, 0.55f, 0.82f, 1.0f, 1.0f, 0.25f, false },
     { "FOG",    "YOU CANNOT SEE THE CORNERS",  9.0f, 0.70f, 0.80f, 1.00f, 0.0f, 0.3f, 0.00f, false },
     { "STORM",  "HEAVY RAIN AND LIGHTNING",    3.4f, 0.34f, 0.70f, 0.74f, 1.7f, 1.0f, 0.55f, true } };
-static int weather = W_CLEAR;                    // what is being rendered and driven on right now
-static const WxDef& wx() { return WX[weather]; }
+static int weather = W_CLEAR;                    // what is being rendered and driven on right now (while it is turning: where it is going)
+// Weather that turns in a race (a WEATHER event, or a track whose weather drifts: events.h): wx() blends from the
+// weather it was to the weather it is becoming, over wxTurn seconds, so the sky greys, the rain thickens and the road
+// loses its grip gradually. Lightning only once it is mostly storm.
+static int wxFrom = W_CLEAR; static float wxMixK = 1, wxTurn = 8;
+static float seaOf(int w) { static const float S[NWX] = { 0.18f, 0.55f, 0.08f, 1.0f }; return S[w]; }   // how rough the sea is
+static const WxDef& wx() {
+    if (wxMixK >= 1 || wxFrom == weather) return WX[weather];
+    static WxDef m; const WxDef &a = WX[wxFrom], &b = WX[weather]; float k = wxMixK * wxMixK * (3 - 2 * wxMixK);
+    auto L = [k](float x, float y) { return x + (y - x) * k; };
+    m = b; m.fog = L(a.fog, b.fog); m.sun = L(a.sun, b.sun); m.grey = L(a.grey, b.grey); m.grip = L(a.grip, b.grip); m.rain = L(a.rain, b.rain); m.wet = L(a.wet, b.wet); m.wind = L(a.wind, b.wind);
+    m.bolts = b.bolts && k > 0.7f; return m;
+}
+static float seaNow() { if (wxMixK >= 1) return seaOf(weather); float k = wxMixK * wxMixK * (3 - 2 * wxMixK); return seaOf(wxFrom) + (seaOf(weather) - seaOf(wxFrom)) * k; }
+static void turnWeather(int to, float secs) { if (to == weather && wxMixK >= 1) return; wxFrom = weather; weather = ((to % NWX) + NWX) % NWX; wxMixK = 0; wxTurn = std::max(0.5f, secs); }
+static void settleWeather() { wxMixK = 1; wxFrom = weather; }
+// the sea's swell (metres, from the weather: a gentle roll on a clear day, a heavy one in a storm) and the tide (a
+// slow rise and fall, three minutes round); seaY: the surface at a point, as VS_WATER (shaders.h) moves it
+static float swellNow() { return 0.25f + 1.1f * seaNow(); }
+static float tideNow(float t) { return 0.22f * sinf(t * 6.2831853f / 180.0f); }
+static float seaY(float x, float z, float t, float amp) {   // amp: how much swell there (world.h seaAmp: 0 at the shore)
+    float a = swellNow() * amp, p1 = x * 0.0718f + z * 0.0539f - 0.938f * t, p2 = -x * 0.0459f + z * 0.1460f - 1.226f * t + 1.7f, p3 = x * 0.2594f - z * 0.0819f - 1.637f * t + 4.1f;
+    return a * (0.55f * sinf(p1) + 0.30f * sinf(p2) + 0.15f * sinf(p3)) + tideNow(t);
+}
 static float boltT = 4, boltFlash = 0;
 static const int LAPS = 3, NAI = 9, NPAINT = 8, NCARS = 5;   // nine opponents: ten cars on the grid
 
@@ -130,6 +152,7 @@ static const int NMODES = 4;   // 0 race, 1 roam, 2 rampage (race with guns, the
 static void miniReset();   // minis.h
 static bool delAsk = false;   // the track screen is asking whether to delete the custom track shown
 static std::vector<std::pair<std::string, unsigned>> customKeysSaved;   // from the config: keys found on custom tracks, by file name (applied once they are loaded)
+static bool cliSurvey = false;   // --survey: print where a track has open sea and tall buildings by the road (making event files), and quit
 static std::string cliEvScript; static bool cliEvEdit =
 #ifdef FCF_EVEDIT_APP
     true;   // fcfedit: the event editor is the whole program
@@ -221,10 +244,14 @@ static std::string tracksDir() {
 #include "serverlist.h"   // the server list on the online screen: lookups, asking each server what it runs, joining
 #include "settings.h"   // settings (key bindings, video and effects options, fogcityfury.cfg), the touch-screen layout, the save file
 namespace director { static void reset(); static void placeWardens(); }
-namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)   // (events.h, after combat.h: a race start resets the scripted events)
+namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)
+namespace dolphin { static bool spawn(V3 at, V3 to, float k); static void reset(); }   // (dolphin.h)
+namespace jetdrop { static void spawn(V3 roof, V3 land, int n); static void reset(); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
 #include "combat.h"   // wreckage and debris, crates, shields, the multiplayer race start and leave, splashes, explosions, rockets
 #include "events.h"   // the race director: scripted events from a track's event file
 #include "collapse.h"   // buildings that come down (a rocket aimed at one, or an event's cue)
+#include "dolphin.h"   // dolphins: pods that roam the sea, and leaps (Tarnyloo's Dolphin, CC-BY 3.0)
+#include "jetdrop.h"   // mini Wardens that jetpack down off a rooftop
 #include "driving.h"   // respawning, the player's car physics, the computer drivers, cars bumping each other, input, finishing a race
 #include "foot.h"
 #include "showdown.h"
@@ -388,7 +415,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto F = [&](int k) { return (float)atof(argv[i + k]); };
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--shotevery") shotEvery = atoi(argv[++i]); else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
-        else if (a == "--events" && i + 1 < argc) director::overridePath = argv[++i]; else if (a == "--evedit") cliEvEdit = true; else if (a == "--evscript" && i + 1 < argc) cliEvScript = argv[++i]; else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
+        else if (a == "--events" && i + 1 < argc) director::overridePath = argv[++i]; else if (a == "--evedit") cliEvEdit = true; else if (a == "--survey") cliSurvey = true; else if (a == "--evscript" && i + 1 < argc) cliEvScript = argv[++i]; else if (a == "--state") startState = atoi(argv[++i]); else if (a == "--track") selTrack = ((atoi(argv[++i]) % NTRACKS) + NTRACKS) % NTRACKS; else if (a == "--car") selCar = ((atoi(argv[++i]) % NCARS) + NCARS) % NCARS; else if (a == "--paint") selPaint = atoi(argv[++i]) % NPAINT;
         else if (a == "--mode") selMode = ((atoi(argv[++i]) % NMODES) + NMODES) % NMODES; else if (a == "--weather") { selWeather = ((atoi(argv[++i]) % NWX) + NWX) % NWX; weather = selWeather; wxSet = true;
         } else if (a == "--save") noSave = false;
         else if (a == "--top") {
@@ -550,6 +577,7 @@ int main(int argc, char** argv) {
         }
         if (cliSpace) { selTrack = spaceTrack(); selMode = 0; }
         W.build(selTrack); setupCars(true);
+        if (cliSurvey) { survey(); fflush(stdout); exit(0); }
         if (startState == 8) { state = OPTS; optReturn = TITLE; }
         if (startState == 1) { state = CARSEL; setupCars(false); } if (startState == 2) { state = TRACKSEL; setupCars(false); } if (startState == 3) { if (cliChamp) champBegin(); else startRace(); if (!fullCountdown) { countdown = 0.01f; introT = 0; } }
 #ifdef FCF_EDITOR
@@ -632,9 +660,9 @@ int main(int argc, char** argv) {
     FCF_MAKE_PROG(pCar, "car", VS_MESH, FS_COMMON, FS_CAR);
 #ifndef FCF_GFX_XSDK
     static const std::string FS_WATER_RIP = std::string("#define FCF_RIPPLE 1\n") + FS_WATER;
-    FCF_MAKE_PROG(pWater, "water", VS_MESH, FS_COMMON, FS_WATER_RIP.c_str());
+    FCF_MAKE_PROG(pWater, "water", VS_WATER, FS_COMMON, FS_WATER_RIP.c_str());
 #else
-    FCF_MAKE_PROG(pWater, "water", VS_MESH, FS_COMMON, FS_WATER);
+    FCF_MAKE_PROG(pWater, "water", VS_WATER, FS_COMMON, FS_WATER);
 #endif
     FCF_MAKE_PROG(pSky, "sky", VS_SKY, FS_COMMON, FS_SKY);
     FCF_MAKE_PROG(pPart, "part", VS_PART, FS_COMMON, FS_PART);
@@ -723,6 +751,7 @@ int main(int argc, char** argv) {
         } else buildCar(t, m);
         carMesh[t].upload(m);
     }
+    dolphin::init();
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: car meshes complete");
     bootColor(0xFF0000FF);   // blue: car meshes returned

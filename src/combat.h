@@ -87,7 +87,7 @@ static void setupCars(bool race) {
         shieldPU[k].holder = -2;
         shieldPU[k].at = 0;
     }
-    director::reset(); fall::reset();   // the track's scripted events (events.h), all unfired; every building standing again
+    director::reset(); fall::reset(); dolphin::reset(); jetdrop::reset();   // the track's scripted events (events.h), all unfired; every building standing again
     mech::setup(); director::placeWardens(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
     for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
@@ -104,7 +104,7 @@ static void flushPendingTrack() { if (pendingTrack >= 0) { int t = pendingTrack;
 static void startRace() {
     netRace = false;
     raceLaps = champOn ? CHAMP_LAPS[champRound] : selLaps * std::max(1, W.def->lapMul);
-    weather = selWeather;
+    weather = selWeather; settleWeather();
     exploreMode = selMode == 1;
     rampage = selMode == 2 || champOn;
     setupCars(!exploreMode);

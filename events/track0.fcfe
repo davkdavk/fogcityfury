@@ -1,7 +1,7 @@
 # Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)
-# Hilltop Heights: on the first lap, as you cross warden1, a Warden's cannon misfires and the tower ahead on the left
-# comes down
 warden 1  -200.0 -118.0
+pod pod1  -544.0 -311.0  r 35  n 2  k 1
 line warden1  -267.0 -276.7  -238.0 -317.3
 event misfire1 rocket  at 0.0 0.0 0.0  to -147.0 21.0 -93.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1
 event say0 say  at 0.0 0.0 0.0  text "WARDEN MISFIRE!"  laps 1  delay 0.4  times once  chance 100  by player  on after misfire1
+event leap1 dolphin  at -535.0 0.0 -320.0  to -515.0 0.0 -335.0  k 1  laps all  delay 6  times lap  chance 100  by player  on lap

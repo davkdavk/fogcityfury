@@ -5,11 +5,54 @@ struct Builtin { const char* key; const char* body; };
 static const Builtin BUILTIN[] = {
 { "track0",
 "# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
-"# Hilltop Heights: on the first lap, as you cross warden1, a Warden's cannon misfires and the tower ahead on the left\n"
-"# comes down\n"
 "warden 1  -200.0 -118.0\n"
+"pod pod1  -544.0 -311.0  r 35  n 2  k 1\n"
 "line warden1  -267.0 -276.7  -238.0 -317.3\n"
 "event misfire1 rocket  at 0.0 0.0 0.0  to -147.0 21.0 -93.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1\n"
-"event say0 say  at 0.0 0.0 0.0  text \"WARDEN MISFIRE!\"  laps 1  delay 0.4  times once  chance 100  by player  on after misfire1\n" },
+"event say0 say  at 0.0 0.0 0.0  text \"WARDEN MISFIRE!\"  laps 1  delay 0.4  times once  chance 100  by player  on after misfire1\n"
+"event leap1 dolphin  at -535.0 0.0 -320.0  to -515.0 0.0 -335.0  k 1  laps all  delay 6  times lap  chance 100  by player  on lap\n" },
+{ "track1",
+"# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
+"drift 120\n"
+"pod pod1  -455.0 -530.0  r 55  n 3  k 1\n"
+"event leap1 dolphin  at -430.0 0.0 -540.0  to -400.0 0.0 -550.0  k 1  laps all  delay 4  times lap  chance 100  by player  on lap\n"
+"event leap2 dolphin  at -470.0 0.0 -515.0  to -500.0 0.0 -500.0  k 1  laps all  delay 14  times lap  chance 100  by player  on lap\n" },
+{ "track2",
+"# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
+"warden 1  226.0 -467.0\n"
+"pod pod1  -320.0 -624.0  r 50  n 3  k 1\n"
+"line warden1  159.2 -483.8  165.3 -511.1\n"
+"event misfire1 rocket  at 226.0 35.8 -467.0  to 258.0 43.3 -498.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1\n"
+"event message1 say  at 0.0 0.0 0.0  text \"WARDEN MISFIRE!\"  laps all  delay 0.4  times once  chance 100  by player  on after misfire1\n"
+"event leap1 dolphin  at -300.0 0.0 -630.0  to -270.0 0.0 -640.0  k 1  laps all  delay 8  times lap  chance 100  by player  on lap\n" },
+{ "track3",
+"# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
+"line drop1  -105.8 143.2  -83.0 127.1\n"
+"event minis1 minis  at -12.0 77.0 177.0  to -32.1 14.9 198.6  k 3  laps 1  delay 0  times once  chance 100  by player  on drop1\n"
+"event weather1 weather  at 0.0 0.0 0.0  wx rain  over 10  laps 2  delay 0  times once  chance 100  by player  on lap\n"
+"event message1 say  at 0.0 0.0 0.0  text \"RAIN ROLLING IN\"  laps 2  delay 0  times once  chance 100  by player  on lap\n" },
+{ "track4",
+"# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
+"warden 1  452.0 -274.0\n"
+"pod pod1  -18.0 -502.0  r 60  n 4  k 1\n"
+"line warden1  404.9 -331.9  430.7 -342.7\n"
+"event leap1 dolphin  at 10.0 0.0 -505.0  to 40.0 0.0 -515.0  k 1  laps all  delay 5  times lap  chance 100  by player  on lap\n"
+"event leap2 dolphin  at -40.0 0.0 -495.0  to -70.0 0.0 -485.0  k 1  laps all  delay 15  times lap  chance 100  by player  on lap\n"
+"event misfire1 rocket  at 452.0 32.6 -274.0  to 420.0 38.6 -255.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1\n"
+"event message1 say  at 0.0 0.0 0.0  text \"WARDEN MISFIRE!\"  laps all  delay 0.4  times once  chance 100  by player  on after misfire1\n" },
+{ "track5",
+"# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
+"warden 1  -361.0 346.0\n"
+"pod pod1  260.0 120.0  r 50  n 3  k 1\n"
+"line warden1  -300.5 377.2  -311.3 403.1\n"
+"event misfire1 rocket  at -361.0 42.3 346.0  to -390.0 47.2 393.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1\n"
+"event message1 say  at 0.0 0.0 0.0  text \"WARDEN MISFIRE!\"  laps all  delay 0.4  times once  chance 100  by player  on after misfire1\n"
+"event leap1 dolphin  at 250.0 0.0 100.0  to 240.0 0.0 70.0  k 1  laps all  delay 6  times lap  chance 100  by player  on lap\n" },
+{ "track6",
+"# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"
+"pod pod1  198.0 -134.0  r 50  n 3  k 1\n"
+"line drop1  523.9 431.7  550.0 441.9\n"
+"event minis1 minis  at 501.0 72.0 528.0  to 491.1 12.9 516.2  k 3  laps 1  delay 0  times once  chance 100  by player  on drop1\n"
+"event leap1 dolphin  at 190.0 0.0 -140.0  to 160.0 0.0 -150.0  k 1  laps all  delay 10  times lap  chance 100  by player  on lap\n" },
 { nullptr, nullptr } };
 }

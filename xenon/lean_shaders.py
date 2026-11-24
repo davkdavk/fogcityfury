@@ -259,21 +259,23 @@ void main(){
 WATER = COMMON + '''
 in vec3 vP, vN, vC; in vec2 vUV; in float vMat;
 uniform sampler2D uHeight;
+uniform float uSea;   // how rough the sea is (the weather): bigger, faster swell and whitecaps
 void main(){
   vec2 huv = (vP.xz + 768.0)/1536.0;
-  float depth = -texture(uHeight, clamp(huv, 0.0, 1.0)).r;
+  float depth = vP.y - texture(uHeight, clamp(huv, 0.0, 1.0)).r;   // (the swell and the tide)
   vec2 o = abs(huv - 0.5); if(max(o.x, o.y) > 0.5) depth = 30.0;
   if(depth < -0.02) discard;
   vec3 toCam = uCamPos - vP; float dist = length(toCam); vec3 V = toCam/dist;
-  vec2 w = texture(uNoise, vP.xz*0.011 + vec2(uTime*0.014, uTime*0.009)).rg + texture(uNoise, vP.xz*0.07 + vec2(-uTime*0.06, uTime*0.04)).gr - 1.0;
-  vec3 n = normalize(vec3(w.x, 1.4 + dist*0.02, w.y));
+  float ts = uTime*(1.0 + 0.8*uSea);
+  vec2 w = texture(uNoise, vP.xz*0.011 + vec2(ts*0.014, ts*0.009)).rg + texture(uNoise, vP.xz*0.07 + vec2(-ts*0.06, ts*0.04)).gr - 1.0;
+  vec3 n = normalize(vec3(w.x*(1.0 + 1.6*uSea) + vN.x/vN.y*1.4, 1.4 + dist*0.02, w.y*(1.0 + 1.6*uSea) + vN.z/vN.y*1.4));   // (+ the swell's slope)
   float f1 = 1.0 - max(dot(n, V), 0.0), f2 = f1*f1, F = 0.03 + 0.97*f2*f2*f1;
   vec3 R = reflect(-V, n);
   vec3 sky = mix(uSkyHor, uSkyTop, sqrt(clamp(abs(R.y), 0.0, 1.0)));
   float sd = max(dot(R, uSunDir), 0.0), s = sd*sd; s *= s; s *= s; s *= s; s *= s; s *= s;
   vec3 body = mix(vec3(0.07,0.30,0.30), vec3(0.012,0.07,0.11), clamp(depth*0.2, 0.0, 1.0))*(ambient(n.y)*1.4 + uSunCol*0.35);
   vec3 col = mix(body, sky, F) + uSunCol*s*(1.0 - uOvercast);
-  float foam = clamp(1.0 - depth*2.2, 0.0, 1.0)*step(0.45, w.x + 0.6);
+  float foam = max(clamp(1.0 - depth*2.2, 0.0, 1.0)*step(0.45, w.x + 0.6), step(1.05 - uSea*0.35, w.x + 0.6)*clamp(uSea - 0.35, 0.0, 1.0)*1.4);
   col = mix(col, vec3(0.9)*(ambient(1.0) + uSunCol*0.6), foam*0.8);
   col = mix(col, uSkyHor, 1.0 - exp(-dist*uFogDen));
   oCol = vec4(tone(col), clamp(depth*1.1 + 0.25, 0.0, 1.0));

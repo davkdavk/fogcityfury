@@ -9,6 +9,8 @@
 //   event e3 splash  at 300 0 -40  k 2  laps all  times lap  by leader  on lap
 //   event e4 say     text "LOOK OUT!"  on time 30
 //   warden 2  -310 140                                 Warden 2 starts its walk here (the nearest point of its route)
+//   pod p1  210 -380  r 60  n 3  k 1                   dolphins that roam this patch of sea all race: its middle, radius, how many, their size
+//   drift 90                                           the weather drifts: about every 90 s it turns (clear, rain, storm; clear, fog)
 //
 // Every event has the same settings (any can be left out; the defaults are in brackets):
 //   laps   which laps it may fire on: "all" or a list like 1,3                         [all]
@@ -19,14 +21,17 @@
 //   on     a line's id; lap (a lap starting); time S (race time); after <event id>    [lap]
 // and what it does: at (x y z), to (x y z: a rocket's target), k (size), text (for say).
 // Kinds: rocket (flies from `at` to `to` and blows up there, or on the first wall it meets; `fells`: and brings down the
-// building it is aimed at), blast, splash, shake, say, collapse (the building at `at` comes down: collapse.h).
-// More kinds come as the actor library grows (2.29: the dolphin and others, buildings that fall).
+// building it is aimed at), blast, splash, shake, say, collapse (the building at `at` comes down: collapse.h), dolphin
+// (a leap at `at`, heading for `to`: the nearest pod dolphin takes it, or one swims in; k its size: dolphin.h),
+// weather (it turns to `wx` over `over` seconds; offline), minis (`k` mini Wardens on the roof at `at` jetpack down to
+// `to` beside the road and take a shot at you: jetdrop.h).
 #pragma once
 #include "events_builtin.h"   // the built-in tracks' event files, built in (tools/embed_events.py)
 namespace director {
 
-enum Kind { ROCKET, BLAST, SPLASH, SHAKE, SAY, COLLAPSE, NKIND };
-static const char* KIND[NKIND] = { "rocket", "blast", "splash", "shake", "say", "collapse" };
+enum Kind { ROCKET, BLAST, SPLASH, SHAKE, SAY, COLLAPSE, DOLPHIN, WEATHER, MINIS, NKIND };
+static const char* KIND[NKIND] = { "rocket", "blast", "splash", "shake", "say", "collapse", "dolphin", "weather", "minis" };
+static const char* WXNAME[4] = { "clear", "rain", "fog", "storm" };   // (the order of Weather in game.cpp)
 enum Times { ONCE, EACH_LAP, ALWAYS, NTIMES };
 static const char* TIMES[NTIMES] = { "once", "lap", "always" };
 enum By { PLAYER, ANY, LEADER, BYAI, NBY };
@@ -36,6 +41,7 @@ enum On { ON_LINE, ON_LAP, ON_TIME, ON_AFTER };
 struct Line { std::string id; float ax = 0, az = 0, bx = 0, bz = 0; };
 struct Event {
     std::string id; int kind = BLAST; V3 at, to; float k = 1; std::string text; bool fells = false;   // fells: a rocket brings down the building it is aimed at
+    int wx = 1; float over = 10;   // weather: what it turns to, and how many seconds that takes
     int from = 0;   // a rocket fired from: 0 its own spot (at), 1-4 that Warden's cannon, 5 the nearest Warden's (wherever it has walked to)
     unsigned laps = 0; float delay = 0; int times = ONCE, chance = 100, by = PLAYER, on = ON_LAP; std::string ref; float time = 0;
     int fired = 0, lastLap = -99; float lastT = -99;   // (the race so far)
@@ -43,11 +49,15 @@ struct Event {
 struct Pending { int ev; float at; };
 
 static std::vector<Line> lines; static std::vector<Event> evs; static std::vector<Pending> pend;
+struct Pod { std::string id; float x = 0, z = 0, r = 60; int n = 3; float k = 1; }; static std::vector<Pod> pods;   // dolphins that roam (dolphin.h)
+static float drift = 0;   // seconds between turns of the weather (0: it stays as chosen)
+static std::string netBody; static int netTrack = -1;   // online: the server's event file for its track (netroam.h)
 struct WardenStart { bool set = false; float x = 0, z = 0; }; static WardenStart wardenAt[4];   // where Wardens 1-4 start walking (unset: where the track puts them)
 static std::string loadedKey, loadedFrom;      // which track the events are for, and where they came from
 static std::string overridePath;               // --events FILE: these events, whatever the track (tests, the editor's preview)
 static bool overrideText = false; static std::string overrideBody;   // the editor's preview: events not yet saved
 static int firedTotal = 0;                     // test metric: events that happened this race
+static float driftAt = 0; static int turns = 0;  // the next drift of the weather (race time); how many times it has turned this race (test metric)
 static V3 prev[1 + NAI]; static int prevLap[1 + NAI]; static bool havePrev = false;
 
 // ---- the file ----
@@ -73,12 +83,16 @@ static std::string lapsText(unsigned m) {
     return s;
 }
 static void parse(const std::string& body) {
-    lines.clear(); evs.clear(); for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
+    lines.clear(); evs.clear(); pods.clear(); drift = 0; for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
     while (i <= body.size()) {
         size_t j = body.find('\n', i); if (j == std::string::npos) j = body.size();
         std::vector<std::string> t = tokens(body.substr(i, j - i)); i = j + 1;
         if (t.size() >= 6 && t[0] == "line") { Line l; l.id = t[1]; l.ax = (float)atof(t[2].c_str()); l.az = (float)atof(t[3].c_str()); l.bx = (float)atof(t[4].c_str()); l.bz = (float)atof(t[5].c_str()); lines.push_back(l); continue; }
         if (t.size() >= 4 && t[0] == "warden") { int u = atoi(t[1].c_str()) - 1; if (u >= 0 && u < 4) wardenAt[u] = { true, (float)atof(t[2].c_str()), (float)atof(t[3].c_str()) }; continue; }
+        if (t.size() >= 4 && t[0] == "pod") { Pod p; p.id = t[1]; p.x = (float)atof(t[2].c_str()); p.z = (float)atof(t[3].c_str());
+            for (size_t k = 4; k + 1 < t.size(); k += 2) { if (t[k] == "r") p.r = std::max(10.0f, (float)atof(t[k + 1].c_str())); else if (t[k] == "n") p.n = std::max(1, std::min(6, atoi(t[k + 1].c_str()))); else if (t[k] == "k") p.k = (float)atof(t[k + 1].c_str()); }
+            pods.push_back(p); continue; }
+        if (t.size() >= 2 && t[0] == "drift") { drift = std::max(0.0f, (float)atof(t[1].c_str())); if (drift > 0) drift = std::max(drift, 20.0f); continue; }
         if (t.size() < 3 || t[0] != "event") continue;
         Event e; e.id = t[1]; e.kind = lookup(KIND, NKIND, t[2], -1); if (e.kind < 0) continue;
         for (size_t k = 3; k < t.size(); k++) {
@@ -88,6 +102,8 @@ static void parse(const std::string& body) {
             else if (w == "k" && k + 1 < t.size()) { e.k = f(1); k++; }
             else if (w == "text" && k + 1 < t.size()) { e.text = t[++k]; }
             else if (w == "fells") { e.fells = true; }
+            else if (w == "wx" && k + 1 < t.size()) { e.wx = std::max(0, lookup(WXNAME, 4, t[++k], 1)); }
+            else if (w == "over" && k + 1 < t.size()) { e.over = std::max(0.5f, f(1)); k++; }
             else if (w == "from" && k + 1 < t.size()) { const std::string& v = t[++k]; e.from = v == "nearest" ? 5 : v.compare(0, 6, "warden") == 0 ? std::max(0, std::min(4, atoi(v.c_str() + 6))) : 0; }
             else if (w == "laps" && k + 1 < t.size()) { e.laps = lapsOf(t[++k]); }
             else if (w == "delay" && k + 1 < t.size()) { e.delay = std::max(0.0f, f(1)); k++; }
@@ -108,11 +124,15 @@ static void parse(const std::string& body) {
 static std::string write() {
     std::string s = "# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"; char b[512];
     for (int u = 0; u < 4; u++) if (wardenAt[u].set) { snprintf(b, sizeof b, "warden %d  %.1f %.1f\n", u + 1, wardenAt[u].x, wardenAt[u].z); s += b; }
+    if (drift > 0) { snprintf(b, sizeof b, "drift %.0f\n", drift); s += b; }
+    for (const Pod& p : pods) { snprintf(b, sizeof b, "pod %s  %.1f %.1f  r %.0f  n %d  k %.2g\n", p.id.c_str(), p.x, p.z, p.r, p.n, p.k); s += b; }
     for (const Line& l : lines) { snprintf(b, sizeof b, "line %s  %.1f %.1f  %.1f %.1f\n", l.id.c_str(), l.ax, l.az, l.bx, l.bz); s += b; }
     for (const Event& e : evs) {
         snprintf(b, sizeof b, "event %s %s  at %.1f %.1f %.1f", e.id.c_str(), KIND[e.kind], e.at.x, e.at.y, e.at.z); s += b;
+        if (e.kind == DOLPHIN || e.kind == MINIS) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f", e.to.x, e.to.y, e.to.z); s += b; }
+        if (e.kind == WEATHER) { snprintf(b, sizeof b, "  wx %s  over %.3g", WXNAME[e.wx & 3], e.over); s += b; }
         if (e.kind == ROCKET) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f%s", e.to.x, e.to.y, e.to.z, e.fells ? "  fells" : ""); s += b; if (e.from == 5) s += "  from nearest"; else if (e.from > 0) { snprintf(b, sizeof b, "  from warden%d", e.from); s += b; } }
-        if (e.kind != ROCKET && e.kind != SAY && e.kind != COLLAPSE) { snprintf(b, sizeof b, "  k %.2g", e.k); s += b; }
+        if (e.kind != ROCKET && e.kind != SAY && e.kind != COLLAPSE && e.kind != WEATHER) { snprintf(b, sizeof b, "  k %.2g", e.k); s += b; }
         if (e.kind == SAY) s += "  text \"" + e.text + "\"";
         snprintf(b, sizeof b, "  laps %s  delay %.2g  times %s  chance %d  by %s  on ", lapsText(e.laps).c_str(), e.delay, TIMES[e.times], e.chance, BY[e.by]); s += b;
         if (e.on == ON_LAP) s += "lap"; else if (e.on == ON_TIME) { snprintf(b, sizeof b, "time %.3g", e.time); s += b; } else if (e.on == ON_AFTER) s += "after " + e.ref; else s += e.ref;
@@ -134,6 +154,7 @@ static bool readFile(const std::string& p, std::string& out) {
 static void load(int track) {
     std::string body; loadedFrom.clear();
     if (overrideText) { body = overrideBody; loadedFrom = "editor"; }
+    else if ((netRace || nc.on) && netTrack == track && !netBody.empty()) { body = netBody; loadedFrom = "server"; }   // online: the server's file
     else if (!overridePath.empty()) { if (readFile(overridePath, body)) loadedFrom = overridePath; }
     else {
         std::string p = pathFor(track);
@@ -202,6 +223,9 @@ static void happen(int ev) {
     case SHAKE: shake = std::max(shake, e.k); rumble(std::min(1.0f, e.k), 300); break;
     case SAY: say(e.text.c_str(), V3(1, 0.85f, 0.3f), 2.2f); break;
     case COLLAPSE: fall::collapse(e.at); break;
+    case DOLPHIN: dolphin::spawn(e.at, e.to, e.k); break;
+    case WEATHER: if (!netRace && !W.space) turnWeather(e.wx, e.over); break;   // (online the server's weather holds)
+    case MINIS: jetdrop::spawn(e.at, e.to, std::max(1, std::min(4, (int)lroundf(e.k)))); break;
     }
     for (int k = 0; k < (int)evs.size(); k++) if (evs[k].on == ON_AFTER && evs[k].ref == e.id) trigger(k, lapNo(-1));
 }
@@ -218,12 +242,12 @@ static void placeWardens() {
 }
 // a race starts (setupCars): the track's events, all unfired
 static void reset() {
-    if (loadedKey != keyFor(W.id) || overrideText || !overridePath.empty()) load(W.id);
+    if (loadedKey != keyFor(W.id) || overrideText || !overridePath.empty() || netRace || nc.on || loadedFrom == "server") load(W.id);
     for (Event& e : evs) { e.fired = 0; e.lastLap = -99; e.lastT = -99; }
-    pend.clear(); firedTotal = 0; havePrev = false;
+    pend.clear(); firedTotal = 0; havePrev = false; driftAt = drift; turns = 0;
 }
 static void step(float dt) {
-    (void)dt; if (evs.empty()) return;
+    (void)dt; if (evs.empty() && drift <= 0) return;
     const int N = 1 + (showAI() ? NAI : 0);
     for (int i = 0; i < N; i++) {
         int who = i - 1; const Car& c = carOf(who); int lap = lapNo(who);
@@ -236,6 +260,13 @@ static void step(float dt) {
     }
     havePrev = true;
     for (int k = 0; k < (int)evs.size(); k++) if (evs[k].on == ON_TIME && !evs[k].fired && raceT >= evs[k].time) trigger(k, lapNo(-1));
+    if (drift > 0 && raceT >= driftAt && !netRace && !W.space) {   // the weather drifts: to a neighbour (clear-rain-storm, clear-fog), the turn from the track and the count
+        unsigned h = hashU((unsigned)W.id * 31337u + (unsigned)turns * 7919u); int to;
+        switch (weather) { case W_CLEAR: to = h % 3 == 0 ? W_FOG : W_RAIN; break; case W_RAIN: to = h % 2 ? W_STORM : W_CLEAR; break; case W_STORM: to = W_RAIN; break; default: to = W_CLEAR; }
+        turnWeather(to, 12); turns++; driftAt = raceT + drift * (0.75f + 0.5f * (float)((h >> 8) % 100) / 100.0f);
+        static const char* SAYS[4] = { "THE SKY IS CLEARING", "HERE COMES THE RAIN", "FOG IS ROLLING IN", "A STORM IS BREAKING" }; say(SAYS[to], V3(0.7f, 0.85f, 1), 2.2f);
+    }
+    if (drift > 0 && raceT < 0.05f) driftAt = drift;
     for (size_t i = 0; i < pend.size();) if (raceT >= pend[i].at) { int ev = pend[i].ev; pend[i] = pend.back(); pend.pop_back(); happen(ev); } else i++;
 }
 }  // namespace director

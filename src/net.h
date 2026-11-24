@@ -62,7 +62,8 @@ enum Type : uint8_t {
     S_SHOWDOWN = 20,
     S_TRACK = 21,
     S_ROAM = 22,
-    S_VOTE = 23
+    S_VOTE = 23,
+    S_EVENTS = 24   // the current track's event file (events.h), in pieces like S_TRACK: online races play its scripted events
 };
 enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4, ROAM = 5 };   // ROAM: a roam server (--roam): everyone drives and walks the island together, no laps   // SHOWDOWN comes between RACE and RESULTS
 enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
@@ -284,6 +285,7 @@ inline void turnPacket(uint8_t* p, int len) {
         turnEach(p, len, FCF_AT(Showdown, f), sizeof(FootState), SD_FIGHT, turnFoot);
         turnEach(p, len, FCF_AT(Showdown, d), sizeof(SdDrop), SD_DROPS, turnDrop); break;
     case C_TRACK:
+    case S_EVENTS:
     case S_TRACK: if (has(FCF_AT(TrackChunk, data))) { turn16(p + FCF_AT(TrackChunk, len)); turn16(p + FCF_AT(TrackChunk, total)); turn32(p + FCF_AT(TrackChunk, crc)); } break;
     case C_MINIS:
         if (has(FCF_AT(Minis, n))) turn32(p + FCF_AT(Minis, seq));

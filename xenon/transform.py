@@ -82,8 +82,9 @@ def fix_post(f):
     return f
 
 # name: (vertex shader, its varyings' locations, vertex layout). Fragment shaders: lean_shaders.LEAN (post: FS_POST)
-LAYOUT = {'VS_MESH': 'mesh', 'VS_PART': 'part', 'VS_UI': 'ui', 'VS_SKY': 'none'}
-progs = {n: ('VS_MESH', MESH) for n in ('world', 'car', 'water', 'depth')}
+LAYOUT = {'VS_MESH': 'mesh', 'VS_WATER': 'mesh', 'VS_PART': 'part', 'VS_UI': 'ui', 'VS_SKY': 'none'}
+progs = {n: ('VS_MESH', MESH) for n in ('world', 'car', 'depth')}
+progs['water'] = ('VS_WATER', MESH)   # (the swells: shaders.h VS_WATER)
 progs.update({n: ('VS_PART', PART) for n in ('part', 'mark', 'ring', 'glass')})
 progs.update({'sky': ('VS_SKY', SKY), 'ui': ('VS_UI', UI), 'post': ('VS_SKY', SKY)})
 progs.update({n: ('VS_MESH', MESH) for n in LEAN_EXTRA})
