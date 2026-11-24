@@ -92,6 +92,17 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.5
+
+- **MANIC**, a new mode: a time trial over the laps you set.
+  - The field still drives, but as see-through ghosts with no contact.
+  - There are no rocket crates or shields on the track, nobody fires (Wardens and mini Wardens included), and
+    there's no countdown clock.
+  - Lap times show as you cross the line (green when it is your best), and splits at each checkpoint compare
+    against your best lap.
+  - The results list every lap, the total and the record. The best total for each track and lap count is kept
+    (`<save>.trial`).
+
 ## What's new in 2.4
 
 - **Aim down the sights on foot:** hold the right mouse button (on a pad, the left trigger).

@@ -115,7 +115,8 @@ static void keepInTube(V3& c) {
     float arch = TUBE_SILL + (TUBE_TOP - TUBE_SILL) * sqrtf(std::max(0.0f, 1 - r * r)) - 0.8f;
     c.x += t.tz * (l2 - lat); c.z -= t.tx * (l2 - lat); c.y = clampf(c.y, t.y + 0.5f, t.y + std::max(arch, 1.2f));
 }
-static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); } if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
+static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); }
+    if (showAI() && (lit || !trialMode)) { if (lit && trialMode) p.f1("uGone", 0.55f); for (auto& a : ai) drawCar(a, p, lit); if (lit && trialMode) p.f1("uGone", 0); }   // (manic: the field are ghosts, see-through, no shadows)
     if (netRace)
         for (auto& r : nc.r)
             if (r.present && r.racing) {

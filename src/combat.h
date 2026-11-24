@@ -78,7 +78,8 @@ static void setupCars(bool race) {
     camInit = false; parts.clear(); marks.clear(); marksDirty = true; markOn[0] = markOn[1] = false;
     wrecks.clear(); debris.clear(); rockets.clear(); crates.clear(); ammo = startAmmo; lockTgt = -1; resetHint = 0; rocketLap = -1;
     player.shield = startShield ? SHIELD_TIME : 0; shieldPopT = 0; for (auto& a : ai) { a.shield = 0; a.botAmmo = startBotAmmo; a.botRLap = -99; a.botFireCD = 3; }
-    nShieldPU = W.hasBranch() ? 2 : 0;
+    nShieldPU = W.hasBranch() && !trialMode ? 2 : 0;   // (time trial: no shields on the track)
+    if (trialMode) { ammo = 0; for (auto& a : ai) a.botAmmo = 0; }
     for (int k = 0; k < nShieldPU; k++) {
         float yaw;
         const World::Branch& sb = W.brs[k % W.brs.size()];
@@ -89,7 +90,7 @@ static void setupCars(bool race) {
     }
     director::reset(); fall::reset(); dolphin::reset(); jetdrop::reset();   // the track's scripted events (events.h), all unfired; every building standing again
     mech::setup(); director::placeWardens(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
-    for (int k = 0; k < NCRATES * 2; k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
+    for (int k = 0; k < (trialMode ? 0 : NCRATES * 2); k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
 }
 static void netLoadingNotice();   // (netclient.h) online: tell the server we are about to go quiet while the track builds
 static float loadStall = 0;   // --loadstall S (tests): online, each track build takes S seconds longer, as on a slow machine
@@ -106,7 +107,9 @@ static void startRace() {
     raceLaps = champOn ? CHAMP_LAPS[champRound] : selLaps * std::max(1, W.def->lapMul);
     weather = selWeather; settleWeather();
     exploreMode = selMode == 1;
-    rampage = selMode == 2 || champOn;
+    rampage = selMode == 2 || champOn; trialMode = selMode == 4 && !champOn;
+    trialLaps.clear(); for (int k = 0; k < 8; k++) trialSplit[k] = trialBestSplit[k] = 0; trialNewRecord = false;
+    if (trialMode) { static bool loaded = false; if (!loaded) { loaded = true; loadTrial(); } trialRecord = trialBestFor(W.id, raceLaps); }
     setupCars(!exploreMode);
     raceT = 0;
     countdown = exploreMode ? 0 : 3.6f;
@@ -119,13 +122,14 @@ static void startRace() {
     if (exploreMode) say("FREE ROAM - FIND THE KEYS", V3(1, 0.85f, 0.3f), 3.5f);
     if (champOn) { char cb[64]; snprintf(cb, sizeof cb, "CHAMPIONSHIP  -  ROUND %d OF 4", champRound + 1); say(cb, V3(1, 0.85f, 0.2f), 3.5f); }
     else if (rampage) say("RAMPAGE  -  TOP 5 GO TO THE SHOWDOWN", V3(1, 0.4f, 0.2f), 3.5f);
+    else if (trialMode) say("MANIC  -  YOUR LAPS AGAINST THE CLOCK", V3(0.5f, 0.9f, 1), 3.5f);
 }
 
 // ---- multiplayer: react to what the server says ----
 static void footReset(); static void netShdEnter(); static int netBotOf(int id); static void netStartRoam();
 static void netStartRace() {
     if (nc.track < 0) return;   // (a custom track still on its way)
-    footReset(); exploreMode = false; raceLaps = nc.laps; if (W.id != nc.track) W.build(nc.track);
+    footReset(); exploreMode = false; trialMode = false; raceLaps = nc.laps; if (W.id != nc.track) W.build(nc.track);
     setupCars(true); int slot = 0; for (int i = 0; i < nc.id && i < net::MAXP; i++) if (nc.r[i].present && nc.r[i].racing) slot++;
     placeOnGrid(player, gridS(slot), gridLat(slot));
     raceT = 0; countdown = nc.phase == net::COUNTDOWN ? std::max(0.05f, nc.phaseT) : 0.01f; timeLeft = 999; lapStart = 0; bestLapRace = 0; lastLap = 0; introT = clampf(countdown - 0.6f, 0, INTRO_LEN);   // online: fly in while the server counts down

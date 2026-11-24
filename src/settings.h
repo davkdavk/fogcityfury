@@ -217,6 +217,20 @@ static void loadCfg() {
     }
     fclose(f);
 }
+// time trial records: the best total for each track and lap count (beside the save: <save>.trial, "track laps seconds" lines)
+static std::vector<std::pair<int, float>> trialBest;   // key track*16 + laps
+static std::string trialPath() { return savePath() + ".trial"; }
+static void loadTrial() {
+    trialBest.clear(); if (noSave) return; FILE* f = fopen(trialPath().c_str(), "r"); if (!f) return; int t, l; float s;
+    while (fscanf(f, "%d %d %f", &t, &l, &s) == 3) if (t >= 0 && t < MAXT && l > 0 && l < 16 && s > 0) trialBest.push_back({ t * 16 + l, s }); fclose(f);
+}
+static float trialBestFor(int t, int laps) { for (auto& p : trialBest) if (p.first == t * 16 + laps) return p.second; return 0; }
+static bool trialSave(int t, int laps, float secs) {   // true: a new record
+    float old = trialBestFor(t, laps); if (old > 0 && secs >= old) return false;
+    bool found = false; for (auto& p : trialBest) if (p.first == t * 16 + laps) { p.second = secs; found = true; } if (!found) trialBest.push_back({ t * 16 + laps, secs });
+    if (!noSave) { FILE* f = fopen(trialPath().c_str(), "w"); if (f) { for (auto& p : trialBest) fprintf(f, "%d %d %.3f\n", p.first / 16, p.first % 16, p.second); fclose(f); } }
+    return true;
+}
 static void saveCfg() {
 #ifdef FCF_GFX_XSDK
     return;

@@ -148,7 +148,11 @@ static int xsdkPasses = 0;   // debug bring-up: 0 direct, 1 post, 2 shadows, 3 r
 #else
 static int xsdkPasses = 3;
 #endif
-static const int NMODES = 4;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races)
+static const int NMODES = 5;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races), 4 manic
+// Manic (2.5): a time trial, your laps against the clock. The field still drives round, but as ghosts (no contact, drawn see-
+// through); no rockets or shields on the track and nobody fires; no countdown clock. Each lap's time, the split at each
+// checkpoint against your best lap, and the best total for that track and lap count (kept in the save's .trial file)
+static bool trialMode = false; static std::vector<float> trialLaps; static float trialSplit[8] = {}, trialBestSplit[8] = {}, trialRecord = 0; static bool trialNewRecord = false;
 static void miniReset();   // minis.h
 static bool delAsk = false;   // the track screen is asking whether to delete the custom track shown
 static std::vector<std::pair<std::string, unsigned>> customKeysSaved;   // from the config: keys found on custom tracks, by file name (applied once they are loaded)

@@ -312,7 +312,8 @@ static void finishRace(bool tu) {
     timeUp = tu; int ahead = 0; for (auto& a : ai) if (a.finishT >= 0 || (tu && a.progress > player.progress)) ahead++;
     finalPlace = ahead + 1;
     if (champOn && !tu) champRaceEnd();
-    if (rampage && !tu && showdownStart(finalPlace)) return;   // rampage: the showdown takes over from here (you fight if you made the top five, and watch if not)
+    if (rampage && !tu && showdownStart(finalPlace)) return;
+    if (trialMode && !tu) trialNewRecord = trialSave(W.id, raceLaps, raceT);   // rampage: the showdown takes over from here (you fight if you made the top five, and watch if not)
     state = RESULTS; resultsT = 0;
     if (!tu) { tone(523, 0.3f, 0.5f, 2); tone(659, 0.3f, 0.5f, 2, 0, 0.15f); tone(784, 0.6f, 0.5f, 2, 0, 0.3f); } else tone(200, 0.9f, 0.6f, 2, -80);
     writeSave();

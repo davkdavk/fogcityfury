@@ -302,7 +302,7 @@ static void drawHUD() {
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
         snprintf(b, sizeof b, "WEATHER  %s %-7s %s  %s", selRow == 1 ? "<" : " ", WX[selWeather].name, selRow == 1 ? ">" : " ", WX[selWeather].sub);
         ui.text(96, ry[1], 2.8f, wcol[selWeather], b);
-        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE", "CHAMP" }; static const char* MODE_BLURB[NMODES] = { "A RACE AGAINST 9 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "RACE, THEN THE PODIUM FIGHTS ON FOOT", "FOUR TRACKS, POINTS, A SHOWDOWN EACH ROUND" };
+        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE", "CHAMP", "MANIC" }; static const char* MODE_BLURB[NMODES] = { "A RACE AGAINST 9 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "RACE, THEN THE PODIUM FIGHTS ON FOOT", "FOUR TRACKS, POINTS, A SHOWDOWN EACH ROUND", "TIME TRIAL: GHOST CARS, NO WEAPONS" };
         snprintf(b, sizeof b, "MODE     %s %-7s %s  %s", selRow == 2 ? "<" : " ", MODE_NAME[selMode], selRow == 2 ? ">" : " ", MODE_BLURB[selMode]);
         ui.text(96, ry[2], 2.8f, selMode ? V3(0.4f, 1, 0.6f) : org, b);
         if (selMode == 3) ui.text(96, ry[3], 2.8f, V3(0.45f, 0.47f, 0.52f), "LAPS     1 / 2 / 2 / 3, SET BY THE CHAMPIONSHIP");
@@ -319,7 +319,7 @@ static void drawHUD() {
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, on ? sc : V3(1, 1, 1), on ? "SHIELD" : "SAVED!");
             if (on && (player.shield > 3 || fmodf(T, 0.25f) < 0.15f)) ui.rect(nx + 98, ny + 13, 170 * player.shield / SHIELD_TIME, 12, sc, 1);
         }
-        {   // rockets: two slots; the reticle marks the car a rocket would go for
+        if (!trialMode) {   // rockets: two slots; the reticle marks the car a rocket would go for (manic: none)
             float nx = Wd - 300, ny = Hb - 238, nw = 280, nh = 38; V3 rc(1, 0.42f, 0.14f);
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, ammo > 0 ? rc : V3(0.5f, 0.5f, 0.55f), "ROCKETS");
             for (int k = 0; k < CRATE_ROCKETS; k++) {
@@ -362,11 +362,22 @@ static void drawHUD() {
         if (!arena) {
         panel(20, Hb - 230, 210, 210, 0.4f); drawMap(125, Hb - 125, 0.133f, true);
         if (!exploreMode) {
+            if (trialMode) {   // manic: the laps so far, and this lap against your best one
+                panel(20, 20, 270, 60 + 26 * std::min((int)trialLaps.size(), 6)); ui.text(36, 32, 3.4f, V3(0.5f, 0.9f, 1), "MANIC");
+                snprintf(b, sizeof b, "LAP %d/%d", std::min(std::max(player.lap, 1), raceLaps), raceLaps); ui.text(160, 38, 2.5f, white, b);
+                for (int k = std::max(0, (int)trialLaps.size() - 6); k < (int)trialLaps.size(); k++) { char tt[32]; fmtTime(tt, trialLaps[k]); bool best = trialLaps[k] <= bestLapRace + 1e-4f;
+                    snprintf(b, sizeof b, "%d  %s", k + 1, tt); ui.text(36, 70 + 26 * (k - std::max(0, (int)trialLaps.size() - 6)), 2.4f, best ? V3(0.4f, 1, 0.5f) : white, b); }
+            } else {
             panel(20, 20, 230, 112); static const char* suf[12] = { "", "ST", "ND", "RD", "TH", "TH", "TH", "TH", "TH", "TH", "TH", "TH" }; int pl = state == RESULTS ? finalPlace : place;
             if (showdownOn && finalPlace) pl = finalPlace;
             float sx2 = pl >= 10 ? 150.0f : 96.0f; snprintf(b, sizeof b, "%d", pl); ui.text(36, 36, 9, yel, b, 0, 1, 0.12f); ui.text(sx2, 40, 4, yel, suf[pl]); snprintf(b, sizeof b, "/%d", netRace ? netRacers() : NAI + 1); ui.text(sx2, 72, 3, white, b);
             snprintf(b, sizeof b, "LAP %d/%d", std::min(std::max(player.lap, 1), raceLaps), raceLaps); ui.text(36, 106, 2.5f, white, b);
-            if (netRace) {
+            }
+            if (trialMode) {   // the race clock, big, and the record to beat
+                char t4[32]; fmtTime(t4, raceT); ui.text(Wd / 2, 26, 5, white, t4, 1, 1, 0.12f);
+                if (trialRecord > 0) { fmtTime(t4, trialRecord); snprintf(b, sizeof b, "RECORD %s", t4); } else snprintf(b, sizeof b, "NO RECORD YET");
+                ui.text(Wd / 2, 100, 2, V3(0.5f, 0.9f, 1), b, 1);
+            } else if (netRace) {
                 char t2[32];
                 fmtTime(t2, raceT);
                 ui.text(Wd / 2, 26, 5, white, t2, 1, 1, 0.12f);
@@ -422,6 +433,14 @@ static void drawHUD() {
                     snprintf(b, sizeof b, "%s  %-16s %d DOWN", ORD[pl], nm, nc.sd.kills[k]); ui.text(Wd / 2 - 320, sy - 40 + row * 28, 2.8f, id == nc.id ? yel : white, b); row++; } }
         } else if (state == RESULTS && champDone) { champDraw();
         } else if (state == RESULTS && shdResult) { drawShowdownResults(); if (champOn) champBar();
+        } else if (state == RESULTS && trialMode) {   // manic: every lap, the total, the best lap, the record
+            ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); int nl = (int)trialLaps.size(); panel(Wd / 2 - 330, 110, 660, 300 + 34 * nl, 0.75f);
+            ui.text(Wd / 2, 130, 7, V3(0.5f, 0.9f, 1), "MANIC", 1, 1, 0.12f);
+            for (int k = 0; k < nl; k++) { char tt[32]; fmtTime(tt, trialLaps[k]); bool best = trialLaps[k] <= bestLapRace + 1e-4f; snprintf(b, sizeof b, "LAP %d   %s%s", k + 1, tt, best ? "   BEST" : ""); ui.text(Wd / 2, 210 + 34 * k, 3.2f, best ? V3(0.4f, 1, 0.5f) : white, b, 1); }
+            float y = 226 + 34 * nl; fmtTime(t, raceT); snprintf(b, sizeof b, "TOTAL   %s", t); ui.text(Wd / 2, y, 4.5f, yel, b, 1);
+            if (trialNewRecord) ui.text(Wd / 2, y + 56, 3.6f, V3(0.4f, 1, 0.5f), "NEW RECORD!", 1);
+            else if (trialRecord > 0) { fmtTime(t, trialRecord); char d2[32]; snprintf(d2, sizeof d2, "+%.2f", raceT - trialRecord); snprintf(b, sizeof b, "RECORD  %s   %s", t, d2); ui.text(Wd / 2, y + 56, 3, white, b, 1); }
+            if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, y + 110, 3.5f, white, P("PRESS ENTER", "PRESS {A}"), 1);
         } else if (state == RESULTS) {
             ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 330, 150, 660, 400, 0.75f); if (champOn) champBar();
             static const char* suf[12] = { "", "ST", "ND", "RD", "TH", "TH", "TH", "TH", "TH", "TH", "TH", "TH" };

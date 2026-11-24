@@ -769,6 +769,24 @@ def a_shot_dolphin_laughs():
     check(d["dolphinsNow"] == 2, "and they are both still there", d["dolphinsNow"])
 
 @test
+def manic_is_a_time_trial():
+    """2.5 MANIC (--mode 4): set laps against the clock. The field drives as ghosts (no contact), no rocket crates or
+    shield pick-ups, nobody fires, no countdown clock; each lap timed; the best total kept per track and lap count."""
+    import tempfile
+    home = tempfile.mkdtemp(); env = dict(os.environ, HOME=home, XDG_DATA_HOME=home, APPDATA=home)
+    def run():
+        p = subprocess.run([BIN, "--sim", "--save", "--seconds", "200", "--track", "0", "--state", "3", "--mode", "4", "--laps", "2", "--auto"], capture_output=True, text=True, env=env, timeout=400)
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    d = run()
+    check(d["manic"] == 1 and d["raceLaps"] == 2 and d["finished"] == 1 and d["timeUp"] == 0, "two laps, finished, no clock ran out", (d["manic"], d["raceLaps"], d["finished"], d["timeUp"]))
+    check(len(d["manicLaps"]) == 2 and abs(sum(d["manicLaps"]) - d["raceT"]) < 6, "each lap timed", (d["manicLaps"], d["raceT"]))
+    check(d["bumps"] == 0 and d["wrecks"] == 0 and d["rocketsAtMe"] == 0, "no contact, nothing fired at you", (d["bumps"], d["wrecks"], d["rocketsAtMe"]))
+    check(d["crateCount"] == 0 and d["shieldPUs"] == 0 and d["ammo"] == 0, "no rockets or shields on the track", (d["crateCount"], d["shieldPUs"], d["ammo"]))
+    check(d["manicNew"] == 1, "the first run is a record", d["manicNew"])
+    e = run()
+    check(e["manicRecord"] > 0 and abs(e["manicRecord"] - d["raceT"]) < 0.05, "the record is kept for next time", (e["manicRecord"], d["raceT"]))
+
+@test
 def net_roam_server_shares_mini_wardens():
     """A --roam server: everyone free-roams the same city. The host's game runs the mini Wardens; a guest sees them,
     punches one out and gets its flowers."""

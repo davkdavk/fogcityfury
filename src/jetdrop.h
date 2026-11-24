@@ -64,7 +64,7 @@ static void step(float dt) {
             V3 to = player.pos - m.p; to.y = 0; float d = len(to);
             if (d > 0.5f) { float want = atan2f(to.x, to.z), dd = want - m.yaw; while (dd > 3.14159f) dd -= 6.28318f; while (dd < -3.14159f) dd += 6.28318f; m.yaw += clampf(dd, -2.5f * dt, 2.5f * dt); }
             m.aim = clampf(m.aim + (d < 120 ? dt : -dt) * 2, 0, 1);
-            if (!m.shot && m.t > 1.2f + m.id % 3 * 0.5f && d < 75 && d > 12 && !player.dead) {
+            if (!m.shot && !trialMode && m.t > 1.2f + m.id % 3 * 0.5f && d < 75 && d > 12 && !player.dead) {
                 m.shot = true; shots++; V3 muzzle = m.p + V3(0, 1.9f, 0) + V3(sinf(m.yaw), 0, cosf(m.yaw)) * 0.6f;
                 V3 fwd = len(player.vel) > 1 ? norm(V3(player.vel.x, 0, player.vel.z)) : V3(sinf(player.yaw), 0, cosf(player.yaw));
                 V3 aim = player.pos + player.vel * 0.55f + fwd * 7.0f + V3(fwd.z, 0, -fwd.x) * (m.id % 2 ? 3.5f : -3.5f);

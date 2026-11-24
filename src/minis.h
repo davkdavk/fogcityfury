@@ -78,6 +78,7 @@ static void land(int want) {
 // (from the sky if there are no Wardens)
 static int rocketsFired = 0;
 static void penalty() {
+    if (trialMode) return;   // (time trial: no rockets)
     penalties++; int l = level(), floorN = l ? PERKS[l - 1].need : 0, lost = flowers - floorN; flowers = floorN; saveCfg();
     char s[80]; snprintf(s, sizeof s, lost > 0 ? "YOU RAN IT DOWN: -%d FLOWERS. THE WARDENS FIRE ON YOU" : "YOU RAN IT DOWN. THE WARDENS FIRE ON YOU", lost); say(s, V3(1, 0.3f, 0.2f), 3.5f);
     V3 at = player.pos + V3(0, 140, 0), dir(0, -1, 0); float best = 1e9f;

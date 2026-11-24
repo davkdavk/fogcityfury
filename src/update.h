@@ -101,13 +101,13 @@ static void update(float dt) {
                 float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz); int ak = (int)(&a - ai); whooshCD[ak] -= h;
                 if (d < 7 && d > 2.3f && fabsf(player.vf - a.speed) > 9 && whooshCD[ak] <= 0 && state == RACE) { whooshCD[ak] = 2; tone(700, 0.35f, 0.22f, 1, 5000); }
                 Contact k;
-                if (!player.dead && state != RESULTS && carContact(player, a, k)) {   // (after the flag the field passes through a finished car, not shoving it about)
+                if (!player.dead && state != RESULTS && !trialMode && carContact(player, a, k)) {   // (time trial: they are ghosts)   // (after the flag the field passes through a finished car, not shoving it about)
                     V3 av = a.vel; float rv = bumpPlayer(k, av, 0.5f);   // we and the bot share the push and the knock
                     bumpBot(a, -k.nx, -k.nz, k.pen * 0.5f, rv < 0 ? -rv * 0.65f : 0, k.at); if (rv < -1) tm.bumps++;
                 }
             }
         }
-        if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn) carContacts(go && state != RESULTS);
+        if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn && !trialMode) carContacts(go && state != RESULTS);
         if (!go && in.gas > 0) player.wheelspin = true;   // rev on the line
         if (!go && showAI()) for (int k = 0; k < NAI; k++) tm.gridDrift = std::max(tm.gridDrift, hypotf(ai[k].pos.x - aiGrid[k].x, ai[k].pos.z - aiGrid[k].z));   // test metric: nobody creeps before the start
     }
@@ -120,9 +120,20 @@ static void update(float dt) {
         { int ob = -1, wb = -1; float lp = W.loopPos(player.pos.x, player.pos.z, player.pos.y, &ob, &wb); if (wb >= 0 && W.brs[wb].a < cpI && W.brs[wb].b > cpI && lp >= cpI) viaShortcut = true; }
         if ((viaShortcut || (dx * dx + dz * dz < (ROADW + 16) * (ROADW + 16) && fabsf(player.pos.y - W.ts[cpI].y) < 5)) && !player.dead) {
             if (player.nextCp % NCP == 0) {
+                if (player.lap > 0 && trialMode) {   // the lap's time, and against your best this run
+                    float lt = raceT - lapStart; trialLaps.push_back(lt); char tb[32], db[64]; fmtTime(tb, lt);
+                    if (bestLapRace > 0) { float dl = lt - bestLapRace; snprintf(db, sizeof db, "LAP %d  %s  %c%.2f", player.lap, tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 2.2f); }
+                    else { snprintf(db, sizeof db, "LAP %d  %s", player.lap, tb); say(db, V3(1, 1, 1), 2.2f); }
+                    if (bestLapRace == 0 || lt < bestLapRace) for (int k = 0; k < NCP && k < 8; k++) trialBestSplit[k] = trialSplit[k];
+                }
                 if (player.lap > 0) { lastLap = raceT - lapStart; if (bestLapRace == 0 || lastLap < bestLapRace) bestLapRace = lastLap; if (bestLap[W.id] == 0 || lastLap < bestLap[W.id]) { bestLap[W.id] = lastLap; if (!exploreMode) say("NEW LAP RECORD!", V3(1, 0.9f, 0.2f)); } }
                 player.lap++; lapStart = raceT;
-                if (!exploreMode) { if (player.lap > raceLaps) { finishRace(false); } else if (player.lap == raceLaps && raceLaps > 1) say("FINAL LAP", V3(1, 0.4f, 0.2f)); else if (player.lap > 1) { say("LAP", V3(1, 1, 1), 0.01f); timeLeft += 11; } }
+                if (trialMode) { if (player.lap > raceLaps) finishRace(false); }
+                else if (!exploreMode) { if (player.lap > raceLaps) { finishRace(false); } else if (player.lap == raceLaps && raceLaps > 1) say("FINAL LAP", V3(1, 0.4f, 0.2f)); else if (player.lap > 1) { say("LAP", V3(1, 1, 1), 0.01f); timeLeft += 11; } }
+            } else if (trialMode) {   // a split: this lap so far, against the same point on your best lap
+                int c = player.nextCp % NCP; float sp = raceT - lapStart; if (c < 8) trialSplit[c] = sp; char tb[32], db[64]; fmtTime(tb, sp);
+                if (c < 8 && trialBestSplit[c] > 0) { float dl = sp - trialBestSplit[c]; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 1.6f); }
+                else { snprintf(db, sizeof db, "SPLIT %s", tb); say(db, V3(0.75f, 0.85f, 1), 1.6f); }
             } else if (!exploreMode) { timeLeft += 11; say("CHECKPOINT  +11", V3(0.4f, 1, 0.5f), 1.6f); }
             tone(660, 0.15f, 0.4f, 2); tone(990, 0.3f, 0.4f, 2, 0, 0.1f); player.nextCp++;
         }
@@ -135,7 +146,7 @@ static void update(float dt) {
         const TS& s = onBr >= 0 ? W.brs[whichBr].ts[onBr] : W.ts[pi]; float fd = sinf(player.yaw) * s.tx + cosf(player.yaw) * s.tz;
         if (fd < -0.4f && player.vf > 6 && W.RD(player.pos.x, player.pos.z) < 20) wrongT += dt; else wrongT = 0;
         tm.maxWrongT = std::max(tm.maxWrongT, wrongT);
-        if (!exploreMode && !rampage && !netRace && state == RACE) { timeLeft -= dt; if (timeLeft <= 0) { timeLeft = 0; finishRace(true); } else if (timeLeft < 10 && (int)(timeLeft + dt) != (int)timeLeft) tone(1200, 0.08f, 0.35f, 2); }
+        if (!exploreMode && !rampage && !netRace && !trialMode && state == RACE) { timeLeft -= dt; if (timeLeft <= 0) { timeLeft = 0; finishRace(true); } else if (timeLeft < 10 && (int)(timeLeft + dt) != (int)timeLeft) tone(1200, 0.08f, 0.35f, 2); }
     }
     // --- rockets, wreckage, reset ---
     if (state == RACE) {
