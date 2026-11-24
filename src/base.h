@@ -8,6 +8,8 @@
 #include <windows.h>
 #undef near
 #undef far
+#undef IN
+#undef OUT
 #endif
 #include <cstdio>
 #ifdef __ANDROID__
