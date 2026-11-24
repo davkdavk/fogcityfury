@@ -283,9 +283,11 @@ static Input autoInput(const Car& c) {
     if (autoCut >= 0 && &c == &player && autoCutInput(c, in, sp)) return in;
     float lat = 0; bool dg = dodge(i, (c.pos.x - W.ts[i].x) * W.ts[i].tz - (c.pos.z - W.ts[i].z) * W.ts[i].tx, 30 + sp * 1.4f, lat);   // steer round wrecks
     V3 tp; float ty; W.at(i + (dg ? 7 + sp * 0.28f : 12 + sp * 0.45f), lat, tp, ty);   // (while dodging it aims closer, so it moves across in time)
+    float err = fabsf(wrapPi(atan2f(tp.x - c.pos.x, tp.z - c.pos.z) - c.yaw));
     in.steer = clampf(wrapPi(atan2f(tp.x - c.pos.x, tp.z - c.pos.z) - c.yaw) * 2.6f, -1, 1);
     float mc = 0; for (int k = 8; k < 90; k += 6) mc = std::max(mc, W.ts[(i + k) % W.n].curv);
     float vmax = sqrtf(17.0f * wx().grip / std::max(mc, 1e-4f)); if (dg) vmax = std::min(vmax, 16.0f + 8.0f * wx().grip);   // (easing right off while it steers round something: a graze at speed is a wreck)
+    if (err > 0.3f) vmax = std::min(vmax, std::max(12.0f, 34.0f - 40.0f * (err - 0.3f)));   // (pointing well off its line, out of a junction or off the road: slow down until it is back on it, 2.4)
     in.gas = sp < vmax ? 1 : 0; in.brake = sp > vmax * 1.12f ? 1 : 0; return in;
 }
 
