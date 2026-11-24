@@ -1,6 +1,8 @@
 // evedit.h - the event editor (fcfedit): open a track, draw trigger lines, place events and set what each does and
 // when, preview a race with them, save the track's event file (events.h has the format). PC only (with the track editor).
 //
+//   N  a new MOMENT: say what happens, then click what it asks for in turn (where cars set it off, the Warden, the
+//      building...); + THEN on a selected step adds the next one to its chain.  [ ] the previous / next track
 //   map view (TAB: fly view)   mouse: left picks and drags, right drags the map, wheel zooms
 //   L  a trigger line (click its two ends)        1-5  an event: rocket, blast, splash, shake, say (click where)
 //   6  where a Warden starts walking (Wardens 1-4, beside the road)   7  a building that comes down (click it)
@@ -35,6 +37,16 @@ static std::string freshId(const char* stem) {
     }
 }
 
+// what the editor calls things (the file keeps its short words)
+static const char* KNAME[director::NKIND] = { "ROCKET", "EXPLOSION", "SPLASH", "SCREEN SHAKE", "MESSAGE", "BUILDING FALLS" };
+static std::string upper(std::string s) { for (char& c : s) c = (char)toupper((unsigned char)c); return s; }
+// a moment, made a click at a time: what happens, where cars set it off (or after the step before), then what it needs
+enum Wiz { WZ_OFF, WZ_PICK, WZ_LINE_A, WZ_LINE_B, WZ_WARDEN, WZ_BUILDING, WZ_SPOT };
+enum MKind { M_MISFIRE, M_EXPLOSION, M_SPLASH, M_SHAKE, M_MESSAGE, M_FALLS, NM };
+static const char* MNAME[NM] = { "WARDEN MISFIRE", "EXPLOSION", "SPLASH", "SCREEN SHAKE", "MESSAGE", "BUILDING FALLS" };
+static const char* MSAY[NM] = { "a Warden's rocket hits a building, which comes down", "a fireball and debris on a spot", "a splash on the water", "the camera shakes", "words across the screen", "a building comes down by itself" };
+static int wiz = WZ_OFF, wk = M_MISFIRE, wWarden = -1; static std::string wAfter, wLine; static V3 wA;
+
 // ---- where things are on the screen: the map (straight down) or the fly view (through the last frame's camera) ----
 static bool toScreen(V3 w, float& sx, float& sy) {
     if (!fly) { float d = std::max(topH - w.y, 1.0f); sx = ((w.x - camTgt.x) / (ed::TANH * (uiW / 720) * d) * 0.5f + 0.5f) * uiW; sy = ((w.z - camTgt.z) / (ed::TANH * d) * 0.5f + 0.5f) * 720; return true; }
@@ -65,9 +77,46 @@ static void aimAt(Event& e, V3 g, bool snap) {   // a rocket's target: a buildin
     int bi = snap ? buildingNear(g.x, g.z, 8) : -1;
     if (bi >= 0) { const Box& bx = W.boxes[bi]; e.to = V3(bx.cx, bx.y0 + (bx.top - bx.y0) * 0.55f, bx.cz); }
     else { float h = e.to.y - W.H(e.to.x, e.to.z); e.to = V3(g.x, g.y + std::max(h, 1.0f), g.z); }
+    if (e.from > 0) e.fells = director::boxAt(e.to.x, e.to.z) >= 0;   // a Warden's misfire: on a building it comes down, on the ground it just blows up
 }
 static V3 wardenSpot(int u) { const director::WardenStart& w = director::wardenAt[u]; return V3(w.x, W.H(w.x, w.z), w.z); }
+// the Warden a rocket is fired by (-1: it flies from its own spot): for "nearest", the placed one nearest its target
+static int firer(const Event& e) {
+    if (e.kind != director::ROCKET || e.from <= 0) return -1;
+    if (e.from <= 4) return director::wardenAt[e.from - 1].set ? e.from - 1 : -1;
+    int wu = -1; float bd = 1e9f; for (int u = 0; u < 4; u++) if (director::wardenAt[u].set) { float d = len(wardenSpot(u) - e.to); if (d < bd) { bd = d; wu = u; } }
+    return wu;
+}
+// where an event's dot is drawn and picked: a Warden-fired rocket's is on its Warden
+static V3 spotOf(const Event& e) { int u = firer(e); return u >= 0 ? wardenSpot(u) + V3(0, 6, 0) : e.at; }
 static V3 lineEnd(const Line& l, int k) { float x = k ? l.bx : l.ax, z = k ? l.bz : l.az; return V3(x, W.H(x, z), z); }
+
+// a Warden's own misfire: its trigger line across the road ~70 m before the Warden, its target just past it on the road
+// (drag the red ring onto a building and that building comes down), and the words after it
+static int misfireOf(int u) { for (int i = 0; i < (int)director::evs.size(); i++) { const Event& e = director::evs[i]; if (firer(e) == u) return i; } return -1; }
+static void addMisfire(int u) {
+    if (W.ts.size() < 8) return; push();
+    V3 w = wardenSpot(u); int n = (int)W.ts.size(), ni = 0; float bd = 1e18f;
+    for (int i = 0; i < n; i++) { float dx = W.ts[i].x - w.x, dz = W.ts[i].z - w.z, d = dx * dx + dz * dz; if (d < bd) { bd = d; ni = i; } }
+    auto walk = [&](int i, float m, int dir) { float acc = 0; while (acc < m) { int j = ((i + dir) % n + n) % n; acc += sqrtf((W.ts[j].x - W.ts[i].x) * (W.ts[j].x - W.ts[i].x) + (W.ts[j].z - W.ts[i].z) * (W.ts[j].z - W.ts[i].z)); i = j; } return i; };
+    int li = walk(ni, 70, -1), ti = walk(ni, 25, 1); const TS& a = W.ts[li]; float tl = sqrtf(a.tx * a.tx + a.tz * a.tz); float px = -a.tz / std::max(tl, 1e-4f), pz = a.tx / std::max(tl, 1e-4f);
+    std::string lid = "warden" + std::to_string(u + 1); bool have = false;
+    for (Line& l : director::lines) if (l.id == lid) { have = true; l.ax = a.x + px * 14; l.az = a.z + pz * 14; l.bx = a.x - px * 14; l.bz = a.z - pz * 14; }
+    if (!have) { Line l; l.id = lid; l.ax = a.x + px * 14; l.az = a.z + pz * 14; l.bx = a.x - px * 14; l.bz = a.z - pz * 14; director::lines.push_back(l); }
+    Event e; e.kind = director::ROCKET; e.id = freshId("misfire"); e.from = u + 1; e.at = w + V3(0, 25, 0); e.on = director::ON_LINE; e.ref = lid; e.laps = 1;
+    e.to = V3(W.ts[ti].x, W.ts[ti].y + 1, W.ts[ti].z); aimAt(e, V3(W.ts[ti].x, W.ts[ti].y, W.ts[ti].z), true);
+    director::evs.push_back(e);
+    Event m; m.kind = director::SAY; m.id = freshId("message"); m.text = "WARDEN MISFIRE!"; m.on = director::ON_AFTER; m.ref = e.id; m.delay = 0.4f; director::evs.push_back(m);
+    selEv = (int)director::evs.size() - 2; selW = selLine = -1;
+    tell("DRAG THE RED RING ONTO A BUILDING TO BRING IT DOWN (ON THE GROUND IT JUST BLOWS UP)");
+}
+static void dropEvent(int i) {   // an event, the steps chained after it, and a Warden's trigger line nothing else uses
+    std::string id = director::evs[i].id, ref = director::evs[i].on == director::ON_LINE ? director::evs[i].ref : ""; director::evs.erase(director::evs.begin() + i);
+    for (int k = (int)director::evs.size() - 1; k >= 0; k--) if (k < (int)director::evs.size() && director::evs[k].on == director::ON_AFTER && director::evs[k].ref == id) dropEvent(k);
+    if (ref.compare(0, 6, "warden") == 0) { bool used = false; for (const Event& e : director::evs) used |= e.on == director::ON_LINE && e.ref == ref;
+        if (!used) for (int k = 0; k < (int)director::lines.size(); k++) if (director::lines[k].id == ref) { director::lines.erase(director::lines.begin() + k); break; } }
+}
+static std::string lineName(const std::string& id) { return id.compare(0, 6, "warden") == 0 ? "WARDEN " + id.substr(6) + " TRIGGER" : "TRIGGER " + upper(id); }
 
 // ---- open, save, preview ----
 static void save() {
@@ -146,22 +195,131 @@ static void stepRow(Event& e, int r, int dir, float lapX) {
     }
 }
 static bool onSave(float x, float y) { return y > 10 && y < 54 && x > uiW - 170 && x < uiW - 20; }   // the SAVE button, top right
-static bool inPanel(float x, float y) { return selEv >= 0 && x > uiW - PW && y > 80 && y < rowY(NROW) + 10; }
+static bool onWBtn(float x, float y) { return selW >= 0 && x > uiW - PW + 16 && x < uiW - 16 && y > 130 && y < 172; }
+static bool inPanel(float x, float y) { return selEv >= 0 && x > uiW - PW && y > 80 && y < rowY(NROW) + 52; }
 
 // a new event of this kind on the ground at g, set off by the newest line if there is one (the usual next step)
+static const char* STEM[director::NKIND] = { "rocket", "explosion", "splash", "shake", "message", "falls" };
 static void place(int kind, V3 g) {
-    push(); Event e; e.id = freshId(director::KIND[kind]); e.kind = kind; e.at = g + V3(0, kind == director::ROCKET ? 25.0f : 3.0f, 0);
+    push(); Event e; e.id = freshId(STEM[kind]); e.kind = kind; e.at = g + V3(0, kind == director::ROCKET ? 25.0f : 3.0f, 0);
     if (kind == director::SPLASH) e.at.y = 0; if (kind == director::ROCKET) e.to = g + V3(40, 10, 0); if (kind == director::SAY) e.text = "LOOK OUT!";
+    if (kind == director::ROCKET) {   // with a Warden on the track, a rocket is that Warden's: the click is the building it hits
+        bool any = false; for (int u = 0; u < 4; u++) any |= director::wardenAt[u].set;
+        if (any) { e.from = 5; aimAt(e, g, true); e.fells = director::boxAt(e.to.x, e.to.z) >= 0; }
+    }
     if (!director::lines.empty()) { e.on = director::ON_LINE; e.ref = director::lines.back().id; }
     director::evs.push_back(e); selEv = (int)director::evs.size() - 1; selLine = -1; tool = SELECT;
 }
+
+// ---- moments ----
+static void wizStart(const std::string& after) { wiz = WZ_PICK; wAfter = after; selEv = selLine = selW = -1; wLine.clear(); wWarden = -1; tool = SELECT; grab = -1; }
+static void wizFinish(V3 g);
+static void wizNext() {   // past the trigger: what this kind needs next
+    if (wk == M_MISFIRE) wiz = WZ_WARDEN; else if (wk == M_EXPLOSION || wk == M_SPLASH) wiz = WZ_SPOT; else if (wk == M_FALLS) wiz = WZ_BUILDING;
+    else { V3 g = camTgt; for (const Line& l : director::lines) if (l.id == wLine) g = V3((l.ax + l.bx) / 2, 0, (l.az + l.bz) / 2); g.y = W.H(g.x, g.z); wizFinish(g); }
+}
+static void wizPick(int k) { wk = k; if (wAfter.empty()) wiz = WZ_LINE_A; else wizNext(); }
+static const char* wizPrompt() {
+    switch (wiz) {
+    case WZ_PICK: return "WHAT HAPPENS?  CLICK ONE, OR PRESS 1-6";
+    case WZ_LINE_A: return "CLICK ONE SIDE OF THE ROAD WHERE CARS SET IT OFF";
+    case WZ_LINE_B: return "NOW CLICK THE OTHER SIDE OF THE ROAD";
+    case WZ_WARDEN: return "CLICK THE WARDEN WHO FIRES";
+    case WZ_BUILDING: return wk == M_MISFIRE ? "CLICK THE BUILDING THE ROCKET HITS" : "CLICK THE BUILDING THAT COMES DOWN";
+    case WZ_SPOT: return wk == M_SPLASH ? "CLICK THE WATER WHERE IT SPLASHES" : "CLICK WHERE IT GOES OFF";
+    default: return "";
+    }
+}
+static void wizFinish(V3 g) {
+    push(); Event e; static const int KK[NM] = { director::ROCKET, director::BLAST, director::SPLASH, director::SHAKE, director::SAY, director::COLLAPSE };
+    static const char* ST[NM] = { "misfire", "explosion", "splash", "shake", "message", "falls" };
+    e.kind = KK[wk]; e.id = freshId(ST[wk]); e.at = g + V3(0, 3, 0);
+    if (!wAfter.empty()) { e.on = director::ON_AFTER; e.ref = wAfter; e.delay = 0.5f; }
+    else if (!wLine.empty()) { e.on = director::ON_LINE; e.ref = wLine; } else e.on = director::ON_LAP;
+    if (wk == M_MISFIRE) { e.from = wWarden + 1; e.at = wardenSpot(wWarden) + V3(0, 25, 0); aimAt(e, g, true); e.fells = true; }
+    if (wk == M_SPLASH) e.at.y = 0;
+    if (wk == M_MESSAGE) e.text = "";
+    director::evs.push_back(e); selEv = (int)director::evs.size() - 1; selLine = selW = -1; wiz = WZ_OFF;
+    if (wk == M_MISFIRE) {   // and the words that go with it
+        Event m; m.kind = director::SAY; m.id = freshId("message"); m.text = "WARDEN MISFIRE!"; m.on = director::ON_AFTER; m.ref = e.id; m.delay = 0.4f;
+        director::evs.push_back(m); tell("DONE. + THEN ADDS THE NEXT STEP; P PREVIEWS IT");
+    } else if (wk == M_MESSAGE) { typing = true; plat::textInput(true); tell("TYPE THE MESSAGE, THEN ENTER"); }
+    else tell("DONE. + THEN ADDS THE NEXT STEP; P PREVIEWS IT");
+}
+static void wizClick(V3 g) {
+    switch (wiz) {
+    case WZ_LINE_A:
+        for (const Line& l : director::lines) {   // a line already drawn: use it
+            V3 m((l.ax + l.bx) / 2, 0, (l.az + l.bz) / 2); m.y = W.H(m.x, m.z);
+            if (near(lineEnd(l, 0), 16) || near(lineEnd(l, 1), 16) || near(m, 20) || len(m - g) < 10 || len(lineEnd(l, 0) - g) < 8 || len(lineEnd(l, 1) - g) < 8) { wLine = l.id; wizNext(); return; }
+        }
+        wA = g; wiz = WZ_LINE_B; return;
+    case WZ_LINE_B: { push(); Line l; l.id = freshId("line"); l.ax = wA.x; l.az = wA.z; l.bx = g.x; l.bz = g.z; director::lines.push_back(l); wLine = l.id; wizNext(); return; }
+    case WZ_WARDEN: {
+        int u = -1; for (int k = 0; k < 4; k++) if (director::wardenAt[k].set && (near(wardenSpot(k), 22) || len(wardenSpot(k) - g) < 12)) u = k;
+        if (u < 0) { for (int k = 3; k >= 0; k--) if (!director::wardenAt[k].set) u = k;
+            if (u < 0) { tell("ALL FOUR WARDENS ARE PLACED: CLICK ONE OF THEM"); return; }
+            push(); director::wardenAt[u] = { true, g.x, g.z }; }
+        wWarden = u; wiz = WZ_BUILDING; return;
+    }
+    case WZ_BUILDING: if (buildingNear(g.x, g.z, 8) < 0) { tell("THAT IS NOT A BUILDING: CLICK ON ONE"); return; } wizFinish(g); return;
+    case WZ_SPOT: wizFinish(g); return;
+    default: return;
+    }
+}
+// the chain the selected event is in: from the step that starts it (a line, a lap, a time) down each "after"
+static std::vector<int> chainOf(int i) {
+    std::vector<int> c; if (i < 0) return c; int root = i;
+    for (int g = 0; g < 16 && director::evs[root].on == director::ON_AFTER; g++) { int p = -1; for (int k = 0; k < (int)director::evs.size(); k++) if (director::evs[k].id == director::evs[root].ref) p = k; if (p < 0) break; root = p; }
+    for (int cur = root, g = 0; cur >= 0 && g < 16; g++) {
+        c.push_back(cur); int nx = -1;
+        for (int k = 0; k < (int)director::evs.size() && nx < 0; k++) if (director::evs[k].on == director::ON_AFTER && director::evs[k].ref == director::evs[cur].id) nx = k;
+        cur = nx;
+    }
+    if (std::find(c.begin(), c.end(), i) == c.end()) c.push_back(i);
+    return c;
+}
+static std::string lapWords(unsigned laps) {
+    if (!laps) return "ANY LAP"; std::string s = "LAP"; int n = 0; for (int b = 0; b < 6; b++) if ((laps >> b) & 1) { s += (n++ ? "," : " ") + std::to_string(b + 1); } return s;
+}
+static std::string startWords(const Event& e) {
+    std::string w = e.on == director::ON_LINE ? "WHEN " + upper(e.by == director::PLAYER ? "you cross" : e.by == director::ANY ? "a car crosses" : e.by == director::LEADER ? "the leader crosses" : "a computer car crosses") + " " + lineName(e.ref)
+                  : e.on == director::ON_TIME ? "AT " + std::to_string((int)e.time) + " S INTO THE RACE" : "AT THE START OF THE LAP";
+    return w + "  (" + lapWords(e.laps) + (e.times == director::ONCE ? ", ONCE)" : ")");
+}
+static std::string stepWords(const Event& e) {
+    char b[160]; int bi = director::boxAt(e.to.x, e.to.z);
+    switch (e.kind) {
+    case director::ROCKET:
+        if (e.from > 0) snprintf(b, sizeof b, "%s FIRES AT %s%s", e.from == 5 ? "THE NEAREST WARDEN" : ("WARDEN " + std::to_string(e.from)).c_str(), bi >= 0 ? ("BUILDING " + std::to_string(bi)).c_str() : "OPEN GROUND", e.fells && bi >= 0 ? ", IT FALLS" : "");
+        else snprintf(b, sizeof b, "A ROCKET FLIES AT %s%s", bi >= 0 ? ("BUILDING " + std::to_string(bi)).c_str() : "OPEN GROUND", e.fells && bi >= 0 ? ", IT FALLS" : ""); break;
+    case director::SAY: snprintf(b, sizeof b, "MESSAGE \"%s\"", e.text.c_str()); break;
+    default: snprintf(b, sizeof b, "%s", KNAME[e.kind]); break;
+    }
+    std::string s = b; if (e.delay > 0) { char d[32]; snprintf(d, sizeof d, "  (%.1f S LATER)", e.delay); s += d; } return s;
+}
+static const float CX = 16, CY = 76, CW = 600, CH = 30;   // the chain box, top left
+static bool onPrev(float x, float y) { return y > 10 && y < 54 && x > uiW - 340 && x < uiW - 265; }
+static bool onNext(float x, float y) { return y > 10 && y < 54 && x > uiW - 258 && x < uiW - 183; }
+static bool onNew(float x, float y) { return y > 10 && y < 54 && x > uiW - 560 && x < uiW - 350; }
+static bool onThen(float x, float y) { return selEv >= 0 && x > uiW - PW + 16 && x < uiW - 16 && y > rowY(NROW) + 14 && y < rowY(NROW) + 48; }
+static int pickAt(float x, float y) { float px = uiW / 2 - 260; for (int k = 0; k < NM; k++) { float py = 170 + k * 62; if (x > px && x < px + 520 && y > py && y < py + 54) return k; } return -1; }
 
 // ---- mouse ----
 static void mouseDown(int button) {
     if (typing) { typing = false; plat::textInput(false); }
     if (button == SDL_BUTTON_LEFT && onSave(mx, my)) { save(); return; }
+    if (button == SDL_BUTTON_LEFT && (onPrev(mx, my) || onNext(mx, my))) { if (dirty) save(); wiz = WZ_OFF; open(track + (onNext(mx, my) ? 1 : -1)); return; }
+    if (button == SDL_BUTTON_LEFT && onNew(mx, my)) { wizStart(""); return; }
+    if (wiz == WZ_PICK) { if (button == SDL_BUTTON_LEFT) { int k = pickAt(mx, my); if (k >= 0) wizPick(k); else wiz = WZ_OFF; } return; }
+    if (button == SDL_BUTTON_LEFT && onWBtn(mx, my)) { int i = misfireOf(selW); if (i >= 0) { selEv = i; selW = -1; } else addMisfire(selW); return; }
+    if (button == SDL_BUTTON_LEFT && onThen(mx, my)) { wizStart(director::evs[selEv].id); return; }
+    if (button == SDL_BUTTON_LEFT && selEv >= 0 && wiz == WZ_OFF) {   // a step in the chain box
+        std::vector<int> c = chainOf(selEv); for (int k = 0; k < (int)c.size(); k++) if (mx > CX && mx < CX + CW && my > CY + 34 + k * CH && my < CY + 34 + (k + 1) * CH) { selEv = c[k]; return; }
+    }
+    if (wiz > WZ_PICK && button == SDL_BUTTON_LEFT && !inPanel(mx, my)) { V3 g; if (ground(mx, my, g)) wizClick(g); return; }
     if (button == SDL_BUTTON_RIGHT && !inPanel(mx, my)) { if (fly) look = true; else pan = true; pmx = mx; pmy = my; return; }
-    if (inPanel(mx, my)) {
+    if (inPanel(mx, my) && wiz == WZ_OFF) {
         Event& e = director::evs[selEv];
         for (int r = 0; r < NROW; r++) if (rowShown(e, r) && my >= rowY(r) - 6 && my < rowY(r) + 30) { stepRow(e, r, button == SDL_BUTTON_RIGHT ? -1 : 1, mx); return; }
         return;
@@ -183,7 +341,7 @@ static void mouseDown(int button) {
     for (int i = (int)director::evs.size() - 1; i >= 0; i--) {
         const Event& e = director::evs[i];
         if (e.kind == director::ROCKET && near(e.to)) { selEv = i; selLine = -1; grab = 3; push(); return; }
-        if (near(e.at)) { selEv = i; selLine = -1; grab = 2; push(); return; }
+        if (near(spotOf(e))) { selEv = i; selLine = -1; grab = firer(e) >= 0 ? -1 : 2; if (grab == 2) push(); return; }
     }
     for (int i = (int)director::lines.size() - 1; i >= 0; i--)
         for (int k = 0; k < 2; k++) if (near(lineEnd(director::lines[i], k))) { selLine = i; selEv = -1; grab = k; push(); return; }
@@ -220,6 +378,12 @@ static void key(SDL_Keycode k, bool down = true) {
         return;
     }
     if (ctrl && k == SDLK_s) { save(); return; }
+    if (wiz != WZ_OFF) {   // making a moment
+        if (k == SDLK_ESCAPE) { wiz = WZ_OFF; tell("MOMENT DROPPED"); return; }
+        if (wiz == WZ_PICK && k >= SDLK_1 && k < SDLK_1 + NM) { wizPick((int)(k - SDLK_1)); return; }
+        if (wiz == WZ_LINE_A && k == SDLK_t) { wLine.clear(); wizNext(); return; }
+        if (k != SDLK_TAB) return;
+    }
     if (ctrl && k == SDLK_z) { if (!undo.empty()) { director::parse(undo.back()); undo.pop_back(); selEv = selLine = -1; dirty = true; } return; }
     if (fly && (k == SDLK_w || k == SDLK_a || k == SDLK_s || k == SDLK_d || k == SDLK_q || k == SDLK_e)) return;
     switch (k) {
@@ -230,12 +394,14 @@ static void key(SDL_Keycode k, bool down = true) {
     case SDLK_6: tool = WARDEN; tell("CLICK BESIDE THE ROAD WHERE A WARDEN STARTS WALKING"); break;
     case SDLK_DELETE: case SDLK_BACKSPACE:
         if (selW >= 0) { push(); director::wardenAt[selW].set = false; selW = -1; break; }
-        if (selEv >= 0) { push(); director::evs.erase(director::evs.begin() + selEv); selEv = -1; }
+        if (selEv >= 0) { push(); dropEvent(selEv); selEv = -1; }
         else if (selLine >= 0) { push(); std::string id = director::lines[selLine].id; director::lines.erase(director::lines.begin() + selLine); selLine = -1;
             for (Event& e : director::evs) if (e.on == director::ON_LINE && e.ref == id) e.on = director::ON_LAP; }   // (its events fall back to a lap start)
         break;
     case SDLK_ESCAPE: if (tool != SELECT) { tool = SELECT; grab = -1; } else selEv = selLine = -1; break;
     case SDLK_p: preview(); break;
+    case SDLK_n: wizStart(""); break;
+    case SDLK_LEFTBRACKET: case SDLK_RIGHTBRACKET: case SDLK_COMMA: case SDLK_PERIOD: if (dirty) save(); open(track + (k == SDLK_RIGHTBRACKET || k == SDLK_PERIOD ? 1 : -1)); break;
     case SDLK_PAGEUP: case SDLK_PAGEDOWN: if (dirty) save(); open(track + (k == SDLK_PAGEDOWN ? 1 : -1)); break;
     default: break;
     }
@@ -256,7 +422,7 @@ static void draw(float Wd) {
         const Line& l = director::lines[i]; bool s = i == selLine;
         if (toScreen(lineEnd(l, 0), sx, sy) && toScreen(lineEnd(l, 1), ex, ey)) {
             ui.line(sx, sy, ex, ey, s ? 6 : 4, YEL, s ? 1 : 0.8f); ui.disc(sx, sy, 7, YEL, 1); ui.disc(ex, ey, 7, YEL, 1);
-            label((sx + ex) / 2, (sy + ey) / 2, YEL, l.id.c_str());
+            label((sx + ex) / 2, (sy + ey) / 2, YEL, lineName(l.id).c_str());
         }
     }
     for (int u = 0; u < 4; u++) if (director::wardenAt[u].set && toScreen(wardenSpot(u), sx, sy)) {   // where Wardens start walking
@@ -265,7 +431,8 @@ static void draw(float Wd) {
     }
     for (int i = 0; i < (int)director::evs.size(); i++) {   // events: a dot, its name, a thread to what sets it off
         const Event& e = director::evs[i]; bool s = i == selEv; V3 c = KCOL[e.kind];
-        V3 at = e.kind == director::SHAKE || e.kind == director::SAY ? (e.at.x == 0 && e.at.z == 0 ? camTgt : e.at) : e.at;
+        V3 at = e.kind == director::SHAKE || e.kind == director::SAY ? (e.at.x == 0 && e.at.z == 0 ? camTgt : e.at) : spotOf(e);
+        if (e.on == director::ON_AFTER) { bool lone = true; for (const Event& o : director::evs) lone &= o.id != e.ref; if (!lone && i != selEv) continue; }   // (a later step in a chain: shown in the chain box)
         if (!toScreen(at, sx, sy)) continue;
         if (e.kind == director::ROCKET) {   // its building lit up: the outline of the roof and the ground
             int bi = director::boxAt(e.to.x, e.to.z);
@@ -273,10 +440,11 @@ static void draw(float Wd) {
                 for (int k = 0; k < 8; k++) { float lx = cs[k & 3][0] * x.hx, lz = cs[k & 3][1] * x.hz; V3 w(x.cx + lx * x.ca + lz * x.sa, k < 4 ? x.top : x.y0, x.cz - lx * x.sa + lz * x.ca); ok &= toScreen(w, px[k], py[k]); }
                 if (ok) for (int k = 0; k < 4; k++) { ui.line(px[k], py[k], px[(k + 1) & 3], py[(k + 1) & 3], s ? 3 : 2, RED, 0.9f); if (fly) { ui.line(px[k + 4], py[k + 4], px[((k + 1) & 3) + 4], py[((k + 1) & 3) + 4], 2, RED, 0.6f); ui.line(px[k], py[k], px[k + 4], py[k + 4], 2, RED, 0.6f); } } }
         }
+        // its path, dashed, to the red target ring (from the Warden for a Warden's rocket: its dot is on the Warden)
         if (e.kind == director::ROCKET && toScreen(e.to, ex, ey)) { for (int k = 0; k < 12; k += 2) ui.line(sx + (ex - sx) * k / 12, sy + (ey - sy) * k / 12, sx + (ex - sx) * (k + 1) / 12, sy + (ey - sy) * (k + 1) / 12, 3, c, 0.9f); ed::ring(ex, ey, 10, RED, 1, 3); }
         if (e.on == director::ON_LINE) for (const Line& l : director::lines) if (l.id == e.ref) { V3 m((l.ax + l.bx) / 2, 0, (l.az + l.bz) / 2); m.y = W.H(m.x, m.z); if (toScreen(m, ex, ey)) ui.line(sx, sy, ex, ey, 1.5f, c, 0.45f); }
         ui.disc(sx, sy, s ? 11 : 8, c, 1); if (s) ed::ring(sx, sy, 16, WHT, 1, 2);
-        snprintf(b, sizeof b, "%s %s", e.id.c_str(), trigName(e).c_str()); for (char* q = b; *q; q++) *q = (char)toupper(*q); label(sx, sy, c, b);
+        label(sx, firer(e) >= 0 ? sy + 24 : sy, c, upper(e.id).c_str());   // (a Warden's: under its Warden's name)
     }
     if (tool == LINE && grab == 9 && toScreen(lineA, sx, sy)) ui.line(sx, sy, mx, my, 3, YEL, 0.6f);
     // the panel
@@ -284,12 +452,12 @@ static void draw(float Wd) {
         const Event& e = director::evs[selEv]; float x = Wd - PW;
         ui.rect(x, 80, PW, rowY(NROW) - 70, V3(0.02f, 0.03f, 0.06f), 0.75f); ui.rect(x, 80, PW, 3, KCOL[e.kind], 1);
         snprintf(b, sizeof b, "EVENT %s", e.id.c_str()); for (char* q = b; *q; q++) *q = (char)toupper(*q); ui.text(x + 16, 90, 2.6f, WHT, b);
-        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET", "FIRED FROM", "BRINGS IT DOWN" };
+        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET", "FIRED FROM", "COLLAPSE" };
         for (int r = 0; r < NROW; r++) {
             if (!rowShown(e, r)) continue; float y = rowY(r); ui.text(x + 16, y, 2.2f, GREY, RN[r]);
             switch (r) {
-            case R_KIND: snprintf(b, sizeof b, "%s", director::KIND[e.kind]); break;
-            case R_ON: snprintf(b, sizeof b, "%s", trigName(e).c_str()); break;
+            case R_KIND: snprintf(b, sizeof b, "%s", KNAME[e.kind]); break;
+            case R_ON: snprintf(b, sizeof b, "%s", e.on == director::ON_LINE ? ("CROSSING " + e.ref).c_str() : e.on == director::ON_LAP ? "LAP START" : e.on == director::ON_TIME ? "A TIME" : trigName(e).c_str()); break;
             case R_TIME: snprintf(b, sizeof b, "%.0f S", e.time); break;
             case R_LAPS: b[0] = 0; for (int c = 0; c < 7; c++) { bool on = c == 0 ? e.laps == 0 : (e.laps >> (c - 1)) & 1; float cx = x + VX + c * 34; ui.rect(cx, y - 4, 30, 26, on ? YEL : V3(0.25f, 0.27f, 0.32f), 1); char t[8]; snprintf(t, sizeof t, c ? "%d" : "ALL", c); ui.text(cx + 15, y, c ? 2.2f : 1.6f, on ? V3(0, 0, 0) : WHT, t, 1); } break;
             case R_DELAY: snprintf(b, sizeof b, "%.2f S", e.delay); break;
@@ -306,19 +474,49 @@ static void draw(float Wd) {
             if (r != R_LAPS) { for (char* q = b; *q; q++) *q = (char)toupper(*q); ui.text(x + VX, y, 2.2f, WHT, b); }
         }
         ui.text(x + 16, rowY(NROW) - 4, 1.4f, GREY, "CLICK: NEXT   RIGHT-CLICK: BACK   SHIFT: FINER");
+        { bool hov = onThen(mx, my); ui.rect(x + 16, rowY(NROW) + 14, PW - 32, 34, V3(0.2f, 0.5f, 0.3f), hov ? 1 : 0.8f); ui.text(x + PW / 2, rowY(NROW) + 21, 2.2f, WHT, "+ THEN...  (THE NEXT STEP)", 1); }
+        // the chain: what sets it off, then each step in order (click one to pick it)
+        std::vector<int> ch = chainOf(selEv); const Event& r0 = director::evs[ch[0]];
+        ui.rect(CX - 6, CY - 6, CW + 12, 40 + ch.size() * CH, V3(0.02f, 0.03f, 0.06f), 0.75f);
+        ui.text(CX, CY, 2.0f, YEL, startWords(r0).c_str());
+        for (int k = 0; k < (int)ch.size(); k++) { const Event& q = director::evs[ch[k]]; float y = CY + 34 + k * CH; bool s = ch[k] == selEv;
+            if (s) ui.rect(CX - 4, y - 5, CW + 8, CH - 2, V3(0.3f, 0.32f, 0.4f), 0.7f);
+            std::string w = (k ? "THEN " : "") + stepWords(q); ui.text(CX + 10, y, 1.9f, s ? WHT : KCOL[q.kind], w.c_str()); }
     } else if (selLine >= 0) {
         const Line& l = director::lines[selLine]; float x = Wd - PW; int n = 0; for (const Event& e : director::evs) n += e.on == director::ON_LINE && e.ref == l.id;
         ui.rect(x, 80, PW, 90, V3(0.02f, 0.03f, 0.06f), 0.75f); ui.rect(x, 80, PW, 3, YEL, 1);
         snprintf(b, sizeof b, "TRIGGER LINE %s", l.id.c_str()); for (char* q = b; *q; q++) *q = (char)toupper(*q); ui.text(x + 16, 92, 2.6f, WHT, b);
         snprintf(b, sizeof b, "%d EVENT%s SET OFF BY IT", n, n == 1 ? "" : "S"); ui.text(x + 16, 130, 2.2f, GREY, b);
+    } else if (selW >= 0) {   // a Warden: its misfire, made or picked with one click
+        float x = Wd - PW; int mi = misfireOf(selW);
+        ui.rect(x, 80, PW, 140, V3(0.02f, 0.03f, 0.06f), 0.75f); ui.rect(x, 80, PW, 3, CYA, 1);
+        snprintf(b, sizeof b, "WARDEN %d", selW + 1); ui.text(x + 16, 92, 2.6f, WHT, b);
+        ui.rect(x + 16, 130, PW - 32, 42, mi >= 0 ? V3(0.25f, 0.27f, 0.32f) : V3(0.6f, 0.22f, 0.15f), onWBtn(mx, my) ? 1 : 0.85f);
+        ui.text(x + PW / 2, 140, 2.4f, WHT, mi >= 0 ? "ITS MISFIRE (CLICK TO EDIT)" : "+ MISFIRE", 1);
+        ui.text(x + 16, 186, 1.4f, GREY, mi >= 0 ? "DRAG ITS RED RING ONTO A BUILDING TO BRING IT DOWN" : "IT FIRES WHEN YOU DRIVE PAST THIS WARDEN ON LAP 1");
     }
     // the top and bottom bars
     ui.rect(0, 0, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
-    snprintf(b, sizeof b, "EVENT EDITOR  -  %s%s", W.def->name, dirty ? "  *" : ""); ui.text(20, 14, 3.4f, YEL, b);
-    snprintf(b, sizeof b, "%d LINES  %d EVENTS  %s", (int)director::lines.size(), (int)director::evs.size(), fly ? "FLY VIEW" : "MAP VIEW"); ui.text(Wd - 190, 22, 2.2f, GREY, b, 2);
+    snprintf(b, sizeof b, "%s%s", W.def->name, dirty ? "  *" : ""); ui.text(20, 10, 3.4f, YEL, b);
+    snprintf(b, sizeof b, "EVENT EDITOR   TRACK %d OF %d   %d LINES  %d EVENTS   %s", track + 1, (int)TRACKS.size(), (int)director::lines.size(), (int)director::evs.size(), fly ? "FLY VIEW" : "MAP VIEW"); ui.text(20, 44, 1.4f, GREY, b);
+    { V3 bg(0.25f, 0.27f, 0.32f); ui.rect(Wd - 560, 10, 210, 44, V3(0.2f, 0.5f, 0.3f), onNew(mx, my) ? 1 : 0.85f); ui.text(Wd - 455, 20, 2.4f, WHT, "+ NEW MOMENT", 1);
+      ui.rect(Wd - 340, 10, 75, 44, bg, onPrev(mx, my) ? 1 : 0.85f); ui.text(Wd - 302, 22, 2.0f, WHT, "< PREV", 1);
+      ui.rect(Wd - 258, 10, 75, 44, bg, onNext(mx, my) ? 1 : 0.85f); ui.text(Wd - 220, 22, 2.0f, WHT, "NEXT >", 1); }
     { bool hov = onSave(mx, my); ui.rect(Wd - 170, 10, 150, 44, dirty ? ORG : V3(0.25f, 0.27f, 0.32f), hov ? 1 : 0.85f); ui.text(Wd - 95, 20, 2.6f, dirty ? V3(0, 0, 0) : WHT, dirty ? "SAVE *" : "SAVED", 1); }
     ui.rect(0, 656, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
-    ui.text(20, 666, 1.45f, WHT, "L LINE  1 ROCKET 2 BLAST 3 SPLASH 4 SHAKE 5 SAY  6 WARDEN 7 COLLAPSE  DEL  CTRL+Z UNDO  CTRL+S SAVE  P PREVIEW  TAB FLY/MAP  PGUP/DN TRACK");
+    ui.text(20, 666, 1.45f, WHT, "N NEW MOMENT   L LINE  1-5 ROCKET EXPLOSION SPLASH SHAKE MESSAGE  6 WARDEN 7 FALLS  DEL  CTRL+Z  CTRL+S SAVE  P PREVIEW  TAB FLY  < > TRACK");
+    if (wiz == WZ_PICK) {
+        ui.rect(Wd / 2 - 280, 110, 560, 60 + NM * 62, V3(0.02f, 0.03f, 0.06f), 0.88f); ui.text(Wd / 2, 124, 2.6f, YEL, "NEW MOMENT: WHAT HAPPENS?", 1);
+        for (int k = 0; k < NM; k++) { float px = Wd / 2 - 260, py = 170 + k * 62; bool h = pickAt(mx, my) == k; ui.rect(px, py, 520, 54, h ? V3(0.3f, 0.34f, 0.45f) : V3(0.14f, 0.16f, 0.22f), 1);
+            snprintf(b, sizeof b, "%d  %s", k + 1, MNAME[k]); ui.text(px + 14, py + 8, 2.4f, WHT, b); ui.text(px + 14, py + 34, 1.4f, GREY, upper(MSAY[k]).c_str()); }
+    } else if (wiz != WZ_OFF) {
+        snprintf(b, sizeof b, "%s:", MNAME[wk]); ui.rect(0, 64, Wd, 46, V3(0.35f, 0.2f, 0.02f), 0.85f); ui.text(20, 76, 2.2f, YEL, b);
+        ui.text(20 + ui.textW(b, 2.2f) + 16, 76, 2.2f, WHT, wizPrompt()); ui.text(Wd - 20, 80, 1.4f, GREY, "ESC DROPS IT", 2);
+        const char* more = wiz == WZ_LINE_A ? "OR CLICK A LINE YOU ALREADY HAVE, OR PRESS T: AT THE START OF A LAP" : wiz == WZ_WARDEN ? "OR CLICK BESIDE THE ROAD TO PUT A NEW WARDEN THERE" : wiz == WZ_BUILDING && wk == M_MISFIRE ? "IT COMES DOWN WHEN THE ROCKET HITS" : "";
+        ui.text(20 + ui.textW(b, 2.2f) + 16, 97, 1.3f, GREY, more);
+    }
+    if (wiz != WZ_OFF && wiz != WZ_PICK && tool == SELECT && grab < 0) { /* (the bar says what to click) */ }
+    if (wiz == WZ_LINE_B && toScreen(wA, sx, sy)) ui.line(sx, sy, mx, my, 3, YEL, 0.6f);
     if (noteT > 0) ui.text(20, 694, 2.0f, ORG, note);
     else ui.text(20, 694, 1.6f, GREY, fly ? "FLY: W A S D MOVE   Q E DOWN/UP   RIGHT DRAG LOOKS   SHIFT FAST" : "MAP: LEFT PICKS AND DRAGS   RIGHT DRAG MOVES THE MAP   WHEEL ZOOMS");
 }
@@ -344,6 +542,10 @@ static void script(const char* p) {
             else if (kq == "to" && t.size() >= 5) e.to = V3((float)atof(v.c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str())); else if (kq == "time") e.time = (float)atof(v.c_str()); }
         else if (t[0] == "warden" && t.size() >= 4) { int u = atoi(t[1].c_str()) - 1; if (u >= 0 && u < 4) { push(); director::wardenAt[u] = { true, (float)atof(t[2].c_str()), (float)atof(t[3].c_str()) }; selW = u; selEv = selLine = -1; } }
         else if (t[0] == "aim" && t.size() >= 3 && selEv >= 0) { float x = (float)atof(t[1].c_str()), z = (float)atof(t[2].c_str()); push(); aimAt(director::evs[selEv], V3(x, W.H(x, z), z), true); }   // as a mouse drop
+        else if (t[0] == "moment" && t.size() >= 2) { wizStart(t.size() >= 3 ? t[2] : ""); int k = atoi(t[1].c_str()) - 1; if (k >= 0 && k < NM) wizPick(k); }   // (0: just the picker)   // moment N [AFTER-ID]: as the picker's N
+        else if (t[0] == "click" && t.size() >= 3) { float x = (float)atof(t[1].c_str()), z = (float)atof(t[2].c_str()); wizClick(V3(x, W.H(x, z), z)); }   // a click on the ground at X Z
+        else if (t[0] == "lapstart") { if (wiz == WZ_LINE_A) { wLine.clear(); wizNext(); } }
+        else if (t[0] == "wmisfire" && t.size() >= 2) { int u = atoi(t[1].c_str()) - 1; if (u >= 0 && u < 4 && director::wardenAt[u].set) addMisfire(u); }   // as the Warden panel's + MISFIRE
         else if (t[0] == "save") save();
         else if (t[0] == "preview") preview();
         else if (t[0] == "view" && t.size() >= 4) { camTgt = V3((float)atof(t[1].c_str()), 0, (float)atof(t[2].c_str())); topH = (float)atof(t[3].c_str()); }

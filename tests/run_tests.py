@@ -1889,13 +1889,12 @@ def the_wardens_minigun_tracks_and_fires_bursts():
 
 @test
 def the_race_director_plays_a_tracks_events():
-    """Hilltop Heights' events (events/track0.fcfe): on lap 1 a Warden's misfire (a rocket from the nearest Warden's
-    cannon) brings down the tower ahead, with a message after it; every lap a rocket streaks across the road at the
-    second line, a shake chained after it; a message on lap 2. Three laps: 9 events, one building down. The file is
+    """Hilltop Heights' events (events/track0.fcfe): on lap 1, at gate0, a Warden's misfire (a rocket from the nearest
+    Warden's cannon) brings down the tower ahead, with a message after it. Three laps: 2 events, one building down. The file is
     built into the game too (src/events_builtin.h, for the 360 and Android), and that copy is up to date."""
     d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=230)
-    check(d["eventsLoaded"] == 5 and d["eventLines"] == 2, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"]))
-    check(d["lap"] >= 3 and d["events"] == 9, "three laps: the misfire and its message once, a rocket and a shake each lap, the lap-2 message", (d["lap"], d["events"]))
+    check(d["eventsLoaded"] == 2 and d["eventLines"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"]))
+    check(d["lap"] >= 3 and d["events"] == 2, "three laps: the misfire and its message, once", (d["lap"], d["events"]))
     check(d["fallen"] == 1 and d["finished"] == 1 and d["wrecks"] == 0, "the misfire brings the tower down, and the race goes on", (d["fallen"], d["finished"], d["wrecks"]))
     sys.path.insert(0, os.path.join(ROOT, "tools")); import embed_events
     check(embed_events.build() == open(os.path.join(ROOT, "src", "events_builtin.h")).read(), "src/events_builtin.h matches events/ (run tools/embed_events.py)")
@@ -1953,6 +1952,23 @@ def the_event_editor_saves_files_the_game_races():
     d = sim("--track", 0, "--state", 3, "--events", w, seconds=0.1)
     dist = lambda m, x, z: math.hypot(m[0] - x, m[2] - z)
     check(dist(d["mech"], -460, -200) < 25 and dist(d["mech2"], -134, -175) < 25, "Wardens 1 and 2 start walking where the file puts them", (d["mech"][:3], d["mech2"]))
+
+@test
+def a_warden_misfire_is_one_click_in_the_editor():
+    """2.29.2: a Warden's + MISFIRE makes its own trigger line (~70 m before it), the rocket it fires and the words after
+    it; a NEW MOMENT chains click by click (here an explosion at the start of a lap). Saved and raced, they all go off."""
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    script = "warden 2 -134 -175; wmisfire 2; moment 2; lapstart; click -70 -95; save"
+    subprocess.run([BIN, "--sim", "--seconds", "0.1", "--evedit", "--track", "0", "--evscript", script], cwd=tmp, capture_output=True, timeout=120)
+    f = os.path.join(tmp, "events", "track0.fcfe")
+    check(os.path.exists(f), "the editor saved events/track0.fcfe")
+    if not os.path.exists(f): return
+    txt = open(f).read()
+    check("line warden2 " in txt and "from warden2" in txt and "on warden2" in txt and "on after misfire2" in txt, "Warden 2's misfire: its line, its rocket, its words", txt[:400])
+    check(txt.count("\nline ") == 2 and txt.count("\nevent ") == 5, "two lines (Wardens 1 and 2) and five events", txt.count("\nevent "))
+    r = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=120)
+    check(r["eventsLoaded"] == 5 and r["events"] == 5, "a race sets off all five", (r["eventsLoaded"], r["events"]))
 
 @test
 def the_ronin_120_comes_from_blender_and_races():

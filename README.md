@@ -13,6 +13,8 @@ C++17, SDL2, OpenGL 3.3 core, GLSL 3.30.
 
 **Just want to play?** Read the **[Player's Guide](docs/PLAYING.md)**: downloads, controls, modes, online play, the track editor and troubleshooting.
 
+**Want to script a track?** Read the **[event editor guide](docs/FCFEDIT.md)**: Warden misfires, falling buildings, explosions and messages, in a few clicks.
+
 ## The A12 Engine
 
 Fog City Fury runs on the **A12 Engine**, which is in this repository too: generated island worlds with roads,
@@ -89,6 +91,20 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
+
+## What's new in 2.29.2
+
+- **fcfedit is much easier to use** (new guide: [docs/FCFEDIT.md](docs/FCFEDIT.md)):
+  - **Warden misfires in one click.** Click a Warden and choose **+ MISFIRE**. It gets its own trigger line, a rocket
+    and a message. Drag the red ring onto a building and that building comes down when the rocket hits; on the ground
+    it just explodes.
+  - **New moments, step by step** (`N`): choose what happens, then click what the bar asks for (where cars set it off,
+    the Warden, the building...). **+ THEN…** chains the next step after any step.
+  - **A chain box** spells out the selected moment in plain words ("WHEN YOU CROSS WARDEN 1 TRIGGER → WARDEN 1 FIRES
+    AT BUILDING 528, IT FALLS → MESSAGE").
+  - **Changing track:** **< PREV / NEXT >** buttons, or the `<` `>` keys.
+  - Plain names: EXPLOSION, MESSAGE, BUILDING FALLS, TRIGGER lines. A Warden's rocket is drawn from that Warden.
+- Hilltop Heights' script is just the Warden misfire now (the confusing rooftop rocket from 2.28 is gone)
 
 ## What's new in 2.29.1
 
