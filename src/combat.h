@@ -369,11 +369,11 @@ static void stepRockets(float dt) {
         spawn(r.p - dir * 0.6f, dir * -6 + V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1)), 0.12f, 0.22f, 0.5f, V3(6, 3.2f, 0.8f), 1, 1, 0);
         for (int k = 0; k < 2; k++) spawn(r.p - dir * (0.8f + k * 0.9f), V3(grng.r(-0.6f, 0.6f), grng.r(0.2f, 1.0f), grng.r(-0.6f, 0.6f)), grng.r(0.7f, 1.2f), 0.22f, 1.3f, V3(0.75f, 0.75f, 0.78f), 0.35f);
         if (c && len(tp - r.p) < 2.9f) { if (r.lob) lobHits++; rocketHit(r.target, r.p, r.owner); done = true; }
-        else if (!c && r.aimed && len(r.aim - r.p) < 2.5f) { blast(r.p, V3(), nearK(r.p)); if (r.fells) fall::collapse(r.aim); done = true; }
+        else if (!c && r.aimed && len(r.aim - r.p) < 2.5f) { Rng keep = grng; blast(r.p, V3(), nearK(r.p)); grng = keep; if (r.fells) fall::collapse(r.aim); done = true; }   // (a scripted rocket's burst: its sparks must not change the race's dice)
         else {
             // it skims the ground like a cruise missile, so crests and dips do not stop it; walls and cliffs do
             V3 q = r.p, vv = r.v; float imp = 0, g = W.ground(r.p.x, r.p.z, r.p.y + 1.5f);
-            if (r.life <= 0 || r.p.y < g - 1.2f || W.collide(q, vv, 0.35f, imp)) { blast(r.p, V3(), nearK(r.p) * 0.7f); if (r.aimed && r.fells) fall::collapse(r.aim); done = true; }
+            if (r.life <= 0 || r.p.y < g - 1.2f || W.collide(q, vv, 0.35f, imp)) { Rng keep = grng; blast(r.p, V3(), nearK(r.p) * 0.7f); if (r.aimed) grng = keep; if (r.aimed && r.fells) fall::collapse(r.aim); done = true; }
             else if (r.p.y < g + 0.8f) { r.p.y = g + 0.8f; r.v.y = std::max(r.v.y, 0.0f); }
         }
         if (done) { rockets[i] = rockets.back(); rockets.pop_back(); } else i++;

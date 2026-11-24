@@ -422,7 +422,7 @@ static void survey() {
         if (i) acc += sqrtf((W.ts[i].x - W.ts[i - 1].x) * (W.ts[i].x - W.ts[i - 1].x) + (W.ts[i].z - W.ts[i - 1].z) * (W.ts[i].z - W.ts[i - 1].z)); if (i && acc < 40) continue; acc = 0;
         const TS& s = W.ts[i]; float bd = 0; V3 bp;
         for (int side = -1; side <= 1; side += 2) for (float lat = 25; lat <= 110; lat += 5) { float x = s.x + s.tz * lat * side, z = s.z - s.tx * lat * side, d = -W.HW(x, z); if (d > bd) { bd = d; bp = V3(x, 0, z); } }
-        if (bd > 5) { printf("%s[%d,%.0f,%.0f,%.1f]", first ? "" : ",", i, bp.x, bp.z, bd); first = false; }
+        if (bd > 5) { float tl = std::max(sqrtf(s.tx * s.tx + s.tz * s.tz), 1e-4f); printf("%s[%d,%.0f,%.0f,%.1f,%.0f,%.0f,%.3f,%.3f]", first ? "" : ",", i, bp.x, bp.z, bd, s.x, s.z, s.tx / tl, s.tz / tl); first = false; }
     }
     printf("],\"towers\":["); first = true; acc = 0;
     for (int i = 0; i < W.n; i++) {

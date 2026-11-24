@@ -1,6 +1,21 @@
 # Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)
+pod pod1  655.0 85.0  r 45  n 3  k 1
+line fall1  295.5 -145.5  271.5 -159.9
+line fall2  471.0 197.6  489.7 218.4
+line fall3  -401.3 239.0  -408.4 266.1
+line dol1  528.7 -52.6  556.5 -56.1
 line drop1  -105.8 143.2  -83.0 127.1
+event falls1 collapse  at 339.0 0.0 -282.0  laps 1  delay 0  times once  chance 100  by player  on fall1
+event shake1 shake  at 0.0 0.0 0.0  k 1.2  laps all  delay 0.3  times once  chance 100  by player  on after falls1
+event message1 say  at 0.0 0.0 0.0  text "THE CITY IS COMING DOWN!"  laps all  delay 0.6  times once  chance 100  by player  on after falls1
+event falls2 collapse  at 366.0 0.0 285.0  laps 2  delay 0  times once  chance 100  by player  on fall2
+event shake2 shake  at 0.0 0.0 0.0  k 1.2  laps all  delay 0.3  times once  chance 100  by player  on after falls2
+event message2 say  at 0.0 0.0 0.0  text "ANOTHER ONE COMES DOWN!"  laps all  delay 0.6  times once  chance 100  by player  on after falls2
+event falls3 collapse  at -525.0 0.0 204.0  laps 3  delay 0  times once  chance 100  by player  on fall3
+event shake3 shake  at 0.0 0.0 0.0  k 1.2  laps all  delay 0.3  times once  chance 100  by player  on after falls3
+event message3 say  at 0.0 0.0 0.0  text "IT'S ALL COMING DOWN!"  laps all  delay 0.6  times once  chance 100  by player  on after falls3
+event leap1 dolphin  at 655.0 0.0 85.0  to 653.0 0.0 110.0  k 1  laps all  delay 0  times lap  chance 100  by player  on dol1
 event minis1 minis  at -12.0 77.0 177.0  to -32.1 14.9 198.6  k 3  laps 1  delay 0  times once  chance 100  by player  on drop1
-event weather1 weather  at 0.0 0.0 0.0  wx rain  over 10  laps 2  delay 0  times once  chance 100  by player  on lap
-event message1 say  at 0.0 0.0 0.0  text "RAIN ROLLING IN"  laps 2  delay 0  times once  chance 100  by player  on lap
-event snipers1 minis  at 258.0 67.0 -66.0  to 236.0 10.0 -79.0  k 2  stay  laps 1  delay 0  times once  chance 100  by player  on lap
+event minis2 minis  at 258.0 67.0 -66.0  to 244.5 8.0 -75.3  stay  k 2  laps 1  delay 0  times once  chance 100  by player  on lap
+event weather1 weather  at 0.0 0.0 0.0  wx rain  over 12  laps 2  delay 0  times once  chance 100  by player  on lap
+event message4 say  at 0.0 0.0 0.0  text "RAIN ROLLING IN"  laps 2  delay 0  times once  chance 100  by player  on lap

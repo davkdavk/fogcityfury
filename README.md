@@ -92,6 +92,26 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.6.2
+
+- **Every track's script is reworked so each lap plays differently.** Everything is set off by lines across the
+  road just ahead of you, so it happens where you can see it.
+  - **Lap 1:** a Warden misfires and a tower comes down. On Midnight Mile, where no Warden stands by the road, the
+    first tower simply gives way.
+  - **Lap 2:** another building collapses on its own, with a shake and "THE CITY IS COMING DOWN!".
+  - **Lap 3:** a third comes down, with "IT'S ALL COMING DOWN!".
+  - Each track keeps its one Warden where it was, because moving Wardens changes how they fight the race.
+  - **Every lap:** dolphins leap beside the road just as you pass.
+  - **Weather:**
+    - Bayside Breaker and Lagoon Loop: a storm breaks on lap 3.
+    - Summit Switchbacks: fog rolls in on lap 2.
+    - Harbour Deep and Midnight Mile: rain on lap 2.
+  - Midnight Mile and Hilltop Heights keep their rooftop snipers. Twin Isles, the endurance track, gets a lap 1
+    misfire, its mini Warden drop and dolphins.
+- `--survey` also gives the road's direction at each sea spot (for scripting leaps alongside the road). A
+  scripted rocket's burst no longer draws on the race's random numbers, so scripted moments don't change how the
+  rest of the race plays out.
+
 ## What's new in 2.6.1
 
 - **MANIC is you against your own ghost.**

@@ -1,7 +1,18 @@
 # Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)
-warden 1  -361.0 346.0
-pod pod1  260.0 120.0  r 50  n 3  k 1
-line warden1  -300.5 377.2  -311.3 403.1
-event misfire1 rocket  at -361.0 42.3 346.0  to -390.0 47.2 393.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1
+warden 1  -438.0 322.0
+pod pod1  260.0 120.0  r 45  n 3  k 1
+line warden1  -365.8 343.5  -380.8 367.1
+line fall2  -138.4 -416.0  -137.6 -444.0
+line fall3  389.2 400.5  411.9 416.9
+line dol1  219.7 -6.4  244.9 -18.6
+event misfire1 rocket  at -438.0 39.6 322.0  to -417.0 46.0 285.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1
 event message1 say  at 0.0 0.0 0.0  text "WARDEN MISFIRE!"  laps all  delay 0.4  times once  chance 100  by player  on after misfire1
-event leap1 dolphin  at 250.0 0.0 100.0  to 240.0 0.0 70.0  k 1  laps all  delay 6  times lap  chance 100  by player  on lap
+event falls1 collapse  at -12.0 0.0 -417.0  laps 2  delay 0  times once  chance 100  by player  on fall2
+event shake1 shake  at 0.0 0.0 0.0  k 1.2  laps all  delay 0.3  times once  chance 100  by player  on after falls1
+event message2 say  at 0.0 0.0 0.0  text "THE CITY IS COMING DOWN!"  laps all  delay 0.6  times once  chance 100  by player  on after falls1
+event falls2 collapse  at 312.0 0.0 501.0  laps 3  delay 0  times once  chance 100  by player  on fall3
+event shake2 shake  at 0.0 0.0 0.0  k 1.2  laps all  delay 0.3  times once  chance 100  by player  on after falls2
+event message3 say  at 0.0 0.0 0.0  text "ANOTHER ONE COMES DOWN!"  laps all  delay 0.6  times once  chance 100  by player  on after falls2
+event leap1 dolphin  at 260.0 0.0 120.0  to 272.0 0.0 142.0  k 1  laps all  delay 0  times lap  chance 100  by player  on dol1
+event weather1 weather  at 0.0 0.0 0.0  wx storm  over 14  laps 3  delay 0  times once  chance 100  by player  on lap
+event message4 say  at 0.0 0.0 0.0  text "A STORM IS BREAKING"  laps 3  delay 0  times once  chance 100  by player  on lap

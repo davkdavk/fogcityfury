@@ -1,5 +1,10 @@
 # Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)
-pod pod1  198.0 -134.0  r 50  n 3  k 1
+warden 1  343.0 585.0
+pod pod1  198.0 -134.0  r 45  n 3  k 1
+line warden1  405.2 542.9  416.2 568.7
+line dol1  42.9 -163.3  62.7 -183.1
 line drop1  523.9 431.7  550.0 441.9
+event misfire1 rocket  at 343.0 35.6 585.0  to 339.0 25.5 528.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1
+event message1 say  at 0.0 0.0 0.0  text "WARDEN MISFIRE!"  laps all  delay 0.4  times once  chance 100  by player  on after misfire1
+event leap1 dolphin  at 198.0 0.0 -134.0  to 216.0 0.0 -116.0  k 1  laps all  delay 0  times lap  chance 100  by player  on dol1
 event minis1 minis  at 501.0 72.0 528.0  to 491.1 12.9 516.2  k 3  laps 1  delay 0  times once  chance 100  by player  on drop1
-event leap1 dolphin  at 190.0 0.0 -140.0  to 160.0 0.0 -150.0  k 1  laps all  delay 10  times lap  chance 100  by player  on lap

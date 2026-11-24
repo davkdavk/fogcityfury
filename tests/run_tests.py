@@ -724,7 +724,7 @@ def the_editor_makes_dolphins_minis_and_weather():
     check(os.path.exists(f), "saved")
     if not os.path.exists(f): return
     t = open(f).read()
-    check(t.count("\npod ") == 2 and t.count(" dolphin ") == 4, "a pod and two leaps (with Bayside's own pod and two)", t[:300])
+    check(t.count("\npod ") == 2 and t.count(" dolphin ") == 3, "a pod and two leaps (with Bayside's own pod and its leap)", t[:300])
     check(" minis " in t and " weather " in t and "drift 90" in t, "the minis, the weather and the drift", t[:400])
 
 @test
@@ -2050,9 +2050,9 @@ def the_race_director_plays_a_tracks_events():
     one building down, three leaps. The file is built into the game too (src/events_builtin.h, for the 360 and
     Android), and that copy is up to date. 2.3: every built-in track has a scripted moment."""
     d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=230)
-    check(d["eventsLoaded"] == 4 and d["eventLines"] == 1 and d["pods"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"], d["pods"]))
-    check(d["lap"] >= 3 and d["events"] == 6, "three laps: the misfire and its message once, a leap a lap, the rooftop snipers (2.4)", (d["lap"], d["events"]))
-    check(d["fallen"] == 1 and d["finished"] == 1 and d["wrecks"] == 0, "the misfire brings the tower down, and the race goes on", (d["fallen"], d["finished"], d["wrecks"]))
+    check(d["eventsLoaded"] == 10 and d["eventLines"] == 4 and d["pods"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"], d["pods"]))
+    check(d["lap"] >= 3 and d["events"] == 12, "three laps: a misfire on lap 1, a tower down on lap 2 and another on lap 3 (each with a shake and words), a leap a lap, the snipers (2.6.2)", (d["lap"], d["events"]))
+    check(d["fallen"] == 3 and d["finished"] == 1 and d["wrecks"] == 0, "three buildings come down, and the race goes on", (d["fallen"], d["finished"], d["wrecks"]))
     check(d["leaps"] == 3 and d["podLeaps"] == 3, "the pod's dolphins take the leaps", (d["leaps"], d["podLeaps"]))
     sys.path.insert(0, os.path.join(ROOT, "tools")); import embed_events
     check(embed_events.build() == open(os.path.join(ROOT, "src", "events_builtin.h")).read(), "src/events_builtin.h matches events/ (run tools/embed_events.py)")
@@ -2098,10 +2098,10 @@ def the_event_editor_saves_files_the_game_races():
     check(os.path.exists(f), "the editor saved events/track1.fcfe")
     if not os.path.exists(f): return
     txt = open(f).read()
-    check(txt.count("\nline ") == 1 and txt.count("\nevent ") == 7, "one line and five events in the file (and Bayside's two leaps)", txt[:300])
+    check(txt.count("\nline ") == 5 and txt.count("\nevent ") == 16, "one line and five events in the file (and Bayside's own four lines and eleven events)", (txt.count("\nline "), txt.count("\nevent ")))
     check("on after rocket1" in txt and "laps 2" in txt and "chance 0" in txt and 'text "LAP TWO"' in txt, "with their settings")
     runs = [sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=230) for _ in range(2)]
-    check(runs[0]["eventsLoaded"] == 7 and runs[0]["events"] >= 4, "a race fires the ones that can happen", (runs[0]["eventsLoaded"], runs[0]["events"]))
+    check(runs[0]["eventsLoaded"] == 16 and runs[0]["events"] >= 4, "a race fires the ones that can happen", (runs[0]["eventsLoaded"], runs[0]["events"]))
     check(runs[0] == runs[1], "the same way twice")
     p = subprocess.run([BIN, "--sim", "--seconds", "60", "--auto", "--evedit", "--track", "0", "--evscript", "event shake 0 0 0; set on time 3; preview"],
                        cwd=tmp, capture_output=True, text=True, timeout=200)
@@ -2118,16 +2118,16 @@ def a_warden_misfire_is_one_click_in_the_editor():
     it; a NEW MOMENT chains click by click (here an explosion at the start of a lap). Saved and raced, they all go off."""
     import tempfile
     tmp = tempfile.mkdtemp()
-    script = "warden 2 -134 -175; wmisfire 2; moment 2; lapstart; click -70 -95; save"
+    script = "warden 3 -134 -175; wmisfire 3; moment 2; lapstart; click -70 -95; save"
     subprocess.run([BIN, "--sim", "--seconds", "0.1", "--evedit", "--track", "0", "--evscript", script], cwd=tmp, capture_output=True, timeout=120)
     f = os.path.join(tmp, "events", "track0.fcfe")
     check(os.path.exists(f), "the editor saved events/track0.fcfe")
     if not os.path.exists(f): return
     txt = open(f).read()
-    check("line warden2 " in txt and "from warden2" in txt and "on warden2" in txt and "on after misfire2" in txt, "Warden 2's misfire: its line, its rocket, its words", txt[:400])
-    check(txt.count("\nline ") == 2 and txt.count("\nevent ") == 7, "two lines (Wardens 1 and 2) and seven events (Hilltop's four, three new)", txt.count("\nevent "))
+    check("line warden3 " in txt and "from warden3" in txt and "on warden3" in txt and "on after misfire1" in txt, "Warden 3's misfire: its line, its rocket, its words", txt[:400])
+    check(txt.count("\nline ") == 5 and txt.count("\nevent ") == 13, "five lines (Hilltop's four, Warden 3's) and thirteen events (Hilltop's ten, three new)", (txt.count("\nline "), txt.count("\nevent ")))
     r = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=120)
-    check(r["eventsLoaded"] == 7 and r["events"] >= 7, "a race sets off all seven", (r["eventsLoaded"], r["events"]))
+    check(r["eventsLoaded"] == 13 and r["events"] >= 9, "a race sets them off (the lap 2 and 3 ones later)", (r["eventsLoaded"], r["events"]))
 
 @test
 def the_ronin_120_comes_from_blender_and_races():
