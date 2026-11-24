@@ -21,9 +21,11 @@ enum Mode { ROAM, GOTO, LEAP, OUT };
 struct Dol {
     V3 p; float yaw = 0, k = 1, depth = 2, turn = 0, beat = 0, t = 0, modeT = 0, nextBreath = 4, seed = 0; int pod = -1, mode = ROAM;
     V3 spot, dir; bool out = false, in = false; float lastWake = -1, pitch = 0, bend = 0, y = 0;   // a leap: where, which way; drawn: its pitch, spine
+    int id = 0, nLeap = 0; float hv = 1, L = 16;   // 2.6.3: who it is and how many leaps it has had (the hash for this leap's height); hv: this leap's height, x1 +-15%; L: its length (m)
 };
 static std::vector<Dol> dols;
 static int leaps = 0, splashesIn = 0, ringsOut = 0, poddies = 0, fromPod = 0; static float swum = 0, minDepth = 99;   // test metrics
+static float apexMin = 99, apexMax = 0, airMin = 99, airMax = 0, leapWetMin = 99; static int nextId = 0;   // test metrics (2.6.3): each leap's top above the sea, its time in the air, the shallowest water at either end
 static const int MAXDOL = 12;
 
 static void init() {
@@ -44,11 +46,11 @@ static float seaDepth(float x, float z) { return -W.HW(x, z); }   // metres of w
 static bool deep(V3 p, float k) { return seaDepth(p.x, p.z) > 2.6f * k; }
 // a race starts: the pods in the track's file, each dolphin somewhere deep in its patch of sea
 static void reset() {
-    dols.clear(); leaps = splashesIn = ringsOut = poddies = fromPod = 0; swum = 0; minDepth = 99;
+    dols.clear(); leaps = splashesIn = ringsOut = poddies = fromPod = 0; swum = 0; minDepth = 99; apexMin = 99; apexMax = airMax = 0; airMin = 99; leapWetMin = 99; nextId = 0;
     for (int q = 0; q < (int)director::pods.size(); q++) {
         const director::Pod& pd = director::pods[q];
         for (int n = 0; n < pd.n && (int)dols.size() < MAXDOL; n++) {
-            Dol o; o.pod = q; o.k = clampf(pd.k * (0.85f + 0.1f * (n % 3)), 0.4f, 3); o.seed = q * 7.31f + n * 2.17f + W.id * 0.7f;
+            Dol o; o.id = nextId++; o.pod = q; o.k = clampf(pd.k * (0.85f + 0.1f * (n % 3)), 0.4f, 3); o.seed = q * 7.31f + n * 2.17f + W.id * 0.7f;
             for (int tries = 0; tries < 40; tries++) {   // a deep spot near the middle
                 float a = o.seed * 3.7f + tries * 2.39996f, r = pd.r * (0.15f + 0.6f * fmodf(tries * 0.618f + n * 0.37f, 1.0f));
                 V3 p(pd.x + cosf(a) * r, 0, pd.z + sinf(a) * r); if (deep(p, o.k)) { o.p = p; break; }
@@ -59,10 +61,21 @@ static void reset() {
         }
     }
 }
-// the leap's shape: from where it breaks the surface to where it goes back in
-static float upV(const Dol& o) { return 8.5f * sqrtf(o.k); }
+// the leap's shape: from where it breaks the surface to where it goes back in. 2.6.3: higher and longer, about 5.5 m up
+// over 16 m and 2.1 s in the air for a dolphin of k = 1 (a bigger one leaps higher), each leap 15% higher or lower than
+// that from a hash of the dolphin and its leap count (no race dice). APEX: the top of the leap above the sea, per k
+static const float APEX = 5.5f, SPAN = 16.0f, OUT_Y = 0.3f;   // OUT_Y: it breaks the surface this far (x k) below its middle
+static float upV(const Dol& o) { return sqrtf(2 * G * (APEX * o.k * o.hv + OUT_Y * o.k)); }
 static float leapT(const Dol& o) { return 2 * upV(o) / G; }
-static float span(const Dol& o) { return 11.0f * o.k; }
+static float span(const Dol& o) { return o.L; }
+static V3 exitAt(const Dol& o);
+// a new leap for o (spot, dir and k set): its height from the hash, its length as long as water lies under both ends
+static void shape(Dol& o) {
+    o.nLeap++; o.hv = 1 + 0.15f * (2 * wfx::R01((uint32_t)o.id, (uint32_t)o.nLeap, 0xD0u, 0x1Fu) - 1);
+    for (o.L = SPAN * o.k; o.L > 8.0f * o.k; o.L -= 0.5f * o.k) {   // (shorter, over a narrow channel, rather than out of the water)
+        V3 a = exitAt(o), b = a + o.dir * o.L; if (seaDepth(a.x, a.z) > 1.0f && seaDepth(b.x, b.z) > 1.0f) break;
+    }
+}
 static V3 exitAt(const Dol& o) { return o.spot - o.dir * (span(o) * 0.5f); }
 static V3 runIn(const Dol& o) { return exitAt(o) - o.dir * (4.0f * o.k); }   // where it lines up, under water
 // a leap at `at` (on the water) heading towards `to`; k: its size. The nearest roaming dolphin takes it; with none
@@ -72,9 +85,9 @@ static bool spawn(V3 at, V3 to, float k) {
     V3 d(to.x - at.x, 0, to.z - at.z); if (len(d) < 0.1f) d = V3(0, 0, 1); d = norm(d);
     int best = -1; float bd = 240;
     for (int i = 0; i < (int)dols.size(); i++) if (dols[i].mode == ROAM) { float dd = len(V3(dols[i].p.x - at.x, 0, dols[i].p.z - at.z)); if (dd < bd) { bd = dd; best = i; } }
-    if (best >= 0) { Dol& o = dols[best]; o.mode = GOTO; o.modeT = 0; o.spot = V3(at.x, 0, at.z); o.dir = d; o.out = o.in = false; fromPod++; return true; }
+    if (best >= 0) { Dol& o = dols[best]; o.mode = GOTO; o.modeT = 0; o.spot = V3(at.x, 0, at.z); o.dir = d; o.out = o.in = false; shape(o); fromPod++; return true; }
     if ((int)dols.size() >= MAXDOL) return false;
-    Dol o; o.k = clampf(k, 0.4f, 3); o.spot = V3(at.x, 0, at.z); o.dir = d; o.p = runIn(o) - d * (22.0f * sqrtf(o.k)); o.p.y = 0;
+    Dol o; o.id = nextId++; o.k = clampf(k, 0.4f, 3); o.spot = V3(at.x, 0, at.z); o.dir = d; shape(o); o.p = runIn(o) - d * (22.0f * sqrtf(o.k)); o.p.y = 0;
     if (!deep(o.p, o.k)) o.p = runIn(o) - d * (6.0f * o.k);
     o.yaw = atan2f(d.x, d.z); o.depth = 1.2f * o.k; o.mode = GOTO; o.seed = at.x * 0.13f + at.z * 0.29f; dols.push_back(o); return true;
 }
@@ -107,16 +120,18 @@ static void step(float dt) {
         } else if (o.mode == GOTO) {   // under water to where it lines up, quick
             V3 c = runIn(o) - o.p; c.y = 0; float d = len(c);
             steerTo(o, atan2f(c.x, c.z), 2.2f, dt); spd = std::min(9.0f * sqrtf(o.k), d / std::max(dt, 1e-3f) * 0.5f + 2.5f); tgtDepth = 1.3f * o.k;
-            if (d < 1.6f * o.k || (o.modeT > 18 && d < 40)) { o.mode = LEAP; o.modeT = 0; o.p = runIn(o); o.yaw = atan2f(o.dir.x, o.dir.z); }
+            if (d < 1.6f * o.k || (o.modeT > 4 && d < 8.0f * o.k) || (o.modeT > 18 && d < 40))   // (close and circling it: under water, it is there)
+                { o.mode = LEAP; o.modeT = 0; o.p = runIn(o); o.yaw = atan2f(o.dir.x, o.dir.z); }
             else if (o.modeT > 30) { o.mode = o.pod >= 0 ? ROAM : OUT; o.modeT = 0; }   // (could not get there: never mind)
         }
         if (o.mode == LEAP) {   // the run in, the dive and the leap: the old arc, from where it lined up
             float t = o.modeT, L = span(o), TL = leapT(o); V3 ex = exitAt(o);
             if (t < DIVE) { float u = t / DIVE; o.p = runIn(o) + o.dir * (4.0f * o.k * u); o.y = -1.3f * o.k - 0.6f * o.k * sinf(u * 3.14159f); o.pitch = 0.6f * (u * 2 - 1) * (u > 0.5f ? 1.4f : 0.6f); o.bend = 0.5f * sinf(t * 18); }
-            else if (t < DIVE + TL) { float tt = t - DIVE, vy = upV(o) - G * tt, vh = L / TL; o.p = ex + o.dir * (vh * tt); o.y = upV(o) * tt - 0.5f * G * tt * tt - 0.3f * o.k;
+            else if (t < DIVE + TL) { float tt = t - DIVE, vy = upV(o) - G * tt, vh = L / TL; o.p = ex + o.dir * (vh * tt); o.y = upV(o) * tt - 0.5f * G * tt * tt - OUT_Y * o.k;
                 o.pitch = atan2f(vy, vh); float pdot = -G * vh / (vh * vh + vy * vy); o.bend = clampf(-pdot * 0.55f, -1, 1);
                 if (!o.out) { o.out = true; ringsOut++; leaps++; ripple::add(o.p.x, o.p.z, 0.5f); dropsOff(o.p, o.k); } }   // out: a small ring, a few drops off its back (no cloud: it would hide it)
-            else { if (!o.in) { o.in = true; splashesIn++; V3 e = ex + o.dir * L; waterSplash(V3(e.x, 0, e.z), 1.5f * o.k); tone(140, 0.5f, 0.5f * nearK(e), 0, -60); }   // in: the splash
+            else { if (!o.in) { o.in = true; splashesIn++; V3 e = ex + o.dir * L; float top = upV(o) * upV(o) / (2 * G) - OUT_Y * o.k;
+                    apexMin = std::min(apexMin, top / o.k); apexMax = std::max(apexMax, top / o.k); airMin = std::min(airMin, TL); airMax = std::max(airMax, TL); leapWetMin = std::min({ leapWetMin, seaDepth(ex.x, ex.z), seaDepth(e.x, e.z) }); waterSplash(V3(e.x, 0, e.z), 1.5f * o.k); tone(140, 0.5f, 0.5f * nearK(e), 0, -60); }   // in: the splash
                 float tt = t - DIVE - TL; o.p = ex + o.dir * (L + 6.0f * o.k * tt); o.y = -0.6f * o.k - 2.0f * tt; o.pitch = -0.9f + 0.6f * std::min(tt, 1.2f); o.bend = 0.3f * sinf(tt * 16);
                 if (tt > AFTER) { o.mode = o.pod >= 0 ? ROAM : OUT; o.modeT = 0; o.depth = -o.y; } }
             o.p.y = 0; i++; continue;
@@ -156,7 +171,7 @@ static void laugh(int idx, V3 at) {
     if (T - lastLaugh < 1.2f) return; lastLaugh = T; float v = 0.45f * nearK(at);
     for (int i = 0; i < 9; i++) tone(1500.0f + 180.0f * i + (i % 2) * 400.0f, 0.045f, v, 2, 600, i * 0.055f);   // the chatter
     tone(2600, 0.55f, v * 0.8f, 0, 1400, 0.52f); tone(3400, 0.35f, v * 0.6f, 0, -1600, 1.0f);                       // the whistle, up and down
-    static float told = -99; if (T - told > 5) { told = T; say("THE DOLPHIN LAUGHS AT YOU", V3(0.55f, 0.85f, 0.95f), 1.8f); }
+    static float told = -99; if (T - told > 5) { told = T; say("THE DOLPHIN LAUGHS AT YOU", SAY_COOL, 1.8f); }
 }
 static void blastAt(V3 p, float r) { for (int i = 0; i < (int)dols.size(); i++) { V3 c(dols[i].p.x, dols[i].y, dols[i].p.z); if (len(c - p) < r) { laugh(i, p); break; } } }
 // drawn with the car program, as the Wardens are (plain material: lit, with a sheen of the sky at a glancing angle)

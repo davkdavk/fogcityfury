@@ -289,5 +289,23 @@ static void writeSave() {
 static bool allKeys();
 static int keyCount(int t) { int c = 0; for (int i = 0; i < NKEYS; i++) if (keysGot[t] >> i & 1) c++; return c; }
 static bool allKeys() { for (int t = 0; t < NTRACKS_ORIG; t++) if (keyCount(t) < NKEYS) return false; return true; }   // (chrome: the first four tracks' keys, as it always was)
-static void say(const char* s, V3 c = V3(1, 1, 1), float t = 2.2f) { snprintf(msg, sizeof msg, "%s", s); msgCol = c; msgT = t; }
+// 2.6.3 messages: one colour for each kind. WARN: danger to you (a hazard, a hit, a rocket, a scripted moment);
+// INFO: news and what to do; GOOD: something won or gained; COOL: the car's and the race's own state (shield, weather)
+static const V3 SAY_WARN(1, 0.32f, 0.2f), SAY_INFO(1, 0.85f, 0.3f), SAY_GOOD(0.45f, 1, 0.55f), SAY_COOL(0.5f, 0.85f, 1);
+// One message on screen at a time. The same words again within two seconds are not shown again (they keep the one up);
+// a different one while the last is less than MSG_MIN s old waits for it (the newest waiting one wins), so they do not
+// flash over each other
+static const float MSG_MIN = 0.7f, MSG_SAME = 2.0f;
+static char msgNext[96] = "", lastSaid[96] = ""; static V3 msgNextCol; static float msgNextT = 0, msgAge = 9, lastSaidT = -99; static int saysShown = 0, saysHeld = 0;   // (test metrics)
+static void say(const char* s, V3 c = V3(1, 1, 1), float t = 2.2f) {
+    if (!strcmp(s, lastSaid) && T - lastSaidT < MSG_SAME && T >= lastSaidT) { lastSaidT = T; saysHeld++; if (msgT > 0 && !strcmp(msg, s)) msgT = std::max(msgT, std::min(t, 1.0f)); return; }
+    snprintf(lastSaid, sizeof lastSaid, "%s", s); lastSaidT = T;
+    if (msgT > 0.3f && msgAge < MSG_MIN) { snprintf(msgNext, sizeof msgNext, "%s", s); msgNextCol = c; msgNextT = t; saysHeld++; return; }
+    snprintf(msg, sizeof msg, "%s", s); msgCol = c; msgT = t; msgAge = 0; saysShown++;
+}
+static void sayStep(float dt) {
+    msgT -= dt; msgAge += dt;
+    if (msgNextT > 0 && (msgAge >= MSG_MIN || msgT <= 0)) { snprintf(msg, sizeof msg, "%s", msgNext); msgCol = msgNextCol; msgT = msgNextT; msgNextT = 0; msgAge = 0; saysShown++; }
+}
+static void sayClear() { msgT = 0; msgNextT = 0; lastSaid[0] = 0; msgAge = 9; }
 

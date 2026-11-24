@@ -1834,13 +1834,13 @@ def twin_isles_the_endurance_track():
 @test
 def mini_wardens_in_free_roam():
     """Free roam: mini Wardens land near you (now and then, one to three at a time), jet at you, fight you hand to hand
-    on foot and shoot at your car. Fists, pistol, SMG and shotgun beat them; they leave flowers that add up to levels, each unlocking an
+    on foot and shoot at your car. Every weapon beats them (2.6.3); they leave flowers that add up to levels, each unlocking an
     attribute. Run one down and the flowers towards your next level are lost, and a Warden fires a rocket at you."""
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", seconds=40)
     check(d["miniSpawned"] == 1 and d["minis"] == 1, "one lands near you", (d["miniSpawned"], d["minis"]))
     check(d["carHp"] < 90 and d["miniJets"] >= 1, "it jets in and shoots your parked car", (d["carHp"], d["miniJets"]))
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--outcar", "--footai", "--gun", 2, seconds=20)
-    check(d["miniKilled"] == 0 and d["minis"] == 1, "rifle rounds spark off it", (d["miniKilled"], d["minis"]))
+    check(d["miniKilled"] == 1 and d["minis"] == 0, "rifle rounds take it down (2.6.3: every weapon does)", (d["miniKilled"], d["minis"]))
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--outcar", "--footai", seconds=45)
     check(d["miniKilled"] == 1 and d["roamFlowers"] >= 2 and d["footHp"] > 0, "your fists beat it, and you pick up its flowers", (d["miniKilled"], d["roamFlowers"], d["footHp"]))
     d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--auto", "--flowers", 30, seconds=12)
@@ -2219,6 +2219,87 @@ def showdown_always_ends_with_one_winner():
         off.append(d["shdOffRoad"])
         check(sum(f["kills"] for f in fs) >= 1, "track %d: it was settled with guns, not just the ring" % track, d["fighters"])
     check(sum(off) >= 2, "left to itself the ring goes up off the road, and everyone still gets there", off)
+
+
+# ----------------------------------------------------------------------------- 2.6.3
+@test
+def car_is_drawn_on_foot_in_every_camera():
+    """2.6.3: on foot in the bonnet camera the parked car vanished. It is drawn in every camera unless you sit in it
+    (bonnet view) or are watching a showdown you are not in (carHidden)."""
+    for cam in range(3):
+        d = sim("--track", 0, "--state", 3, "--cammode", cam, "--onfoot", seconds=5)
+        check(d["meOn"] == 1 and d["playerCarDrawn"] == 1, "camera %d, on foot: the parked car is drawn" % cam, (d["meOn"], d["playerCarDrawn"]))
+    d = sim("--track", 0, "--state", 3, "--cammode", 2, seconds=5)
+    check(d["playerCarDrawn"] == 0, "in the car, bonnet camera: not drawn (the view is from inside it)", d["playerCarDrawn"])
+
+
+@test
+def every_weapon_hurts_mini_wardens():
+    """2.6.3: fists, every gun, grenades and the car's rockets all take mini Wardens down: free roam's, and those that
+    jetpack off a roof, hip fire (lock-on) and down the sights."""
+    for g in range(6):
+        d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--outcar", "--footai", "--gun", g, seconds=25)
+        check(d["miniKilled"] == 1 and d["minis"] == 0, "free roam, gun %d: it goes down" % g, (d["miniKilled"], d["minis"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--rockets", 2, "--fire", 3, seconds=8)
+    check(d["rocketsFired"] == 1 and d["miniKilled"] == 1, "a rocket from the car takes it down", (d["rocketsFired"], d["miniKilled"]))
+    f = os.path.join(tempfile.mkdtemp(), "ev.fcfe")
+    open(f, "w").write("event m1 minis  at -147 30 -93  to -170 0 -110  k 3  on time 1\n")
+    for g in range(1, 6):
+        h = sim("--track", 0, "--state", 3, "--pos", -160, -98, 3.9, "--onfoot", "--hipfire", "--gun", g, "--events", f, seconds=20)
+        check(h["jetDowned"] >= 2, "jetted down, gun %d from the hip: they go down" % g, h["jetDowned"])
+    for g in (1, 2, 3):
+        a = sim("--track", 0, "--state", 3, "--pos", -160, -98, 3.9, "--onfoot", "--ads", "--aimmini", "--gun", g, "--events", f, seconds=20)
+        check(a["jetDowned"] == 3, "jetted down, gun %d down the sights: all three go down" % g, a["jetDowned"])
+
+
+@test
+def car_damage_slows_wrecks_and_mends():
+    """2.6.3: in a race knocks hurt the car (the CAR meter). Hurt, it is slower; at none it is wrecked and comes back
+    whole; a shield keeps knocks off; it mends as it goes. Normal racing hardly scratches it. Not in MANIC."""
+    whole = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=30)
+    hurt = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--carhp", 10, seconds=30)
+    check(whole["carDmgWrecks"] == 0 and whole["carHp"] > 90, "the autopilot races on unhurt", (whole["carDmgTaken"], whole["carHp"]))
+    check(hurt["dist"] < whole["dist"] * 0.92, "a badly hurt car is slower", (hurt["dist"], whole["dist"]))
+    check(30 < hurt["carHp"] < 60, "and mends a little as it goes", hurt["carHp"])
+    bump = ("--seed", 5, "--track", 0, "--state", 3, "--nobotguns", "--pos", -501.1, -182.8, 2.698, "--speed", 25)
+    d = sim(*bump, seconds=2)
+    check(d["carDmgTaken"] > 5 and d["wrecks"] == 0, "a rear-end hurts the car, a little", (d["carDmgTaken"], d["wrecks"]))
+    d = sim(*bump, "--carhp", 5, seconds=2)
+    check(d["carDmgWrecks"] == 1 and d["dead"] == 1, "with nothing left it is wrecked", (d["carDmgWrecks"], d["dead"]))
+    d = sim(*bump, "--carhp", 5, seconds=5)
+    check(d["dead"] == 0 and d["carHp"] == 100, "and back on the road whole", (d["dead"], d["carHp"]))
+    d = sim(*bump, "--carhp", 5, "--shield", seconds=2)
+    check(d["carDmgTaken"] == 0 and d["dead"] == 0, "a shield keeps the knock off", (d["carDmgTaken"], d["dead"]))
+    d = sim("--track", 0, "--state", 3, "--mode", 4, "--auto", "--carhp", 10, seconds=10)
+    check(d["carTopK"] == 1 and d["carDmgTaken"] == 0, "MANIC: no damage at all", (d["carTopK"], d["carDmgTaken"]))
+
+
+@test
+def incoming_warns_of_a_wardens_revenge_rocket():
+    """2.6.3: run a mini Warden down and the Warden's rocket comes for you: INCOMING! flashes with a warning tone, and an
+    arrow points at it all the way in."""
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", "--auto", "--flowers", 30, seconds=12)
+    check(d["miniRockets"] == 1 and d["incomingSaid"] == 1, "one revenge rocket, one INCOMING!", (d["miniRockets"], d["incomingSaid"]))
+    check(d["incomingMax"] == 1 and d["incomingFlight"] > 1.0, "the arrow is up while it flies (s)", (d["incomingMax"], d["incomingFlight"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--minisnow", "--minishold", seconds=12)
+    check(d["incomingSaid"] == 0 and d["incomingFlight"] == 0, "nothing fired at you: no warning", (d["incomingSaid"], d["incomingFlight"]))
+
+
+@test
+def dolphins_leap_higher_with_a_little_variety():
+    """2.6.3: a leap is about 5.5 m high (per unit of size) over 16 m and 2.1 s in the air, each one up to 15% higher or
+    lower from a hash (not the race's dice), in and out over water. The same in every run."""
+    f = os.path.join(tempfile.mkdtemp(), "dol.fcfe")
+    open(f, "w").write("pod p1  -455 -530  r 55  n 3  k 1\nevent l1 dolphin  at -430 0 -540  to -400 0 -550  on time 2\n"
+                       "event l2 dolphin  at -470 0 -515  to -500 0 -500  on time 9\nevent l3 dolphin  at -440 0 -520  to -420 0 -560  on time 16\n")
+    d = sim("--track", 0, "--state", 3, "--events", f, seconds=30)
+    check(d["leaps"] == 3 and d["dolphinSplashes"] == 3, "three leaps", (d["leaps"], d["dolphinSplashes"]))
+    lo, hi = d["leapApexK"]
+    check(5.5 * 0.85 - 0.01 <= lo and hi <= 5.5 * 1.15 + 0.01 and hi - lo > 0.3, "apex 5.5 m +-15% per unit size, and not all the same", (lo, hi))
+    check(1.8 <= d["leapAir"][0] and d["leapAir"][1] <= 2.5, "about 2.1 s in the air", d["leapAir"])
+    check(d["leapWetMin"] > 1.0, "out of and back into water", d["leapWetMin"])
+    e = sim("--track", 0, "--state", 3, "--events", f, seconds=30)
+    check(e["leapApexK"] == d["leapApexK"], "the same leaps every run", (e["leapApexK"], d["leapApexK"]))
 
 
 if __name__ == "__main__":

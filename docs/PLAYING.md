@@ -156,7 +156,7 @@ In Roam mode, **mini Wardens** (person-sized versions of the giant Wardens) drop
 in groups of three. There is no warning: each one shows as a **red dot** on the minimap. They jetpack towards
 you, fight hand to hand when you are on foot, and shoot at your car when you are driving.
 
-- **Fists, pistol, SMG and shotgun** hurt them. Rifle rounds and grenades bounce off their armour.
+- **Every weapon** hurts them: fists, every gun, grenades, and the car's rockets (which home on one ahead if there is no car to lock on to).
 - Each one you beat drops **flowers**: walk or drive over them to collect them.
 - **Don't run them over.** You may, but you lose the flowers you were collecting towards your next level,
   and a big Warden fires a rocket at you.

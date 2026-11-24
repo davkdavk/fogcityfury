@@ -117,12 +117,12 @@ static void startRace() {
     lapStart = 0;
     bestLapRace = 0;
     lastLap = 0;
-    aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
+    aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; sayClear(); state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
     miniReset();
-    if (exploreMode) say("FREE ROAM - FIND THE KEYS", V3(1, 0.85f, 0.3f), 3.5f);
-    if (champOn) { char cb[64]; snprintf(cb, sizeof cb, "CHAMPIONSHIP  -  ROUND %d OF 4", champRound + 1); say(cb, V3(1, 0.85f, 0.2f), 3.5f); }
-    else if (rampage) say("RAMPAGE  -  TOP 5 GO TO THE SHOWDOWN", V3(1, 0.4f, 0.2f), 3.5f);
-    else if (trialMode) say(ghostBest.empty() ? "MANIC  -  SET A LAP FOR YOUR GHOST" : "MANIC  -  BEAT YOUR GHOST", V3(0.5f, 0.9f, 1), 3.5f);
+    if (exploreMode) say("FREE ROAM  -  FIND THE KEYS", SAY_INFO, 3.5f);
+    if (champOn) { char cb[64]; snprintf(cb, sizeof cb, "CHAMPIONSHIP  -  ROUND %d OF 4", champRound + 1); say(cb, SAY_INFO, 3.5f); }
+    else if (rampage) say("RAMPAGE  -  TOP 5 GO TO THE SHOWDOWN", SAY_INFO, 3.5f);
+    else if (trialMode) say(ghostBest.empty() ? "MANIC  -  SET A LAP FOR YOUR GHOST" : "MANIC  -  BEAT YOUR GHOST", SAY_COOL, 3.5f);
 }
 
 // ---- multiplayer: react to what the server says ----
@@ -133,7 +133,7 @@ static void netStartRace() {
     setupCars(true); int slot = 0; for (int i = 0; i < nc.id && i < net::MAXP; i++) if (nc.r[i].present && nc.r[i].racing) slot++;
     placeOnGrid(player, gridS(slot), gridLat(slot));
     raceT = 0; countdown = nc.phase == net::COUNTDOWN ? std::max(0.05f, nc.phaseT) : 0.01f; timeLeft = 999; lapStart = 0; bestLapRace = 0; lastLap = 0; introT = clampf(countdown - 0.6f, 0, INTRO_LEN);   // online: fly in while the server counts down
-    aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; netRace = true; nc.finished = false; nc.finishT = 0;
+    aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; sayClear(); state = RACE; netRace = true; nc.finished = false; nc.finishT = 0;
 }
 static void netLeave(const char* why) { footReset(); netClose(why); netRace = false; raceLaps = LAPS; state = TITLE; if (W.id != 0) W.build(0); selTrack = 0; setupCars(true); }
 static void netReact() {
@@ -221,7 +221,7 @@ static bool dodge(int i, float myLat, float ahead, float& lat) {
 }
 static void shieldPop(Car& c) {   // the shield breaks, taking the hit
     c.shield = 0; bool me = &c == &player; float nk = me ? 1 : clampf(1 - len(c.pos - player.pos) / 150, 0, 1);
-    if (me) { shieldPopT = 1; tm.shieldSaves++; say("SHIELD SAVED YOU!", V3(0.4f, 0.85f, 1), 1.8f); rumble(0.7f, 250); shake = std::max(shake, 0.3f); } else tm.aiShieldSaves++;
+    if (me) { shieldPopT = 1; tm.shieldSaves++; say("SHIELD SAVED YOU!", SAY_COOL, 1.8f); rumble(0.7f, 250); shake = std::max(shake, 0.3f); } else tm.aiShieldSaves++;
     if (nk > 0) { tone(880, 0.3f, 0.5f * nk, 2, -500); tone(1320, 0.2f, 0.35f * nk, 2, -700, 0.05f);
         for (int i = 0; i < 40; i++) { float a = i * 2.39996f, e = 1 - 2 * (i + 0.5f) / 40, r = sqrtf(1 - e * e); V3 d(cosf(a) * r, e, sinf(a) * r);
             spawn(c.pos + V3(0, 0.8f, 0) + d * 2.4f, c.vel + d * 9, 0.5f, 0.24f, 0, V3(0.6f, 2.4f, 4), 1, 1, 0); } }
@@ -230,7 +230,40 @@ static void explode(Car& c) {
     tm.wrecks++; c.dead = true; c.sunk = false; c.deadT = 1.7f; blast(c.pos + V3(0, 0.8f, 0), c.vel, 1); leaveWreck(c); c.vel = V3(); c.vf = 0; slowT = 0.5f;
 }
 static void remoteWreck(const Car& c) { if (len(c.pos - player.pos) < 400) { blast(c.pos + V3(0, 0.8f, 0), c.vel, nearK(c.pos)); leaveWreck(c); } }
-static void netHitMe() { if (state == RACE && !player.dead && countdown <= 0 && player.shield > 0) { shieldPop(player); return; } if (state == RACE && !player.dead && countdown <= 0) { explode(player); say("ROCKET HIT!", V3(1, 0.4f, 0.2f), 2); } }
+static void netHitMe() { if (state == RACE && !player.dead && countdown <= 0 && player.shield > 0) { shieldPop(player); return; } if (state == RACE && !player.dead && countdown <= 0) { explode(player); say("ROCKET HIT!", SAY_WARN, 2); } }
+// ---- 2.6.3 car damage: in an offline race your car wears down. Knocks off walls and other cars, the bursts of
+// rockets that miss (a mini Warden's shot ahead of you too) and cars blowing up beside you take its health (player.hp,
+// the CAR meter on the HUD). Hurt, it smokes; badly hurt, it burns, and it loses top speed and pick-up as it gets
+// worse; at none it is wrecked, and back on the road whole after the usual wait. It mends a little as you drive, all
+// the way at the start/finish line or with a shield. Not in MANIC, online or free roam (which has its own rules), and
+// a shield keeps every knock off. Only your car: the bots race on rails, and a rocket still wrecks them outright.
+static float carDmgTaken = 0, carPerfMin = 1, carFix = 0, carDmgK = 1, cliCarHp = -1; static int carDmgWrecks = 0, carRepairs = 0;   // test metrics; carFix: the meter's flash on a repair; carDmgK: --cardmg K (tests); cliCarHp: --carhp N
+static const float CAR_MEND = 0.8f;   // health a second it mends by itself
+static bool carDamageOn() { return state == RACE && !netRace && !trialMode && !exploreMode && !showdownOn && countdown <= 0; }
+static float carWear() { return carDamageOn() ? clampf((70 - player.hp) / 70, 0, 1) : 0.0f; }   // 0 fine (70 and up) .. 1 about to go
+static float carTopK() { return 1 - 0.30f * carWear(); }     // top speed: down to 70%
+static float carAccK() { return 1 - 0.40f * carWear(); }     // pick-up: down to 60%
+static void damageCar(float d) {
+    if (!carDamageOn() || player.dead || me.on || d <= 0 || player.shield > 0) return;
+    d *= carDmgK; player.hp -= d; carDmgTaken += d; carPerfMin = std::min(carPerfMin, carTopK());
+    if (player.hp <= 0) { player.hp = 0; carDmgWrecks++; explode(player); }   // (respawn() brings it back whole)
+}
+static void repairCar() { if (carDamageOn() && player.hp < 100) { player.hp = 100; carRepairs++; carFix = 1; tone(660, 0.08f, 0.3f, 2); tone(990, 0.12f, 0.3f, 2, 0, 0.07f); } }
+// a burst at p: how much of it reaches the car (none past r)
+static void blastCar(V3 p, float r, float dmg) { float L = len(player.pos + V3(0, 0.6f, 0) - p); if (L < r) damageCar(dmg * (1 - L / r)); }
+// smoke from under the bonnet once it is hurt, flames as well when it is badly hurt: looks only, its own dice
+static void carDamageFx(float dt) {
+    if (!carDamageOn() || player.dead || player.hp >= 55 || g_noGL) return;
+    static Rng fr; static float acc = 0; float k = clampf((55 - player.hp) / 55, 0, 1); V3 hood = player.pos + V3(sinf(player.yaw), 0, cosf(player.yaw)) * 1.4f + V3(0, 0.9f, 0);
+    for (acc += dt * (8 + 26 * k); acc >= 1; acc -= 1) {
+        if (parts.size() > 5200) break; float sz = 0.35f + 0.5f * k, life = 0.9f + 0.7f * fr.f();
+        parts.push_back({ hood + V3(fr.r(-0.3f, 0.3f), 0, fr.r(-0.3f, 0.3f)), V3(fr.r(-0.6f, 0.6f), fr.r(1.5f, 3.0f), fr.r(-0.6f, 0.6f)) + player.vel * 0.3f, life, life, sz, 1.6f + k,
+                          V3(0.30f, 0.30f, 0.32f) * (1 - 0.7f * k), 0.5f, 0, fr.f(), 0.4f, 0 });
+        if (player.hp < 25 && fr.f() < 0.7f) { float fl = 0.25f + 0.2f * fr.f();   // fire
+            parts.push_back({ hood + V3(fr.r(-0.35f, 0.35f), 0.1f, fr.r(-0.35f, 0.35f)), V3(fr.r(-0.5f, 0.5f), fr.r(2.0f, 4.0f), fr.r(-0.5f, 0.5f)) + player.vel * 0.6f, fl, fl, 0.3f + 0.2f * fr.f(), 0.5f,
+                              V3(3.2f, 1.1f + 0.6f * fr.f(), 0.2f), 0.9f, 1, fr.f(), 0.6f, 0 }); }
+    }
+}
 static void stepWreckage(float dt, bool driving) {
     for (auto& w : wrecks) w.age += dt; for (auto& d : debris) d.age += dt;
     wrecks.erase(std::remove_if(wrecks.begin(), wrecks.end(), [](const Wreck& w) { return w.age >= WRECK_LIFE; }), wrecks.end());       // burnt out and gone
@@ -287,12 +320,14 @@ static void fireRocket() {
     rockets.push_back({ player.pos + f * 2.3f + V3(0, 0.75f, 0), f * (std::max(player.vf, 0.0f) + 42) + V3(0, 1.5f, 0), 5.0f, pickTarget() });
     tone(420, 0.55f, 0.6f, 1, 3800); tone(110, 0.25f, 0.5f, 0, -50); shake = std::max(shake, 0.25f); rumble(0.6f, 200);
 }
+static bool miniNear(V3 p, float r); static void blastMinis(V3 p, float r, float dmg); static bool miniAhead(V3 p, V3 dir, V3& at);   // (minis.h) 2.6.3: our rockets go off at a mini Warden and hurt the ones near the burst
+static const float ROCKET_BLAST_R = 7.0f, ROCKET_BLAST_DMG = 90;
 static void rocketHit(int t, V3 at, int owner) {
     Car* c = tgtCar(t); if (!c) return;
     if (c->shield > 0) { shieldPop(*c); blast(at, V3(), nearK(at) * 0.5f); return; }   // a shield takes the rocket
-    if (owner == -1) { tm.rocketHits++; say("DIRECT HIT!", V3(1, 0.5f, 0.15f), 1.6f); } else tm.aiRocketHits++;
-    if (t == TGT_ME) { if (!player.dead) { explode(player); say("ROCKET HIT!", V3(1, 0.4f, 0.2f), 2); } return; }
-    blast(c->pos + V3(0, 0.8f, 0), c->vel, nearK(at));
+    if (owner == -1) { tm.rocketHits++; say("DIRECT HIT!", SAY_GOOD, 1.6f); blastMinis(at, ROCKET_BLAST_R, ROCKET_BLAST_DMG); } else tm.aiRocketHits++;
+    if (t == TGT_ME) { if (!player.dead) { explode(player); say("ROCKET HIT!", SAY_WARN, 2); } return; }
+    blast(c->pos + V3(0, 0.8f, 0), c->vel, nearK(at)); if (t < NAI) blastCar(c->pos, 6.0f, 25);   // (a car going up beside you knocks yours about)
     if (t < NAI) { leaveWreck(*c); c->dead = true; c->deadT = 3.0f; c->speed = 0; c->vel = V3(); }   // the opponent is out for three seconds
     else { nc.hitId = (uint8_t)(t - 16); nc.hitSeq++; netHitBot(t - 16); }                             // another player: their own game blows them up (a bot we drive: ours does)
 }
@@ -300,7 +335,7 @@ static void grabShield(int who, Car& c) {   // drive through a shield that is th
     for (int k = 0; k < nShieldPU; k++) {
         ShieldPU& u = shieldPU[k]; if (!puHere(u)) continue; V3 d = u.p - (c.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
         u.holder = who; u.at = carDist(who); c.shield = SHIELD_TIME; float nk = who == -1 ? 1 : clampf(1 - len(c.pos - player.pos) / 150, 0, 1);
-        if (who == -1) { tm.shields++; say("SHIELD", V3(0.4f, 0.85f, 1), 1.8f); rumble(0.4f, 200); } else tm.aiShields++;
+        if (who == -1) { tm.shields++; repairCar(); say("SHIELD UP", SAY_COOL, 1.8f); rumble(0.4f, 200); } else tm.aiShields++;
         if (nk > 0) { tone(523, 0.12f, 0.45f * nk, 2); tone(784, 0.12f, 0.45f * nk, 2, 0, 0.09f); tone(1047, 0.25f, 0.45f * nk, 2, 0, 0.18f);
             for (int i = 0; i < 24; i++) { float a = i * 2.39996f; spawn(u.p, V3(cosf(a) * 6, 3 + (i % 5), sinf(a) * 6), 0.6f, 0.22f, 0, V3(0.6f, 2.4f, 4), 1, 1, -3); } }
         return;
@@ -316,6 +351,12 @@ static void shieldSparks(const Car& c, float dt, float& acc) {   // a ring of sp
                     0.9f, 1, (seq % 97) / 97.0f, 0, 0}); // (not spawn(): no draw from the race's random numbers, so a shield changes nothing else)
     }
 }
+// 2.6.3 INCOMING: a rocket fired at you (a Warden's revenge rocket, a bot's) flashes INCOMING! with a warning tone,
+// and while any is in flight an arrow round the middle of the screen points at the nearest. Looks and sound only
+static int incomingSaid = 0, incomingMax = 0; static float incomingT = 0, incomingFlight = 0;   // incomingT: the flash; test metrics: warnings, most at once, seconds an arrow was up
+static void incoming() { incomingT = 1.6f; incomingSaid++; tone(1180, 0.09f, 0.45f, 2); tone(1180, 0.09f, 0.45f, 2, 0, 0.14f); tone(1580, 0.16f, 0.45f, 2, 0, 0.28f); rumble(0.3f, 120); }
+static int incomingNow() { int n = 0; for (const Rocket& r : rockets) if (r.target == TGT_ME) n++; return n; }
+static void incomingStep(float dt) { incomingT = std::max(0.0f, incomingT - dt); int n = state == RACE && !player.dead ? incomingNow() : 0; incomingMax = std::max(incomingMax, n); if (n) incomingFlight += dt; }
 // bots: they pick up rocket crates (once a lap each, like us) and shields, and fire at a car close ahead of them, us included
 static void botWeapons(float dt) {
     static float sparkAcc[NAI] = {};
@@ -336,7 +377,7 @@ static void botWeapons(float dt) {
             best = t == NAI ? TGT_ME : t; bd = l;
         }
         if (best < 0 || grng.f() > dt * 0.5f) continue;   // a moment's aim before it lets go
-        c.botAmmo--; c.botFireCD = 2.5f; tm.aiRocketsFired++; if (best == TGT_ME) { tm.rocketsAtMe++; say("INCOMING!", V3(1, 0.3f, 0.2f), 1.2f); }
+        c.botAmmo--; c.botFireCD = 2.5f; tm.aiRocketsFired++; if (best == TGT_ME) { tm.rocketsAtMe++; incoming(); }
         Rocket r{ c.pos + f * 2.3f + V3(0, 0.75f, 0), f * (std::max(c.speed, 0.0f) + 42) + V3(0, 1.5f, 0), 5.0f, best }; r.owner = k; rockets.push_back(r);
         float nk = clampf(1 - len(c.pos - player.pos) / 160, 0, 1); if (nk > 0) { tone(420, 0.55f, 0.5f * nk, 1, 3800); tone(110, 0.25f, 0.4f * nk, 0, -50); }
     }
@@ -353,6 +394,9 @@ static void stepRockets(float dt) {
             V3 want = r.lob == 1 ? norm(V3(0, 1, 0) + h * 0.45f) : norm(h + V3(0, clampf((r.cruise - r.p.y) * 0.08f, -0.4f, 0.4f), 0));
             float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = 2.8f * dt; if (a <= th || a < 1e-3f) dir = want; else dir = norm(dir * sinf(a - th) + want * sinf(th));
             sp = std::min(sp, 80.0f);
+        } else if (!c && !r.aimed && r.owner == -1 && miniAhead(r.p, dir, tp)) {   // ours with no car to go for: it homes on a mini Warden ahead (2.6.3)
+            V3 want = norm(tp - r.p); float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = 3.5f * dt;
+            if (a <= th || a < 1e-3f) dir = want; else dir = norm(dir * sinf(a - th) + want * sinf(th));
         } else if (!c && r.aimed) {   // to a point: turn towards it like at a car, and go off when there
             tp = r.aim; V3 want = norm(tp - r.p); float cs = clampf(dot(dir, want), -1, 1), a = acosf(cs), th = 3.5f * dt;
             if (a <= th || a < 1e-3f) dir = want; else dir = norm(dir * sinf(a - th) + want * sinf(th));
@@ -369,11 +413,12 @@ static void stepRockets(float dt) {
         spawn(r.p - dir * 0.6f, dir * -6 + V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1)), 0.12f, 0.22f, 0.5f, V3(6, 3.2f, 0.8f), 1, 1, 0);
         for (int k = 0; k < 2; k++) spawn(r.p - dir * (0.8f + k * 0.9f), V3(grng.r(-0.6f, 0.6f), grng.r(0.2f, 1.0f), grng.r(-0.6f, 0.6f)), grng.r(0.7f, 1.2f), 0.22f, 1.3f, V3(0.75f, 0.75f, 0.78f), 0.35f);
         if (c && len(tp - r.p) < 2.9f) { if (r.lob) lobHits++; rocketHit(r.target, r.p, r.owner); done = true; }
-        else if (!c && r.aimed && len(r.aim - r.p) < 2.5f) { Rng keep = grng; blast(r.p, V3(), nearK(r.p)); grng = keep; if (r.fells) fall::collapse(r.aim); done = true; }   // (a scripted rocket's burst: its sparks must not change the race's dice)
+        else if (r.owner == -1 && !r.aimed && miniNear(r.p, 1.6f)) { blast(r.p, V3(), nearK(r.p) * 0.8f); blastMinis(r.p, ROCKET_BLAST_R, ROCKET_BLAST_DMG); done = true; }   // ours, at a mini Warden: it goes off
+        else if (!c && r.aimed && len(r.aim - r.p) < 2.5f) { Rng keep = grng; blast(r.p, V3(), nearK(r.p)); blastCar(r.p, 7.0f, 35); grng = keep; if (r.fells) fall::collapse(r.aim); done = true; }   // (a scripted rocket's burst: its sparks must not change the race's dice)
         else {
             // it skims the ground like a cruise missile, so crests and dips do not stop it; walls and cliffs do
             V3 q = r.p, vv = r.v; float imp = 0, g = W.ground(r.p.x, r.p.z, r.p.y + 1.5f);
-            if (r.life <= 0 || r.p.y < g - 1.2f || W.collide(q, vv, 0.35f, imp)) { Rng keep = grng; blast(r.p, V3(), nearK(r.p) * 0.7f); if (r.aimed) grng = keep; if (r.aimed && r.fells) fall::collapse(r.aim); done = true; }
+            if (r.life <= 0 || r.p.y < g - 1.2f || W.collide(q, vv, 0.35f, imp)) { Rng keep = grng; blast(r.p, V3(), nearK(r.p) * 0.7f); if (r.owner == -1) blastMinis(r.p, ROCKET_BLAST_R, ROCKET_BLAST_DMG); else blastCar(r.p, 7.0f, 35); if (r.aimed) grng = keep; if (r.aimed && r.fells) fall::collapse(r.aim); done = true; }
             else if (r.p.y < g + 0.8f) { r.p.y = g + 0.8f; r.v.y = std::max(r.v.y, 0.0f); }
         }
         if (done) { rockets[i] = rockets.back(); rockets.pop_back(); } else i++;

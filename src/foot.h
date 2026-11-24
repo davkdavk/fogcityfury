@@ -94,8 +94,9 @@ static void pushFromCars(V3& p, V3& vel, float rad) {
 }
 
 // ---- targets: another fighter, or (out of the car in a race) a racer ----
-static bool tgtAlive(int t) { if (t == 7) return roamCarTarget && !me.on && !player.dead; return t >= 8 ? (t - 8 < NAI && !ai[t - 8].dead && racersAreTargets()) : (t >= 0 && t < NSLOT && fighters[t].on && fighters[t].alive); }
-static V3 tgtPos(int t) { if (t == 7) return player.pos + V3(0, 0.7f, 0); return t >= 8 ? ai[t - 8].pos + V3(0, 0.7f, 0) : fighters[t].pos + V3(0, 1.1f, 0); }
+// (100 + i: the rooftop mini Warden jetdrop::ms[i], 2.6.3: lock-on finds them too)
+static bool tgtAlive(int t) { if (t >= 100) return t - 100 < jetdrop::count(); if (t == 7) return roamCarTarget && !me.on && !player.dead; return t >= 8 ? (t - 8 < NAI && !ai[t - 8].dead && racersAreTargets()) : (t >= 0 && t < NSLOT && fighters[t].on && fighters[t].alive); }
+static V3 tgtPos(int t) { if (t >= 100) return jetdrop::posOf(t - 100) + V3(0, 1.1f, 0); if (t == 7) return player.pos + V3(0, 0.7f, 0); return t >= 8 ? ai[t - 8].pos + V3(0, 0.7f, 0) : fighters[t].pos + V3(0, 1.1f, 0); }
 // the best target for f: close to the direction yawRef (the camera, for you), in range and in view. The one already held is preferred, so the lock does not flicker
 static int pickFoe(const Fighter& f, float yawRef, float cone) {
     int best = -1; float bs = 1e9f, range = GUNS[f.gun].range * 1.1f; V3 eye = f.pos + V3(0, 1.4f, 0);
@@ -107,6 +108,7 @@ static int pickFoe(const Fighter& f, float yawRef, float cone) {
     };
     for (int i = 0; i < NSLOT; i++) if (i != f.id && tgtAlive(i)) consider(i, true);
     if (racersAreTargets()) for (int k = 0; k < NAI; k++) if (tgtAlive(8 + k)) consider(8 + k, false);
+    if (!f.bot) for (int k = 0; k < jetdrop::count(); k++) consider(100 + k, false);
     return best;
 }
 
@@ -167,14 +169,14 @@ static void killFighter(Fighter& t, int by) {
     if (showdownOn) t.place = shdAlive() + 1;
     sfx(t.pos, 110, 0.5f, 0.6f, 0, -40);
     char b[64]; if (mine(t)) snprintf(b, sizeof b, showdownOn ? "YOU ARE DOWN" : "WASTED"); else snprintf(b, sizeof b, "%s IS DOWN", t.name);
-    say(b, mine(t) ? V3(1, 0.3f, 0.2f) : V3(1, 0.85f, 0.3f), 2.5f);
+    say(b, mine(t) ? SAY_WARN : SAY_GOOD, 2.5f);
 }
 // by: the fighter who did it (-1: the ring, a racer's bumper). dir: the way the shot was travelling
 static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = false) {   // pierce: armour is no help (the ring)
     if (!t.on || !t.alive) return;
-    if (t.mini && t.remote) {   // online roam: a mini Warden the host's game runs. A punch is reported to it; anything else sparks off
+    if (t.mini && t.remote) {   // online roam: a mini Warden the host's game runs. Our hit (any weapon, 2.6.3) is reported to it
         for (int i = 0; i < 5; i++) spawn(t.pos + V3(0, 1.1f, 0), V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
-        if ((meleeHit || shotGun == G_PISTOL || shotGun == G_SMG || shotGun == G_SHOTGUN) && by == 0) { netRoamHit(t.id, 0, dmg); hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); t.hurtT = 0.25f; } else sfx(t.pos, 2600, 0.05f, 0.3f, 2);
+        if (by == 0) { netRoamHit(t.id, 0, headHit ? dmg * 2 : dmg); hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2); t.hurtT = 0.25f; } else sfx(t.pos, 2600, 0.05f, 0.3f, 2);
         return;
     }
     if (t.remote) {   // online: their health is theirs to keep. Ours only adds up what it has dealt, and shows the hit
@@ -183,11 +185,7 @@ static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = f
             bleed(t.pos + V3(0, 1.15f, 0), dir, dmg);
         return;
     }
-    if (t.mini && !meleeHit && !ramHit && shotGun != G_PISTOL && shotGun != G_SMG && shotGun != G_SHOTGUN) {   // a mini Warden: rifle rounds and grenades spark off its armour (fists, pistol, SMG and shotgun hurt it). Only fists (or a car) hurt it
-        for (int i = 0; i < 5; i++) spawn(t.pos + V3(0, 1.1f, 0), V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.25f, 0.06f, 0, V3(4, 3, 1.2f), 1, 1, -9);
-        sfx(t.pos, 2600, 0.05f, 0.3f, 2); if (by == 0) { hitFlash = 0.1f; static float told = -99; if (T - told > 6) { told = T; say("USE FISTS, PISTOL, SMG OR SHOTGUN ON A MINI WARDEN", V3(1, 0.8f, 0.3f), 2.0f); } }
-        return;
-    }
+    // (2.6.3: every weapon hurts a mini Warden: fists, every gun, grenades, rockets and a bumper. Before, rifle rounds and grenades sparked off)
     if (headHit) dmg *= 2;   // a headshot: double
     float a = pierce ? 0.0f : std::min(t.armour, dmg * 0.7f); t.armour -= a; t.hp -= dmg - a; t.hurtT = 0.25f;
     if (by == 0 && &t != &me) { if (a > 0.5f) dmgNum(t.pos + V3(0, 1.9f, 0), a, 2, t.id); if (dmg - a > 0.05f) dmgNum(t.pos + V3(0, 1.9f, 0), dmg - a, headHit ? 1 : 0, t.id); }
@@ -203,7 +201,7 @@ static void hurtCar(Car& c, float dmg, V3 at) {
     if (c.dead) return; if (&c == &player) dmg *= carArmourMul; c.hp -= dmg; hitFlash = 0.2f;
     for (int i = 0; i < 5; i++) spawn(at, V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.3f, 0.07f, 0, V3(4, 2.6f, 0.8f), 1, 1, -9);
     sfx(at, 2400, 0.04f, 0.2f, 2);
-    if (c.hp <= 0) { explode(c); say("WRECKED!", V3(1, 0.6f, 0.2f), 1.5f); }
+    if (c.hp <= 0) { explode(c); say("WRECKED!", &c == &player ? SAY_WARN : SAY_GOOD, 1.5f); }
 }
 
 // ---- shooting ----
@@ -248,12 +246,14 @@ static void fireGun(Fighter& f, float aimYaw) {
         gunSound(gi, o); bool hit = false;
         for (auto& t : fighters) { if (&t == &f || !t.on || !t.alive || t.rollT > 0.12f || hit) continue; V3 dd = t.pos - f.pos; dd.y = 0; float L = len(dd);
             if (L < g.range && fabsf(wrapPi(atan2f(dd.x, dd.z) - f.yaw)) < 0.9f) { meleeHit = true; damageFighter(t, g.dmg, f.id, L > 0.01f ? dd * (1 / L) : fw); meleeHit = false; sfx(t.pos, 200, 0.10f, 0.5f, 0, -80); hit = true; } }
+        if (!hit) for (int k = 0; k < jetdrop::count(); k++) { V3 dd = jetdrop::posOf(k) - f.pos; float L = flatDist(jetdrop::posOf(k), f.pos);   // (a mini Warden that jetted down: a punch too)
+            if (L < g.range + 0.3f && fabsf(dd.y) < 1.5f && fabsf(wrapPi(atan2f(dd.x, dd.z) - f.yaw)) < 0.9f) { jetdrop::hurt(k, g.dmg * (&f == &me && !f.bot ? footDmgMul : 1.0f), L > 0.01f ? V3(dd.x, 0, dd.z) * (1 / L) : fw); sfx(f.pos, 200, 0.10f, 0.5f, 0, -80); hit = true; break; } }
         if (!hit && racersAreTargets()) for (auto& a : ai) if (!a.dead && flatDist(a.pos, f.pos) < 2.8f) { hurtCar(a, g.carDmg, a.pos + V3(0, 0.8f, 0)); break; }
         if (&f == &me) { footKick = std::min(1.5f, footKick + g.kick * (hit ? 1.0f : 0.4f)); if (hit) { shake = std::max(shake, 0.10f); rumble(0.5f, 90); } }
         return;
     }
     if (gi == G_LAUNCHER) {   // lobbed, to come down at the target's feet (or 22 m ahead)
-        V3 aimAt = ads ? footAimPt : f.target >= 0 ? (f.target >= 8 ? ai[f.target - 8].pos : fighters[f.target].pos) : f.pos + yawDir(aimYaw) * 22.0f; V3 h(aimAt.x - o.x, 0, aimAt.z - o.z); float dist = std::max(len(h), 2.0f), t = dist / 26.0f;
+        V3 aimAt = ads ? footAimPt : f.target >= 0 ? (f.target >= 100 ? jetdrop::posOf(f.target - 100) : f.target >= 8 ? ai[f.target - 8].pos : fighters[f.target].pos) : f.pos + yawDir(aimYaw) * 22.0f; V3 h(aimAt.x - o.x, 0, aimAt.z - o.z); float dist = std::max(len(h), 2.0f), t = dist / 26.0f;
         shells.push_back({ o, h * (26.0f / dist) + V3(0, (aimAt.y + 0.2f - o.y) / t + 0.5f * 14.0f * t, 0), 4.0f, 0, f.id });
     }
     else for (int k = 0; k < g.pellets; k++) shootLine(f, o, norm(d + rt * grng.r(-s, s) + V3(0, grng.r(-s, s) * 0.7f, 0)), g);
@@ -517,13 +517,13 @@ static void footToggle() {
     if (showdownOn) { shdToggle(); return; }
     if (me.on) {
         if (!me.alive) return;
-        if (flatDist(me.pos, player.pos) < 3.4f && !player.dead) { footEnterCar(); tone(640, 0.1f, 0.35f, 2); say("BACK IN THE CAR", V3(0.6f, 0.9f, 1), 1.2f); }
-        else say("GET CLOSER TO THE CAR", V3(1, 0.7f, 0.3f), 1.2f);
+        if (flatDist(me.pos, player.pos) < 3.4f && !player.dead) { footEnterCar(); tone(640, 0.1f, 0.35f, 2); say("BACK IN THE CAR", SAY_COOL, 1.2f); }
+        else say("GET CLOSER TO THE CAR", SAY_INFO, 1.2f);
     } else if (!player.dead && player.grounded && fabsf(player.vf) < 4 && countdown <= 0) {
         footLeaveCar(); tone(420, 0.1f, 0.35f, 2);
-        char b[80]; snprintf(b, sizeof b, "ON FOOT  -  %s GETS BACK IN", keyName(binds[B_EXIT][0] ? binds[B_EXIT][0] : binds[B_EXIT][1])); say(b, V3(1, 0.85f, 0.3f), 2);
-    } else say(countdown > 0 ? "WAIT FOR THE START" : "SLOW DOWN TO GET OUT", V3(1, 0.7f, 0.3f), 1.2f);
+        char b[80]; snprintf(b, sizeof b, "ON FOOT  -  %s GETS BACK IN", keyName(binds[B_EXIT][0] ? binds[B_EXIT][0] : binds[B_EXIT][1])); say(b, SAY_INFO, 2);
+    } else say(countdown > 0 ? "WAIT FOR THE START" : "SLOW DOWN TO GET OUT", SAY_INFO, 1.2f);
 }
 static void footUnlockCheck(int before) {   // a key was just found: say so if it brought a new gun
-    for (int g = 0; g < NGUNS; g++) if (GUNS[g].keys > 0 && before < GUNS[g].keys && totalKeys() >= GUNS[g].keys) { char b[64]; snprintf(b, sizeof b, "NEW WEAPON: %s", GUNS[g].name); say(b, V3(1, 0.85f, 0.2f), 4); tone(980, 0.2f, 0.4f, 2); }
+    for (int g = 0; g < NGUNS; g++) if (GUNS[g].keys > 0 && before < GUNS[g].keys && totalKeys() >= GUNS[g].keys) { char b[64]; snprintf(b, sizeof b, "NEW WEAPON: %s", GUNS[g].name); say(b, SAY_GOOD, 4); tone(980, 0.2f, 0.4f, 2); }
 }

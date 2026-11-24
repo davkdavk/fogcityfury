@@ -104,7 +104,7 @@ static void netShdEnter() {
     netGone = 0; netFootT = netSetupT = 0; netTickSeen = 0; netLaid.clear(); drops.clear();
     if (netChooser()) { shdDrops(); netLaid = drops; drops.clear(); }   // the race winner's game knows the ground: it says where the pick-ups lie
     char b[64]; if (shdSpectate) snprintf(b, sizeof b, "THE TOP FIVE SETTLE IT ON FOOT"); else snprintf(b, sizeof b, "%s  -  DRIVE TO THE RING", ORD[netSlot + 1]);
-    say(b, V3(1, 0.85f, 0.2f), 3.5f); tone(523, 0.3f, 0.5f, 2); tone(659, 0.3f, 0.5f, 2, 0, 0.15f); tone(784, 0.6f, 0.5f, 2, 0, 0.3f);
+    say(b, SAY_INFO, 3.5f); tone(523, 0.3f, 0.5f, 2); tone(659, 0.3f, 0.5f, 2, 0, 0.15f); tone(784, 0.6f, 0.5f, 2, 0, 0.3f);
 }
 
 // somebody else fired: the flash, the sound and the tracer (or the launcher round, which is only for show here)
@@ -141,12 +141,12 @@ static void netShdFrame(float dt) {
     // the stage is the server's
     ShdPhase want = m.stage == net::SD_DRIVE ? SH_DRIVE : m.stage == net::SD_PREP ? SH_PREP : m.stage == net::SD_LIVE ? SH_FIGHT : SH_OVER; float was = shdT;
     if (want != shdPhase) {
-        if (want == SH_PREP) { shdPrepAt = T; for (int i = 0; i < NFIGHT; i++) if (netLocalFighter(i)) shdOut(i); say("ARM YOURSELF  -  20 SECONDS", V3(1, 0.85f, 0.3f), 2.5f); tone(520, 0.2f, 0.5f, 2); }   // all in: anyone still in a car is out of it now
-        if (want == SH_FIGHT) { for (int i = 0; i < NFIGHT; i++) if (netLocalFighter(i)) shdOut(i); say("FIGHT!", V3(1, 0.3f, 0.2f), 1.6f); tone(880, 0.6f, 0.6f, 2); }
+        if (want == SH_PREP) { shdPrepAt = T; for (int i = 0; i < NFIGHT; i++) if (netLocalFighter(i)) shdOut(i); say("ARM YOURSELF  -  20 SECONDS", SAY_INFO, 2.5f); tone(520, 0.2f, 0.5f, 2); }   // all in: anyone still in a car is out of it now
+        if (want == SH_FIGHT) { for (int i = 0; i < NFIGHT; i++) if (netLocalFighter(i)) shdOut(i); say("FIGHT!", SAY_WARN, 1.6f); tone(880, 0.6f, 0.6f, 2); }
         if (want == SH_OVER) {
             shdWinner = m.winner < net::SD_FIGHT ? netLocal[m.winner] : -1;
-            if (shdWinner == 0 && !shdSpectate) { say("CHAMPION!", V3(1, 0.85f, 0.2f), 5); for (int i = 0; i < 5; i++) tone(523 * powf(1.26f, (float)i), 0.3f, 0.45f, 2, 0, i * 0.11f); }
-            else { char b[64]; snprintf(b, sizeof b, "%s TAKES IT", shdWinner >= 0 ? fighters[shdWinner].name : "NOBODY"); say(b, V3(1, 0.4f, 0.25f), 5); tone(200, 0.9f, 0.6f, 2, -80); }
+            if (shdWinner == 0 && !shdSpectate) { say("CHAMPION!", SAY_GOOD, 5); for (int i = 0; i < 5; i++) tone(523 * powf(1.26f, (float)i), 0.3f, 0.45f, 2, 0, i * 0.11f); }
+            else { char b[64]; snprintf(b, sizeof b, "%s TAKES IT", shdWinner >= 0 ? fighters[shdWinner].name : "NOBODY"); say(b, SAY_WARN, 5); tone(200, 0.9f, 0.6f, 2, -80); }
         }
         was = m.stageT;
     }
@@ -173,7 +173,7 @@ static void netShdFrame(float dt) {
         f.place = m.place[k]; f.kills = m.kills[k];
         if (m.place[k] && f.alive) {   // the server has them down (they fell, or they left)
             f.alive = false; f.deadT = 0; f.hp = 0; f.target = -1; sfx(f.pos, 110, 0.5f, 0.6f, 0, -40); if (s.flags & net::FF_GIB) gibFighter(f, f.pos + yawDir(f.yaw) * 1.5f);
-            char b[64]; snprintf(b, sizeof b, "%s IS DOWN", f.name); say(b, V3(1, 0.85f, 0.3f), 2.5f);
+            char b[64]; snprintf(b, sizeof b, "%s IS DOWN", f.name); say(b, SAY_INFO, 2.5f);
         }
         f.arrived = s.flags & net::FF_ARRIVED;
         if (!(s.flags & net::FF_ON)) continue;   // still in their car

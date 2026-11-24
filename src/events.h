@@ -224,7 +224,7 @@ static void happen(int ev) {
     case BLAST: blast(e.at, V3(), nearK(e.at) * e.k); break;
     case SPLASH: waterSplash(e.at, e.k); break;
     case SHAKE: shake = std::max(shake, e.k); rumble(std::min(1.0f, e.k), 300); break;
-    case SAY: say(e.text.c_str(), V3(1, 0.85f, 0.3f), 2.2f); break;
+    case SAY: { char t[96]; snprintf(t, sizeof t, "%s", e.text.c_str()); for (char* c = t; *c; c++) *c = (char)toupper((unsigned char)*c); say(t, SAY_WARN, 2.2f); break; }   // (a scripted moment: a warning, upper case: the font has no lower case)
     case COLLAPSE: fall::collapse(e.at); break;
     case DOLPHIN: dolphin::spawn(e.at, e.to, e.k); break;
     case WEATHER: if (!netRace && !W.space) turnWeather(e.wx, e.over); break;   // (online the server's weather holds)
@@ -267,7 +267,7 @@ static void step(float dt) {
         unsigned h = hashU((unsigned)W.id * 31337u + (unsigned)turns * 7919u); int to;
         switch (weather) { case W_CLEAR: to = h % 3 == 0 ? W_FOG : W_RAIN; break; case W_RAIN: to = h % 2 ? W_STORM : W_CLEAR; break; case W_STORM: to = W_RAIN; break; default: to = W_CLEAR; }
         turnWeather(to, 12); turns++; driftAt = raceT + drift * (0.75f + 0.5f * (float)((h >> 8) % 100) / 100.0f);
-        static const char* SAYS[4] = { "THE SKY IS CLEARING", "HERE COMES THE RAIN", "FOG IS ROLLING IN", "A STORM IS BREAKING" }; say(SAYS[to], V3(0.7f, 0.85f, 1), 2.2f);
+        static const char* SAYS[4] = { "THE SKY IS CLEARING", "HERE COMES THE RAIN", "FOG IS ROLLING IN", "A STORM IS BREAKING" }; say(SAYS[to], SAY_COOL, 2.2f);
     }
     if (drift > 0 && raceT < 0.05f) driftAt = drift;
     for (size_t i = 0; i < pend.size();) if (raceT >= pend[i].at) { int ev = pend[i].ev; pend[i] = pend.back(); pend.pop_back(); happen(ev); } else i++;

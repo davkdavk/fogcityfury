@@ -8,7 +8,7 @@ static void footEnterCar();
 static void doReset() {
     if (state != RACE || player.dead || countdown > 0 || resetCD > 0 || showdownOn) return;   // there is no driving out of a showdown
     if (me.on) footEnterCar();   // back on track means back in the car
-    respawn(player); resetCD = 1.0f; resetHint = 0; tm.resets++; tone(520, 0.1f, 0.4f, 2); tone(780, 0.16f, 0.4f, 2, 0, 0.08f); say("BACK ON TRACK", V3(0.6f, 0.9f, 1), 1.2f);
+    respawn(player); resetCD = 1.0f; resetHint = 0; tm.resets++; tone(520, 0.1f, 0.4f, 2); tone(780, 0.16f, 0.4f, 2, 0, 0.08f); say("BACK ON TRACK", SAY_COOL, 1.2f);
 }
 static void respawn(Car& c) {
     int onBr = -1, whichBr = -1; W.loopPos(c.pos.x, c.pos.z, c.pos.y, &onBr, &whichBr);
@@ -52,9 +52,9 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
         c.boost += clampf((wantBoost ? 1.0f : 0.0f) - c.boost, -7 * dt, 9 * dt);
         if (wantBoost) { c.nitro -= dt / NITRO_TANK; if (c.nitro <= 0) { c.nitro = 0; c.nitroLock = true; } }
         else { c.nitro = std::min(1.0f, c.nitro + dt / (NITRO_REFILL * (&c == &player ? nitroMul : 1.0f))); if (!in.nitro && c.nitro > NITRO_ARM) c.nitroLock = false; }   // let go before it will fire again
-        float top = S.top * (1 - 0.2f * o) * (1 + 0.22f * c.boost);
+        float hurt = &c == &player ? carTopK() : 1.0f, top = S.top * (1 - 0.2f * o) * (1 + 0.22f * c.boost) * hurt;   // (a hurt car: less top speed and pick-up)
         // --- longitudinal ---
-        if (in.gas > 0) { drive = S.acc * in.gas * (shiftCut > 0 ? 0.1f : 1.0f) * clampf((1 - vf / top) * 2.2f, 0, 1); vf += drive * dt; if (vf < 7) c.wheelspin = true; }
+        if (in.gas > 0) { drive = S.acc * (&c == &player ? carAccK() : 1.0f) * in.gas * (shiftCut > 0 ? 0.1f : 1.0f) * clampf((1 - vf / top) * 2.2f, 0, 1); vf += drive * dt; if (vf < 7) c.wheelspin = true; }
         float boostA = S.acc * 1.3f * c.boost * clampf((1 - vf / top) * 2.5f, 0, 1); vf += boostA * dt;   // nitro drives whether or not the throttle is down
         if (vf > 0.5f) vf -= 26 * (0.55f + 0.45f * wx().grip) * c.brakeS * dt; else if (in.brake > 0) vf = std::max(vf - S.acc * 0.7f * in.brake * dt, -17.0f);
         if (in.hb) vf -= clampf(vf, -12 * dt, 12 * dt);
@@ -100,6 +100,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
                 if (k) { V3 dv = c.vel - v0; c.yawRate += clampf((dv.x * f2.z - dv.z * f2.x) * off * 0.08f, -1.5f, 1.5f); } } } }
     if (impact > EXPLODE_SPEED && c.shield > 0) { shieldPop(c); impact = 12; }   // the shield takes it: a hard knock instead
     if (impact > EXPLODE_SPEED) { c.pos = np; explode(c); return; }
+    if (&c == &player && impact > 7) { damageCar((impact - 7) * 1.5f); if (c.dead) { c.pos = np; return; } }   // 2.6.3: a knock hurts the car (combat.h)
     if (impact > 5) {
         c.yawRate *= 0.5f;
         caT = std::max(caT, std::min(1.0f, impact / 25));
@@ -114,7 +115,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
     if (np.y <= hgt) {
         if (!c.grounded) {   // touchdown: compress the suspension, dip the camera, celebrate long jumps
             c.landT = 0.5f; float imp = -c.vel.y; c.heaveV -= clampf(imp * 0.24f, 0, 4.8f); camDipV -= clampf(imp * 0.10f, 0, 2.4f); if (imp > 6) rumble(imp / 26, 160);
-            if (c.airT > 0.9f && state == RACE) { tm.bigAirs++; char b[48]; snprintf(b, sizeof b, "BIG AIR  %.1f S", c.airT); say(b, V3(0.4f, 0.85f, 1), 1.6f); tone(988, 0.12f, 0.3f, 2); tone(1319, 0.2f, 0.3f, 2, 0, 0.08f); }
+            if (c.airT > 0.9f && state == RACE) { tm.bigAirs++; char b[48]; snprintf(b, sizeof b, "BIG AIR  %.1f S", c.airT); say(b, SAY_GOOD, 1.6f); tone(988, 0.12f, 0.3f, 2); tone(1319, 0.2f, 0.3f, 2, 0, 0.08f); }
             if (imp > 13) for (int i = 0; i < 14; i++) spawn(np + V3(grng.r(-0.8f, 0.8f), 0.15f, grng.r(-1.6f, 1.6f)), V3(grng.r(-5, 5), grng.r(1, 5), grng.r(-5, 5)) + c.vel * 0.5f, grng.r(0.2f, 0.45f), 0.09f, 0, V3(4, 2.6f, 0.7f), 1, 1, -9);
         }
         if (!c.grounded && c.vel.y < -8) { shake = std::max(shake, std::min(0.8f, -c.vel.y / 30)); tone(85, 0.22f, std::min(0.9f, -c.vel.y / 22), 1, 200);

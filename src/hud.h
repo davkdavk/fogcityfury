@@ -319,6 +319,13 @@ static void drawHUD() {
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, on ? sc : V3(1, 1, 1), on ? "SHIELD" : "SAVED!");
             if (on && (player.shield > 3 || fmodf(T, 0.25f) < 0.15f)) ui.rect(nx + 98, ny + 13, 170 * player.shield / SHIELD_TIME, 12, sc, 1);
         }
+        if (!trialMode && !exploreMode && !netRace && !showdownOn) {   // 2.6.3 the car's health: green, then amber, then red and blinking; white for a moment when it is mended
+            float nx = Wd - 300, ny = Hb - 326, nw = 280, nh = 38, h = clampf(player.hp / 100, 0, 1); V3 hc = h > 0.55f ? V3(0.45f, 1, 0.5f) : h > 0.25f ? V3(1, 0.75f, 0.2f) : V3(1, 0.25f, 0.15f);
+            if (carFix > 0 && fmodf(T, 0.16f) < 0.08f) hc = V3(1, 1, 1); bool blink = h <= 0.25f && !player.dead && fmodf(T, 0.5f) < 0.2f;
+            ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, blink ? V3(1, 1, 1) : h > 0.55f ? V3(0.75f, 0.8f, 0.9f) : hc, "CAR");
+            ui.rect(nx + 98, ny + 13, 170, 12, V3(0.18f, 0.2f, 0.24f), 0.8f); if (!blink) ui.rect(nx + 98, ny + 13, 170 * h, 12, hc, 1);
+            if (player.shield > 0) ui.rect(nx + 98, ny + 11, 170, 2, V3(0.4f, 0.85f, 1), 0.9f);   // (the shield keeps knocks off it)
+        }
         if (!trialMode) {   // rockets: two slots; the reticle marks the car a rocket would go for (manic: none)
             float nx = Wd - 300, ny = Hb - 238, nw = 280, nh = 38; V3 rc(1, 0.42f, 0.14f);
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, ammo > 0 ? rc : V3(0.5f, 0.5f, 0.55f), "ROCKETS");
@@ -405,6 +412,17 @@ static void drawHUD() {
         if (state == RACE && introT <= 0 && countdown > 0 && countdown < 3.4f) { snprintf(b, sizeof b, "%d", (int)ceilf(countdown - 0.4f)); if (countdown > 0.4f) ui.text(Wd / 2, 200, 26, yel, b, 1, 1, 0.12f); }
         if (msgT > 0 && state != RESULTS) ui.text(Wd / 2, 210, 6, msgCol, msg, 1, clampf(msgT * 2, 0, 1), 0.2f);
         if (wrongT > 1.2f && fmodf(T, 0.6f) < 0.4f) ui.text(Wd / 2, 300, 7, V3(1, 0.15f, 0.1f), "WRONG WAY", 1, 1, 0.12f);
+        if (state == RACE && !player.dead) {   // 2.6.3 INCOMING!: flashes as a rocket comes for you; an arrow round the middle points at the nearest in flight
+            const Rocket* nr = nullptr; float nd = 1e9f; for (const Rocket& r : rockets) if (r.target == TGT_ME) { float d = len(r.p - player.pos); if (d < nd) { nd = d; nr = &r; } }
+            if (incomingT > 0 && fmodf(T, 0.3f) < 0.2f) ui.text(Wd / 2, 150, 5, SAY_WARN, "INCOMING!", 1, 1, 0.12f);
+            if (nr) {
+                V3 fw = camTgt - camPos; fw.y = 0; float fl = len(fw); fw = fl > 0.01f ? fw * (1 / fl) : V3(0, 0, 1); V3 d = nr->p - camPos;
+                float rgt = -(d.x * fw.z - d.z * fw.x), fwd = d.x * fw.x + d.z * fw.z, a = atan2f(rgt, fwd), sx = sinf(a), sy = -cosf(a), R = 150, cx = Wd / 2, cy = Hd / 2;
+                float pulse = 0.75f + 0.25f * sinf(T * 18);
+                for (int k = 0; k < 7; k++) { float w = (7 - k) * 3.2f; ui.rect(cx + sx * (R + k * 5) - w / 2, cy + sy * (R + k * 5) - w / 2, w, w, SAY_WARN, pulse); }   // a wedge, its point outwards
+                snprintf(b, sizeof b, "%dM", (int)nd); ui.text(cx + sx * (R + 52), cy + sy * (R + 52) - 8, 2.0f, SAY_WARN, b, 1, pulse);
+            }
+        }
         if (player.dead && state == RACE) ui.text(Wd / 2, 300, 6, player.sunk ? V3(0.5f, 0.8f, 1) : org, player.sunk ? (W.space ? "LOST IN SPACE!" : "SPLASH!") : "WRECKED!", 1, 1, 0.12f);
         if (netRace && state != RESULTS) for (auto& r : nc.r) {   // name tags over the other players
             if (!r.present || !r.racing) continue; V3 q = r.car.pos + V3(0, 2.3f, 0); const float* m = lastVP.m;

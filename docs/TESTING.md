@@ -132,6 +132,12 @@ tracks as files and exits, `--edit` / `--ednew` open the editor on the picked tr
 
 Free roam mini Wardens (see `docs/ROAM.md`): `--minisnow`, `--minishold`, `--outcar`, `--flowers N`.
 
+2.6.3: `--cammode N` (0 chase, 1 far chase, 2 bonnet), `--hipfire` (on foot, trigger held, lock-on aiming), `--carhp N`
+(a race starts with the car at that health), `--cardmg K` (scale every knock). Report fields: `playerCarDrawn`,
+`camMode`, `carDmgTaken`, `carDmgWrecks`, `carRepairs`, `carPerfMin`, `carTopK`, `incomingSaid`, `incomingMax`,
+`incomingFlight`, `saysShown`, `saysHeld`, `msg`, `leapApexK` [min, max apex per unit size], `leapAir` [min, max s],
+`leapWetMin`.
+
 ## The JSON report
 
 One line on stdout from `--sim` and `--shot`.

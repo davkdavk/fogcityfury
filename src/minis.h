@@ -80,12 +80,12 @@ static int rocketsFired = 0;
 static void penalty() {
     if (trialMode) return;   // (time trial: no rockets)
     penalties++; int l = level(), floorN = l ? PERKS[l - 1].need : 0, lost = flowers - floorN; flowers = floorN; saveCfg();
-    char s[80]; snprintf(s, sizeof s, lost > 0 ? "YOU RAN IT DOWN: -%d FLOWERS. THE WARDENS FIRE ON YOU" : "YOU RAN IT DOWN. THE WARDENS FIRE ON YOU", lost); say(s, V3(1, 0.3f, 0.2f), 3.5f);
+    char s[80]; snprintf(s, sizeof s, lost > 0 ? "RAN IT DOWN  -%d FLOWERS" : "RAN IT DOWN", lost); say(s, SAY_WARN, 2.5f);   // (the Wardens fire on you: INCOMING! says so)
     V3 at = player.pos + V3(0, 140, 0), dir(0, -1, 0); float best = 1e9f;
     for (int u = 0; u < mech::count(); u++) { V3 a, d; mech::muzzle(mech::unit[u], mechT, a, d); float L = len(a - player.pos); if (L < best) { best = L; at = a; dir = norm(player.pos + V3(0, 1, 0) - a); } }
     // from the nearest Warden wherever it stands, seen or not: it lobs the rocket over the town (lobCruise) and down on you
     Rocket r{ at, V3(dir.x * 12, 40, dir.z * 12), 25.0f, TGT_ME }; r.owner = -2; r.lob = 1; r.cruise = lobCruise(at, player.pos); rockets.push_back(r); rocketsFired++; tm.rocketsAtMe++;
-    sfx(at, 160, 0.6f, 1.0f, 0, -60);
+    sfx(at, 160, 0.6f, 1.0f, 0, -60); incoming();   // (INCOMING!: the HUD points at it all the way in)
 }
 // one mini Warden's mind: close in to shooting range, circle you while it shoots in bursts
 static FootIn think(Fighter& f, float dt) {
@@ -141,8 +141,8 @@ static FootIn youThink(Fighter& f, float dt) {
             in.mz = to.z;
         }
         return in;
-    }                                                 // (--gun N: shoot at it, to show it shrugs it off)
-    f.gun = G_FISTS; f.target = bd < 4 ? best : -1;   // only fists hurt them: walk right up and punch
+    }                                                 // (--gun N: shoot it with that)
+    f.gun = G_FISTS; f.target = bd < 4 ? best : -1;   // (no --gun: walk right up and punch)
     V3 to(fighters[best].pos.x - f.pos.x, 0, fighters[best].pos.z - f.pos.z); to = to * (1 / std::max(bd, 0.01f));
     if (bd > 1.3f) { in.mx = to.x; in.mz = to.z; in.sprint = bd > 6; } in.fire = bd < 2.2f; return in;
 }
@@ -152,8 +152,8 @@ static void pickUp(float dt) {
     for (size_t k = 0; k < blooms.size(); ) {
         Bloom& b = blooms[k]; b.age += dt;
         if (flatDist(a, b.p) < reach && fabsf(a.y - b.p.y) < 3) {
-            int before = level(); flowers += b.n; picked++; char s[64]; snprintf(s, sizeof s, "+%d FLOWERS", b.n); say(s, V3(0.5f, 1, 0.55f), 1.4f); tone(1320, 0.08f, 0.3f, 2); tone(1760, 0.1f, 0.3f, 2, 0, 0.06f);
-            int after = level(); if (after > before) { const Perk& p = PERKS[after - 1]; snprintf(s, sizeof s, "LEVEL %d: %s - %s", after, p.name, p.what); say(s, V3(1, 0.85f, 0.3f), 4.0f); tone(880, 0.15f, 0.4f, 2); tone(1320, 0.25f, 0.4f, 2, 0, 0.12f); }
+            int before = level(); flowers += b.n; picked++; char s[64]; snprintf(s, sizeof s, "+%d FLOWERS", b.n); say(s, SAY_GOOD, 1.4f); tone(1320, 0.08f, 0.3f, 2); tone(1760, 0.1f, 0.3f, 2, 0, 0.06f);
+            int after = level(); if (after > before) { const Perk& p = PERKS[after - 1]; snprintf(s, sizeof s, "LEVEL %d: %s - %s", after, p.name, p.what); say(s, SAY_GOOD, 4.0f); tone(880, 0.15f, 0.4f, 2); tone(1320, 0.25f, 0.4f, 2, 0, 0.12f); }
             saveCfg(); blooms.erase(blooms.begin() + k); continue;
         }
         if (b.age > 90) { blooms.erase(blooms.begin() + k); continue; }
@@ -162,7 +162,7 @@ static void pickUp(float dt) {
 }
 static void step(float dt) {
     applyPerks();
-    if (state == RACE && !player.dead && player.hp < 50 && grng.f() < dt * (4 + (50 - player.hp) * 0.4f)) {   // a hurt car smokes from under the bonnet, thicker as it gets worse
+    if (state == RACE && exploreMode && !player.dead && player.hp < 50 && grng.f() < dt * (4 + (50 - player.hp) * 0.4f)) {   // a hurt car smokes from under the bonnet, thicker as it gets worse
         V3 hood = player.pos + yawDir(player.yaw) * 1.4f + V3(0, 0.9f, 0); float k = (50 - player.hp) / 50;
         spawn(hood, V3(grng.r(-0.6f, 0.6f), grng.r(1.5f, 3.0f), grng.r(-0.6f, 0.6f)) + player.vel * 0.3f, grng.r(0.9f, 1.6f), 0.35f + 0.4f * k, 1.6f + k, V3(0.30f, 0.30f, 0.32f) * (1 - 0.6f * k), 0.5f, 0, 0.4f);
     }
@@ -237,3 +237,21 @@ static void hud(float x, float y) {
 }
 }   // namespace mini
 static void miniReset() { mini::reset(); }
+// 2.6.3: a rocket of ours near mini Wardens (free roam's, and those that jetted off a roof): it goes off, and the burst
+// hurts every one near it (a direct hit takes one down)
+static bool miniNear(V3 p, float r) {
+    for (int i = 1; i < NSLOT; i++) { const Fighter& f = fighters[i]; if (f.on && f.mini && f.alive && len(f.pos + V3(0, 1.1f, 0) - p) < r + 0.5f) return true; }
+    for (int k = 0; k < jetdrop::count(); k++) if (len(jetdrop::posOf(k) + V3(0, 1.1f, 0) - p) < r + 0.5f) return true;
+    return false;
+}
+static void blastMinis(V3 p, float r, float dmg) {
+    for (int i = 1; i < NSLOT; i++) { Fighter& f = fighters[i]; if (!f.on || !f.mini || !f.alive) continue; V3 d = f.pos + V3(0, 1.0f, 0) - p; float L = len(d); if (L > r) continue;
+        V3 dir = L > 0.05f ? d * (1 / L) : V3(0, 1, 0); damageFighter(f, dmg * (1 - 0.6f * L / r), 0, dir); if (!f.alive && !f.remote && L < r * 0.5f) gibFighter(f, p); }
+    jetdrop::blastAt(p, r, dmg * 0.7f);
+}
+static bool miniAhead(V3 p, V3 dir, V3& at) {   // the nearest mini Warden within 120 m and 35 degrees of where a rocket of ours is heading
+    float best = 120; bool any = false; auto look = [&](V3 q) { V3 d = q - p; float L = len(d); if (L < best && L > 0.5f && dot(d, dir) > 0.82f * L) { best = L; at = q; any = true; } };
+    for (int i = 1; i < NSLOT; i++) { const Fighter& f = fighters[i]; if (f.on && f.mini && f.alive) look(f.pos + V3(0, 1.1f, 0)); }
+    for (int k = 0; k < jetdrop::count(); k++) look(jetdrop::posOf(k) + V3(0, 1.1f, 0));
+    return any;
+}

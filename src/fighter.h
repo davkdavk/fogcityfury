@@ -75,6 +75,6 @@ static float footYaw = 0, footPitch = 0.20f, footMouseX = 0, footMouseY = 0; sta
 // zooms, you face where it looks and strafe, and a shot goes exactly to the middle of the screen (footAimPt: what the
 // view's centre line meets), high or low: rooftops too. footAdsK: how far in it is (for the camera and the HUD)
 static bool footMouseAds = false, footAdsNow = false, footAimHot = false; static V3 footAimPt; static float footAdsK = 0;
-static bool cliOnFoot = false, cliAds = false, cliAim = false, cliAimMini = false, cliAimDol = false, cliAimHead = false; static V3 cliAimAt;   // tests: --onfoot, --ads, --aimat X Y Z
+static bool cliHip = false, cliOnFoot = false, cliAds = false, cliAim = false, cliAimMini = false, cliAimDol = false, cliAimHead = false; static V3 cliAimAt;   // tests: --onfoot, --ads, --aimat X Y Z
 // a thumb-stick drawn where the left thumb lands (touch screens)
 static struct TouchStick { bool on = false; SDL_FingerID id = 0; float ox = 0, oy = 0, x = 0, y = 0; } tstick;

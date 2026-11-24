@@ -92,6 +92,23 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.6.3
+
+- **Rampage bots reach the ring.** They drive the shortest way there from wherever they are: down alleys, round water,
+  straight across open ground when it's clear. All five get in on every track, and nobody is dropped at the ring's edge.
+- **The Wardens and UFOs keep moving** while everyone drives to the ring (they used to freeze).
+- **Car damage in races.** Walls, other cars, rocket bursts and cars blowing up beside you wear your car down (the CAR
+  meter). Hurt, it smokes and loses top speed and pick-up; badly hurt, it burns; at nothing it's wrecked and comes
+  back whole. It mends slowly as you drive, fully at the start/finish line or with a shield. Not in MANIC or online.
+- **Every weapon hurts mini Wardens:** fists, every gun, grenades and the car's rockets (rifle rounds and grenades used
+  to glance off).
+- **INCOMING!** flashes when a Warden fires a revenge rocket at you, with a warning tone and an arrow pointing at it
+  (and its distance) until it lands.
+- **Tidier event messages:** short, upper case, one colour for warnings, one for good news, one for information,
+  and no repeats piling up.
+- **Your car stays drawn** in the in-car camera when you're out of it.
+- **Dolphins leap higher:** about 5.5 m up over 16 m, each leap a little higher or lower, bigger dolphins higher.
+
 ## What's new in 2.6.2
 
 - **Every track's script is reworked so each lap plays differently.** Everything is set off by lines across the

@@ -37,10 +37,10 @@ static void update(float dt) {
     Input in; bool go = true;
     if (state == RACE && introT > 0) introT = std::max(0.0f, introT - dt);
     if (state == RACE) { if (countdown > 0) { float c0 = countdown; countdown -= (introT > 0 && !netRace) ? 0 : dt;   // offline the countdown waits for the fly-in; online the server's clock runs on
-        go = false; for (int k = 3; k >= 1; k--) if (c0 > k - 0.4f + 0.0f && countdown <= k - 0.4f) tone(440, 0.25f, 0.5f, 2); if (countdown <= 0) { tone(880, 0.6f, 0.6f, 2); say("GO!", V3(0.3f, 1, 0.3f), 1.2f);
+        go = false; for (int k = 3; k >= 1; k--) if (c0 > k - 0.4f + 0.0f && countdown <= k - 0.4f) tone(440, 0.25f, 0.5f, 2); if (countdown <= 0) { tone(880, 0.6f, 0.6f, 2); say("GO!", SAY_GOOD, 1.2f);
             if (gasHold > 0.01f && gasHold < 0.4f) {
                 player.vel = player.vel + V3(sinf(player.yaw), 0, cosf(player.yaw)) * 13;
-                say("ROCKET START!", V3(1, 0.6f, 0.1f), 1.6f);
+                say("ROCKET START!", SAY_GOOD, 1.6f);
                 fovKick += 8;
                 tone(300, 0.5f, 0.5f, 1, 4000);
             }
@@ -105,6 +105,7 @@ static void update(float dt) {
                 Contact k;
                 if (!player.dead && state != RESULTS && !trialMode && carContact(player, a, k)) {   // (time trial: they are ghosts)   // (after the flag the field passes through a finished car, not shoving it about)
                     V3 av = a.vel; float rv = bumpPlayer(k, av, 0.5f);   // we and the bot share the push and the knock
+                    if (rv < -4) damageCar((-rv - 4) * 0.8f);   // (a hard knock hurts the car)
                     bumpBot(a, -k.nx, -k.nz, k.pen * 0.5f, rv < 0 ? -rv * 0.65f : 0, k.at); if (rv < -1) tm.bumps++;
                 }
             }
@@ -124,22 +125,22 @@ static void update(float dt) {
             if (player.nextCp % NCP == 0) {
                 if (player.lap > 0 && trialMode) {   // the lap's time, and against your best this run
                     float lt = raceT - lapStart; trialLaps.push_back(lt); char tb[32], db[64]; fmtTime(tb, lt);
-                    if (bestLapRace > 0) { float dl = lt - bestLapRace; snprintf(db, sizeof db, "LAP %d  %s  %c%.2f", player.lap, tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 2.2f); }
-                    else { snprintf(db, sizeof db, "LAP %d  %s", player.lap, tb); say(db, V3(1, 1, 1), 2.2f); }
+                    if (bestLapRace > 0) { float dl = lt - bestLapRace; snprintf(db, sizeof db, "LAP %d  %s  %c%.2f", player.lap, tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? SAY_GOOD : SAY_INFO, 2.2f); }
+                    else { snprintf(db, sizeof db, "LAP %d  %s", player.lap, tb); say(db, SAY_COOL, 2.2f); }
                     if (bestLapRace == 0 || lt < bestLapRace) for (int k = 0; k < NCP && k < 8; k++) trialBestSplit[k] = trialSplit[k];
-                    if (ghostBestT <= 0 || lt < ghostBestT) { ghostBest = ghostCur; ghostBestT = lt; saveGhost(W.id); say("NEW GHOST", V3(0.6f, 0.9f, 1), 1.2f); }   // your best lap ever on this track: the ghost from now on
+                    if (ghostBestT <= 0 || lt < ghostBestT) { ghostBest = ghostCur; ghostBestT = lt; saveGhost(W.id); say("NEW GHOST", SAY_COOL, 1.2f); }   // your best lap ever on this track: the ghost from now on
                 }
-                if (player.lap > 0) { lastLap = raceT - lapStart; if (bestLapRace == 0 || lastLap < bestLapRace) bestLapRace = lastLap; if (bestLap[W.id] == 0 || lastLap < bestLap[W.id]) { bestLap[W.id] = lastLap; if (!exploreMode) say("NEW LAP RECORD!", V3(1, 0.9f, 0.2f)); } }
-                player.lap++; lapStart = raceT; ghostCur.clear();
+                if (player.lap > 0) { lastLap = raceT - lapStart; if (bestLapRace == 0 || lastLap < bestLapRace) bestLapRace = lastLap; if (bestLap[W.id] == 0 || lastLap < bestLap[W.id]) { bestLap[W.id] = lastLap; if (!exploreMode) say("NEW LAP RECORD!", SAY_GOOD); } }
+                player.lap++; lapStart = raceT; ghostCur.clear(); if (player.lap > 1) repairCar();   // (a lap done, over the line: the car is whole again)
                 if (trialMode) { if (player.lap > raceLaps) finishRace(false); }
-                else if (!exploreMode) { if (player.lap > raceLaps) { finishRace(false); } else if (player.lap == raceLaps && raceLaps > 1) say("FINAL LAP", V3(1, 0.4f, 0.2f)); else if (player.lap > 1) { say("LAP", V3(1, 1, 1), 0.01f); timeLeft += 11; } }
+                else if (!exploreMode) { if (player.lap > raceLaps) { finishRace(false); } else if (player.lap == raceLaps && raceLaps > 1) say("FINAL LAP", SAY_INFO); else if (player.lap > 1) timeLeft += 11; }   // (2.6.3: no blank "LAP" message: it wiped NEW LAP RECORD! straight away)
             } else if (trialMode) {   // a split: this lap so far, against the same point on your best lap
                 int c = player.nextCp % NCP; float sp = raceT - lapStart; if (c < 8) trialSplit[c] = sp; char tb[32], db[64]; fmtTime(tb, sp);
                 float gt = ghostTimeAt(player.pos.x, player.pos.z, sp);
-                if (gt >= 0) { float dl = sp - gt; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 1.6f); }   // (against the ghost)
-                else if (c < 8 && trialBestSplit[c] > 0) { float dl = sp - trialBestSplit[c]; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? V3(0.4f, 1, 0.5f) : V3(1, 0.6f, 0.3f), 1.6f); }
-                else { snprintf(db, sizeof db, "SPLIT %s", tb); say(db, V3(0.75f, 0.85f, 1), 1.6f); }
-            } else if (!exploreMode) { timeLeft += 11; say("CHECKPOINT  +11", V3(0.4f, 1, 0.5f), 1.6f); }
+                if (gt >= 0) { float dl = sp - gt; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? SAY_GOOD : SAY_INFO, 1.6f); }   // (against the ghost)
+                else if (c < 8 && trialBestSplit[c] > 0) { float dl = sp - trialBestSplit[c]; snprintf(db, sizeof db, "SPLIT %s  %c%.2f", tb, dl < 0 ? '-' : '+', fabsf(dl)); say(db, dl < 0 ? SAY_GOOD : SAY_INFO, 1.6f); }
+                else { snprintf(db, sizeof db, "SPLIT %s", tb); say(db, SAY_COOL, 1.6f); }
+            } else if (!exploreMode) { timeLeft += 11; say("CHECKPOINT  +11", SAY_GOOD, 1.6f); }
             tone(660, 0.15f, 0.4f, 2); tone(990, 0.3f, 0.4f, 2, 0, 0.1f); player.nextCp++;
         }
         if (trialMode && player.lap > 0) while ((float)ghostCur.size() <= (raceT - lapStart) * 20 && ghostCur.size() < 20000) ghostCur.push_back({ player.pos.x, player.pos.y, player.pos.z, player.yaw, player.pitch, player.roll });   // (the lap, for the ghost)
@@ -160,13 +161,16 @@ static void update(float dt) {
         for (auto& t : resetAt) if (t >= 0 && raceT >= t) { doReset(); t = -1; }
         if (cratesOn() && !player.dead && !me.on && !showdownOn) for (auto& c : crates) {   // any crate gives this lap's rockets; then they are all gone until we cross the line again
             V3 d = c.p - (player.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
-            rocketLap = player.lap; ammo = CRATE_ROCKETS; ammoFlash = 1; tm.pickups++; say("ROCKETS X2", V3(1, 0.45f, 0.2f), 1.8f); tone(330, 0.12f, 0.45f, 2); tone(495, 0.12f, 0.45f, 2, 0, 0.09f); tone(660, 0.22f, 0.45f, 2, 0, 0.18f); rumble(0.4f, 200);
+            rocketLap = player.lap; ammo = CRATE_ROCKETS; ammoFlash = 1; tm.pickups++; say("ROCKETS X2", SAY_GOOD, 1.8f); tone(330, 0.12f, 0.45f, 2); tone(495, 0.12f, 0.45f, 2, 0, 0.09f); tone(660, 0.22f, 0.45f, 2, 0, 0.18f); rumble(0.4f, 200);
             for (int i = 0; i < 24; i++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(-0.3f, 1), grng.r(-1, 1))); spawn(c.p, dd * grng.r(2, 8), grng.r(0.4f, 0.8f), 0.22f, 0, V3(4, 1.4f, 0.4f), 1, 1, -3); }
             break;
         }
         if (!player.dead && !me.on && !showdownOn) grabShield(-1, player);
-        if (player.shield > 0 && !player.dead) { player.shield = std::max(0.0f, player.shield - dt); if (player.shield == 0) { say("SHIELD GONE", V3(0.5f, 0.6f, 0.7f), 1.2f); tone(600, 0.2f, 0.3f, 2, -300); } }
+        if (player.shield > 0 && !player.dead) { player.shield = std::max(0.0f, player.shield - dt); if (player.shield == 0) { say("SHIELD GONE", SAY_COOL, 1.2f); tone(600, 0.2f, 0.3f, 2, -300); } }
         if (player.shield > 0 && !player.dead) shieldSparks(player, dt, shieldFx);
+        if (carDamageOn() && !player.dead && player.hp < 100) player.hp = std::min(100.0f, player.hp + CAR_MEND * dt); carFix = std::max(0.0f, carFix - dt * 1.5f);
+        if (cliCarHp >= 0 && carDamageOn()) { player.hp = cliCarHp; cliCarHp = -1; }   // (--carhp N, tests: the race starts with the car that hurt)
+        carDamageFx(dt); incomingStep(dt);
         if (go && !showdownOn && !netRace && botGuns) botWeapons(dt);
         bool stuck = go && !me.on && !showdownOn && !player.dead && fabsf(player.vf) < 2.5f && (in.gas > 0.3f || in.brake > 0.3f), lost = go && !me.on && !showdownOn && !player.dead && !exploreMode && !rampage && (W.RD(player.pos.x, player.pos.z) > ROADW + 28 || wrongT > 3);
         resetHint = stuck || lost ? resetHint + dt : std::max(0.0f, resetHint - dt * 3);
@@ -200,10 +204,10 @@ static void update(float dt) {
     if (state == RACE) for (size_t k = 0; k < W.keys.size(); k++) {
         if (keysGot[W.id] >> k & 1) continue; V3 d = W.keys[k] - (avatarPos() + V3(0, 0.8f, 0));
         if (dot(d, d) < 3.4f * 3.4f && (!player.dead || me.on)) {
-            int keysBefore = totalKeys(); keysGot[W.id] |= 1u << k; footUnlockCheck(keysBefore); flashT = 0.6f; flashCol = V3(1, 0.85f, 0.3f); rumble(0.5f, 250); char b[64]; snprintf(b, sizeof b, "KEY FOUND!  %d/%d", keyCount(W.id), NKEYS); say(b, V3(1, 0.85f, 0.2f), 3);
+            int keysBefore = totalKeys(); keysGot[W.id] |= 1u << k; footUnlockCheck(keysBefore); flashT = 0.6f; flashCol = V3(1, 0.85f, 0.3f); rumble(0.5f, 250); char b[64]; snprintf(b, sizeof b, "KEY FOUND!  %d/%d", keyCount(W.id), NKEYS); say(b, SAY_GOOD, 3);
             for (int i = 0; i < 5; i++) tone(880 * powf(1.26f, (float)i), 0.25f, 0.4f, 0, 0, i * 0.07f);
             for (int i = 0; i < 40; i++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1))); spawn(W.keys[k], dd * grng.r(2, 9), grng.r(0.5f, 1.1f), 0.25f, 0, V3(4, 3, 0.6f), 1, 1, -3); }
-            if (allKeys() && !chromeUnlocked) { chromeUnlocked = true; say("ALL KEYS! GOLD CHROME UNLOCKED", V3(1, 0.85f, 0.2f), 5); }
+            if (allKeys() && !chromeUnlocked) { chromeUnlocked = true; say("ALL KEYS!  GOLD CHROME UNLOCKED", SAY_GOOD, 5); }
             writeSave();
         }
         if (grng.f() < dt * 6) { V3 kp = W.keys[k]; spawn(kp + V3(grng.r(-.8f, .8f), grng.r(-1, 1), grng.r(-.8f, .8f)), V3(0, 1.2f, 0), 0.8f, 0.12f, 0, V3(3, 2.4f, 0.5f), 0.9f, 1, 0); }
@@ -362,7 +366,7 @@ static void update(float dt) {
             }
         }
     }
-    msgT -= dt; shake *= expf(-5 * dt); flashT = std::max(0.0f, flashT - dt * 1.8f); caT *= expf(-6 * dt); fovKick *= expf(-4 * dt); shiftCut = std::max(0.0f, shiftCut - dt);
+    sayStep(dt); shake *= expf(-5 * dt); flashT = std::max(0.0f, flashT - dt * 1.8f); caT *= expf(-6 * dt); fovKick *= expf(-4 * dt); shiftCut = std::max(0.0f, shiftCut - dt);
     camDipV += (-camDip * 120 - camDipV * 13) * dt; camDip = clampf(camDip + camDipV * dt, -0.9f, 0.4f);
     gasHold = (state == RACE && in.gas > 0.1f) ? gasHold + dt : 0;
     if (player.grounded && !player.dead && driving && pad && frameNo % 6 == 0) { float r = (player.offroad ? clampf(fabsf(player.vf) / 60, 0, 0.35f) : 0) + clampf(player.slip / 30, 0, 0.3f); if (r > 0.05f) rumble(r, 120); }

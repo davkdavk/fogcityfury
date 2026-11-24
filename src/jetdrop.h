@@ -87,11 +87,12 @@ static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx) {
     return any;
 }
 static int downedCount() { return downed; }
+static int count() { return (int)ms.size(); }
 static V3 posOf(int idx) { return idx >= 0 && idx < (int)ms.size() ? ms[idx].p : V3(); }
 static bool firstAt(V3& p) { if (ms.empty()) return false; p = ms[0].p; return true; }
 static void kill(int idx, V3 dir) {   // down: it comes apart into Warden pieces (foot.h does a mini Warden's), off the roof if it was up there
     M& m = ms[idx]; Fighter t; t.on = true; t.mini = true; t.pos = m.p; t.paint = 0; gibFighter(t, m.p - dir * 2.0f + V3(0, 0.5f, 0));
-    downed++; say("MINI WARDEN DOWN", V3(1, 0.85f, 0.3f), 1.4f); ms[idx] = ms.back(); ms.pop_back();
+    downed++; say("MINI WARDEN DOWN!", SAY_GOOD, 1.4f); ms[idx] = ms.back(); ms.pop_back();
 }
 static void hurt(int idx, float dmg, V3 dir) {
     if (idx < 0 || idx >= (int)ms.size()) return; M& m = ms[idx]; m.hp -= dmg; m.hurtT = 0.2f; hitFlash = 0.2f; tone(1900, 0.035f, 0.22f, 2);

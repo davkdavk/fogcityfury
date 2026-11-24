@@ -144,8 +144,8 @@ static void netStartRoam() {
     for (int i = 0; i < NSLOT; i++) { killedByRemote[i] = -1; rammedRemote[i] = false; }
     exploreMode = true; rampage = false; raceLaps = 99; if (W.id != nc.track) W.build(nc.track);
     setupCars(true); int k = nc.id >= 0 ? nc.id : 0; placeOnGrid(player, gridS(k * 5), gridLat(k));   // spread out along the road, so nobody starts on top of anybody
-    raceT = 0; countdown = 0.01f; timeLeft = 999; introT = 0; aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; msgT = 0; state = RACE; netRace = true; nc.finished = false;
-    say("ONLINE ROAM", V3(0.4f, 1, 0.6f), 3.0f);
+    raceT = 0; countdown = 0.01f; timeLeft = 999; introT = 0; aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; sayClear(); state = RACE; netRace = true; nc.finished = false;
+    say("ONLINE ROAM", SAY_COOL, 3.0f);
 }
 // the nearest other player to `from` (minis.h asks, on the host): where they are and whether on foot
 static bool netRoamNearest(V3 from, int& id, V3& pos, bool& onFoot) {

@@ -115,6 +115,9 @@ static void keepInTube(V3& c) {
     float arch = TUBE_SILL + (TUBE_TOP - TUBE_SILL) * sqrtf(std::max(0.0f, 1 - r * r)) - 0.8f;
     c.x += t.tz * (l2 - lat); c.z -= t.tx * (l2 - lat); c.y = clampf(c.y, t.y + 0.5f, t.y + std::max(arch, 1.2f));
 }
+// is our own car drawn in the main pass? Always, driven or parked, in every camera: only not from the bonnet while we
+// sit in it, and not when it is off the road for a spectator (carHidden). 2.6.3: on foot in the bonnet camera it vanished
+static bool playerCarDrawn() { return !carHidden && !(camMode == 2 && state == RACE && !footView()); }
 static void drawCars(Prog& p, bool lit, bool withPlayer) { if (withPlayer && !carHidden) { drawCar(player, p, lit); if (lit) drawJets(player, p); }
     if (showAI()) for (auto& a : ai) drawCar(a, p, lit);
     if (trialMode && lit && !ghostBest.empty() && player.lap > 0 && (state == RACE || state == PAUSED)) {   // manic: your best lap's ghost, see-through, in step with this lap
@@ -390,7 +393,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
             for (int k = 0; k < 6; k++) { V3 q = c.pos + f * (mid + cv[k] * hl) + sd * (cu[k] * hw); q.y = W.ground(q.x, q.z, c.pos.y + 0.6f) + 0.035f; if (fabsf(q.y - g0) > 1.2f) q.y = g0 + 0.035f;
                 float d[11] = { q.x, q.y, q.z, cu[k], cv[k], 0.0f, 0.0f, 0.0f, a, 0, 1 }; ao.insert(ao.end(), d, d + 11); }
         };
-        if (!(camMode == 2 && state == RACE) && !carHidden) patch(player); if (showAI()) for (auto& a : ai) patch(a); if (netRace) for (auto& r : nc.r) if (r.present && r.racing) patch(r.car);
+        if (playerCarDrawn()) patch(player); if (showAI()) for (auto& a : ai) patch(a); if (netRace) for (auto& r : nc.r) if (r.present && r.racing) patch(r.car);
         footShadows(ao);
         if (!ao.empty()) {
             gfx::blend(gfx::B_ALPHA); gfx::depthWrite(false); gfx::offset(-2, -2);
@@ -402,7 +405,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         traceDraw((DRAW_MASK & DM_SINGLE_CAR) ? "car" : "cars");
         setCommon(pCar, VP, cam, hdr); pCar.i1("uEnv", 1);
         if (DRAW_MASK & DM_SINGLE_CAR) drawCar(player, pCar, true);
-        else drawCars(pCar, true, !(camMode == 2 && state == RACE));
+        else drawCars(pCar, true, playerCarDrawn());
     }
     if (mainPass && (DRAW_MASK & DM_WRECKAGE)) {
         traceDraw("wreckage+pickups");

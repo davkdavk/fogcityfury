@@ -8,8 +8,7 @@ There is no announcement: each shows as a red dot on the minimap.
 They hunt you. Each has a jetpack: a short burst that carries it most of the way to you, then 12 s to recharge. On
 foot, they rush in and fight hand to hand. In the car, they keep 12-26 m off, circle and shoot at it.
 
-**Fists, pistol, SMG and shotgun hurt them.** Rifle rounds and grenades spark off their armour (with a reminder now
-and then). Each one beaten leaves 2-4 **flowers** where it fell; walk or drive over them to pick them up (they last 90 s).
+**Every weapon hurts them** (2.6.3): fists, every gun, grenades and your car's rockets. Each one beaten leaves 2-4 **flowers** where it fell; walk or drive over them to pick them up (they last 90 s).
 
 **Running one down is allowed, but it costs you.** It bursts into pieces of Warden, leaves no flowers, the flowers
 you had earned towards your next level are lost (you keep your level), and the nearest big Warden fires a rocket at

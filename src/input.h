@@ -194,6 +194,9 @@ static void printJSON(FILE* o) {
             W.ufoAt.x, W.ufoAt.y, W.ufoAt.z, wfx::splashed, W.kinds[0], W.kinds[1], W.kinds[2], W.kinds[3], W.kinds[4], W.kinds[5], W.kinds[6],
             (int)W.boxes.size(), W.propTris, wfx::rounds, wfx::aimErr, (int)wfx::ufos.size(), grassNear(), W.beachLand());
     fprintf(o, "\"lobHits\":%d,", lobHits);
+    fprintf(o, "\"playerCarDrawn\":%d,\"camMode\":%d,\"carDmgTaken\":%.1f,\"carDmgWrecks\":%d,\"carRepairs\":%d,\"carPerfMin\":%.3f,\"carTopK\":%.3f,\"incomingSaid\":%d,\"incomingMax\":%d,\"incomingFlight\":%.2f,\"saysShown\":%d,\"saysHeld\":%d,\"msg\":\"%s\",",
+            (int)playerCarDrawn(), camMode, carDmgTaken, carDmgWrecks, carRepairs, carPerfMin, carTopK(), incomingSaid, incomingMax, incomingFlight, saysShown, saysHeld, msgT > 0 ? msg : "");
+    fprintf(o, "\"leapApexK\":[%.2f,%.2f],\"leapAir\":[%.2f,%.2f],\"leapWetMin\":%.2f,", dolphin::apexMin, dolphin::apexMax, dolphin::airMin, dolphin::airMax, dolphin::leapWetMin);
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
     fprintf(o, "\"fallen\":%d,\"lots\":%d,\"leaps\":%d,\"dolphinSplashes\":%d,\"dolphinRings\":%d,", fall::fallenTotal, (int)W.lots.size(), dolphin::leaps, dolphin::splashesIn, dolphin::ringsOut);
     fprintf(o, "\"podDolphins\":%d,\"dolphinsNow\":%d,\"podLeaps\":%d,\"swum\":%.0f,\"dolphinMinDepth\":%.2f,\"jetDrops\":%d,\"jetLanded\":%d,\"jetShots\":%d,\"wxNow\":%d,\"wxTurns\":%d,\"wxMix\":%.2f,\"sea\":%.2f,\"pods\":%d,\"drift\":%.0f,\"eventsFrom\":\"%s\",\"netEventFiles\":%d,",
