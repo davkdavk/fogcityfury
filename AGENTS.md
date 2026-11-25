@@ -385,3 +385,17 @@ the `NTRACKS` built-in tracks; the editor is compiled out of the Xbox 360 build.
 
 Read `docs/ROAM.md` before touching `src/minis.h`, `mech::drawMini` or the attribute globals in `fighter.h`. Mini
 Wardens are fighters in slots 1-4 (`mini` set) and only exist in offline free roam; footReset and every new race clear them.
+
+## Weapon handling (2.7)
+
+- `MAG[]` (fighter.h): magazine size, reload time (the shotgun's per shell), and the swap (`SWAP_DOWN` + `SWAP_UP` = 0.25 s;
+  firing waits for it). `Fighter::ammo[g]` is every round of that gun carried, the magazine's included; `mag[g]` is what
+  is loaded (`reserveOf`). `startReload`, `stepReload`, `selectGun` (every gun change goes through it: bots too),
+  `cycleGunDir`, `slotGun`, `lastGunToggle`, `reloadMe` are in foot.h. Mini Wardens are belt-fed (`usesMag`).
+- Rarity: `RAR[]`/`rarRoll` (fighter.h), `Drop::rar` set by `dropRar` (a hash of position and kind; never `grng`).
+  Every sixth town pick-up is now a gun. `Fighter::rar[g]` is the best of that gun picked up.
+- Input: R (`B_RELOAD`, also bound to BACK ON TRACK: on foot it reloads), 1-5, the wheel, Q (`B_WEAPON`: last gun);
+  pad X reload, Y last gun, LB/RB previous/next (LB no longer fires on foot, RB no longer sprints: the left stick does,
+  X no longer rolls: A does); touch RELOAD, and GUN (tap: next, swipe across it: either way).
+- Report fields: `meMag meReserve meRar meReloading meSwapT reloadTook swapTook reloadsDone meReloads botReloads
+  swapsDone dryClicks botMags dropRar rarSpec`.

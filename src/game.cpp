@@ -474,7 +474,8 @@ int main(int argc, char** argv) {
             sizeSet = true;
         } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
-        else if (a == "--hold") { int sc = SDL_GetScancodeFromName(argv[++i]); if (sc) heldKeys.push_back(sc); }
+        else if (a == "--hold") { const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) holdsAt.push_back({ (float)atof(q), std::string(c + 1) }); else { int sc = SDL_GetScancodeFromName(q); if (sc) heldKeys.push_back(sc); } }   // (T:KEY: from T seconds on)
+        else if (a == "--holdat") { std::string q = argv[++i]; size_t c = q.find(':'), c2 = q.find(':', c + 1); if (c != std::string::npos) { int sc = SDL_GetScancodeFromName(q.substr(c + 1, c2 == std::string::npos ? std::string::npos : c2 - c - 1).c_str()); if (sc) holdAts.push_back({ (float)atof(q.c_str()), c2 == std::string::npos ? 0.15f : (float)atof(q.c_str() + c2 + 1), sc }); } }
         else if (a == "--press") { const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) presses.push_back({ (float)atof(q), std::string(c + 1) });
         } else if (a == "--seed") {
             grng.s = (uint32_t)atoi(argv[++i]) * 2654435761u + 1u;
@@ -855,15 +856,17 @@ int main(int argc, char** argv) {
                     if (state != RACE) onKey(SDLK_ESCAPE);
                     break;
                 case SDL_CONTROLLER_BUTTON_Y:
-                    if (state == RACE) camMode = (camMode + 1) % 3;
+                    if (state == RACE && me.on) lastGunToggle();   // (on foot Y swaps back to the last gun)
+                    else if (state == RACE) camMode = (camMode + 1) % 3;
                     else onKey(state == TITLE ? SDLK_o : state == NETLOBBY ? SDLK_t : SDLK_q);
                     break;
                 case SDL_CONTROLLER_BUTTON_BACK:
                     if (state == PAUSED) state = RACE;
                     doReset();
                     break;
-                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (!me.on) fireRocket(); break; case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); break;
-                case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); break;
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(-1); else if (!me.on) fireRocket(); break;   // (2.7 on foot the bumpers change guns)
+                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(1); break;
+                case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); else if (state == RACE && me.on) reloadMe(); break;   // (on foot X reloads)
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_UP:
@@ -907,6 +910,7 @@ int main(int argc, char** argv) {
                 if (e.type == plat::EV_MOUSE_MOVE && e.which != plat::touchMouseId()) { footMouseX += e.xrel; footMouseY += e.yrel; }
                 if ((e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP) && e.which != plat::touchMouseId() && e.button == SDL_BUTTON_LEFT) footMouseFire = e.type == plat::EV_MOUSE_DOWN;
                 if ((e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP) && e.which != plat::touchMouseId() && e.button == SDL_BUTTON_RIGHT) footMouseAds = e.type == plat::EV_MOUSE_DOWN;   // (held: aim down the sights)
+                if (e.type == plat::EV_MOUSE_WHEEL && e.yrel != 0) cycleGunDir(e.yrel > 0 ? -1 : 1);   // (2.7 the wheel: up the previous gun, down the next)
             }
             if (e.type == plat::EV_BG_ENTER) { if (state == RACE && !netRace) state = PAUSED; if (adev) plat::audioPause(adev, true); }   // phone call, home button
             if (e.type == plat::EV_FG_ENTER && adev) plat::audioPause(adev, false);

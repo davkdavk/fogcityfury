@@ -443,7 +443,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
         setCommon(pCar, VP, cam, hdr); pCar.v3("uSkyHor", V3(0.03f, 0.20f, 0.27f)); pCar.f1("uFogDen", 0.03f); drawFish(pCar); setCommon(pCar, VP, cam, hdr);
         gfx::blend(gfx::B_ALPHA);
     }
-    if ((DRAW_MASK & DM_EFFECTS) && mainPass && !parts.empty()) {
+    if ((DRAW_MASK & DM_EFFECTS) && mainPass && (!parts.empty() || jetdrop::fxOn())) {
         traceDraw("particles");
         V3 R(V.m[0], V.m[4], V.m[8]), U(V.m[1], V.m[5], V.m[9]), F(-V.m[2], -V.m[6], -V.m[10]); static std::vector<float> pv; pv.clear();
         for (auto& p : parts) {
@@ -461,6 +461,7 @@ static void drawScene(const M4& V, const M4& P, V3 cam, bool mainPass) {
             float vs = p.stretch > 0 ? RAIN_V : 1.0f;
             for (int k = 0; k < 6; k++) { V3 q = p.p + pr * cu[k] + pu * (cv[k] + off); float d[11] = { q.x, q.y, q.z, cu[k], cv[k] * vs, p.col.x, p.col.y, p.col.z, a, p.seed, p.add }; pv.insert(pv.end(), d, d + 11); }
         }
+        jetdrop::fxQuads(pv, R, U, cam);   // (2.9: the snipers' lasers, the charge at a mini Warden's muzzle)
         setCommon(pPart, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false);
         gfx::data(partBuf, pv.data(), pv.size() * 4, true);
         gfx::draw(partBuf, 0, (int)(pv.size() / 11)); gfx::depthWrite(true);

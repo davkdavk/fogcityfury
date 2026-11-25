@@ -3,19 +3,19 @@
 // above its #include there, and what follows the #include can use what is declared here.
 #pragma once
 // ---- settings: key bindings and video options, kept in fogcityfury.cfg beside the save file ----
-enum Bind { B_LEFT, B_RIGHT, B_GAS, B_BRAKE, B_HB, B_NITRO, B_FIRE, B_RESET, B_CAM, B_EXIT, B_WEAPON, NBIND };
-static const char* BIND_NAME[NBIND] = { "STEER LEFT", "STEER RIGHT", "ACCELERATE", "BRAKE / REVERSE", "HANDBRAKE", "NITRO", "FIRE ROCKET / GUN", "BACK ON TRACK", "CHANGE CAMERA", "GET OUT / IN", "CHANGE WEAPON" };
+enum Bind { B_LEFT, B_RIGHT, B_GAS, B_BRAKE, B_HB, B_NITRO, B_FIRE, B_RESET, B_CAM, B_EXIT, B_WEAPON, B_RELOAD, NBIND };
+static const char* BIND_NAME[NBIND] = { "STEER LEFT", "STEER RIGHT", "ACCELERATE", "BRAKE / REVERSE", "HANDBRAKE", "NITRO", "FIRE ROCKET / GUN", "BACK ON TRACK", "CHANGE CAMERA", "GET OUT / IN", "LAST WEAPON", "RELOAD (ON FOOT)" };
 static const int BIND_DEF[NBIND][2] = { { SDL_SCANCODE_LEFT, SDL_SCANCODE_A }, { SDL_SCANCODE_RIGHT, SDL_SCANCODE_D }, { SDL_SCANCODE_UP, SDL_SCANCODE_W }, { SDL_SCANCODE_DOWN, SDL_SCANCODE_S }, { SDL_SCANCODE_SPACE, 0 },
-    { SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT }, { SDL_SCANCODE_F, SDL_SCANCODE_E }, { SDL_SCANCODE_R, SDL_SCANCODE_BACKSPACE }, { SDL_SCANCODE_C, 0 }, { SDL_SCANCODE_G, 0 }, { SDL_SCANCODE_Q, 0 } };
+    { SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT }, { SDL_SCANCODE_F, SDL_SCANCODE_E }, { SDL_SCANCODE_R, SDL_SCANCODE_BACKSPACE }, { SDL_SCANCODE_C, 0 }, { SDL_SCANCODE_G, 0 }, { SDL_SCANCODE_Q, 0 }, { SDL_SCANCODE_R, 0 } };   // (R: on foot it reloads, in the car it is BACK ON TRACK)
 static std::vector<int> heldKeys; static int binds[NBIND][2];
 // ---- touch screens: on-screen buttons. Shown once a finger touches the screen (always on Android), or with --touch ----
-enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON };
+enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON, TA_RELOAD };
 // hold: a Bind held while a finger is on it (-1: a tap button). Drawn round (pill false: x, y, w, h is the circle's box) or as a pill;
 // icon: a symbol instead of the label (the label still names it, for tests); style: its colour
 enum TouchIcon { IC_NONE, IC_LEFT, IC_RIGHT, IC_UP, IC_DOWN, IC_PAUSE, IC_CAM, IC_RESET };
 enum TouchStyle { TS_PLAIN, TS_GO, TS_STOP, TS_NITRO, TS_FIRE };
 struct TouchBtn { const char* label; float x, y, w, h; int hold; int act; SDL_Keycode key; bool pill = false; int icon = IC_NONE, style = TS_PLAIN; };
-struct Finger { SDL_FingerID id; int btn; };
+struct Finger { SDL_FingerID id; int btn; float sx = 0; bool swiped = false; };   // sx: where it came down (2.7: a swipe across GUN changes guns either way)
 // Prompts name controller buttons ("{A} OK", drawn as buttons by UI::text) once the last thing pressed was on a
 // controller, and keys after a key press; the Xbox 360 has only controllers.
 #ifdef FCF_GFX_XSDK
@@ -33,6 +33,7 @@ static void logoSounds(float t0, float t1) {
     for (int i = 0; i < 11; i++) if (at(1.9f + i * 0.075f)) tone(1500 + i * 70, 0.035f, 0.06f, 2);   // the small letters clicking in
 }
 static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBtn> tbtn; static std::vector<Finger> fingers; static int touchLaid = -1;
+static const int H_ROLL = 100, H_DUCK = 101;   // 2.8 touch buttons held for something with no key binding of its own
 static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold == b) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
 static const int RES[][2] = { { 854, 480 }, { 1024, 576 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } }; static const int NRES = 8;
 static const int AA_OPT[4] = { 0, 2, 4, 8 }, AF_OPT[5] = { 1, 2, 4, 8, 16 }, NVIDROWS = 9;
@@ -105,8 +106,9 @@ static void touchLayout() {
         cKey("II", 300, topY, 36, SDLK_ESCAPE, IC_PAUSE);
         if (me.on) {   // on foot: the left thumb gets a stick wherever it lands (see touchDown); the right thumb gets the gun
             cHold("FIRE", W - 125, H - 130, 92, B_FIRE, IC_NONE, TS_FIRE);
-            cHold("RUN", W - 300, H - 80, 58, B_NITRO, IC_NONE, TS_NITRO); cHold("ROLL", W - 420, H - 220, 52, B_HB);   // (left of the weapon panel)
-            cAct("GUN", W - 465, H - 80, 46, TA_WEAPON); if (!showdownOn) cAct("CAR", W - 420, 56, 36, TA_EXIT);
+            cHold("RUN", W - 300, H - 80, 58, B_NITRO, IC_NONE, TS_NITRO); cHold("ROLL", W - 420, H - 220, 52, H_ROLL);   // (left of the weapon panel)
+            cHold("JUMP", W - 150, H - 292, 50, B_HB); cHold("DUCK", W - 296, H - 200, 44, H_DUCK);   // 2.8 (DUCK toggles the crouch: tap it while running to slide)
+            cAct("GUN", W - 465, H - 80, 46, TA_WEAPON); cAct("RELOAD", W - 270, H - 330, 44, TA_RELOAD); if (!showdownOn) cAct("CAR", W - 420, 56, 36, TA_EXIT);
             if (showdownOn) pKey("SKIP", 390, topY - 30, 120, SDLK_RETURN, TS_PLAIN, 60);
             break;
         }

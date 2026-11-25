@@ -230,7 +230,10 @@ fighter's own game simulates their car, then their body, and reports it in `Foot
 
 `FootState` (44 bytes): 6 x f32 `x y z vx vz yaw`; 8 x u8 `hp armour gun flags fireSeq target
 killedBy pad`; 5 x u16 `dealt` (by slot); u16 `claim`. Flags: 1 out of the car, 2 alive, 4 aiming,
-8 rolling, 16 sprinting, 32 car inside the ring, 64 blown apart by a grenade.
+8 rolling, 16 sprinting, 32 car inside the ring, 64 blown apart by a grenade. 128 reloading (2.7; only moves the
+hands of the fighter as others draw it, so the protocol number did not change and older games ignore it).
+Magazines are not sent: each game keeps its own fighters' rounds. A gun pick-up's rarity is not sent either: every
+game rolls it from a hash of the pick-up's position and kind (`dropRar` in showdown.h), so all agree.
 
 - **Damage** follows the rocket rule: the shooter decides it hit. It reports the total damage it has
   dealt to each slot (`dealt`, tenths of a health point). Each victim takes the increase off its own

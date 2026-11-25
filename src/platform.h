@@ -27,11 +27,13 @@ enum {
     SDL_SCANCODE_G=10, SDL_SCANCODE_Q=20, SDL_SCANCODE_R=21, SDL_SCANCODE_S=22, SDL_SCANCODE_W=26,
     SDL_SCANCODE_RETURN=40, SDL_SCANCODE_ESCAPE=41, SDL_SCANCODE_BACKSPACE=42, SDL_SCANCODE_SPACE=44,
     SDL_SCANCODE_F1=58, SDL_SCANCODE_F5=62, SDL_SCANCODE_F11=68, SDL_SCANCODE_RIGHT=79,
-    SDL_SCANCODE_LEFT=80, SDL_SCANCODE_DOWN=81, SDL_SCANCODE_UP=82, SDL_SCANCODE_LSHIFT=225, SDL_SCANCODE_RSHIFT=229
+    SDL_SCANCODE_LEFT=80, SDL_SCANCODE_DOWN=81, SDL_SCANCODE_UP=82, SDL_SCANCODE_LSHIFT=225, SDL_SCANCODE_RSHIFT=229,
+    SDL_SCANCODE_V=25, SDL_SCANCODE_LCTRL=224, SDL_SCANCODE_LALT=226, SDL_SCANCODE_RCTRL=228
 };
 #define SDL_TOUCH_MOUSEID 0xffffffffu
 #define SDL_SCANCODE_TO_KEYCODE(sc) ((SDL_Keycode)(0x40000000u | (unsigned)(sc)))
 #define SDLK_a 'a'
+#define SDLK_1 '1'   // (2.7: the weapon slots)
 #define SDLK_d 'd'
 #define SDLK_m 'm'
 #define SDLK_n 'n'
@@ -274,7 +276,7 @@ inline void audioClose(uint32_t dev) { SDL_CloseAudioDevice((SDL_AudioDeviceID)d
 
 // ---- gamepad (polled state; button and axis numbering is ours, not the platform's) ----
 enum PadAxis { AX_LX, AX_LY, AX_RX, AX_RY, AX_TRIG_L, AX_TRIG_R };   // sticks -32768..32767, triggers 0..32767
-enum PadBtn { BT_A, BT_B, BT_X, BT_LB, BT_RB, BT_LSTICK };
+enum PadBtn { BT_A, BT_B, BT_X, BT_LB, BT_RB, BT_LSTICK, BT_RSTICK };
 #ifdef FCF_GFX_XSDK
 struct Pad { uint32_t port=0; INPUT_STATE state={}; };
 inline int padCount() { return 1; }
@@ -289,7 +291,7 @@ inline int16_t padAxisRaw(Pad* p, PadAxis a) {
 inline bool padButton(Pad* p, PadBtn b) {
     if(!p)return false; XamInputGetState(p->port,0,&p->state); uint16_t m=0;
     switch(b){ case BT_A:m=INPUT_GAMEPAD_A;break;case BT_B:m=INPUT_GAMEPAD_B;break;case BT_X:m=INPUT_GAMEPAD_X;break;
-    case BT_LB:m=INPUT_GAMEPAD_LEFT_SHOULDER;break;case BT_RB:m=INPUT_GAMEPAD_RIGHT_SHOULDER;break;default:m=INPUT_GAMEPAD_LEFT_THUMB;break; }
+    case BT_LB:m=INPUT_GAMEPAD_LEFT_SHOULDER;break;case BT_RB:m=INPUT_GAMEPAD_RIGHT_SHOULDER;break;case BT_RSTICK:m=INPUT_GAMEPAD_RIGHT_THUMB;break;default:m=INPUT_GAMEPAD_LEFT_THUMB;break; }
     return (p->state.gamepad.buttons&m)!=0;
 }
 inline void padRumble(Pad*,uint16_t,uint16_t,uint32_t) {}
@@ -303,7 +305,7 @@ inline int16_t padAxisRaw(Pad* p, PadAxis a) {
     return SDL_GameControllerGetAxis((SDL_GameController*)p, m[a]);
 }
 inline bool padButton(Pad* p, PadBtn b) {
-    static const SDL_GameControllerButton m[] = { SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, SDL_CONTROLLER_BUTTON_LEFTSTICK };
+    static const SDL_GameControllerButton m[] = { SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, SDL_CONTROLLER_BUTTON_LEFTSTICK, SDL_CONTROLLER_BUTTON_RIGHTSTICK };
     return SDL_GameControllerGetButton((SDL_GameController*)p, m[b]) != 0;
 }
 inline void padRumble(Pad* p, uint16_t lo, uint16_t hi, uint32_t ms) { SDL_GameControllerRumble((SDL_GameController*)p, lo, hi, ms); }

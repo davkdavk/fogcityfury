@@ -69,8 +69,11 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         else if (bindHit(B_CAM, sc) && !me.on) camMode = (camMode + 1) % 3;
         if (showdownOn && k == SDLK_RETURN) showdownSkip();
         if (bindHit(B_EXIT, sc)) footToggle();
-        if (bindHit(B_WEAPON, sc)) cycleGun();
-        if (bindHit(B_RESET, sc)) doReset(); if (bindHit(B_FIRE, sc) && !me.on) fireRocket(); break;
+        if (bindHit(B_WEAPON, sc)) lastGunToggle();   // (2.7: Q is the quick toggle; the wheel and 1-5 pick)
+        if (me.on && k >= SDLK_1 && k < SDLK_1 + NGSLOT) slotGun((int)(k - SDLK_1) + 1);
+        if (me.on && me.alive && bindHit(B_RELOAD, sc)) reloadMe();   // on foot R reloads; in the car it is still BACK ON TRACK
+        else if (bindHit(B_RESET, sc)) doReset();
+        if (bindHit(B_FIRE, sc) && !me.on) fireRocket(); break;
 #ifdef FCF_EDITOR
     case EDIT: ed::key(k); break;
 #endif
@@ -197,6 +200,19 @@ static void printJSON(FILE* o) {
     fprintf(o, "\"playerCarDrawn\":%d,\"camMode\":%d,\"carDmgTaken\":%.1f,\"carDmgWrecks\":%d,\"carRepairs\":%d,\"carPerfMin\":%.3f,\"carTopK\":%.3f,\"incomingSaid\":%d,\"incomingMax\":%d,\"incomingFlight\":%.2f,\"saysShown\":%d,\"saysHeld\":%d,\"msg\":\"%s\",",
             (int)playerCarDrawn(), camMode, carDmgTaken, carDmgWrecks, carRepairs, carPerfMin, carTopK(), incomingSaid, incomingMax, incomingFlight, saysShown, saysHeld, msgT > 0 ? msg : "");
     fprintf(o, "\"leapApexK\":[%.2f,%.2f],\"leapAir\":[%.2f,%.2f],\"leapWetMin\":%.2f,", dolphin::apexMin, dolphin::apexMax, dolphin::airMin, dolphin::airMax, dolphin::leapWetMin);
+    {   // 2.9 enemies that fight back: the snipers' lasers, the landed ones' cover, plating, the showdown bots' cover
+        using namespace jetdrop; float mh = 0; for (const M& m : ms) mh = std::max(mh, 60 - m.hp);
+        fprintf(o, "\"lasers\":%d,\"laserDodged\":%d,\"laserTones\":%d,\"minLaser\":%.2f,\"covers\":%d,\"flanks\":%d,\"bursts\":%d,\"miniRounds\":%d,\"miniRoundHits\":%d,", lasers, dodged, laserTones, minLaser, covers, flanks, bursts, rounds, roundHits);
+        fprintf(o, "\"coverT\":%.2f,\"openT\":%.2f,\"hitsCover\":%d,\"hitsOpen\":%d,\"plateHits\":%d,\"jetMaxDmg\":%.2f,\"botCoverT\":%.2f,\"botHealRuns\":%d,", coverT, openT, hitsCover, hitsOpen, plateHits, mh, botCoverT, botHealRuns);
+        V3 jp = ms.empty() ? V3() : ms[0].p; fprintf(o, "\"plateShed\":%.1f,\"jetDmg\":%.1f,\"jetPos\":[%.1f,%.1f,%.1f],", plateShed, dmgTaken, jp.x, jp.y, jp.z); }
+    {   // 2.7 handling: your magazine, what is left to load, the gun's rarity; how long the last reload and swap took; counts. dropRar: kind:rarity of every pick-up lying about
+        std::string dr; for (const Drop& d : drops) { char q[16]; snprintf(q, sizeof q, "%s%d:%d", dr.empty() ? "" : ";", d.kind, d.rar); dr += q; }
+        std::string rs; for (int k = 0; k < NRAR; k++) { char q[96]; snprintf(q, sizeof q, "%s%s|%.2f,%.2f,%.2f|%.2f|%.2f|%.2f", k ? ";" : "", RAR[k].name, RAR[k].col.x, RAR[k].col.y, RAR[k].col.z, RAR[k].dmg, RAR[k].spread, RAR[k].reload); rs += q; }
+        fprintf(o, "\"rarSpec\":\"%s\",", rs.c_str());
+        fprintf(o, "\"meMag\":%d,\"meReserve\":%d,\"meRar\":%d,\"meReloading\":%d,\"meSwapT\":%.3f,\"reloadTook\":%.3f,\"swapTook\":%.3f,\"reloadsDone\":%d,\"meReloads\":%d,\"botReloads\":%d,\"swapsDone\":%d,\"dryClicks\":%d,\"botMags\":\"%s\",\"dropRar\":\"%s\",",
+            me.mag[me.gun], reserveOf(me, me.gun), me.rar[me.gun], (int)(me.reloadT > 0), me.swapT, reloadTook, swapTook, reloadsDone, me.reloads, botReloads, swapsDone, dryClicks,
+            [] { static std::string m; m.clear(); for (int i = 1; i < NFIGHT; i++) { char q[24]; snprintf(q, sizeof q, "%s%d/%d", i > 1 ? ";" : "", fighters[i].mag[fighters[i].gun], fighters[i].reloads); m += q; } return m.c_str(); }(), dr.c_str());
+    }
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
     fprintf(o, "\"fallen\":%d,\"lots\":%d,\"leaps\":%d,\"dolphinSplashes\":%d,\"dolphinRings\":%d,", fall::fallenTotal, (int)W.lots.size(), dolphin::leaps, dolphin::splashesIn, dolphin::ringsOut);
     fprintf(o, "\"podDolphins\":%d,\"dolphinsNow\":%d,\"podLeaps\":%d,\"swum\":%.0f,\"dolphinMinDepth\":%.2f,\"jetDrops\":%d,\"jetLanded\":%d,\"jetShots\":%d,\"wxNow\":%d,\"wxTurns\":%d,\"wxMix\":%.2f,\"sea\":%.2f,\"pods\":%d,\"drift\":%.0f,\"eventsFrom\":\"%s\",\"netEventFiles\":%d,",
@@ -204,6 +220,10 @@ static void printJSON(FILE* o) {
     fprintf(o, "\"meOn\":%d,\"meAlive\":%d,\"meHp\":%.1f,\"mePos\":[%.1f,%.1f,%.1f],\"townDrops\":%d,\"jetDowned\":%d,\"jetNow\":%d,\"snipes\":%d,\"snipeHits\":%d,\"laughs\":%d,\"adsK\":%.2f,\"aimPt\":[%.1f,%.1f,%.1f],\"meAmmoTotal\":%d,\"drop0\":[%.1f,%.1f,%d],\"manic\":%d,\"manicLaps\":[%s],\"manicRecord\":%.2f,\"manicNew\":%d,\"shieldPUs\":%d,\"ammo\":%d,\"crateCount\":%d,\"headshots\":%d,\"dmgNums\":%d,\"meBloom\":%.2f,\"ghostN\":%d,\"ghostT\":%.2f,\"aiMoved\":%.1f,",
             (int)me.on, (int)me.alive, me.hp, me.pos.x, me.pos.y, me.pos.z, townDrops, jetdrop::downed, (int)jetdrop::ms.size(), jetdrop::snipes, jetdrop::snipeHits, dolphin::laughs, footAdsK, footAimPt.x, footAimPt.y, footAimPt.z,
             [] { int n = 0; for (int g = 0; g < NGUNS; g++) n += me.ammo[g]; return n; }(), drops.empty() ? 0.0f : drops[0].p.x, drops.empty() ? 0.0f : drops[0].p.z, drops.empty() ? -1 : drops[0].kind, (int)trialMode, [] { static std::string o; o.clear(); char q[24]; for (size_t k = 0; k < trialLaps.size(); k++) { snprintf(q, sizeof q, "%s%.2f", k ? "," : "", trialLaps[k]); o += q; } return o.c_str(); }(), trialRecord, (int)trialNewRecord, nShieldPU, ammo, (int)crates.size(), headshots, dmgNumCount, me.bloom, (int)ghostBest.size(), ghostBestT, [] { float m = 0; for (int k = 0; k < NAI; k++) m = std::max(m, hypotf(ai[k].pos.x - aiGrid[k].x, ai[k].pos.z - aiGrid[k].z)); return m; }());
+    runPoseAudit();
+    fprintf(o, "\"fJumps\":%d,\"fPeak\":%.3f,\"fAirT\":%.3f,\"fLands\":%d,\"fSlides\":%d,\"fSlideDist\":%.2f,\"fSlideT\":%.2f,\"fMantles\":%d,\"fMantleRise\":%.2f,\"fHeadY\":%.2f,\"fMinHead\":%.2f,\"fCrouchK\":%.2f,\"fAir\":%d,\"fGround\":%.2f,\"poseParts\":%d,\"poseTris\":%d,\"poseBad\":%d,\"poseHandErr\":%.3f,\"poseChecked\":%d,",
+            fmv.jumps, fmv.peak, fmv.airT, fmv.lands, fmv.slides, fmv.slideDist, fmv.slideT, fmv.mantles, fmv.mantleRise, headY(me), fmv.minHead, me.crouchK, (int)me.air, W.ground(me.pos.x, me.pos.z, me.pos.y + 0.6f),
+            poseAudit.parts, poseAudit.tris, poseAudit.bad, poseAudit.handErr, poseAudit.checked);
     fprintf(o, "\"loadingNotices\":%d,", loadingNotices);
     fprintf(o, "\"votesSeen\":%d,\"votesPassed\":%d,\"kept\":%d,", votesSeen, votesPassed, keptCount);
     fprintf(o, "\"shared\":%d,\"autoCutRuns\":%d,\"autoCutMinY\":%.1f,", sharedCount, autoCutRuns, autoCutMinY < 1e8f ? autoCutMinY : 99.0f);
@@ -287,7 +307,7 @@ static void handleKey(SDL_Keycode k, int sc) {
 static void touchPress(int b) {
     const TouchBtn t = tbtn[b];
     if (t.act == TA_RESET) { if (state == PAUSED) state = RACE; doReset(); } else if (t.act == TA_FIRE) { if (!me.on) fireRocket(); } else if (t.act == TA_CAM) camMode = (camMode + 1) % 3;
-    else if (t.act == TA_EXIT) footToggle(); else if (t.act == TA_WEAPON) cycleGun();
+    else if (t.act == TA_EXIT) footToggle(); else if (t.act == TA_RELOAD) reloadMe();   // (TA_WEAPON acts when the finger lifts: touchUp)
     else if (t.key) handleKey(t.key, t.key == SDLK_RETURN ? SDL_SCANCODE_RETURN : 0);
 }
 static int touchHit(float x, float y) { for (size_t i = 0; i < tbtn.size(); i++) if (x >= tbtn[i].x && x <= tbtn[i].x + tbtn[i].w && y >= tbtn[i].y && y <= tbtn[i].y + tbtn[i].h) return (int)i; return -1; }
@@ -309,7 +329,7 @@ static void touchDown(SDL_FingerID id, float x, float y) {
         }
         return;
     }
-    if (tbtn[b].hold >= 0) fingers.push_back({ id, b }); else { fingers.push_back({ id, b }); touchPress(b); }   // (touchPress may change the screen, which clears the fingers)
+    if (tbtn[b].hold >= 0) fingers.push_back({ id, b }); else { fingers.push_back({ id, b, x }); touchPress(b); }   // (touchPress may change the screen, which clears the fingers)
 }
 static void touchMove(SDL_FingerID id, float x, float y) {   // sliding a thumb from one held button to its neighbour (left to right) carries the hold across
 #ifdef FCF_EDITOR
@@ -317,22 +337,27 @@ static void touchMove(SDL_FingerID id, float x, float y) {   // sliding a thumb 
 #endif
     if (tstick.on && tstick.id == id) { tstick.x = x; tstick.y = y; return; }
     for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold >= 0) { int b = touchHit(x, y); if (b >= 0 && tbtn[b].hold >= 0) f.btn = b; }
+    for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].act == TA_WEAPON && fabsf(x - f.sx) > 45) { cycleGunDir(x > f.sx ? 1 : -1); f.sx = x; f.swiped = true; }   // 2.7 a swipe across GUN: next / previous, a step per 45
 }
 static void touchUp(SDL_FingerID id) {
 #ifdef FCF_EDITOR
     if (edt.n && edTouchUp(id)) return;
 #endif
-    if (tstick.on && tstick.id == id) tstick.on = false; for (size_t i = 0; i < fingers.size();) if (fingers[i].id == id) fingers.erase(fingers.begin() + i); else i++; }
+    if (tstick.on && tstick.id == id) tstick.on = false;
+    for (size_t i = 0; i < fingers.size();) if (fingers[i].id == id) { Finger f = fingers[i]; fingers.erase(fingers.begin() + i); if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].act == TA_WEAPON && !f.swiped) cycleGun(); } else i++; }   // (a tap on GUN: the next one)
 static int touchFind(const std::string& label) { touchLayout(); for (size_t i = 0; i < tbtn.size(); i++) if (label == tbtn[i].label) return (int)i; return -1; }
 static std::vector<std::string> touchHoldLabels;   // --touchhold LABEL (tests): a finger that never lets go
-struct Press { float t; std::string name; }; static std::vector<Press> presses, taps; static float fixedT = 0;   // --press T:KEY, --tap T:LABEL
+struct Press { float t; std::string name; }; static std::vector<Press> presses, taps, holdsAt; static float fixedT = 0;   // --press T:KEY, --tap T:LABEL
 static void pressNamed(const std::string& n) {
     static const struct { const char* n; SDL_Keycode k; } special[] = { { "RETURN", SDLK_RETURN }, { "ENTER", SDLK_RETURN }, { "ESCAPE", SDLK_ESCAPE }, { "ESC", SDLK_ESCAPE }, { "TAB", SDLK_TAB }, { "BACKSPACE", SDLK_BACKSPACE }, { "SPACE", SDLK_SPACE }, { "DELETE", SDLK_DELETE } };
     for (auto& sp : special) if (n == sp.n) { handleKey(sp.k, SDL_GetScancodeFromName(n == "ENTER" ? "Return" : n == "ESC" ? "Escape" : n.c_str())); return; }
     int sc = SDL_GetScancodeFromName(n.c_str()); if (!sc) return;
     handleKey(n.size() == 1 ? (SDL_Keycode)tolower((unsigned char)n[0]) : SDL_SCANCODE_TO_KEYCODE(sc), sc);
 }
+struct HoldAt { float t, dur; int sc; bool on = false; }; static std::vector<HoldAt> holdAts;   // 2.8 --holdat T:KEY[:SECONDS] (tests): a key held down for a while (0.15 s if not said)
 static void stepFixed() { float d = 1 / 60.f; fixedT += d; for (auto& p : presses) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; pressNamed(p.name); }
+    for (auto& p : holdsAt) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; int sc = SDL_GetScancodeFromName(p.name.c_str()); if (sc) heldKeys.push_back(sc); }   // (--hold T:KEY)
+    for (auto& h : holdAts) { bool want = fixedT >= h.t && fixedT < h.t + h.dur; if (want && !h.on) heldKeys.push_back(h.sc); if (!want && h.on) { auto it = std::find(heldKeys.begin(), heldKeys.end(), h.sc); if (it != heldKeys.end()) heldKeys.erase(it); } h.on = want; }
     for (auto& p : taps) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; int b = touchFind(p.name); if (b >= 0) { touchDown(7000, tbtn[b].x + tbtn[b].w / 2, tbtn[b].y + tbtn[b].h / 2); touchUp(7000); } }
     for (size_t k = 0; k < touchHoldLabels.size(); k++) {
         SDL_FingerID id = 8000 + (SDL_FingerID)k;

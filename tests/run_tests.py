@@ -1351,7 +1351,7 @@ def options_controls_can_be_rebound():
     check(run(*drive, "--hold", "X")["dist"] < 1, "default: X does nothing", None)
     d = run(*_presses("F1", "DOWN", "DOWN", "RETURN", "X", "ESCAPE"))     # third row is ACCELERATE, first slot
     binds = [tuple(int(v) for v in b.split(",")) for b in d["binds"].split(";")]
-    check(len(binds) == 11 and binds[2] == (27, 26), "accelerate is now X, with W still as the second key", binds[2])
+    check(len(binds) == 12 and binds[2] == (27, 26), "accelerate is now X, with W still as the second key", binds[2])
     check(run(*drive, "--hold", "X")["dist"] > 10, "X accelerates after rebinding (and after a restart)", None)
     check(run(*drive, "--hold", "Up")["dist"] < 1, "Up no longer does", None)
     check(run(*drive, "--hold", "W")["dist"] > 10, "the second key still works", None)
@@ -1366,7 +1366,7 @@ def options_controls_can_be_rebound():
     d = run("--state", 3, "--mode", 1, "--rockets", 1, *_presses("G"), seconds=2)
     check(d["rocketsFired"] == 1, "after rebinding FIRE ROCKET to G, G fires", d["rocketsFired"])
     d = run(*_presses("F1", "F5", "ESCAPE"))
-    check(d["binds"] == "80,4;79,7;82,26;81,22;44,0;225,229;9,8;21,42;6,0;10,0;20,0", "F5 restores the defaults", d["binds"])
+    check(d["binds"] == "80,4;79,7;82,26;81,22;44,0;225,229;9,8;21,42;6,0;10,0;20,0;21,0", "F5 restores the defaults", d["binds"])
 
 
 # ----------------------------------------------------------------------------- touch screen
@@ -1388,7 +1388,7 @@ def touch_buttons_drive_the_car_and_the_menus():
     d = sim("--touch", "--tap", "0.3:OPTIONS", "--tap", "0.6:VIDEO", "--tap", "0.9:DOWN", "--tap", "1.2:DOWN", "--tap", "1.5:<", seconds=2)
     check(d["state"] == 8 and d["aa"] == 2, "so can the options", (d["state"], d["aa"]))
     d = sim("--touch", "--state", 3, "--mode", 0, "--track", 0, "--faceai", "--tap", "0.2:OUT", "--touchhold", "FIRE", seconds=2)
-    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "CAR", "II"}, "OUT gets out of the car, and the buttons change to the fighter's", d["touchBtns"])
+    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "RELOAD", "CAR", "II", "JUMP", "DUCK"}, "OUT gets out of the car, and the buttons change to the fighter's", d["touchBtns"])
     check(d["footShots"] >= 3, "a thumb held on FIRE shoots", d["footShots"])
     out = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", seconds=1)
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--stick", "0,1", seconds=3)
@@ -1396,7 +1396,7 @@ def touch_buttons_drive_the_car_and_the_menus():
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--tap", "0.8:CAR", seconds=1.2)
     check(d["onFoot"] == 0 and "GAS" in d["touchBtns"].split(","), "CAR gets back in", (d["onFoot"], d["touchBtns"]))
     d = sim("--touch", *SHOW, seconds=prep_at() + 2)
-    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "II", "SKIP"}, "in the showdown there is no car to go back to", d["touchBtns"])
+    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "RELOAD", "II", "SKIP", "JUMP", "DUCK"}, "in the showdown there is no car to go back to", d["touchBtns"])
 
 
 # ----------------------------------------------------------------------------- nitro
@@ -1709,11 +1709,79 @@ def foot_sprint_and_roll_cost_stamina():
     check(d["stamina"] < 0.3 and d["walkSpeed"] < 5.5, "out of breath: back to a run until some of it recovers", (d["stamina"], d["walkSpeed"]))
     d = sim(*FOOT, "--hold", "W", "--hold", "Left Shift", seconds=6.6)
     check(d["walkSpeed"] > 7, "and then the sprint comes back", (d["stamina"], d["walkSpeed"]))
-    d = sim(*FOOT, "--hold", "W", "--hold", "Space", seconds=0.4)
-    check(d["rolling"] == 1 and d["walkSpeed"] > 7, "the handbrake key is a dodge roll, a burst of speed", (d["rolling"], d["walkSpeed"]))
+    d = sim(*FOOT, "--hold", "W", "--hold", "V", seconds=0.4)
+    check(d["rolling"] == 1 and d["walkSpeed"] > 7, "V is a dodge roll, a burst of speed (2.8: Space jumps)", (d["rolling"], d["walkSpeed"]))
     between(d["stamina"], 0.7, 0.85, "a roll costs a quarter of the stamina")
-    d = sim(*FOOT, "--hold", "W", "--hold", "Space", seconds=1.5)
+    d = sim(*FOOT, "--hold", "W", "--hold", "V", seconds=1.5)
     check(d["rolling"] == 0, "one roll per press", d["rolling"])
+
+
+# 2.8 moving: jump, crouch, slide, mantle, and the body that shows it
+@test
+def foot_jump_is_a_snappy_arc():
+    d = sim(*FOOT, "--holdat", "1.0:Space", seconds=2.5)
+    check(d["fJumps"] == 1 and d["fMantles"] == 0, "Space jumps (nothing in front to climb)", (d["fJumps"], d["fMantles"]))
+    between(d["fPeak"], 0.85, 1.15, "jump height (m)")
+    between(d["fAirT"], 0.45, 0.65, "time in the air (s)")
+    check(d["fLands"] == 1 and d["fAir"] == 0 and abs(d["walkY"] - d["fGround"]) < 0.05, "and lands back on the ground", (d["fLands"], d["walkY"], d["fGround"]))
+    held = sim(*FOOT, "--hold", "Space", seconds=2.5)
+    check(held["fJumps"] == 1, "one jump per press", held["fJumps"])
+    still = sim(*FOOT, "--holdat", "1.0:Space", seconds=1.05)
+    air = sim(*FOOT, "--holdat", "1.0:Space", "--holdat", "1.05:A:0.5", seconds=1.55)
+    side = math.hypot(air["walkX"] - still["walkX"], air["walkZ"] - still["walkZ"])
+    between(side, 0.2, 2.0, "a little air control: steering mid-jump moves you, but not like running (m)")
+    run = sim(*FOOT, "--hold", "W", "--holdat", "1.5:Space", seconds=1.75)
+    check(run["fAir"] == 1 and run["walkSpeed"] > 4.5, "a running jump keeps its speed", (run["fAir"], run["walkSpeed"]))
+
+
+@test
+def foot_crouch_is_low_slow_and_steady():
+    stand = sim(*FOOT, seconds=1.5)
+    d = sim(*FOOT, "--hold", "C", seconds=1.5)
+    check(d["fCrouchK"] > 0.95, "C crouches", d["fCrouchK"])
+    check(d["fHeadY"] < stand["fHeadY"] - 0.35, "the head (the headshot) comes down with it", (stand["fHeadY"], d["fHeadY"]))
+    d2 = sim(*FOOT, "--hold", "Left Ctrl", seconds=1.5)
+    check(d2["fCrouchK"] > 0.95, "so does Ctrl", d2["fCrouchK"])
+    walk = sim(*FOOT, "--hold", "C", "--hold", "W", seconds=2)
+    between(walk["walkSpeed"], 2.2, 3.0, "crouched, you move slower (m/s)")
+    up = sim(*FOOT, "--holdat", "0.5:C:1", seconds=2)
+    check(up["fCrouchK"] < 0.05 and up["fHeadY"] > 1.7, "letting go stands you back up", (up["fCrouchK"], up["fHeadY"]))
+    a = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 3, seconds=0.7)
+    b = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--hold", "C", "--faceai", "--gun", 3, seconds=0.7)
+    check(b["meBloom"] < a["meBloom"], "crouched, a burst opens the crosshair less", (a["meBloom"], b["meBloom"]))
+
+
+@test
+def foot_slide_from_a_sprint():
+    d = sim(*FOOT, "--hold", "W", "--hold", "Left Shift", "--holdat", "2.0:C:2", seconds=3.5)
+    check(d["fSlides"] == 1, "crouch while sprinting: a slide", d["fSlides"])
+    between(d["fSlideT"], 0.7, 0.9, "it lasts about 0.8 s")
+    between(d["fSlideDist"], 4.5, 6.5, "and carries you on (m)")
+    check(d["fMinHead"] < 1.1, "low: under a standing head shot", d["fMinHead"])
+    check(d["fCrouchK"] > 0.9 and d["walkSpeed"] < 3, "it ends in a crouch", (d["fCrouchK"], d["walkSpeed"]))
+    walk = sim(*FOOT, "--hold", "W", "--holdat", "2.0:C:2", seconds=3.5)
+    check(walk["fSlides"] == 0, "crouching from a run is just a crouch", walk["fSlides"])
+    f = sim(*FOOT, "--hold", "W", "--hold", "Left Shift", "--holdat", "2.0:C:2", "--holdat", "2.15:F:0.5", seconds=2.7)
+    check(f["fSlides"] == 1 and f["footShots"] >= 1, "you can shoot from a slide", (f["fSlides"], f["footShots"]))
+
+
+@test
+def foot_mantle_onto_a_car():
+    # you get out on the car's left; D runs into its side, Space climbs onto it
+    d = sim(*FOOT, "--holdat", "0.5:D:1.0", "--holdat", "1.0:Space", seconds=2.5)
+    check(d["fMantles"] == 1 and d["fJumps"] == 0, "jumping at a car climbs it", (d["fMantles"], d["fJumps"]))
+    between(d["fMantleRise"], 0.9, 1.45, "up onto its roof or bonnet (m)")
+    between(d["walkY"] - d["y"], 0.9, 1.45, "and you stand up there")
+    air = sim(*FOOT, "--holdat", "0.3:Space", "--holdat", "0.3:D:0.6", seconds=2.5)
+    check(air["fMantles"] + air["fJumps"] >= 1 and air["walkY"] - air["y"] > 0.9, "a jump towards it from a step away gets up on it too", (air["fMantles"], air["fJumps"], air["walkY"] - air["y"]))
+
+
+@test
+def character_model_poses_are_sound():
+    d = sim(*FOOT, seconds=0.5)
+    check(d["poseParts"] == 6 and d["poseTris"] < 4000, "the body: six rigid parts, well inside the 360's budget", (d["poseParts"], d["poseTris"]))
+    check(d["poseChecked"] >= 1000 and d["poseBad"] == 0, "every pose (each gun; stand, run, sprint, crouch, air, land, slide, mantle, roll, down, cheer, ADS) has sound numbers", (d["poseChecked"], d["poseBad"]))
+    check(d["poseHandErr"] < 0.05, "the hands are on the gun in every two-handed pose (m)", d["poseHandErr"])
 
 
 @test
@@ -1726,6 +1794,81 @@ def guns_lock_on_and_hurt_the_racers():
         check(d["aiMinHp"] < 100 or d["aiDead"] > 0, "%s: the racer it locked on to is hurt" % name, (d["aiMinHp"], d["aiDead"]))
     d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 4, seconds=4)
     check(d["aiDead"] >= 1 and d["wrecks"] >= 1, "enough of it wrecks the car", (d["aiDead"], d["wrecks"]))
+
+
+@test
+def reloads_take_their_time_and_refill_the_magazine():
+    """2.7: each gun has a magazine. Run it dry and it clicks and reloads by itself, in the gun's own time (pistol 0.85 s,
+    SMG 1.3 s), then fires on; R reloads a part-used one early; a shotgun loads shell by shell, and a shot cuts that short."""
+    for gun, t, mag in ((1, 0.85, 12), (3, 1.30, 30)):
+        d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", gun, seconds=9)
+        check(d["dryClicks"] >= 1 and d["reloadsDone"] >= 1, "gun %d: emptied, it clicked and reloaded by itself" % gun, (d["dryClicks"], d["reloadsDone"]))
+        between(d["reloadTook"], t, t + 0.05, "gun %d: the reload took its time" % gun)
+        check(d["footShots"] > mag, "gun %d: and it fired on after it" % gun, d["footShots"])
+    aim = ("--track", 0, "--state", 3, "--onfoot", "--ads", "--aimat", -400, 30, -100, "--gun", 2)
+    d = sim(*aim, "--press", "1.5:R", seconds=3.4)
+    check(d["reloadsDone"] == 1 and d["dryClicks"] == 0, "R reloads a rifle before it is empty", (d["reloadsDone"], d["dryClicks"]))
+    between(d["reloadTook"], 1.45, 1.5, "a rifle's reload")
+    d = sim(*aim, seconds=1.0)
+    check(d["meMag"] < 8, "firing takes rounds out of the magazine", d["meMag"])
+    full = sim(*aim, "--press", "1.5:R", seconds=3.4)
+    check(full["meMag"] + full["meReserve"] == d["meMag"] + d["meReserve"] - (full["footShots"] - d["footShots"]), "a reload moves rounds from what you carry into the gun, none lost", (full["meMag"], full["meReserve"], d["meMag"], d["meReserve"]))
+    d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 4, seconds=9)
+    check(d["dryClicks"] >= 1 and d["footShots"] > 6, "the shotgun: emptied, a shell goes in and the trigger fires it", (d["dryClicks"], d["footShots"]))
+
+
+@test
+def quick_swaps_and_the_last_weapon():
+    """2.7: 1-5 pick a gun, Q goes back to the last; a swap takes a quarter of a second, and drops a reload under way."""
+    d = sim("--track", 0, "--state", 3, "--onfoot", "--keys", 6, "--press", "1:3", seconds=2)
+    check(d["gun"] == 3 and d["swapsDone"] == 1, "3 picks the SMG", (d["gun"], d["swapsDone"]))
+    between(d["swapTook"], 0.25, 0.27, "the swap")
+    first = sim("--track", 0, "--state", 3, "--onfoot", "--keys", 6, seconds=0.5)["gun"]
+    d = sim("--track", 0, "--state", 3, "--onfoot", "--keys", 6, "--press", "1:3", "--press", "1.5:Q", seconds=2)
+    check(d["gun"] == first and first != 3 and d["swapsDone"] == 2, "Q: straight back to the gun before", (first, d["gun"], d["swapsDone"]))
+    d = sim("--track", 0, "--state", 3, "--onfoot", "--keys", 6, "--press", "1:1", seconds=2)
+    check(d["gun"] == 1, "1 is the pistol", d["gun"])
+    d = sim("--track", 0, "--state", 3, "--onfoot", "--ads", "--aimat", -400, 30, -100, "--gun", 3, "--keys", 6, "--press", "1.2:R", "--press", "1.5:1", seconds=3)
+    check(d["meReloads"] == 1 and d["reloadsDone"] == 0 and d["gun"] == 1, "a swap cancels the reload", (d["meReloads"], d["reloadsDone"], d["gun"]))
+
+
+@test
+def rarity_tiers_on_the_guns_lying_about():
+    """2.7: guns on the ground come common to legendary (grey, green, blue, purple, gold), a little better each tier.
+    The roll is a hash of where they lie: the same every run for a seed, and the race is untouched."""
+    spec = [r.split("|") for r in sim("--track", 0, "--state", 3, seconds=0.2)["rarSpec"].split(";")]
+    check([r[0] for r in spec] == ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY"], "five tiers", [r[0] for r in spec])
+    cols = [tuple(float(v) for v in r[1].split(",")) for r in spec]
+    grey, green, blue, purple, gold = cols
+    check(abs(grey[0] - grey[1]) < 0.05 and abs(grey[1] - grey[2]) < 0.05, "common is grey", grey)
+    check(green[1] > green[0] + 0.3 and green[1] > green[2] + 0.3, "uncommon is green", green)
+    check(blue[2] > blue[0] + 0.3 and blue[2] > blue[1], "rare is blue", blue)
+    check(purple[0] > purple[1] + 0.2 and purple[2] > purple[1] + 0.2, "epic is purple", purple)
+    check(gold[0] > 0.9 and gold[1] > 0.6 and gold[2] < 0.3, "legendary is gold", gold)
+    dmg, spread, rel = [float(r[2]) for r in spec], [float(r[3]) for r in spec], [float(r[4]) for r in spec]
+    check(dmg[0] == 1 and all(dmg[i] < dmg[i + 1] for i in range(4)) and dmg[4] <= 1.3, "each tier hits a little harder", dmg)
+    check(all(spread[i] > spread[i + 1] for i in range(4)) and all(rel[i] > rel[i + 1] for i in range(4)), "and is steadier and quicker to reload", (spread, rel))
+    a = sim(*SHOW, "--seed", 7, seconds=3); b = sim(*SHOW, "--seed", 7, seconds=3); c = sim(*SHOW, "--seed", 8, seconds=3)
+    tiers = lambda d: [tuple(int(v) for v in x.split(":")) for x in d["dropRar"].split(";")]
+    check(a["dropRar"] == b["dropRar"] and len(tiers(a)) == 11, "the same seed, the same tiers", (a["dropRar"], b["dropRar"]))
+    check(all(r == 0 for k, r in tiers(a) if k >= 6), "medkits and armour have no tier", a["dropRar"])
+    check(a["x"] == b["x"] and a["z"] == b["z"], "and the same drive", (a["x"], b["x"]))
+    allt = set()
+    for t in range(4):
+        d = sim("--track", t, "--state", 3, seconds=0.2)
+        guns = [(k, r) for k, r in tiers(d) if k < 6]
+        check(len(guns) >= 3, "track %d: some guns lie about the town" % t, d["dropRar"])
+        allt |= {r for k, r in guns}
+    allt |= {r for k, r in tiers(a) + tiers(c) if k < 6}
+    check(len(allt) >= 4, "the tiers turn up", sorted(allt))
+
+
+@test
+def bots_reload_too():
+    """2.7: the computer's fighters use the same magazines: they reload when they run dry and top up when nobody is in sight."""
+    d = sim(*SHOW, "--sdplace", 7, seconds=150)
+    check(d["botReloads"] >= 2, "the bots reloaded", d["botReloads"])
+    check(d["shdPhase"] >= 3, "and still fought it out", d["shdPhase"])
 
 
 @test
@@ -2208,7 +2351,7 @@ def showdown_bots_drive_the_shortest_way_into_the_ring():
 
 @test
 def showdown_always_ends_with_one_winner():
-    off = []
+    off, cov, heal = [], [], []
     for track in range(NTRACKS):
         d = sim("--track", track, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--footai", seconds=240)
         fs = fighters(d)
@@ -2216,9 +2359,58 @@ def showdown_always_ends_with_one_winner():
         check(sorted(f["place"] for f in fs) == [1, 2, 3, 4, 5], "track %d: all five places are decided" % track, d["fighters"])
         alive = sum(f["alive"] for f in fs)   # (if you go down early and the others take their time, they are placed by health)
         check(alive == 1 or not fs[0]["alive"], "track %d: the winner is the last one standing" % track, d["fighters"])
-        off.append(d["shdOffRoad"])
+        off.append(d["shdOffRoad"]); cov.append(d["botCoverT"]); heal.append(d["botHealRuns"])
         check(sum(f["kills"] for f in fs) >= 1, "track %d: it was settled with guns, not just the ring" % track, d["fighters"])
     check(sum(off) >= 2, "left to itself the ring goes up off the road, and everyone still gets there", off)
+    check(sum(cov) > 0 and sum(heal) >= 3, "2.9: the bots duck behind cover and, badly hurt, run for a medkit", (cov, heal))
+
+
+@test
+def rooftop_snipers_warn_with_a_laser():
+    """2.9: a rooftop sniper paints you with a red laser for a full second before every shot (a soft note when it lands
+    on you). Stand in it and most shots land; break its line of sight while it is on you and that shot never comes;
+    run across it and it trails you and misses."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("event s1 minis  at -471 70 -174  to -480 9 -175  k 2  stay  on time 1\n")
+    still = sim("--track", 0, "--state", 3, "--onfoot", "--events", f, seconds=14)
+    check(still["snipes"] >= 6 and still["lasers"] >= still["snipes"] and still["minLaser"] >= 0.95, "every shot comes after a second of laser", (still["snipes"], still["lasers"], still["minLaser"]))
+    check(still["laserTones"] >= still["snipes"] and still["snipeHits"] >= 1, "the note sounds as it lands on you; standing in it, you are hit", (still["laserTones"], still["snipeHits"]))
+    duck = sim("--track", 0, "--state", 3, "--onfoot", "--hold", "4.5:W", "--events", f, seconds=14)
+    check(duck["laserDodged"] >= 1, "out of its sight while the laser is on you: that shot is off", duck["laserDodged"])
+    across = sim("--track", 0, "--state", 3, "--onfoot", "--hold", "3:D", "--events", f, seconds=14)
+    check(across["snipes"] >= 3 and across["snipeHits"] < still["snipeHits"], "running across the laser shakes it off", (across["snipes"], across["snipeHits"], still["snipeHits"]))
+
+
+@test
+def landed_mini_wardens_fight_from_cover():
+    """2.9: with you on foot, mini Wardens that have jetted down take cover (out of your sight, with a step out that
+    sees you), peek out to fire short bursts after a charge glows at the muzzle, move between covers, and one of the
+    group goes round your flank. Shooting at one in cover mostly hits the wall. All of it is the same every run."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("event m1 minis  at -147 30 -93  to -170 0 -110  k 3  on time 1\n")
+    a = ["--track", 0, "--state", 3, "--mode", 1, "--pos", -170, -80, 0, "--onfoot", "--ads", "--aimmini", "--gun", 1, "--keys", 5, "--events", f]
+    d = sim(*a, seconds=30)
+    check(d["covers"] >= 3 and d["flanks"] >= 1 and d["coverT"] > 3, "they take cover, move between covers, and one flanks", (d["covers"], d["flanks"], d["coverT"]))
+    check(d["bursts"] >= 3 and 0 < d["miniRoundHits"] < d["miniRounds"] * 0.5, "they peek out and fire bursts; fewer than half land", (d["bursts"], d["miniRounds"], d["miniRoundHits"]))
+    check(d["hitsCover"] / max(d["coverT"], 0.01) < d["hitsOpen"] / max(d["openT"], 0.01), "in cover they are hit less often than out of it", (d["hitsCover"], d["coverT"], d["hitsOpen"], d["openT"]))
+    e = sim(*a, seconds=30)
+    check([e[k] for k in ("covers", "miniRounds", "miniRoundHits", "meHp", "jetDowned")] == [d[k] for k in ("covers", "miniRounds", "miniRoundHits", "meHp", "jetDowned")], "the same every time", (d["miniRounds"], e["miniRounds"]))
+
+
+@test
+def mini_warden_plating_wants_the_right_gun():
+    """2.9: a mini Warden's plating sheds pistol and SMG rounds at range (blue numbers, sparks, and once an ARMOURED
+    hint); the shotgun, the rifle and a round to the head go straight through."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); f = os.path.join(tmp, "e.fcfe")
+    open(f, "w").write("event s1 minis  at -490 0 -175  to -495 0 -175  k 1  stay  on time 1\n")
+    run = lambda *g: sim("--track", 0, "--state", 3, "--onfoot", "--ads", "--keys", 5, "--events", f, *g, seconds=6)
+    smg, head, sg, rifle = run("--aimmini", "--gun", 3), run("--aimhead", "--gun", 1), run("--aimmini", "--gun", 4), run("--aimmini", "--gun", 2)
+    check(smg["plateHits"] > 5 and smg["plateShed"] > 0.4 * (smg["plateShed"] + smg["jetDmg"]), "the SMG at 19 m: much of it glances off", (smg["plateHits"], smg["plateShed"], smg["jetDmg"]))
+    check(head["headshots"] >= 1 and head["plateShed"] == 0 and head["jetDowned"] == 1, "the head: no plating there", (head["headshots"], head["plateShed"], head["jetDowned"]))
+    check(sg["plateHits"] == 0 and sg["jetDowned"] == 1 and rifle["plateHits"] == 0 and rifle["jetDowned"] == 1, "shotgun and rifle go through", (sg["plateHits"], rifle["plateHits"], sg["jetDowned"], rifle["jetDowned"]))
 
 
 # ----------------------------------------------------------------------------- 2.6.3

@@ -21,22 +21,49 @@ static const GunSpec GUNS[NGUNS] = {
     { "SHOTGUN",  0.85f,   9, 24, 0.075f, 8,  8,  4, 1.0f,  12 },
     { "GRENADE",  1.30f,  40, 45, 0.006f, 1,  2,  5, 1.2f, 110 } };   // a grenade launcher: anyone within GIB_R of the burst is killed outright; dmg is for those further out
 
+// 2.7 handling: each gun's magazine (rounds in it; 0 = fists, nothing to load), how long a reload takes (a shotgun's is
+// per shell: they go in one at a time and a shot stops it), and the swap: the gun in hand drops away and the next comes
+// up. Only the raise holds the trigger back. A gun's rounds are ammo[g] in all (the magazine's included); mag[g] are loaded
+struct GunMag { int size; float reload; bool shells; };
+static const GunMag MAG[NGUNS] = { { 0, 0, false }, { 12, 0.85f, false }, { 8, 1.45f, false }, { 30, 1.30f, false }, { 6, 0.40f, true }, { 2, 1.55f, false } };
+static const float SWAP_DOWN = 0.08f, SWAP_UP = 0.17f, SWAP_LEN = SWAP_DOWN + SWAP_UP;
+static const int NGSLOT = 5;   // weapon slots: keys 1-5 are the pistol (or fists, before the first key), rifle, SMG, shotgun, launcher
+// 2.7 rarity, for a gun lying on the ground: common to legendary (grey, green, blue, purple, gold). A better one hits a
+// little harder, kicks about a little less and reloads a little quicker. Rolled from a hash of where it lies, so it is the
+// same for every game (online too) and draws nothing from the race's random numbers
+enum Rarity { R_COMMON, R_UNCOMMON, R_RARE, R_EPIC, R_LEGEND, NRAR };
+struct RarSpec { const char* name; V3 col; float dmg, spread, reload; int odds; };   // odds: out of 100, cumulative
+static const RarSpec RAR[NRAR] = { { "COMMON", V3(0.72f, 0.73f, 0.76f), 1.00f, 1.00f, 1.00f, 46 }, { "UNCOMMON", V3(0.35f, 0.95f, 0.40f), 1.06f, 0.93f, 0.95f, 72 },
+                                   { "RARE", V3(0.30f, 0.62f, 1.00f), 1.12f, 0.86f, 0.90f, 88 }, { "EPIC", V3(0.76f, 0.38f, 1.00f), 1.18f, 0.80f, 0.85f, 96 },
+                                   { "LEGENDARY", V3(1.00f, 0.78f, 0.18f), 1.25f, 0.72f, 0.78f, 100 } };
+static int rarRoll(unsigned h) { h ^= h >> 16; h *= 0x7feb352dU; h ^= h >> 15; h *= 0x846ca68bU; h ^= h >> 16; int r = (int)(h % 100); for (int k = 0; k < NRAR; k++) if (r < RAR[k].odds) return k; return R_COMMON; }
+
 static const int NFIGHT = 5;                 // the top five of the race: you and four others (the showdown)
 static const int NSLOT = 7;                  // places for fighters: you, then the showdown's four or, in free roam, up to six mini Wardens (ids stay under 7: 7 means your car, 8+ a racer)
 static const float ROLL_LEN = 0.55f;         // a dodge roll, seconds
+static const float SLIDE_LEN = 0.8f;         // 2.8 a slide, seconds
 static const float GIB_R = 3.5f, BLAST_R = 7.5f;   // a grenade: kills outright within GIB_R metres, hurts out to BLAST_R
 // what a fighter wants to do this step. mx, mz: where to run, in world axes (length up to 1)
-struct FootIn { float mx = 0, mz = 0; bool fire = false, sprint = false, roll = false, ads = false; };   // ads: aiming down the sights (you only)
+struct FootIn { float mx = 0, mz = 0; bool fire = false, sprint = false, roll = false, ads = false, jump = false, crouch = false; };   // ads: aiming down the sights (you only). jump, crouch: held (2.8)
 struct Fighter {
     float jetT = 0, jetCD = 0;   // a mini Warden's jetpack: seconds of burst left; seconds till it can fire again
     bool on = false, alive = true, bot = false, mini = false;   // mini: a mini Warden (free roam, minis.h)
     int id = 0, paint = 0, car = -1; const char* name = "";   // car: -1 the player's, else ai[car]
     V3 pos, vel; float yaw = 0, hp = 100, armour = 0, stamina = 1;
     int gun = G_PISTOL, ammo[NGUNS] = {}; float cd = 0;
+    // 2.7: rounds loaded in each gun, and each gun's rarity (the best picked up); a reload under way (reloadT counts down
+    // reloadLen: the whole of it, or one shell); a swap (swapT counts down from SWAP_LEN; prevGun is the one going away);
+    // lastGun: the one before, for the quick toggle; gunCd: the wait left on each gun put away
+    int mag[NGUNS] = { 0, MAG[G_PISTOL].size }, rar[NGUNS] = {}, prevGun = -1, lastGun = -1, reloads = 0; float reloadT = 0, reloadLen = 0, swapT = 0, gunCd[NGUNS] = {}, dip = 0;   // dip: how far the gun hand is down (reload), eased
     int target = -1;                         // 0..NFIGHT-1 another fighter, 8+k the racer ai[k], -1 nobody
     // motion and animation
     float rollT = 0, rollCD = 0, rollYaw = 0, hurtT = 0, kick = 0, aim = 0, aimHold = 0, stride = 0, moveAng = 0, run = 0, deadT = 0, cheer = 0, stepPh = 0;
     bool prevRoll = false, sprinting = false, winded = false;   // winded: ran the stamina dry; no sprinting until some of it is back
+    // 2.8 moving: in the air (and for how long), crouched (crouchK eases 0..1 for the body and the hitbox), a slide (slideT left, along
+    // slideDir at slideV), a mantle (mantleT 0..1 from mantleA up onto mantleB), the dip on landing; the buttons' last state and a jump
+    // pressed a moment early (jumpBuf) or just after stepping off an edge (coyote) still counts
+    bool air = false, crouch = false, prevJump = false, prevCrouch = false; float airT = 0, crouchK = 0, slideT = 0, slideV = 0, slideK = 0, mantleT = -1, mantleLen = 0.3f, landK = 0, jumpBuf = 0, coyote = 0, aimPitch = 0;
+    V3 slideDir, mantleA, mantleB;
     // bot brain
     float strafe = 1, strafeT = 0, reactT = 0, burstT = 0, stuckT = 0, sideT = 0, hitByT = 99; int hitBy = -1, lastTgt = -1; V3 lastPos;
     bool flinched = false, wantMove = false; float ringT = 0;   // ringT: time spent outside the ring since it last burned them

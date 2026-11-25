@@ -14,7 +14,7 @@ static const float SH_RING0 = net::SD_RING0, SH_RING_MID = net::SD_RING_MID, SH_
 static const float SH_BURN = 6, SH_BURN_EVERY = 0.5f;                                      // health lost each half second outside the ring
 static_assert(G_LAUNCHER == net::SD_SLOW_KIND, "the server slows the grenade launcher's return by its number");
 enum { D_MED = NGUNS, D_ARMOUR, D_AMMO };   // (D_AMMO: 2.4, out in the town: a box of rounds for every gun you have)                                                          // pick-ups: a gun (its Gun number), a medkit, body armour
-struct Drop { V3 p; int kind; int idx = -1; float back = 0; };   // idx: its number (online, on the server); back: seconds until it is there again (0: it is there)
+struct Drop { V3 p; int kind; int idx = -1; float back = 0; int rar = 0; };   // rar: a gun's rarity (2.7, dropRar)   // idx: its number (online, on the server); back: seconds until it is there again (0: it is there)
 static std::vector<Drop> drops;
 static V3 shdSite; static float shdSiteS = 0, shdT = 0, shdRing = SH_RING0, shdRingTgt = SH_RING0, shdOverT = 0, footTurn = 0;
 static float sdSite = -1, shdPrepAt = -1; static int shdBack = 0;   // --sdsite U (tests): put the ring that far round the lap. Test metrics: when the countdown began, pick-ups that have come back
@@ -26,6 +26,10 @@ static void setCommon(Prog& p, const M4& VP, V3 cam, float hdr);
 static void panel(float x, float y, float w, float h, float a);
 static void fmtTime(char* b, float t);
 static void netShdFrame(float dt); static void netStepRemote(Fighter& f, float dt); static bool netRush = false; static void champShowdownEnd(); static void champRaceEnd();   // netshd.h, champ.h
+// 2.7 a gun's rarity comes from a hash of where it lies and what it is: every game that knows the spot (online, from the
+// server's floats) rolls the same, and nothing is taken from grng
+static int dropRar(const Drop& d) { if (d.kind >= NGUNS) return R_COMMON; unsigned u[3]; memcpy(u, &d.p.x, 4); memcpy(u + 1, &d.p.z, 4); u[2] = (unsigned)d.kind;
+    return rarRoll(u[0] * 2654435761u ^ (u[1] + 0x9e3779b9u + (u[0] << 6)) ^ u[2] * 40503u); }
 static int dropsThere() { int n = 0; for (auto& d : drops) if (d.back <= 0) n++; return n; }
 
 // ---- setting the scene ----
@@ -44,7 +48,7 @@ static V3 shdSpot(float lo, float hi) {
 static void shdDrops() {
     drops.clear();
     for (int kind : { (int)G_RIFLE, (int)G_RIFLE, (int)G_SMG, (int)G_SMG, (int)G_SHOTGUN, (int)G_SHOTGUN, (int)G_LAUNCHER, (int)D_MED, (int)D_MED, (int)D_ARMOUR, (int)D_ARMOUR }) {
-        Drop d = { shdSpot(kind == G_LAUNCHER ? 3.0f : 8.0f, 36), kind }; d.idx = (int)drops.size(); drops.push_back(d);
+        Drop d = { shdSpot(kind == G_LAUNCHER ? 3.0f : 8.0f, 36), kind }; d.idx = (int)drops.size(); d.rar = dropRar(d); drops.push_back(d);
     }
 }
 // may this fighter take this pick-up? A gun needs its keys; a medkit or armour is only for someone who needs it
@@ -64,7 +68,7 @@ static void layTownDrops() {
         if (W.dry(p.x, p.z) || W.HW(p.x, p.z) < 0.5f || solidAt(p + V3(0, 1.0f, 0), false) || solidAt(p + V3(0, 0.3f, 0), false)) continue;
         int ni = W.nearest(p.x, p.z); if (flatDist(p, V3(W.ts[ni].x, 0, W.ts[ni].z)) < 13) continue;   // (off the road)
         bool clear = true; for (const Drop& o : drops) if (flatDist(o.p, p) < 40) clear = false; if (!clear) continue;
-        Drop d = { p, drops.size() % 3 == 2 ? (int)D_MED : (int)D_AMMO }; drops.push_back(d);
+        Drop d = { p, drops.size() % 3 == 2 ? (int)D_MED : drops.size() % 6 == 4 ? (int)(G_RIFLE + (h >> 8) % 4) : (int)D_AMMO }; d.rar = dropRar(d); drops.push_back(d);   // (2.7: every sixth a gun)
     }
     townDrops = (int)drops.size();
 }
@@ -261,7 +265,11 @@ static void shdPlanBot(Fighter& f) {
     float stop = floorf(c.stot / W.n) * W.n + shdSiteS + (shdOffRoad ? -5.0f * i : ALONG[i]); while (stop < c.stot + 25) stop += W.n; f.stopS = stop;
     f.park = shdSite + yawDir(i * 1.5708f + 0.6f) * 10.0f;
 }
+// 2.9 (botThink) each bot's cover, by fighter id
+static struct BotCov { V3 c, pk; float t = 0, look = 0; int mode = 0; bool healing = false; } bcov[NSLOT];
+static float botCoverT = 0; static int botHealRuns = 0;   // (test metrics)
 static bool showdownStart(int racePlace) {   // called as you cross the line. The top five fight; finish lower and you watch them
+    for (auto& b : bcov) b = BotCov(); botCoverT = 0; botHealRuns = 0;
     bool watch = racePlace > NFIGHT;
     showdownOn = true; shdCut = true; shdPhase = SH_DRIVE; shdT = 0; shdRing = shdRingTgt = SH_RING0; shdWinner = -1; shdOverT = 0; shdRacePlace = racePlace; shdResult = false; wrongT = 0;
     shdPickSite(sdSite >= 0 ? sdSite : -1.0f);
@@ -289,6 +297,7 @@ static void shdOut(int i) {
     V3 a = c.pos + yawRight(c.yaw) * 2.1f, b = c.pos - yawRight(c.yaw) * 2.1f, at = flatDist(a, shdSite) < flatDist(b, shdSite) ? a : b;
     f.on = true; f.arrived = true; f.pos = at; f.pos.y = W.ground(at.x, at.z, c.pos.y + 1.0f); f.lastPos = f.pos; f.yaw = atan2f(shdSite.x - at.x, shdSite.z - at.z); f.gun = baseGun();
     if (mine(f)) { if (forceGun >= 0) { me.ammo[forceGun] = GUNS[forceGun].clip * 20; me.gun = forceGun; } tone(420, 0.1f, 0.35f, 2); }
+    fillMags(f);
     if (i == (shdSpectate ? shdWatch : 0)) { footYaw = f.yaw; footPitch = 0.20f; camInit = false; }
 }
 // the get-out key during a showdown: only on the way in, inside the ring, with the car nearly stopped
@@ -303,9 +312,24 @@ static void shdToggle() {
 // ---- the bots ----
 static float dropValue(const Fighter& f, const Drop& d) {
     if (!canTake(f, d)) return 0.0f;
-    if (d.kind == D_MED) return f.hp < 60 ? 3.0f : f.hp < 90 ? 0.8f : 0.0f;
+    if (d.kind == D_MED) return f.hp < 35 ? 5.0f : f.hp < 60 ? 3.0f : f.hp < 90 ? 0.8f : 0.0f;   // (2.9: badly hurt, a medkit is worth a longer run)
     if (d.kind == D_ARMOUR) return f.armour < 25 ? 1.5f : 0.0f;
     return f.ammo[d.kind] > 0 ? 0.3f : d.kind > bestGun(f) ? 1.0f + 0.5f * d.kind : 0.5f;
+}
+// 2.9 a bot's cover, kept here by fighter id: a spot a few steps off that its target cannot see (a parked car, a wall,
+// inside the ring and on the flow field), with a step to the side that can. It hides a moment, steps out strafing and
+// fires, and goes back; low on health it hides longer and runs further for a medkit
+static bool botCoverAt(const Fighter& f, V3 eye, BotCov& bc) {
+    auto ok = [&](V3& c) { if (!ffReach(c) || flatDist(c, shdSite) > shdRingTgt - 3) return false; c.y = W.ground(c.x, c.z, f.pos.y + 1.2f); return fabsf(c.y - f.pos.y) < 1.2f && !solidAt(c + V3(0, 1.0f, 0), true) && !solidAt(c + V3(0, 0.4f, 0), true); };
+    auto clear = [&](V3 a, V3 b) { float L = flatDist(a, b); for (float t = 0.6f; t < L; t += 0.6f) { V3 q = a + (b - a) * (t / L); if (solidAt(V3(q.x, a.y + 0.9f, q.z), true)) return false; } return true; };
+    float a0 = grng.r(0, 6.2832f);
+    for (float r : { 2.0f, 3.5f, 5.0f, 7.0f, 9.0f }) for (int k = 0; k < 12; k++) {
+        float a = a0 + k * 0.5236f; V3 c(f.pos.x + cosf(a) * r, 0, f.pos.z + sinf(a) * r); if (!ok(c)) continue;
+        if (canSee(c + V3(0, 0.95f, 0), eye, true) || canSee(c + V3(0, 1.45f, 0), eye, true)) continue;   // (its body out of sight: a parked car hides all but the head)
+        V3 to(eye.x - c.x, 0, eye.z - c.z); to = to * (1 / std::max(len(to), 0.1f)); V3 sd(to.z, 0, -to.x);
+        for (float o : { 1.3f, -1.3f, 2.2f, -2.2f }) { V3 pk = c + sd * o; if (ok(pk) && canSee(pk + V3(0, 1.5f, 0), eye, true) && clear(c, pk) && clear(f.pos, c)) { bc.c = c; bc.pk = pk; return true; } }
+    }
+    return false;
 }
 static FootIn botThink(Fighter& f, float dt) {
     FootIn in; if (!showdownOn || shdPhase == SH_OVER) return in;
@@ -325,7 +349,9 @@ static FootIn botThink(Fighter& f, float dt) {
     }
     if (tg != f.lastTgt) { f.reactT = BOT_REACT; f.lastTgt = tg; }
     f.target = tg; bool see = false; if (tg >= 0) { td = flatDist(f.pos, fighters[tg].pos); see = canSee(eye, tgtPos(tg), true); }
-    f.gun = bestGun(f); if (f.gun == G_LAUNCHER && tg >= 0 && td < 11) { f.gun = baseGun(); for (int g = G_SHOTGUN; g > G_PISTOL; g--) if (f.ammo[g] > 0) { f.gun = g; break; } }   // not at their own feet
+    { int want = bestGun(f); if (want == G_LAUNCHER && tg >= 0 && td < (f.gun == G_LAUNCHER ? 11.0f : 13.0f)) { want = baseGun(); for (int g = G_SHOTGUN; g > G_PISTOL; g--) if (f.ammo[g] > 0) { want = g; break; } }   // not at their own feet (with a little give, so it does not flick between them)
+      if (want != f.gun && f.swapT <= 0) selectGun(f, want); }   // (2.7: a swap takes them as long as it takes you)
+    if ((tg < 0 || !see) && usesMag(f) && f.mag[f.gun] * 2 < MAG[f.gun].size) startReload(f);   // nobody to shoot at and the magazine half gone: reload now, not mid-fight
     // the pick-up most worth the run
     int bd = -1; float bv = 0;
     for (size_t i = 0; i < drops.size(); i++) { float v = dropValue(f, drops[i]); if (v <= 0 || flatDist(drops[i].p, shdSite) > shdRing - 2 || !ffReach(drops[i].p)) continue; float sc = v * (fight ? 14.0f : 40.0f) - flatDist(f.pos, drops[i].p); if (sc > bv) { bv = sc; bd = (int)i; } }
@@ -333,8 +359,24 @@ static FootIn botThink(Fighter& f, float dt) {
     auto toward = [&](V3 q) { V3 d(q.x - f.pos.x, 0, q.z - f.pos.z); float L = len(d); return L > 0.01f ? d * (1 / L) : V3(); };
     bool closing = shdRingTgt < shdRing - 0.4f;
     if (ringD > shdRing - 4 || (closing && ringD > shdRingTgt + 1)) { if (!ffWay(f.pos, mv)) mv = toward(shdSite); in.sprint = ringD > shdRing - 1; }          // the ring comes first: the way round what blocks a runner
-    else if (bd >= 0 && (!fight || !see || bv > 12)) { mv = toward(drops[bd].p); in.sprint = !fight || td > 16; }
+    else if (bd >= 0 && (!fight || !see || bv > 12)) { mv = toward(drops[bd].p); in.sprint = !fight || td > 16;
+        bool heal = fight && drops[bd].kind == D_MED && f.hp < 35; if (heal && !bcov[f.id].healing) botHealRuns++; bcov[f.id].healing = heal; bcov[f.id].mode = 0; }
+    else if (tg >= 0 && fight && (see || bcov[f.id].mode) && td > 9 && f.gun != G_FISTS && f.gun != G_SHOTGUN && (bcov[f.id].mode || (bcov[f.id].look -= dt) <= 0) && [&] {
+            BotCov& bc = bcov[f.id]; bc.healing = false; V3 te = fighters[tg].pos + V3(0, 1.5f, 0); bool low = f.hp < 35;
+            if (bc.mode == 0) { bc.look = grng.r(1.2f, 2.2f); if (!botCoverAt(f, te, bc)) return false; bc.mode = 1; bc.t = low ? grng.r(1.8f, 2.8f) : grng.r(0.6f, 1.2f); }
+            V3 side = norm(V3(te.z - f.pos.z, 0, -(te.x - f.pos.x)));
+            if (flatDist(f.pos, bc.c) > 11 || flatDist(bc.c, shdSite) > shdRingTgt - 2) { bc.mode = 0; return false; }   // (it has been pushed off, or the ring has come in)
+            if (bc.mode == 1) {   // into cover; there, a breath (seen there anyway: it looks for another)
+                float dc = flatDist(f.pos, bc.c); mv = dc > 0.4f ? toward(bc.c) : V3();
+                if (dc < 0.7f) { if (canSee(f.pos + V3(0, 1.2f, 0), te, true)) { bc.mode = 0; bc.look = 0; return false; } bc.t -= dt; botCoverT += dt; }
+                if (bc.t <= 0) { bc.mode = 2; bc.t = grng.r(1.2f, 2.0f); }
+            } else {   // out to the side, strafing across the gap while it fires
+                mv = (flatDist(f.pos, bc.pk) > 0.5f ? toward(bc.pk) : V3()) + side * (f.strafe * 0.6f); bc.t -= dt;
+                if (bc.t <= 0) { bc.mode = 1; bc.t = low ? grng.r(1.8f, 2.8f) : grng.r(0.6f, 1.2f); }
+            }
+            return true; }()) {}
     else if (tg >= 0) {   // keep the range this gun likes, and never stand still
+        bcov[f.id].mode = 0; bcov[f.id].healing = false;
         static const float IDEAL[NGUNS] = { 1.0f, 14, 24, 11, 6, 20 }; float ideal = IDEAL[f.gun]; V3 to = toward(fighters[tg].pos), side(to.z, 0, -to.x);
         mv = to * (!see ? 1.0f : td > ideal + (f.gun == G_FISTS ? 0.3f : 2.0f) ? 1.0f : td < ideal - 2 ? -0.8f : 0.0f) + side * (f.strafe * (f.gun == G_FISTS ? 0.15f : see ? 0.8f : 0.5f)); in.sprint = td > ideal + 14;
     } else if (!fight) {  // armed and waiting: take a position off to one side of the line
@@ -349,6 +391,7 @@ static FootIn botThink(Fighter& f, float dt) {
     if (fight && tg >= 0 && see && td < GUNS[f.gun].range * 0.9f && f.reactT <= 0) in.fire = f.gun == G_SMG ? fmodf(f.burstT, 1.2f) < 0.7f : true;
     if (f.hurtT > 0 && !f.flinched) { f.flinched = true; if (f.rollCD <= 0 && grng.f() < 0.4f) { in.roll = true; if (L < 0.1f) { in.mx = cosf(f.yaw) * f.strafe; in.mz = -sinf(f.yaw) * f.strafe; } } }   // hit: sometimes dive out of the way
     if (f.hurtT <= 0) f.flinched = false;
+    in.jump = f.sideT > 0.74f;   // 2.8 (walked into something: hop it, or climb it if it is a low wall or a car)
     return in;
 }
 
@@ -467,9 +510,10 @@ static void stepShowdown(float dt) {
 static void takeDrop(Fighter& f, const Drop& d) {
     if (!f.remote) { if (d.kind == D_MED) f.hp = std::min(100.0f, f.hp + 50); else if (d.kind == D_ARMOUR) f.armour = 50;
         else if (d.kind == D_AMMO) { for (int g = 0; g < NGUNS; g++) if (GUNS[g].clip && (gunUnlocked(g) || f.ammo[g] > 0)) f.ammo[g] = std::min(GUNS[g].clip * 3, f.ammo[g] + GUNS[g].clip); }
-        else { f.ammo[d.kind] += GUNS[d.kind].clip; if (d.kind > f.gun) f.gun = d.kind; } }
+        else { bool had = f.ammo[d.kind] > 0; f.ammo[d.kind] += GUNS[d.kind].clip; f.rar[d.kind] = std::max(f.rar[d.kind], d.rar); if (!had) fillMag(f, d.kind); if (d.kind > f.gun) selectGun(f, d.kind); } }   // (a gun comes loaded; the better rarity is kept)
     for (int k = 0; k < 16; k++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(0, 1), grng.r(-1, 1))); spawn(d.p + V3(0, 0.8f, 0), dd * grng.r(1, 5), grng.r(0.3f, 0.6f), 0.14f, 0, d.kind == D_MED ? V3(1, 4, 1.4f) : d.kind == D_ARMOUR ? V3(1, 2.4f, 4) : V3(4, 2.6f, 0.8f), 1, 1, -3); }
-    if (mine(f) && !f.remote) { footPickups++; say(d.kind == D_MED ? "MEDKIT  +50" : d.kind == D_ARMOUR ? "BODY ARMOUR" : d.kind == D_AMMO ? "AMMO" : GUNS[d.kind].name, SAY_GOOD, 1.4f); tone(330, 0.1f, 0.4f, 2); tone(495, 0.1f, 0.4f, 2, 0, 0.08f); tone(660, 0.18f, 0.4f, 2, 0, 0.16f); rumble(0.3f, 120); }
+    if (mine(f) && !f.remote) { footPickups++; char nm[48]; snprintf(nm, sizeof nm, "%s%s%s", d.kind < NGUNS && d.rar ? RAR[d.rar].name : "", d.kind < NGUNS && d.rar ? " " : "", d.kind == D_MED ? "MEDKIT  +50" : d.kind == D_ARMOUR ? "BODY ARMOUR" : d.kind == D_AMMO ? "AMMO" : GUNS[d.kind].name);
+        say(nm, d.kind < NGUNS ? RAR[d.rar].col : SAY_GOOD, 1.4f); if (d.kind < NGUNS && d.rar >= R_EPIC) tone(1320, 0.25f, 0.35f, 2, 0, 0.24f); tone(330, 0.1f, 0.4f, 2); tone(495, 0.1f, 0.4f, 2, 0, 0.08f); tone(660, 0.18f, 0.4f, 2, 0, 0.16f); rumble(0.3f, 120); }
     else sfx(d.p, 495, 0.1f, 0.3f, 2);
 }
 
@@ -519,7 +563,7 @@ static void footFrame(float dt) {
             spawn(d.p + (showdownOn ? V3(grng.r(-0.3f, 0.3f), 0.2f, grng.r(-0.3f, 0.3f)) : V3(sr() * 0.6f - 0.3f, 0.2f, sr() * 0.6f - 0.3f)), V3(0, 2.2f, 0), 0.9f, 0.09f, 0,
                     d.kind == D_MED      ? V3(0.6f, 3, 1)
                     : d.kind == D_ARMOUR ? V3(0.6f, 1.6f, 3) : d.kind == D_AMMO ? V3(2.6f, 2.2f, 0.5f)
-                                         : V3(3, 2, 0.6f),
+                                         : RAR[d.rar].col * 3.2f,
                     0.9f, 1, 0); // a column of sparks marks each one
     // out of the car in a race: the racers do not stop for you
     if (racersAreTargets() && me.on && me.alive && me.hurtT <= 0 && me.rollT <= 0) for (auto& a : ai) {
@@ -536,7 +580,7 @@ static void footFrame(float dt) {
         if (!footAdsNow && footPitch < -0.15f) footPitch += (-0.15f - footPitch) * (1 - expf(-5 * dt));   // (out of the sights the view comes back down)
         if (cliAimMini) { V3 q; if (jetdrop::firstAt(q)) cliAimAt = q + V3(0, cliAimHead ? 1.75f : 1.1f, 0); }   // (--aimmini: at a rooftop mini Warden)
         if (cliAimDol) { V3 q; if (dolphin::firstAt(q)) cliAimAt = q; }   // (--aimdolphin)
-        if (cliAim && me.alive) { V3 d = cliAimAt - (me.pos + V3(0, 1.55f, 0) + yawRight(footYaw) * (0.55f + 0.4f * footAdsK)); footYaw = atan2f(d.x, d.z); footPitch = -atan2f(d.y, sqrtf(d.x * d.x + d.z * d.z)); }   // (--aimat, tests)
+        if (cliAim && me.alive) { V3 d = cliAimAt - (me.pos + V3(0, footEyeY(me), 0) + yawRight(footYaw) * (0.55f + 0.4f * footAdsK)); footYaw = atan2f(d.x, d.z); footPitch = -atan2f(d.y, sqrtf(d.x * d.x + d.z * d.z)); }   // (--aimat, tests)
         if (me.alive && me.target >= 0 && me.aim > 0.5f) { V3 d = tgtPos(me.target) - me.pos; footYaw += wrapPi(atan2f(d.x, d.z) - footYaw) * (1 - expf(-3.2f * dt)); }
         else if (me.alive) footYaw -= footTurn * 1.15f * dt * clampf(me.run / FOOT_RUN, 0, 1);
         else if (showdownOn) footYaw += 0.25f * dt;
@@ -545,9 +589,9 @@ static void footFrame(float dt) {
     footMouseX = footMouseY = 0;
     // down the sights: what the middle of the view rests on (the camera looks along this line), for the shot and the crosshair
     footAdsK += ((footAdsNow && me.on && me.alive ? 1.0f : 0.0f) - footAdsK) * (1 - expf(-12 * dt));
-    if (me.on) { V3 D(sinf(footYaw) * cosf(footPitch), -sinf(footPitch), cosf(footYaw) * cosf(footPitch)), pv = me.pos + V3(0, 1.55f, 0) + yawRight(footYaw) * (0.55f + 0.4f * footAdsK);
+    if (me.on) { V3 D(sinf(footYaw) * cosf(footPitch), -sinf(footPitch), cosf(footYaw) * cosf(footPitch)), pv = me.pos + V3(0, footEyeY(me), 0) + yawRight(footYaw) * (0.55f + 0.4f * footAdsK);
         float t = rayWorld(pv, D, 250, false), t2; int k2; footAimHot = false;
-        for (int i = 1; i < NSLOT; i++) { const Fighter& o = fighters[i]; if (!o.on || !o.alive) continue; for (float hh : { 0.5f, 1.0f, 1.5f }) { V3 q = o.pos + V3(0, hh, 0) - pv; float tt = dot(q, D); if (tt > 0 && tt < t && len(q - D * tt) < 0.45f) { t = tt; footAimHot = true; } } }
+        for (int i = 1; i < NSLOT; i++) { const Fighter& o = fighters[i]; if (!o.on || !o.alive) continue; for (float hh : { 0.5f, 1.0f, 1.5f }) { V3 q = o.pos + V3(0, hh * bodyK(o), 0) - pv; float tt = dot(q, D); if (tt > 0 && tt < t && len(q - D * tt) < 0.45f) { t = tt; footAimHot = true; } } }
         if (jetdrop::hitLine(pv, D, t, t2, k2)) { t = t2; footAimHot = true; } if (dolphin::hitLine(pv, D, t, t2, k2)) t = t2;
         footAimPt = pv + D * std::max(t, 1.0f); }
 }
@@ -558,7 +602,8 @@ static void footReset() {
     showdownOn = false; shdPhase = SH_OFF; shdCut = false; shdResult = false; shdWinner = -1; shdRacePlace = 0; drops.clear(); splats.clear(); gibs.clear(); shells.clear(); footMouseFire = footMouseAds = footAdsNow = false; footAdsK = 0;
     dmgNums.clear(); headFlash = killFlash = footRecoil = 0; headshots = 0; tstick.on = false; hitFlash = hurtFlash = footKick = 0;
     layTownDrops();   // (2.4: ammunition and medkits about the town)
-    roamHp = footMaxHp; roamCarTarget = false; for (int g = 0; g < NGUNS; g++) roamAmmo[g] = gunUnlocked(g) ? GUNS[g].clip * (g == G_SMG ? 2 : 1) : 0;
+    roamHp = footMaxHp; roamCarTarget = false; for (int g = 0; g < NGUNS; g++) { roamAmmo[g] = gunUnlocked(g) ? GUNS[g].clip * (g == G_SMG ? 2 : 1) : 0; roamRar[g] = 0; }
+    reloadTook = swapTook = -1; swapClock = -1; reloadsDone = botReloads = swapsDone = dryClicks = 0; magFlash = 0;
 }
 
 // ---- the camera on foot: over the right shoulder, pulled in by walls; from above for the intro; round the winner at the end ----
@@ -568,11 +613,11 @@ static void footCamera(V3& eye, V3& tgt, V3& up, float& fov, float dt) {
     if (!shdSpectate && footAdsK > 0.01f) { dist += (2.1f - dist) * footAdsK; shoulder += 0.4f * footAdsK; }   // down the sights: in close over the shoulder
     if (showdownOn && !shdSpectate && !me.alive && me.deadT > 1.8f) for (auto& f : fighters) if (f.on && f.alive) { s = &f; break; }            // you are out: watch the others
     if (showdownOn && shdPhase == SH_OVER && shdWinner >= 0) { s = &fighters[shdWinner]; yaw = s->yaw + (float)M_PI + 0.5f * sinf(shdOverT * 0.45f); pitch = 0.10f; dist = 4.4f; shoulder = 0; }
-    V3 D(sinf(yaw) * cosf(pitch), -sinf(pitch), cosf(yaw) * cosf(pitch)), pivot = s->pos + V3(0, s->alive ? 1.55f : 0.8f, 0) + yawRight(yaw) * shoulder;
+    V3 D(sinf(yaw) * cosf(pitch), -sinf(pitch), cosf(yaw) * cosf(pitch)), pivot = s->pos + V3(0, s->alive ? footEyeY(*s) : 0.8f, 0) + yawRight(yaw) * shoulder;
     dist = clampf(rayWorld(pivot, D * -1.0f, dist + 0.4f, false) - 0.4f, 0.7f, dist);
     V3 want = pivot - D * dist; want.y = std::max(want.y, W.H(want.x, want.z) + 0.35f);
     if (!init || T - lastT > 0.25f || len(want - eyeS) > 8) { eyeS = want; init = true; } lastT = T;
-    eyeS = eyeS + (want - eyeS) * (1 - expf(-22 * dt)); eye = eyeS; tgt = pivot + D * 12.0f; up = V3(0, 1, 0); fov = 60 + (me.sprinting ? 5.0f : 0.0f) - 6 * me.aim * (1 - footAdsK) - 24 * footAdsK + fovKick;   // (and zoomed)
+    eyeS = eyeS + (want - eyeS) * (1 - expf(-22 * dt)); eye = eyeS; tgt = pivot + D * 12.0f; up = V3(0, 1, 0); fov = 60 + (me.sprinting ? 5.0f : 0.0f) + 6 * me.slideK - 6 * me.aim * (1 - footAdsK) - 24 * footAdsK + fovKick;   // (and zoomed)
 }
 
 // ---- drawing ----
@@ -606,8 +651,16 @@ static void drawShowdown(Prog& p, bool lit) {
 }
 // the ring: a wall of light standing on the ground all the way round
 static void drawRing(const M4& VP, V3 cam, float hdr) {
-    if (!showdownOn || shdResult) return;
-    static std::vector<float> rv; rv.clear(); const int N = 120; const float H = 11; bool closing = shdPhase == SH_FIGHT && shdRingTgt < shdRing - 0.4f;
+    static std::vector<float> rv; rv.clear();
+    {   // 2.7 a beam of light in its rarity's colour over every gun lying about: taller and brighter the better it is
+        for (const Drop& d : drops) {
+            if (d.back > 0 || d.kind >= NGUNS || flatDist(d.p, cam) > 180) continue; V3 c = RAR[d.rar].col * (1.2f + 0.5f * d.rar); float h = 2.2f + 1.6f * d.rar, r = 0.30f + 0.06f * d.rar, al = 0.35f + 0.13f * d.rar;
+            auto bv = [&](float a, float v) { V3 q = d.p + V3(cosf(a) * r, v * h, sinf(a) * r); float e[11] = { q.x, q.y, q.z, a * 3.0f, v, c.x, c.y, c.z, al, r, 0 }; rv.insert(rv.end(), e, e + 11); };
+            for (int i = 0; i < 10; i++) { float a0 = 0.6283f * i, a1 = a0 + 0.6283f; bv(a0, 0); bv(a1, 0); bv(a1, 1); bv(a0, 0); bv(a1, 1); bv(a0, 1); }
+        }
+        if (!rv.empty()) { setCommon(pRing, VP, cam, hdr); gfx::blend(gfx::B_PREMUL); gfx::depthWrite(false); gfx::data(partBuf, rv.data(), rv.size() * 4, true); gfx::draw(partBuf, 0, (int)(rv.size() / 11)); gfx::depthWrite(true); rv.clear(); }
+    }
+    if (!showdownOn || shdResult) return; const int N = 120; const float H = 11; bool closing = shdPhase == SH_FIGHT && shdRingTgt < shdRing - 0.4f;
     V3 col = closing ? V3(1.7f, 0.22f, 0.08f) : V3(1.5f, 0.55f, 0.12f); float alpha = shdPhase == SH_FIGHT ? 1.0f : 0.5f;
     auto vert = [&](float a, float v) { V3 q(shdSite.x + cosf(a) * shdRing, 0, shdSite.z + sinf(a) * shdRing); q.y = std::max(W.H(q.x, q.z), 0.0f) + 0.03f + v * H;
         float d[11] = { q.x, q.y, q.z, a * shdRing, v, col.x, col.y, col.z, alpha, shdRing, closing ? 1.0f : 0.0f }; rv.insert(rv.end(), d, d + 11); };
@@ -667,22 +720,40 @@ static void drawFootHUD(float Hb) {
     }
     // weapon and ammunition
     if (shdSpectate) { snprintf(b, sizeof b, touchOn ? "WATCHING %s" : "WATCHING %s   -   %s: NEXT FIGHTER", fighters[shdWatch].name, keyName(binds[B_CAM][0])); ui.text(Wd / 2, Hb - 60, 2.6f, white, b, 1); }
-    if (me.alive && !shdSpectate) { float x = Wd - 300, y = Hb - 118; panel(x, y, 280, 98, 0.55f); const GunSpec& g = GUNS[me.gun]; ui.text(x + 14, y + 16, 3.2f, yel, g.name);
-      if (g.clip) snprintf(b, sizeof b, "%d", me.ammo[me.gun]); else snprintf(b, sizeof b, "-"); ui.text(x + 266, y + 12, 5, g.clip && me.ammo[me.gun] <= g.clip / 4 ? red : white, b, 2, 1, 0.12f);
+    // 2.7 the gun: its name in its rarity's colour, the magazine (big) over what is left to load (small), a ring that fills
+    // as a reload goes in, and the five slots with the keys that pick them
+    if (me.alive && !shdSpectate) { float x = Wd - 300, y = Hb - 118; panel(x, y, 280, 98, 0.55f); int gn = me.gun; const GunSpec& g = GUNS[gn]; const GunMag& mg = MAG[gn];
+      V3 rc = RAR[me.rar[gn]].col; if (me.rar[gn]) ui.text(x + 14, y + 6, 1.2f, rc, RAR[me.rar[gn]].name); ui.text(x + 14, y + 18, 3.2f, gn == G_FISTS ? yel : rc, g.name);
+      bool rel = me.reloadT > 0 && me.reloadLen > 0; float prog = rel ? clampf(1 - me.reloadT / me.reloadLen, 0, 1) : 0;
+      if (mg.size) {
+          int left = me.mag[gn], res = reserveOf(me, gn); bool low = left <= std::max(1, mg.size / 4); V3 mc = magFlash > 0 ? V3(0.6f, 1, 0.7f) : left == 0 ? red : low ? org : white;
+          snprintf(b, sizeof b, "%d", left); ui.text(x + 222, y + 10, 5, mc, b, 2, 1, 0.12f);
+          if (g.clip) snprintf(b, sizeof b, "/%d", res); else snprintf(b, sizeof b, "/--"); ui.text(x + 268, y + 28, 2.0f, res == 0 && g.clip ? red : dim, b, 2);
+          for (int k = 0; k < std::min(mg.size, 30); k++) { float bx = x + 268 - (std::min(mg.size, 30) - k) * (mg.size > 12 ? 4.0f : 8.0f); ui.rect(bx, y + 46, mg.size > 12 ? 3.0f : 6.0f, 6, k < left ? (low ? org : white) : dim, k < left ? 0.9f : 0.3f); }
+          if (rel) { float cx = x + 250, cy = y - 22, R = 14; for (int i = 0; i < 24; i++) { float a0 = 2 * (float)M_PI * i / 24, a1 = a0 + 2 * (float)M_PI / 24; bool on = i < prog * 24;
+                  ui.line(cx + sinf(a0) * R, cy - cosf(a0) * R, cx + sinf(a1) * R, cy - cosf(a1) * R, 3, on ? white : dim, on ? 0.95f : 0.4f); }
+              ui.text(cx - 22, cy - 6, 2.0f, white, "RELOADING", 2); }
+          else if (left == 0 && res == 0 && g.clip) ui.text(x + 268, y - 18, 2.0f, red, "EMPTY", 2);
+          else if (low && fmodf(T, 0.8f) < 0.55f && !touchOn) { snprintf(b, sizeof b, "%s: RELOAD", padUI ? "{X}" : keyName(binds[B_RELOAD][0] ? binds[B_RELOAD][0] : binds[B_RELOAD][1])); ui.text(x + 268, y - 18, 2.0f, org, b, 2); }
+      } else ui.text(x + 266, y + 12, 5, white, "-", 2, 1, 0.12f);
       float gx = x + 12;
-      for (int k = 0; k < NGUNS; k++) {
-          bool have = k == G_FISTS || k == baseGun() || me.ammo[k] > 0, locked = k != G_FISTS && !gunUnlocked(k);
-          ui.rect(gx, y + 58, 38, 6, k == me.gun ? yel : locked ? red : have ? white : dim, have ? 0.9f : 0.35f);
-          ui.text(gx + 19, y + 70, 0.95f, k == me.gun ? yel : have ? white : dim, GUNS[k].name, 1, have ? 0.9f : 0.4f);
-          gx += 43;
+      for (int s2 = 1; s2 <= NGSLOT; s2++) {
+          int k = s2 == 1 ? baseGun() : s2; bool have = haveGun(me, k), locked = k != G_FISTS && !gunUnlocked(k), cur = k == me.gun; V3 kc = have && me.rar[k] ? RAR[me.rar[k]].col : white;
+          ui.rect(gx, y + 60, 50, 6, cur ? yel : locked ? red : have ? kc : dim, have ? 0.9f : 0.35f);
+          snprintf(b, sizeof b, "%d %s", s2, GUNS[k].name); ui.text(gx + 25, y + 72, 0.95f, cur ? yel : have ? kc : dim, b, 1, have ? 0.9f : 0.4f);
+          gx += 52;
       }
+      // the same ring round the crosshair (or the target), where your eyes are
+      if (rel) { float cx = Wd / 2, cy = Hd / 2; if (footAdsK > 0.3f && project(footAimPt, sx, sy, cw)) { cx = sx; cy = sy; } else if (me.target >= 0 && tgtAlive(me.target) && project(tgtPos(me.target), sx, sy, cw)) { cx = sx; cy = sy; }
+          float R = 26; for (int i = 0; i < 32; i++) { float a0 = 2 * (float)M_PI * i / 32, a1 = a0 + 2 * (float)M_PI / 32; if (i >= prog * 32) break; ui.line(cx + sinf(a0) * R, cy - cosf(a0) * R, cx + sinf(a1) * R, cy - cosf(a1) * R, 3, white, 0.8f); } }
     }
     // health, armour, stamina
     if (me.alive && !shdSpectate) { float w = 380, x = Wd / 2 - w / 2, y = Hb - 52; ui.rect(x - 3, y - 3, w + 6, 30, V3(0.02f, 0.03f, 0.06f), 0.6f);
       ui.rect(x, y, w * clampf(me.hp / 100, 0, 1), 16, hpCol(me.hp), 0.95f); if (me.armour > 0) ui.rect(x, y - 7, w * clampf(me.armour / 50, 0, 1) * 0.5f, 5, V3(0.35f, 0.7f, 1), 0.95f);
       ui.rect(x, y + 19, w * me.stamina, 4, V3(0.4f, 0.9f, 1), me.stamina < 0.25f ? 0.5f + 0.5f * sinf(T * 16) : 0.8f);
       snprintf(b, sizeof b, "%d", (int)ceilf(me.hp)); ui.text(x - 12, y - 2, 3, white, b, 2); }
-    if (!arena) { if (me.alive && !touchOn) { snprintf(b, sizeof b, pad ? "%s: BACK IN THE CAR    %s: FIRE    LT: AIM    %s: SWAP GUN" : "%s: BACK IN THE CAR    %s: FIRE    RIGHT MOUSE: AIM    %s: SWAP GUN", keyName(binds[B_EXIT][0]), keyName(binds[B_FIRE][0]), keyName(binds[B_WEAPON][0])); ui.text(Wd / 2, Hb - 84, 1.8f, dim, b, 1); } return; }
+    if (!arena) { if (me.alive && !touchOn) { snprintf(b, sizeof b, pad ? "%s: BACK IN THE CAR    %s: FIRE    LT: AIM    {X}: RELOAD    {LB}{RB}: GUNS    {Y}: LAST%s%s" : "%s: BACK IN THE CAR    %s: FIRE    RIGHT MOUSE: AIM    %s: RELOAD    1-5, WHEEL: GUNS    %s: LAST", keyName(binds[B_EXIT][0]), keyName(binds[B_FIRE][0]), pad ? "" : keyName(binds[B_RELOAD][0]), pad ? "" : keyName(binds[B_WEAPON][0])); ui.text(Wd / 2, Hb - 84, 1.8f, dim, b, 1);
+        snprintf(b, sizeof b, pad ? "{A}: JUMP    {B}: CROUCH (SLIDE WHEN SPRINTING)    RIGHT STICK: ROLL" : "%s: JUMP    %s: CROUCH (SLIDE WHEN SPRINTING)    V: ROLL", keyName(binds[B_HB][0]), keyName(binds[B_CAM][0])); ui.text(Wd / 2, Hb - 60, 1.8f, dim, b, 1); } return; }
     // radar: the ring, the fighters and the pick-ups, turned so that up is the way the camera looks
     { float cx = 125, cy = Hb - 125, sc = 92.0f / SH_RING0; V3 F = yawDir(footYaw), R = yawRight(footYaw); panel(20, Hb - 230, 210, 210, 0.45f);
       auto at = [&](V3 q, float& x, float& y) { V3 d = q - shdSite; float u = dot(d, R) * sc, v = -dot(d, F) * sc, L = sqrtf(u * u + v * v); if (L > 98) { u *= 98 / L; v *= 98 / L; } x = cx + u; y = cy + v; };

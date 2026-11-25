@@ -10,7 +10,7 @@
 // Included by game.cpp after showdown.h. The wire format is in net.h; docs/NETWORK.md describes the exchange.
 #pragma once
 
-struct NetFoot { int slot = -1; V3 pos, vel; float yaw = 0, age = 0; uint8_t fireSeq = 0; uint16_t dealtSeen[net::SD_FIGHT] = {}; bool seen = false, aim = false, roll = false; };
+struct NetFoot { int slot = -1; V3 pos, vel; float yaw = 0, age = 0; uint8_t fireSeq = 0; uint16_t dealtSeen[net::SD_FIGHT] = {}; bool seen = false, aim = false, roll = false; uint8_t move = 0; };
 static NetFoot nfoot[NFIGHT];                         // by local fighter number
 static int netSlot = -1, netLocal[net::SD_FIGHT];      // our podium slot (-1: watching); slot -> local fighter number (-1: empty)
 static uint16_t netGone = 0;                           // pick-ups we have already seen taken
@@ -72,11 +72,11 @@ static net::FootState netFootOf(const Fighter& f) {
     net::FootState s; memset(&s, 0, sizeof s);
     s.x = f.pos.x; s.y = f.pos.y; s.z = f.pos.z; s.vx = f.vel.x; s.vz = f.vel.z; s.yaw = f.yaw;
     s.hp = (uint8_t)clampf(ceilf(f.hp), 0, 255); s.armour = (uint8_t)clampf(ceilf(f.armour), 0, 255); s.gun = (uint8_t)f.gun; s.fireSeq = (uint8_t)(f.shots & 255);
-    s.flags = (f.on ? net::FF_ON : 0) | (f.arrived ? net::FF_ARRIVED : 0) | (f.alive ? net::FF_ALIVE : 0) | (f.aim > 0.5f ? net::FF_AIM : 0) | (f.rollT > 0 ? net::FF_ROLL : 0) | (f.sprinting ? net::FF_SPRINT : 0) | (f.gibbed ? net::FF_GIB : 0);
+    s.flags = (f.on ? net::FF_ON : 0) | (f.arrived ? net::FF_ARRIVED : 0) | (f.alive ? net::FF_ALIVE : 0) | (f.aim > 0.5f ? net::FF_AIM : 0) | (f.rollT > 0 ? net::FF_ROLL : 0) | (f.sprinting ? net::FF_SPRINT : 0) | (f.gibbed ? net::FF_GIB : 0) | (f.reloadT > 0 ? net::FF_RELOAD : 0);
     s.target = f.target >= 0 && f.target < NFIGHT && nfoot[f.target].slot >= 0 ? (uint8_t)nfoot[f.target].slot : net::NOBODY;
     s.killedBy = f.hitBy >= 0 && f.hitBy < NFIGHT && f.hitBy != f.id && f.hitByT < 8 && nfoot[f.hitBy].slot >= 0 ? (uint8_t)nfoot[f.hitBy].slot : net::NOBODY;
     for (int k = 0; k < net::SD_FIGHT; k++) { int i = netLocal[k]; s.dealt[k] = i >= 0 && fighters[i].remote ? (uint16_t)((uint32_t)(f.dealtTo[i] * 10.0f) & 0xFFFF) : 0; }
-    s.claim = f.claim; return s;
+    s.move = footMoveBits(f); s.claim = f.claim; return s;
 }
 static bool netLocalFighter(int i) { return nfoot[i].slot >= 0 && !fighters[i].remote; }
 
@@ -125,6 +125,7 @@ static void netRemoteFire(Fighter& f) {
 static void netStepRemote(Fighter& f, float dt) {
     NetFoot& n = nfoot[f.id]; n.age += dt;
     f.cd = std::max(0.0f, f.cd - dt); f.hurtT = std::max(0.0f, f.hurtT - dt); f.kick = std::max(0.0f, f.kick - dt * 7); f.rollT = std::max(0.0f, f.rollT - dt);
+    stepHandling(f, dt); if (f.reloadT > 0) f.reloadT = std::max(0.01f, f.reloadT - dt);   // (their reload lasts as long as they say it does)
     if (!f.alive) { f.deadT += dt; f.run = 0; f.aim = 0; return; }
     V3 tgt = n.pos + n.vel * std::min(n.age, 0.3f); float k = 1 - expf(-14 * dt);
     if (len(tgt - f.pos) > 12) f.pos = tgt; else f.pos = f.pos + (tgt - f.pos) * k;
@@ -132,6 +133,7 @@ static void netStepRemote(Fighter& f, float dt) {
     float sp = len(n.vel); f.run += (sp - f.run) * (1 - expf(-12 * dt)); f.stride += sp * dt * 2.3f;
     f.moveAng = sp > 0.5f ? wrapPi(atan2f(n.vel.x, n.vel.z) - f.yaw) : f.moveAng * expf(-8 * dt);
     f.aim += ((n.aim ? 1.0f : 0.0f) - f.aim) * (1 - expf(-14 * dt));
+    footRemoteMove(f, n.move, dt);
 }
 
 // one frame of the online showdown: called in place of stepShowdown()
@@ -161,7 +163,7 @@ static void netShdFrame(float dt) {
     // the pick-ups: the ones nobody has lie on the ground; one the server has just given out bursts, and if it is ours we have it
     drops.clear();
     for (int i = 0; i < m.ndrops; i++) {
-        Drop d = { V3(m.d[i].x, m.d[i].y, m.d[i].z), (int)m.d[i].kind, i }; if (d.kind > D_ARMOUR) continue;
+        Drop d = { V3(m.d[i].x, m.d[i].y, m.d[i].z), (int)m.d[i].kind, i }; if (d.kind > D_ARMOUR) continue; d.rar = dropRar(d);   // (the same roll as the game that laid it)
         bool taken = m.d[i].owner != net::NOBODY; d.back = taken ? 1.0f : 0.0f; drops.push_back(d);
         if (!taken) { netGone &= (uint16_t)~(1u << i); continue; }   // (back on the ground: it can be taken again)
         if (netGone >> i & 1) continue; netGone |= (uint16_t)(1u << i);
@@ -180,7 +182,10 @@ static void netShdFrame(float dt) {
         if (fresh || !f.on) { n.pos = V3(s.x, s.y, s.z); n.vel = V3(s.vx, 0, s.vz); n.yaw = s.yaw; n.age = 0; }
         if (!f.on) { f.on = true; f.pos = n.pos; f.yaw = n.yaw; }   // they are out
         if (f.alive) { f.hp = s.hp; f.armour = s.armour; }
-        f.gun = s.gun % NGUNS; f.target = s.target < net::SD_FIGHT ? netLocal[s.target] : -1; f.sprinting = s.flags & net::FF_SPRINT; n.aim = s.flags & net::FF_AIM;
+        n.move = s.move;
+        { int ng = s.gun % NGUNS; if (ng != f.gun && f.on) { f.prevGun = f.gun; f.swapT = SWAP_LEN; } f.gun = ng; }   // (2.7: a swap they made is drawn as one)
+        { bool rl = s.flags & net::FF_RELOAD; if (rl && f.reloadT <= 0) f.reloadT = f.reloadLen = reloadTime(f, f.gun); else if (!rl) f.reloadT = 0; }   // (and a reload: the timing is a guess, it only moves the hands)
+        f.target = s.target < net::SD_FIGHT ? netLocal[s.target] : -1; f.sprinting = s.flags & net::FF_SPRINT; n.aim = s.flags & net::FF_AIM;
         bool roll = s.flags & net::FF_ROLL; if (roll && !n.roll) f.rollT = ROLL_LEN; n.roll = roll;
         if (n.seen && f.alive && s.fireSeq != n.fireSeq) netRemoteFire(f);
         n.fireSeq = s.fireSeq;

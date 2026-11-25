@@ -92,6 +92,33 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.7
+
+Gunplay, along Fortnite lines but in the game's own spirit: quick, clean and satisfying.
+
+- **Weapon handling**
+  - Every gun has a magazine. It clicks and reloads itself when empty; R (pad X, touch RELOAD) reloads early. Pistol
+    0.85 s, rifle 1.45 s, SMG 1.3 s, launcher 1.55 s; the shotgun loads shell by shell and firing stops it.
+  - Quick swaps: 1-5, the mouse wheel and Q (last gun); pad LB/RB and Y; tap or swipe GUN on touch. A swap takes
+    0.25 s and cancels a reload.
+  - Rarity on gun pick-ups: grey, green, blue, purple, gold. Better guns hit a little harder, spread less and reload
+    faster; each glows its colour and its name shows in that colour.
+- **Movement**
+  - Jump (Space, pad A, touch JUMP), crouch (C or Ctrl, pad B, touch DUCK), slide (crouch while sprinting), and
+    climbing onto low walls, crates and cars (jump at them). Roll moves to V / Left Alt / the right stick.
+  - Crouched you're slower, steadier and harder to hit; you can stand on bonnets and roofs.
+- **The racer, reworked:** broader build, collar, race number on his back, visor, gloves, knee pads, heavier boots.
+  Guns held in both hands: low and ready, up at the target, shouldered down the sights. Knees bend and arms swing as
+  he runs; poses for jumps, crouches, slides and climbs.
+- **Enemies that fight back**
+  - Rooftop snipers show a red laser on you for about a second before they fire. Break line of sight and the shot is
+    called off.
+  - Mini Wardens that land take cover, step out to fire short bursts (their muzzle glows first), and one of a group
+    goes round your flank.
+  - Mini Wardens are plated: pistol and SMG rounds lose damage at range; shotgun, rifle, grenades, fists and headshots
+    go through. A vest no longer covers the head in a showdown.
+  - Showdown bots use cover and go for a medkit when hurt.
+
 ## What's new in 2.6.3
 
 - **Rampage bots reach the ring.** They drive the shortest way there from wherever they are: down alleys, round water,

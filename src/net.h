@@ -67,7 +67,8 @@ enum Type : uint8_t {
 };
 enum Phase : uint8_t { LOBBY = 0, COUNTDOWN = 1, RACE = 2, RESULTS = 3, SHOWDOWN = 4, ROAM = 5 };   // ROAM: a roam server (--roam): everyone drives and walks the island together, no laps   // SHOWDOWN comes between RACE and RESULTS
 enum SdStage : uint8_t { SD_DRIVE = 0, SD_PREP = 1, SD_LIVE = 2, SD_OVER = 3 };            // the drive to the ring; the countdown once all are in it; the fight; the winner
-enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64 };   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
+enum FootFlags : uint8_t { FF_ON = 1, FF_ALIVE = 2, FF_AIM = 4, FF_ROLL = 8, FF_SPRINT = 16, FF_ARRIVED = 32, FF_GIB = 64, FF_RELOAD = 128 };   // (FF_RELOAD, 2.7: reloading; only drawn, so an older game that ignores it plays the same)   // FF_ON: out of the car. FF_ARRIVED: their car is inside the ring. FF_GIB: a grenade blew them apart
+enum MoveBits : uint8_t { MV_CROUCH = 1, MV_SLIDE = 2, MV_MANTLE = 4 };   // 2.8 FootState::move: how they stand (y is sent already, so a jump shows by itself)
 const uint8_t NOBODY = 255;
 const float
         SD_SITE_WAIT = 4,
@@ -113,7 +114,7 @@ struct Reject { Header h; uint8_t reason; };
 // it back SD_RESPAWN seconds later. The fighters report from the moment the showdown starts, while still driving.
 struct FootState {                                                                       // 40 bytes
     float x, y, z, vx, vz, yaw;
-    uint8_t hp, armour, gun, flags, fireSeq, target, killedBy, pad;                      // fireSeq goes up with every shot; target, killedBy: a slot or NOBODY
+    uint8_t hp, armour, gun, flags, fireSeq, target, killedBy, move;                     // fireSeq goes up with every shot; target, killedBy: a slot or NOBODY; move: MoveBits
     uint16_t dealt[SD_FIGHT]; uint16_t claim;
 };
 struct Foot { Header h; uint32_t seq; FootState s; };                                    // C_FOOT

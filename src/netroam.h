@@ -171,7 +171,7 @@ static void netRoamHit(int slot, int kind, float dmg) {
 static void roamFootSend() {
     net::Foot ft; memset(&ft, 0, sizeof ft); ft.h = net::header(net::C_FOOT, (uint8_t)nc.id); ft.seq = ++roamFootSeq; net::FootState& s = ft.s;
     if (me.on) { s.x = me.pos.x; s.y = me.pos.y; s.z = me.pos.z; s.vx = me.vel.x; s.vz = me.vel.z; s.yaw = me.yaw; s.hp = (uint8_t)clampf(ceilf(me.hp), 0, 255); s.gun = (uint8_t)me.gun; s.fireSeq = (uint8_t)(me.shots & 255);
-        s.flags = net::FF_ON | (me.alive ? net::FF_ALIVE : 0) | (me.aim > 0.5f ? net::FF_AIM : 0) | (me.sprinting ? net::FF_SPRINT : 0); }
+        s.flags = net::FF_ON | (me.alive ? net::FF_ALIVE : 0) | (me.aim > 0.5f ? net::FF_AIM : 0) | (me.sprinting ? net::FF_SPRINT : 0); s.move = footMoveBits(me); }
     s.target = s.killedBy = net::NOBODY; net::sendTo(nc.sock, nc.addr, &ft, sizeof ft);
 }
 static void roamMinisSend() {
@@ -245,6 +245,7 @@ static void roamPeopleStep(float dt) {
         float kk = 1 - expf(-14 * dt); V3 v(rf.s.vx, 0, rf.s.vz); if (len(p - f.pos) > 12) f.pos = p; else f.pos = f.pos + (p - f.pos) * kk;
         f.vel = v; f.yaw = wrapPi(f.yaw + wrapPi(rf.s.yaw - f.yaw) * kk); float sp = len(v); f.run += (sp - f.run) * kk; f.stride += sp * dt * 2.3f;
         f.alive = rf.s.flags & net::FF_ALIVE; f.gun = rf.s.gun % NGUNS; f.aim += (((rf.s.flags & net::FF_AIM) ? 1.0f : 0.0f) - f.aim) * kk; if (!f.alive) f.deadT += dt; else f.deadT = 0;
+        footRemoteMove(f, rf.s.move, dt);
     }
     for (int i = 0; i < net::MAXP; i++) if (!seen[i]) roamPeople[i].on = false;
 }
