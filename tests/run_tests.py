@@ -2350,6 +2350,14 @@ def showdown_bots_drive_the_shortest_way_into_the_ring():
 
 
 @test
+def the_throttle_is_a_pedal():
+    """2.7.1: an analog trigger held part way holds a lower speed; all the way is full speed, as before."""
+    full = sim("--track", 1, "--state", 3, "--hold", "W", seconds=14)
+    half = sim("--track", 1, "--state", 3, "--hold", "W", "--pedal", 0.5, seconds=14)
+    check(half["maxSpeed"] < full["maxSpeed"] * 0.8 and half["maxSpeed"] > full["maxSpeed"] * 0.4, "half a pull: a good deal slower, still moving well", (half["maxSpeed"], full["maxSpeed"]))
+
+
+@test
 def showdown_always_ends_with_one_winner():
     off, cov, heal = [], [], []
     for track in range(NTRACKS):

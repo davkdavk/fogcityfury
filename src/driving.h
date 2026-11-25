@@ -53,8 +53,9 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
         if (wantBoost) { c.nitro -= dt / NITRO_TANK; if (c.nitro <= 0) { c.nitro = 0; c.nitroLock = true; } }
         else { c.nitro = std::min(1.0f, c.nitro + dt / (NITRO_REFILL * (&c == &player ? nitroMul : 1.0f))); if (!in.nitro && c.nitro > NITRO_ARM) c.nitroLock = false; }   // let go before it will fire again
         float hurt = &c == &player ? carTopK() : 1.0f, top = S.top * (1 - 0.2f * o) * (1 + 0.22f * c.boost) * hurt;   // (a hurt car: less top speed and pick-up)
+        float gasTop = !in.pedal || in.gas >= 0.999f ? 1.0f : 0.30f + 0.70f * in.gas;   // part throttle (an analog trigger) holds a lower speed: it is a pedal, not a switch (2.7.1)
         // --- longitudinal ---
-        if (in.gas > 0) { drive = S.acc * (&c == &player ? carAccK() : 1.0f) * in.gas * (shiftCut > 0 ? 0.1f : 1.0f) * clampf((1 - vf / top) * 2.2f, 0, 1); vf += drive * dt; if (vf < 7) c.wheelspin = true; }
+        if (in.gas > 0) { drive = S.acc * (&c == &player ? carAccK() : 1.0f) * in.gas * (shiftCut > 0 ? 0.1f : 1.0f) * clampf((1 - vf / (top * gasTop)) * 2.2f, 0, 1); vf += drive * dt; if (vf < 7) c.wheelspin = true; }
         float boostA = S.acc * 1.3f * c.boost * clampf((1 - vf / top) * 2.5f, 0, 1); vf += boostA * dt;   // nitro drives whether or not the throttle is down
         if (vf > 0.5f) vf -= 26 * (0.55f + 0.45f * wx().grip) * c.brakeS * dt; else if (in.brake > 0) vf = std::max(vf - S.acc * 0.7f * in.brake * dt, -17.0f);
         if (in.hb) vf -= clampf(vf, -12 * dt, 12 * dt);
@@ -292,14 +293,22 @@ static Input autoInput(const Car& c) {
     in.gas = sp < vmax ? 1 : 0; in.brake = sp > vmax * 1.12f ? 1 : 0; return in;
 }
 
+static float padGas = 0, padBrake = 0, cliPedal = -1;   // cliPedal: --pedal K (tests)   // the triggers as last read (0..1 after the curve): the HUD's pedal bars, the 360 log
 static Input readInput() {
     Input in; const Uint8* k = SDL_GetKeyboardState(nullptr);   // keyboard: still SDL (step 2)
     auto key = [&](int sc) { if (!sc) return false; for (int h : heldKeys) if (h == sc) return true; return k[sc] != 0; };   // heldKeys: --hold (tests)
     auto dn = [&](int b) { return key(binds[b][0]) || key(binds[b][1]) || touchHolds(b); };   // bindings: see the controls screen
     if (dn(B_LEFT)) in.steer += 1; if (dn(B_RIGHT)) in.steer -= 1; if (dn(B_GAS)) in.gas = 1; if (dn(B_BRAKE)) in.brake = 1; in.hb = dn(B_HB); in.nitro = dn(B_NITRO); in.fire = dn(B_FIRE);
+    if (cliPedal >= 0 && in.gas > 0) { in.gas = cliPedal; in.pedal = true; }
     if (pad) {
         float ax = plat::padAxisRaw(pad, plat::AX_LX) / 32767.f; if (fabsf(ax) > 0.12f) in.steer = clampf(in.steer - ax, -1, 1);
-        in.gas = std::max(in.gas, plat::padAxisRaw(pad, plat::AX_TRIG_R) / 32767.f); in.brake = std::max(in.brake, plat::padAxisRaw(pad, plat::AX_TRIG_L) / 32767.f);
+        // the triggers are analog: a little dead zone, then a gentle curve so the first part of the pull is fine control (2.7.1)
+        auto trig = [&](plat::PadAxis t) { float v = plat::padAxisRaw(pad, t) / 32767.f; v = clampf((v - 0.06f) / 0.94f, 0, 1); return v * (0.55f + 0.45f * v); };
+        padGas = trig(plat::AX_TRIG_R); padBrake = trig(plat::AX_TRIG_L); if (padGas > in.gas) { in.gas = padGas; in.pedal = true; } in.brake = std::max(in.brake, padBrake);
+#ifdef FCF_GFX_XSDK
+        { static int lastL = -1, lastR = -1; static float nextLog = 0; int l = plat::padAxisRaw(pad, plat::AX_TRIG_L) * 255 / 32767, r = plat::padAxisRaw(pad, plat::AX_TRIG_R) * 255 / 32767;   // (dbgprint: the raw triggers, to see that they move through their range)
+          if ((abs(l - lastL) > 12 || abs(r - lastR) > 12) && T >= nextLog) { nextLog = T + 0.25f; lastL = l; lastR = r; xsdk_log_write("pad: triggers raw L=%d R=%d  brake=%.2f gas=%.2f", l, r, padBrake, padGas); } }
+#endif
         if (plat::padButton(pad, plat::BT_A)) in.gas = 1; if (plat::padButton(pad, plat::BT_X)) in.hb = true; if (plat::padButton(pad, plat::BT_B)) in.brake = 1;
         if (plat::padButton(pad, plat::BT_RB)) in.nitro = true;   // the left shoulder fires rockets
         if (plat::padButton(pad, plat::BT_LB)) in.fire = true;     // ...or, on foot, the gun (held for the SMG)

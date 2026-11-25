@@ -92,6 +92,14 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.7.1
+
+- **The triggers are pedals.** Pull the right trigger part way and the car holds a lower speed; all the way is full
+  throttle. The left trigger brakes as hard as you pull it. Small bars above the CAR meter show both pedals while a
+  pad is in use, and the 360 writes the raw trigger readings to dbgprint.txt.
+- **Aim down the sights with LB** (held) as well as the left trigger. On foot RB is the next gun and Y the last one.
+- The 360 title now carries its version (2.7.1).
+
 ## What's new in 2.7
 
 Gunplay, along Fortnite lines but in the game's own spirit: quick, clean and satisfying.

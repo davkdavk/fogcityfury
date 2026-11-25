@@ -319,6 +319,11 @@ static void drawHUD() {
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, on ? sc : V3(1, 1, 1), on ? "SHIELD" : "SAVED!");
             if (on && (player.shield > 3 || fmodf(T, 0.25f) < 0.15f)) ui.rect(nx + 98, ny + 13, 170 * player.shield / SHIELD_TIME, 12, sc, 1);
         }
+        if (pad && !me.on && !touchOn) {   // 2.7.1 the pedals, as the triggers have them: the brake and the throttle, each filling as you pull
+            float px = Wd - 300, py = Hb - 380, bw = 130, bh = 10;
+            ui.rect(px, py, bw, bh, V3(0.18f, 0.2f, 0.24f), 0.7f); ui.rect(px, py, bw * padBrake, bh, V3(1, 0.3f, 0.2f), 0.95f);
+            ui.rect(px + bw + 20, py, bw, bh, V3(0.18f, 0.2f, 0.24f), 0.7f); ui.rect(px + bw + 20, py, bw * padGas, bh, V3(0.45f, 1, 0.5f), 0.95f);
+        }
         if (!trialMode && !exploreMode && !netRace && !showdownOn) {   // 2.6.3 the car's health: green, then amber, then red and blinking; white for a moment when it is mended
             float nx = Wd - 300, ny = Hb - 326, nw = 280, nh = 38, h = clampf(player.hp / 100, 0, 1); V3 hc = h > 0.55f ? V3(0.45f, 1, 0.5f) : h > 0.25f ? V3(1, 0.75f, 0.2f) : V3(1, 0.25f, 0.15f);
             if (carFix > 0 && fmodf(T, 0.16f) < 0.08f) hc = V3(1, 1, 1); bool blink = h <= 0.25f && !player.dead && fmodf(T, 0.5f) < 0.2f;

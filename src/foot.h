@@ -526,8 +526,8 @@ static FootIn readFootInput(float& turn, float dt) {
         auto ax = [&](plat::PadAxis a) { float v = plat::padAxisRaw(pad, a) / 32767.f; return fabsf(v) > 0.16f ? v : 0.0f; };
         float lx = ax(plat::AX_LX), ly = ax(plat::AX_LY); if (lx != 0 || ly != 0) { str = lx; fwd = -ly; }
         footYaw -= ax(plat::AX_RX) * 2.8f * dt; footPitch = clampf(footPitch + ax(plat::AX_RY) * 1.6f * dt, -0.15f, 0.9f);
-        if (plat::padAxisRaw(pad, plat::AX_TRIG_R) > 9000) in.fire = true;   // (2.7: the bumpers change guns, X reloads, Y swaps back)
-        if (plat::padAxisRaw(pad, plat::AX_TRIG_L) > 9000) in.ads = true;   // (the left trigger: down the sights)
+        if (plat::padAxisRaw(pad, plat::AX_TRIG_R) > 9000) in.fire = true;   // (2.7.1: RB next gun, Y the last one, X reloads)
+        if (plat::padAxisRaw(pad, plat::AX_TRIG_L) > 9000 || plat::padButton(pad, plat::BT_LB)) in.ads = true;   // (the left trigger, or LB held: down the sights)
         if (plat::padButton(pad, plat::BT_LSTICK)) in.sprint = true;   // (2.7/2.8 on foot: A jumps, B crouches (slide out of a sprint), the right stick rolls; X reloads, the bumpers and Y change guns)
         if (plat::padButton(pad, plat::BT_A)) in.jump = true; if (plat::padButton(pad, plat::BT_B)) in.crouch = true; if (plat::padButton(pad, plat::BT_RSTICK)) in.roll = true;
     }

@@ -93,7 +93,7 @@ struct Car {
     int botAmmo = 0, botRLap = -99; float botFireCD = 0;   // a bot's rockets: how many, the lap it last took a crate, time till it may fire
     float hp = 100;   // shot damage on foot: a car with no hp left is wrecked
 };
-struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false, fire = false; };
+struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false, fire = false, pedal = false; };   // pedal: the throttle came from an analog trigger (part way holds a lower speed)
 
 // ------------------------------------------------------------------ particles
 #ifdef FCF_GFX_XSDK
@@ -474,6 +474,7 @@ int main(int argc, char** argv) {
             sizeSet = true;
         } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
+        else if (a == "--pedal") { cliPedal = (float)atof(argv[++i]); }   // (tests, 2.7.1: the throttle held part way, as a trigger would)
         else if (a == "--hold") { const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) holdsAt.push_back({ (float)atof(q), std::string(c + 1) }); else { int sc = SDL_GetScancodeFromName(q); if (sc) heldKeys.push_back(sc); } }   // (T:KEY: from T seconds on)
         else if (a == "--holdat") { std::string q = argv[++i]; size_t c = q.find(':'), c2 = q.find(':', c + 1); if (c != std::string::npos) { int sc = SDL_GetScancodeFromName(q.substr(c + 1, c2 == std::string::npos ? std::string::npos : c2 - c - 1).c_str()); if (sc) holdAts.push_back({ (float)atof(q.c_str()), c2 == std::string::npos ? 0.15f : (float)atof(q.c_str() + c2 + 1), sc }); } }
         else if (a == "--press") { const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) presses.push_back({ (float)atof(q), std::string(c + 1) });
@@ -864,7 +865,7 @@ int main(int argc, char** argv) {
                     if (state == PAUSED) state = RACE;
                     doReset();
                     break;
-                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(-1); else if (!me.on) fireRocket(); break;   // (2.7 on foot the bumpers change guns)
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (!me.on) fireRocket(); break;   // (2.7.1 on foot LB is held to aim down the sights: foot.h; RB and Y change guns)
                 case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(1); break;
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); else if (state == RACE && me.on) reloadMe(); break;   // (on foot X reloads)
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break;
