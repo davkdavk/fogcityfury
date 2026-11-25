@@ -98,6 +98,7 @@ struct Car {
     float latV = 0, wob = 0, wobV = 0;             // a bot knocked sideways: drift across the road (m/s), and a yaw wobble that springs back
     int botAmmo = 0, botRLap = -99; float botFireCD = 0;   // a bot's rockets: how many, the lap it last took a crate, time till it may fire
     float hp = 100;   // shot damage on foot: a car with no hp left is wrecked
+    float hurtShow = 0, offT = 0;   // 2.9.2 a computer driver: seconds its health bar stays up after a knock; how long it has been off the road
 };
 struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false, fire = false, pedal = false; };   // pedal: the throttle came from an analog trigger (part way holds a lower speed)
 
@@ -266,6 +267,8 @@ namespace director { static void reset(); static void placeWardens(); }
 namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)
 namespace dolphin { static bool spawn(V3 at, V3 to, float k); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void laugh(int idx, V3 at); static void blastAt(V3 p, float r); static bool firstAt(V3& p); }   // (dolphin.h)
 namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void hurt(int idx, float dmg, V3 dir); static void blastAt(V3 p, float r, float dmg); static bool firstAt(V3& p); static V3 posOf(int idx); static int downedCount(); static int count(); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
+static float aiDmgTaken = 0, aiOffT = 0; static int aiDmgWrecks = 0, aiCrashes = 0;   // test metrics
+static int cliKnockK = -1; static float cliKnockJ = 0;
 static int aiPasses = 0; static float aiHeadErr = 0, aiLatMax = 0; static long aiHeadErrN = 0;   // (tests) overtakes; how far a driver's nose is off the way it moves; the fastest it crossed the road
 #include "combat.h"   // wreckage and debris, crates, shields, the multiplayer race start and leave, splashes, explosions, rockets
 #include "events.h"   // the race director: scripted events from a track's event file
@@ -568,6 +571,7 @@ int main(int argc, char** argv) {
         else if (a == "--keys") fakeKeys = atoi(argv[++i]);
         else if (a == "--sdsite") sdSite = (float)atof(argv[++i]);
         else if (a == "--sdplace") sdPlace = atoi(argv[++i]);
+        else if (a == "--knock") sscanf(argv[++i], "%d,%f", &cliKnockK, &cliKnockJ);   // (tests, 2.9.2: knock bot K sideways at J m/s, 4 s into the race)
         else if (a == "--touchaim") { touchOn = true; taim.on = true; taim.id = 7100; sscanf(argv[++i], "%f,%f", &taim.x, &taim.y); }   // (tests, 2.9.1: a finger held there as the crosshair)
         else if (a == "--stick") {
             testStick = touchOn = true;

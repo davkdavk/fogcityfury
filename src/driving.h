@@ -170,6 +170,7 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
 // does this bot take shortcut k on the lap starting at loop distance `base`? About half the field does: a fixed pick
 // from the bot, its paint and the lap (no random numbers drawn: races stay repeatable)
 static bool aiTakes(const Car& c, int k, float base) { unsigned hsh = (unsigned)(c.paint * 131 + c.type * 17 + (int)(base / W.n) * 7 + (int)c.aiTop + k * 101) * 2654435761u; return (hsh >> 16) % 100 < 50u; }
+static int solidAt(V3 p, bool cars);   // (foot.h)
 static void stepAI(Car& c, float dt, bool go, float playerProg) {
     float lat0 = c.lat; int n = W.n; int i = (((int)floorf(c.stot)) % n + n) % n; float mc = 0;
     // the tightest bend in the next 80 m of the way it will go: along a shortcut and on past its end onto the loop, or
@@ -228,19 +229,32 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
     }
     float dl = 0; bool dg = go && !c.brOn && dodge(i, c.lat, 95, dl); if (dg) c.latT = dl;                  // opponents pull out round wrecks too
     if (c.brOn) c.latT = clampf(c.latT, -2.5f, 2.5f);                                                 // the backstreet is narrower
+    if (!c.brOn && c.latV == 0) c.latT = clampf(c.latT, -(ROADW - 1.5f), ROADW - 1.5f);   // (2.9.2 its own moves keep it on the road: only a knock puts it off)
     if (go && !dg) {   // 2.9.1 across the road as a car does it: the sideways speed builds and eases off (it steers), never more than its speed allows
         float lim = std::min(c.aiPassing >= 0 ? 3.0f : 2.5f, 0.07f * c.speed + 0.4f), want = clampf((c.latT - c.lat) * 1.1f, -lim, lim);
         c.aiLatV += clampf(want - c.aiLatV, -3.0f * dt, 3.0f * dt); c.lat += c.aiLatV * dt;
     } else { float lr = dg ? 6.0f : 2.5f, nl = c.lat + clampf(c.latT - c.lat, -lr * dt, lr * dt); c.aiLatV = dt > 0 ? (nl - c.lat) / dt : 0; c.lat = nl; }
     aiLatMax = std::max(aiLatMax, fabsf(c.aiLatV));
-    if (c.latV != 0) {   // knocked sideways: drift across, then steer back to its line
-        c.lat += c.latV * dt; c.latV *= expf(-3.5f * dt); if (fabsf(c.latV) < 0.2f) c.latV = 0; else c.latT = c.lat;
-        float lm = c.brOn ? 3.6f : ROADW - 1.2f; if (fabsf(c.lat) > lm) { c.lat = clampf(c.lat, -lm, lm); c.latV = 0; }
+    bool canLeave = !c.brOn && !W.ts[i].br && !W.ts[i].tun && go;   // (off a bridge or out of a tunnel there is nowhere to go)
+    if (c.latV != 0) {   // knocked sideways: drift across (2.9.2: off the road too, when it is hit hard), then steer back to its line
+        c.lat += c.latV * dt; c.latV *= expf(-1.6f * dt); if (fabsf(c.latV) < 0.2f) c.latV = 0; else c.latT = c.lat;
+        bool hard = fabsf(c.latV) > 5.0f || fabsf(c.lat) > ROADW - 1.19f;   // (only a hard knock takes it off; a nudge leaves it at the edge)
+        float lm = c.brOn ? 3.6f : canLeave && hard ? ROADW + 9.0f : ROADW - 1.2f; if (fabsf(c.lat) > lm) { c.lat = clampf(c.lat, -lm, lm); c.latV = 0; }
     }
+    if (!c.brOn && c.offT <= 0 && c.latV == 0 && fabsf(c.lat) > ROADW - 1.2f) c.lat = clampf(c.lat, -(ROADW - 1.2f), ROADW - 1.2f);   // (on the road unless a knock put it off: as before)
+    bool offRoad = !c.brOn && fabsf(c.lat) > ROADW + 0.3f;
+    if (offRoad) {   // 2.9.2 off the road: slower on the dirt, and back on once the knock is spent; anything solid or deep water in the way is a crash
+        c.offT += dt; aiOffT += dt; if (c.latV == 0) c.latT = clampf(c.latT, -(ROADW - 2.5f), ROADW - 2.5f);
+        if (c.speed > 20) c.speed = std::max(20.0f, c.speed - 14 * dt);
+        V3 q; float qy; W.at(c.stot, c.lat, q, qy); float gq = W.ground(q.x, q.z, W.H(q.x, q.z) + 1.0f);
+        if (W.HW(q.x, q.z) < -1.2f) { aiCrashes++; damageBot(c, 500, false); }   // (into the sea: gone)
+        else if (solidAt(V3(q.x, gq + 1.0f, q.z), false)) { aiCrashes++; damageBot(c, 12 + fabsf(c.latV) * 3 + c.speed * 0.5f, false); c.lat = lat0; c.latV = -c.latV * 0.3f; c.speed *= 0.6f; c.wobV += (c.lat > 0 ? 3.0f : -3.0f); }
+    } else c.offT = 0;
     c.wobV += (-c.wob * 70 - c.wobV * 9) * dt; c.wob = clampf(c.wob + c.wobV * dt, -0.5f, 0.5f);
     V3 p, pa; float yaw, ya;
     if (c.brOn) { W.brs[c.brK].at(c.bu, c.lat, p, yaw); W.brs[c.brK].at(c.bu + 2.5f, c.lat, pa, ya); } else { W.at(c.stot, c.lat, p, yaw); W.at(c.stot + 2.5f, c.lat, pa, ya); }
     float y = p.y, yahead = pa.y; V3 old = c.pos; bool onBr = !c.brOn && W.ts[i].br;   // road height, not terrain height: the road may be on a bridge
+    if (offRoad && !onBr) { y = W.ground(p.x, p.z, W.H(p.x, p.z) + 1.0f); yahead = W.ground(pa.x, pa.z, W.H(pa.x, pa.z) + 1.0f); }   // (2.9.2 off it: on the ground beside it)
     { float head = c.speed > 2 ? atan2f(c.aiLatV, c.speed) : 0.0f; c.aiHead += (head - c.aiHead) * std::min(1.0f, 6 * dt); }   // 2.9.1 the nose points the way it is going, across the road too
     c.pos = V3(p.x, y, p.z); c.vel = (c.pos - old) * (dt > 0 ? 1 / dt : 0); c.yaw = yaw + c.wob + c.aiHead;
     if (dt > 0 && c.speed > 8 && go) { V3 mv = c.pos - old; aiHeadErr += fabsf(wrapPi(atan2f(mv.x, mv.z) - c.yaw + c.wob)); aiHeadErrN++; }
@@ -277,7 +291,7 @@ static float bumpPlayer(const Contact& k, V3 ov, float share) {
 static void bumpBot(Car& c, float nx, float nz, float pen, float J, V3 at) {
     float yaw = c.yaw - c.wob; V3 f(sinf(yaw), 0, cosf(yaw)), rt(cosf(yaw), 0, -sinf(yaw));
     float sl = (nx * rt.x + nz * rt.z), sf = (nx * f.x + nz * f.z);
-    c.lat += sl * pen; c.latT = c.lat; c.latV = clampf(c.latV + sl * J * 0.8f, -9, 9); c.speed = std::max(0.0f, c.speed + sf * J * 0.6f);
+    c.lat += sl * pen; c.latT = c.lat; c.latV = clampf(c.latV + sl * J * 1.0f, -12, 12); c.speed = std::max(0.0f, c.speed + sf * J * 0.6f);   // (2.9.2 a hard side knock carries it further: off the road, if hard enough)
     V3 r = at - c.pos; c.wobV = clampf(c.wobV + (nx * r.z - nz * r.x) * J * 0.5f, -6, 6);
     tm.maxShove = std::max(tm.maxShove, fabsf(c.latV)); tm.maxWob = std::max(tm.maxWob, fabsf(c.wobV));
 }
@@ -287,6 +301,7 @@ static void carContacts(bool racing) {   // bots against bots
         float rv = (a.vel.x - b.vel.x) * k.nx + (a.vel.z - b.vel.z) * k.nz, J = rv < 0 ? -rv * 0.65f : 0;
         if (!racing) J = 0;
         bumpBot(a, k.nx, k.nz, k.pen * 0.5f, J, k.at); bumpBot(b, -k.nx, -k.nz, k.pen * 0.5f, J, k.at);
+        if (racing && rv < -4) { damageBot(a, (-rv - 4) * 0.8f, false); damageBot(b, (-rv - 4) * 0.8f, false); }   // (2.9.2 a hard knock hurts both)
     }
 }
 // --autocut K (tests): the autopilot takes the track's shortcut K every time it comes to it. autoCutRuns: trips along it

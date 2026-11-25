@@ -429,6 +429,14 @@ static void drawHUD() {
             }
         }
         if (player.dead && state == RACE) ui.text(Wd / 2, 300, 6, player.sunk ? V3(0.5f, 0.8f, 1) : org, player.sunk ? (W.space ? "LOST IN SPACE!" : "SPLASH!") : "WRECKED!", 1, 1, 0.12f);
+        if (carDamageOn() && !me.on) for (const Car& a : ai) {   // 2.9.2 a hurt bot's health over its car (green, amber, red), close by and for a while after a knock
+            if (a.dead || a.hp >= 99.5f) continue; V3 q = a.pos + V3(0, 2.4f, 0); const float* m = lastVP.m;
+            float cx = m[0] * q.x + m[4] * q.y + m[8] * q.z + m[12], cy = m[1] * q.x + m[5] * q.y + m[9] * q.z + m[13], cw = m[3] * q.x + m[7] * q.y + m[11] * q.z + m[15];
+            if (cw < 2 || cw > 160) continue; float al = clampf(2 - cw / 80, 0.25f, 1) * (a.hurtShow > 0 || a.hp < 55 ? 1.0f : 0.55f), h = clampf(a.hp / 100, 0, 1);
+            float sx = (cx / cw * 0.5f + 0.5f) * Wd, sy = (1 - (cy / cw * 0.5f + 0.5f)) * Hd, bw = clampf(2400 / cw, 34, 96), bh = clampf(260 / cw, 4, 9);
+            V3 hc = h > 0.55f ? V3(0.45f, 1, 0.5f) : h > 0.25f ? V3(1, 0.75f, 0.2f) : V3(1, 0.25f, 0.15f);
+            ui.rect(sx - bw / 2 - 2, sy - 2, bw + 4, bh + 4, V3(0.02f, 0.03f, 0.06f), 0.6f * al); ui.rect(sx - bw / 2, sy, bw * h, bh, hc, al);
+        }
         if (netRace && state != RESULTS) for (auto& r : nc.r) {   // name tags over the other players
             if (!r.present || !r.racing) continue; V3 q = r.car.pos + V3(0, 2.3f, 0); const float* m = lastVP.m;
             float cx = m[0] * q.x + m[4] * q.y + m[8] * q.z + m[12], cy = m[1] * q.x + m[5] * q.y + m[9] * q.z + m[13], cw = m[3] * q.x + m[7] * q.y + m[11] * q.z + m[15];

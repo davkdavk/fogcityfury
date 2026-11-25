@@ -1793,7 +1793,7 @@ def guns_lock_on_and_hurt_the_racers():
         check(d["footShots"] >= shots, "%s: holding fire keeps shooting" % name, d["footShots"])
         check(d["aiMinHp"] < 100 or d["aiDead"] > 0, "%s: the racer it locked on to is hurt" % name, (d["aiMinHp"], d["aiDead"]))
     d = sim("--track", 0, "--state", 3, "--mode", 0, "--press", "0.05:G", "--hold", "F", "--faceai", "--gun", 4, seconds=4)
-    check(d["aiDead"] >= 1 and d["wrecks"] >= 1, "enough of it wrecks the car", (d["aiDead"], d["wrecks"]))
+    check(d["wrecks"] >= 1, "enough of it wrecks the car (2.9.2: it is back on the road, whole, soon after)", (d["aiDead"], d["wrecks"]))
 
 
 @test
@@ -2395,6 +2395,23 @@ def touch_on_foot_crosshair_and_weapon_menu():
     check("SHOTGUN" in b and "RIFLE" in b and "FIRE" not in b, "a tap on GUN opens the weapon menu (and only that)", m["touchBtns"])
     p = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--keys", 5, "--tap", "0.2:OUT", "--tap", "0.8:GUN", "--tap", "1.2:SHOTGUN", seconds=2)
     check(p["gun"] == 4 and "CROUCH" in p["touchBtns"] and "SHOTGUN" not in p["touchBtns"].split(","), "picking one takes it up and closes the menu", (p["gun"], p["touchBtns"]))
+
+
+@test
+def the_racers_cars_take_damage_and_get_knocked_off():
+    """2.9.2: the computer drivers' cars wear down as yours does (knocks, bursts beside them, crashes), show their health
+    over the car, and are wrecked at none, back on the road whole after the usual wait. A hurt car is no slower. A hard
+    side knock puts one off the road for a few seconds; a nudge does not."""
+    bump = ("--seed", 5, "--track", 0, "--state", 3, "--nobotguns", "--pos", -501.1, -182.8, 2.698, "--speed", 25)
+    d = sim(*bump, seconds=2)
+    check(d["aiDmgTaken"] > 5 and d["aiMinHp"] < 100, "a rear-end hurts the car in front too", (d["aiDmgTaken"], d["aiMinHp"]))
+    off = sum(sim("--track", 3, "--state", 3, "--auto", "--nobotguns", "--knock", "%d,12" % k, seconds=14)["aiOffT"] > 1 for k in range(9))
+    nudge = sum(sim("--track", 3, "--state", 3, "--auto", "--nobotguns", "--knock", "%d,3" % k, seconds=14)["aiOffT"] for k in range(4))
+    check(off >= 3 and nudge == 0, "a hard side knock puts them off the road (from the outside of the road); a nudge never", (off, nudge))
+    calm = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=150)
+    check(calm["aiOffT"] == 0 and calm["aiDmgWrecks"] == 0 and calm["wrecks"] == 0, "a clean race: nobody off the road, nobody wrecked", (calm["aiOffT"], calm["aiDmgWrecks"], calm["wrecks"]))
+    m = sim("--track", 1, "--state", 3, "--mode", 4, "--auto", seconds=20)
+    check(m["aiDmgTaken"] == 0, "not in MANIC", m["aiDmgTaken"])
 
 
 @test

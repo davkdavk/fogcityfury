@@ -281,7 +281,7 @@ static void damageFighter(Fighter& t, float dmg, int by, V3 dir, bool pierce = f
     if (t.hp <= 0) { if (by == 0 && &t != &me) { killFlash = 0.5f; tone(660, 0.09f, 0.4f, 2); tone(990, 0.18f, 0.4f, 2, 0, 0.08f); } killFighter(t, by); }
 }
 static void hurtCar(Car& c, float dmg, V3 at) {
-    if (c.dead) return; if (&c == &player) dmg *= carArmourMul; c.hp -= dmg; hitFlash = 0.2f;
+    if (c.dead) return; if (&c == &player) dmg *= carArmourMul; c.hp -= dmg; c.hurtShow = 3; hitFlash = 0.2f;
     for (int i = 0; i < 5; i++) spawn(at, V3(grng.r(-4, 4), grng.r(0, 5), grng.r(-4, 4)), 0.3f, 0.07f, 0, V3(4, 2.6f, 0.8f), 1, 1, -9);
     sfx(at, 2400, 0.04f, 0.2f, 2);
     if (c.hp <= 0) { explode(c); say("WRECKED!", &c == &player ? SAY_WARN : SAY_GOOD, 1.5f); }

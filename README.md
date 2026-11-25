@@ -92,6 +92,17 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.9.2
+
+- **Bumping has consequences for the computer drivers too.** Their cars take damage the way yours does: hard knocks
+  (from you or each other), bursts beside them, and whatever they are knocked into. A hurt car smokes, then burns;
+  at no health it is wrecked, and back on the road whole after the usual wait. Their damage never slows them down.
+- **Their health shows over their cars** once they have been hurt: green, amber, then red, close by.
+- **A hard side knock puts them off the road.** They slide off onto the verge for a few seconds, slower on the dirt,
+  and steer back on; a building or deep water in the way is a crash (into the sea, a wreck). A nudge never does it,
+  and nothing knocks them off a bridge or out of a tunnel.
+- They mend slowly as they drive, as your car does. Not in MANIC or online.
+
 ## What's new in 2.9.1
 
 Back to basics.

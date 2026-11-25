@@ -98,19 +98,21 @@ static void update(float dt) {
                 Contact k; if (carContact(player, a, k)) bumpPlayer(k, a.vel, 1);   // their own game knocks them about
             }
             if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn && !trialMode) for (auto& a : ai) {   // the racers stop for the showdown (manic: there are none)
-                if (a.dead) { a.deadT -= h; if (a.deadT <= 0) { a.dead = false; a.stot += 8; a.lat = a.latT = a.lat > 0 ? a.lat - 4.5f : a.lat + 4.5f; } continue; }   // hit by a rocket: back on the road beside its wreck
+                if (a.dead) { a.deadT -= h; if (a.deadT <= 0) { a.dead = false; a.hp = 100; a.hurtShow = 0; a.latV = 0; a.stot += 8; a.lat = a.latT = clampf(a.lat > 0 ? a.lat - 4.5f : a.lat + 4.5f, -(ROADW - 2.5f), ROADW - 2.5f); } continue; }   // (2.9.2 whole again, and on the road)   // hit by a rocket: back on the road beside its wreck
                 stepAI(a, h, go, player.progress);
+                a.hp = std::min(100.0f, a.hp + CAR_MEND * h); a.hurtShow = std::max(0.0f, a.hurtShow - h);   // (2.9.2 it mends as it goes, as yours does)
                 float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz); int ak = (int)(&a - ai); whooshCD[ak] -= h;
                 if (d < 7 && d > 2.3f && fabsf(player.vf - a.speed) > 9 && whooshCD[ak] <= 0 && state == RACE) { whooshCD[ak] = 2; tone(700, 0.35f, 0.22f, 1, 5000); }
                 Contact k;
                 if (!player.dead && state != RESULTS && !trialMode && carContact(player, a, k)) {   // (time trial: they are ghosts)   // (after the flag the field passes through a finished car, not shoving it about)
                     V3 av = a.vel; float rv = bumpPlayer(k, av, 0.5f);   // we and the bot share the push and the knock
-                    if (rv < -4) damageCar((-rv - 4) * 0.8f);   // (a hard knock hurts the car)
+                    if (rv < -4) { damageCar((-rv - 4) * 0.8f); damageBot(a, (-rv - 4) * 0.8f, true); }   // (a hard knock hurts both cars)
                     bumpBot(a, -k.nx, -k.nz, k.pen * 0.5f, rv < 0 ? -rv * 0.65f : 0, k.at); if (rv < -1) tm.bumps++;
                 }
             }
         }
         if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn && !trialMode) carContacts(go && state != RESULTS);
+        if (cliKnockK >= 0 && go && raceT > 4 && !ai[cliKnockK].dead) { Car& a = ai[cliKnockK]; float y = a.yaw - a.wob; bumpBot(a, cosf(y), -sinf(y), 0, cliKnockJ, a.pos); cliKnockK = -1; }   // (--knock K,J tests: a side knock to bot K)
         if (!go && in.gas > 0) player.wheelspin = true;   // rev on the line
         if (!go && showAI()) for (int k = 0; k < NAI; k++) tm.gridDrift = std::max(tm.gridDrift, hypotf(ai[k].pos.x - aiGrid[k].x, ai[k].pos.z - aiGrid[k].z));   // test metric: nobody creeps before the start
     }

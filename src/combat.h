@@ -117,7 +117,8 @@ static void startRace() {
     lapStart = 0;
     bestLapRace = 0;
     lastLap = 0;
-    aiPasses = 0; aiHeadErr = aiLatMax = 0; aiHeadErrN = 0; for (auto& a : ai) { a.aiLatV = a.aiHead = a.aiPassT = 0; a.aiPassing = -1; a.aiPassSide = 0; }
+    aiDmgTaken = aiOffT = 0; aiDmgWrecks = aiCrashes = 0;
+    aiPasses = 0; aiHeadErr = aiLatMax = 0; aiHeadErrN = 0; for (auto& a : ai) { a.hp = 100; a.hurtShow = a.offT = 0; a.aiLatV = a.aiHead = a.aiPassT = 0; a.aiPassing = -1; a.aiPassSide = 0; }
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; sayClear(); state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
     miniReset();
     if (exploreMode) say("FREE ROAM  -  FIND THE KEYS", SAY_INFO, 3.5f);
@@ -249,11 +250,28 @@ static void damageCar(float d) {
     d *= carDmgK; player.hp -= d; carDmgTaken += d; carPerfMin = std::min(carPerfMin, carTopK());
     if (player.hp <= 0) { player.hp = 0; carDmgWrecks++; explode(player); }   // (respawn() brings it back whole)
 }
+// 2.9.2 the computer drivers' cars take damage the same way: knocks, bursts beside them, and anything they are knocked
+// into off the road. Their health shows over them when it is down; at none they are wrecked and come back after the
+// usual wait. A hurt car is NOT slower (that is the player's alone). Same rule for when damage counts as the player's
+static void damageBot(Car& a, float d, bool byMe) {
+    if (!carDamageOn() || a.dead || d <= 0 || a.shield > 0) return;
+    a.hp -= d; a.hurtShow = 3; aiDmgTaken += d;
+    if (a.hp <= 0) { a.hp = 0; aiDmgWrecks++; explode(a); tm.wrecks--; if (byMe) say("WRECKED!", SAY_GOOD, 1.5f); }   // (tm.wrecks stays the player's own count: these are aiDmgWrecks)
+}
 static void repairCar() { if (carDamageOn() && player.hp < 100) { player.hp = 100; carRepairs++; carFix = 1; tone(660, 0.08f, 0.3f, 2); tone(990, 0.12f, 0.3f, 2, 0, 0.07f); } }
 // a burst at p: how much of it reaches the car (none past r)
-static void blastCar(V3 p, float r, float dmg) { float L = len(player.pos + V3(0, 0.6f, 0) - p); if (L < r) damageCar(dmg * (1 - L / r)); }
+static void blastCar(V3 p, float r, float dmg) { float L = len(player.pos + V3(0, 0.6f, 0) - p); if (L < r) damageCar(dmg * (1 - L / r));
+    for (auto& a : ai) { float La = len(a.pos + V3(0, 0.6f, 0) - p); if (La < r && La > 0.5f) damageBot(a, dmg * (1 - La / r), false); } }   // (2.9.2 the bots' cars too; not the one that went up: La > 0.5)
 // smoke from under the bonnet once it is hurt, flames as well when it is badly hurt: looks only, its own dice
+static void botDamageFx(float dt) {   // 2.9.2 a hurt bot smokes, a badly hurt one burns (looks only: its own dice)
+    if (!carDamageOn() || g_noGL) return; static Rng fr; static float acc[NAI] = {};
+    for (int q = 0; q < NAI; q++) { const Car& c = ai[q]; if (c.dead || c.hp >= 55 || len(c.pos - player.pos) > 220) continue; float k = clampf((55 - c.hp) / 55, 0, 1); V3 hood = c.pos + V3(sinf(c.yaw), 0, cosf(c.yaw)) * 1.4f + V3(0, 0.9f, 0);
+        for (acc[q] += dt * (6 + 20 * k); acc[q] >= 1; acc[q] -= 1) { if (parts.size() > 5000) break; float life = 0.9f + 0.7f * fr.f();
+            parts.push_back({ hood, V3(fr.r(-0.6f, 0.6f), fr.r(1.5f, 3.0f), fr.r(-0.6f, 0.6f)) + c.vel * 0.3f, life, life, 0.35f + 0.5f * k, 1.6f + k, V3(0.30f, 0.30f, 0.32f) * (1 - 0.7f * k), 0.5f, 0, fr.f(), 0.4f, 0 });
+            if (c.hp < 25 && fr.f() < 0.7f) { float fl = 0.25f + 0.2f * fr.f(); parts.push_back({ hood + V3(0, 0.1f, 0), V3(fr.r(-0.5f, 0.5f), fr.r(2.0f, 4.0f), fr.r(-0.5f, 0.5f)) + c.vel * 0.6f, fl, fl, 0.3f + 0.2f * fr.f(), 0.5f, V3(3.2f, 1.1f + 0.6f * fr.f(), 0.2f), 0.9f, 1, fr.f(), 0.6f, 0 }); } } }
+}
 static void carDamageFx(float dt) {
+    botDamageFx(dt);
     if (!carDamageOn() || player.dead || player.hp >= 55 || g_noGL) return;
     static Rng fr; static float acc = 0; float k = clampf((55 - player.hp) / 55, 0, 1); V3 hood = player.pos + V3(sinf(player.yaw), 0, cosf(player.yaw)) * 1.4f + V3(0, 0.9f, 0);
     for (acc += dt * (8 + 26 * k); acc >= 1; acc -= 1) {
