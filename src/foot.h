@@ -391,6 +391,8 @@ static void stepShells(float dt) {
 
 // ---- one step of one fighter ----
 static const float FOOT_CROUCH = 2.6f, JUMP_V = 6.8f, G_UP = 22, G_DOWN = 30;   // 2.8: crouched speed; a jump's take-off speed, gravity going up and coming down (a snappy arc: about 1 m, 0.57 s)
+static bool footLookMouse = false, footStrafeOnly = false;   // the mouse has been used to look (game.cpp); sideways is a pure strafe (test metric)
+static float botWallT = 0, botCarT = 0;   // (tests) bot-seconds spent walking into a wall, and into a car
 static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canMove) {
     f.sinceShot += dt; if (f.sinceShot > 0.18f) f.bloom = std::max(0.0f, f.bloom - dt * FEEL[f.gun].bloomBack * (f.run < 0.5f ? 1.0f : 0.6f));   // (holding the trigger keeps it open)
     f.cd = std::max(0.0f, f.cd - dt); f.hurtT = std::max(0.0f, f.hurtT - dt); f.kick = std::max(0.0f, f.kick - dt * 7); f.rollCD = std::max(0.0f, f.rollCD - dt); f.hitByT += dt;
@@ -446,7 +448,8 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
         fmv.slideT += dt;
     } else hv = dl <= acc ? want : hv + dv * (acc / dl);
     // facing: the target while aiming, otherwise the way you run (or slide)
-    float tgtYaw = rolling ? f.rollYaw : aiming ? aimYaw : sliding ? atan2f(f.slideDir.x, f.slideDir.z) : ml > 0.1f ? atan2f(mv.x, mv.z) : f.yaw, turn = (aiming ? (&f == &me && !f.bot ? 26.0f : 16.0f) : 11.0f) * dt;   // (you snap round to aim)
+    bool faceView = you && footStrafeOnly && !f.sprinting && ml > 0.1f;   // (2.8 with the mouse or right stick to look: he faces where you look and sidesteps, he does not turn side-on)
+    float tgtYaw = rolling ? f.rollYaw : aiming || faceView ? aimYaw : sliding ? atan2f(f.slideDir.x, f.slideDir.z) : ml > 0.1f ? atan2f(mv.x, mv.z) : f.yaw, turn = (aiming ? (&f == &me && !f.bot ? 26.0f : 16.0f) : 11.0f) * dt;   // (you snap round to aim)
     f.yaw = wrapPi(f.yaw + clampf(wrapPi(tgtYaw - f.yaw), -turn, turn));
     // a jump, or (a ledge or a car in front, low enough) a mantle up onto it. In the air, pushing at a ledge in reach climbs it too
     if (!mantling && !rolling && !f.mini) {
@@ -467,7 +470,7 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
         if (f.mantleT >= 1) { f.mantleT = -1; f.pos = b; f.vel = L > 0.05f ? d * (2.5f / L) : V3(); f.landK = 0.4f; f.air = false; }
     } else {
         // move: walls, cars, deep water and steps too high all stop you
-        V3 np = f.pos + hv * dt; float imp = 0; np.y = f.pos.y; W.collide(np, hv, FOOT_R, imp); pushFromCars(np, hv, FOOT_R);
+        V3 np = f.pos + hv * dt; float imp = 0; np.y = f.pos.y; bool hitWall = W.collide(np, hv, FOOT_R, imp); { V3 b4 = np; pushFromCars(np, hv, FOOT_R); if (f.bot && !f.mini && showdownOn) { if (hitWall) botWallT += dt; if (flatDist(b4, np) > 1e-4f) botCarT += dt; } }
         float g = fGround(f, np, f.pos.y + 0.6f);
         if ((!vyJet && W.HW(np.x, np.z) < -1.0f) || g > f.pos.y + 0.8f) { np.x = f.pos.x; np.z = f.pos.z; hv = V3(); g = g0; }
         if (sliding && len(hv) < 2.0f) f.slideT = 0;   // (slid into something)
@@ -532,7 +535,10 @@ static FootIn readFootInput(float& turn, float dt) {
         if (plat::padButton(pad, plat::BT_A)) in.jump = true; if (plat::padButton(pad, plat::BT_B)) in.crouch = true; if (plat::padButton(pad, plat::BT_RSTICK)) in.roll = true;
     }
     if ((in.sprint && !prevSprint) || in.jump || !me.alive) duckTog = false; prevSprint = in.sprint; if (duckTog) in.crouch = true;
-    turn = in.ads ? 0.0f : str; footAdsNow = in.ads;   // (down the sights, sideways is a strafe: the camera holds)
+    // 2.8 sideways is a pure strafe whenever something else turns the view (the mouse, a pad's right stick), so you can circle
+    // someone: strafe one way, look the other. Only keys or a touch stick alone still swing the view round as you sidestep
+    bool ownLook = footLookMouse || pad != nullptr;
+    turn = in.ads || ownLook ? 0.0f : str; footAdsNow = in.ads; footStrafeOnly = ownLook;
     V3 m = yawDir(footYaw) * fwd + yawRight(footYaw) * str; float L = len(m); if (L > 1) m = m * (1 / L);
     in.mx = m.x; in.mz = m.z; return in;
 }

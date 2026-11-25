@@ -15,13 +15,20 @@ Everything else (the cars, the racer, the Wardens, the towns, the sound and the 
 
 ## Code and ideas from other projects
 
-Nothing from another project is in the game yet. When code is brought in, it is listed here with its authors, where
-it came from, its licence and what was changed. Projects we mean to draw on:
+Code brought in, with its authors, where it came from, its licence and what was changed:
+
+| Project | Authors | Where it is | Licence | What was changed |
+| --- | --- | --- | --- | --- |
+| [Recast & Detour](https://github.com/recastnavigation/recastnavigation) (commit 9f4ce64, 2026-02-27) | Mikko Mononen and contributors | `third_party/recastnavigation/` (used by `src/nav.h` through `src/nav_lib.h`) | zlib ([License.txt](third_party/recastnavigation/License.txt)) | The files are unchanged; `Recast/` and `Detour/` Include and Source are laid flat in one folder. `nav_lib.h` renames a few file-local helpers while it reads them into the game's one translation unit. |
+| [Quake III Arena](https://github.com/id-Software/Quake-III-Arena) bot AI (`code/game/ai_dmq3.c`, `ai_dmnet.c`) | Id Software, Inc. (1999-2005) | `src/showdown.h`: `q3Aggression`, `q3AttackMove`, `q3CheckAttack` and the fight nodes in `botThink` | GPL v2 or later | Adapted, not copied whole: `BotAggression`, `BotAttackMove`, `BotCheckAttack` and the Battle_Fight / Chase / Retreat / NBG nodes rewritten for this game's fighters, guns, metres and step rate; Quake's area system is replaced by Detour paths. |
+
+The small behaviour tree in `src/bt.h` is our own; its selector and sequence nodes follow the shape of
+[BehaviorTree.CPP](https://github.com/BehaviorTree/BehaviorTree.CPP) (MIT), none of whose code is used.
+
+Projects we still mean to draw on:
 
 | Project | For | Licence |
 | --- | --- | --- |
-| [Recast & Detour](https://github.com/recastnavigation/recastnavigation) | finding a way round buildings on foot | zlib |
-| [BehaviorTree.CPP](https://github.com/BehaviorTree/BehaviorTree.CPP) | how enemies decide what to do | MIT |
 | [TORCS](https://sourceforge.net/projects/torcs/) and [Speed Dreams](https://www.speed-dreams.net) | racing lines, braking and overtaking for the computer drivers | GPL v2 or later |
 | [SuperTuxKart](https://github.com/supertuxkart/stk-code) | drifting and weapon use for the computer drivers | GPL v3 or later |
 

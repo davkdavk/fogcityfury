@@ -2360,8 +2360,20 @@ def the_throttle_is_a_pedal():
 
 
 @test
+def strafing_is_a_pure_sidestep_when_something_else_looks():
+    """2.8: with the mouse (or a pad's right stick) to look, sideways only sidesteps and he faces where you look, so
+    you can circle someone. With keys alone the view still swings round as you sidestep, as before."""
+    keys = sim("--track", 0, "--state", 3, "--onfoot", "--hold", "D", seconds=6)
+    look = sim("--track", 0, "--state", 3, "--onfoot", "--hold", "D", "--mouselook", seconds=6)
+    still = sim("--track", 0, "--state", 3, "--onfoot", "--mouselook", seconds=6)
+    check(keys["strafeOnly"] == 0 and abs(keys["footYaw"] - still["footYaw"]) > 0.5, "keys alone: the view swings round", (keys["footYaw"], still["footYaw"]))
+    check(look["strafeOnly"] == 1 and abs(look["footYaw"] - still["footYaw"]) < 0.01, "mouse look: the view holds while he sidesteps", (look["footYaw"], still["footYaw"]))
+    check(abs(look["meYaw"] - look["footYaw"]) < 0.15, "and he faces where you look", (look["meYaw"], look["footYaw"]))
+
+
+@test
 def showdown_always_ends_with_one_winner():
-    off, cov, heal = [], [], []
+    off, cov, heal, wall = [], [], [], []
     for track in range(NTRACKS):
         d = sim("--track", track, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--footai", seconds=240)
         fs = fighters(d)
@@ -2370,8 +2382,10 @@ def showdown_always_ends_with_one_winner():
         alive = sum(f["alive"] for f in fs)   # (if you go down early and the others take their time, they are placed by health)
         check(alive == 1 or not fs[0]["alive"], "track %d: the winner is the last one standing" % track, d["fighters"])
         off.append(d["shdOffRoad"]); cov.append(d["botCoverT"]); heal.append(d["botHealRuns"])
+        wall.append(d["botWallT"]); check(d["navOk"] == 1 and d["navPolys"] > 50, "track %d: the ring has its walking mesh (Recast & Detour)" % track, (d["navOk"], d["navPolys"]))
         check(sum(f["kills"] for f in fs) >= 1, "track %d: it was settled with guns, not just the ring" % track, d["fighters"])
     check(sum(off) >= 2, "left to itself the ring goes up off the road, and everyone still gets there", off)
+    check(sum(wall) < 10, "2.8: with the mesh to find their way, the bots hardly ever walk into a wall (it was 10 s and more a round)", wall)
     check(sum(heal) >= 3, "2.9: badly hurt, the bots run for a medkit (cover is off for now)", (cov, heal))
 
 

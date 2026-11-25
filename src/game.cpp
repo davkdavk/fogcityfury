@@ -271,6 +271,8 @@ namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false
 #include "dolphin.h"   // dolphins: pods that roam the sea, and leaps (Tarnyloo's Dolphin, CC-BY 3.0)
 #include "driving.h"   // respawning, the player's car physics, the computer drivers, cars bumping each other, input, finishing a race
 #include "foot.h"
+#include "nav.h"   // the way round things on foot (Recast & Detour)
+#include "bt.h"    // a very small behaviour tree
 #include "showdown.h"
 #include "jetdrop.h"   // mini Wardens that jetpack down off a rooftop (after foot.h: you can shoot them, they shoot you)
 #include "minis.h"
@@ -479,6 +481,7 @@ int main(int argc, char** argv) {
             sizeSet = true;
         } else if (a == "--fullscreen") fullSet = true;
         else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
+        else if (a == "--mouselook") footLookMouse = true;   // (tests, 2.8: as if the mouse had been used to look)
         else if (a == "--pedal") { cliPedal = (float)atof(argv[++i]); }   // (tests, 2.7.1: the throttle held part way, as a trigger would)
         else if (a == "--hold") { const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) holdsAt.push_back({ (float)atof(q), std::string(c + 1) }); else { int sc = SDL_GetScancodeFromName(q); if (sc) heldKeys.push_back(sc); } }   // (T:KEY: from T seconds on)
         else if (a == "--holdat") { std::string q = argv[++i]; size_t c = q.find(':'), c2 = q.find(':', c + 1); if (c != std::string::npos) { int sc = SDL_GetScancodeFromName(q.substr(c + 1, c2 == std::string::npos ? std::string::npos : c2 - c - 1).c_str()); if (sc) holdAts.push_back({ (float)atof(q.c_str()), c2 == std::string::npos ? 0.15f : (float)atof(q.c_str() + c2 + 1), sc }); } }
@@ -913,7 +916,7 @@ int main(int argc, char** argv) {
                 if (e.type == plat::EV_MOUSE_DOWN) touchDown(-2, mx, my); else if (e.type == plat::EV_MOUSE_UP) touchUp(-2); else touchMove(-2, mx, my);
             }
             if (me.on && state == RACE && !touchMouse) {   // on foot the mouse turns the camera and its left button is the trigger
-                if (e.type == plat::EV_MOUSE_MOVE && e.which != plat::touchMouseId()) { footMouseX += e.xrel; footMouseY += e.yrel; }
+                if (e.type == plat::EV_MOUSE_MOVE && e.which != plat::touchMouseId()) { footMouseX += e.xrel; footMouseY += e.yrel; if (e.xrel != 0 || e.yrel != 0) footLookMouse = true; }
                 if ((e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP) && e.which != plat::touchMouseId() && e.button == SDL_BUTTON_LEFT) footMouseFire = e.type == plat::EV_MOUSE_DOWN;
                 if ((e.type == plat::EV_MOUSE_DOWN || e.type == plat::EV_MOUSE_UP) && e.which != plat::touchMouseId() && e.button == SDL_BUTTON_RIGHT) footMouseAds = e.type == plat::EV_MOUSE_DOWN;   // (held: aim down the sights)
                 if (e.type == plat::EV_MOUSE_WHEEL && e.yrel != 0) cycleGunDir(e.yrel > 0 ? -1 : 1);   // (2.7 the wheel: up the previous gun, down the next)

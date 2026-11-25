@@ -279,14 +279,15 @@ static void shdPlanBot(Fighter& f) {
 }
 // 2.9 (botThink) each bot's cover, by fighter id
 static const bool BOT_COVER = false;   // 2.7: showdown bots do not use cover yet (one could step in and out of it for ever without a shot); to come back, tested on its own
+static void q3Reset();
 static struct BotCov { V3 c, pk; float t = 0, look = 0; int mode = 0, dry = 0; bool healing = false; } bcov[NSLOT];
 static float botCoverT = 0; static int botHealRuns = 0;   // (test metrics)
 static bool showdownStart(int racePlace) {   // called as you cross the line. The top five fight; finish lower and you watch them
-    for (auto& b : bcov) b = BotCov(); botCoverT = 0; botHealRuns = 0;
+    for (auto& b : bcov) b = BotCov(); botCoverT = 0; botHealRuns = 0; q3Reset();
     bool watch = racePlace > NFIGHT;
     shdRoadT = shdOffT = 0; showdownOn = true; shdCut = true; shdPhase = SH_DRIVE; shdT = 0; shdRing = shdRingTgt = SH_RING0; shdWinner = -1; shdOverT = 0; shdRacePlace = racePlace; shdResult = false; wrongT = 0;
     shdPickSite(sdSite >= 0 ? sdSite : -1.0f);
-    shdBuildField(); cfBuild();
+    shdBuildField(); cfBuild(); nav::build(shdSite);
     int order[NAI]; for (int k = 0; k < NAI; k++) order[k] = k;   // the four best of the others come too; the rest of the field has gone home
     std::sort(order, order + NAI, [](int a, int b) { bool fa = ai[a].finishT >= 0, fb = ai[b].finishT >= 0; return fa != fb ? fa : fa ? ai[a].finishT < ai[b].finishT : ai[a].progress > ai[b].progress; });
     for (int k = watch ? NFIGHT : NFIGHT - 1; k < NAI; k++) { ai[order[k]].dead = true; ai[order[k]].deadT = 1e9f; }
@@ -345,12 +346,64 @@ static bool botCoverAt(const Fighter& f, V3 eye, BotCov& bc) {
     }
     return false;
 }
+// ---- the showdown bots' fighting, after Quake III Arena's bots (code/game/ai_dmq3.c and ai_dmnet.c, (c) 1999-2005
+// Id Software, GPL v2 or later; adapted here to this game's fighters, guns and metres: see CREDITS.md) ----
+// Each bot has a character, as Quake's bots have theirs: how well it fights, how much it jumps and crouches in a
+// fight, how steadily it holds the trigger, how fast it reacts. Fixed per fighter slot, so every game agrees.
+struct Q3Bot { float skill = 0.7f, jumper = 0.1f, croucher = 0.1f, throttle = 0.9f, react = 0.4f;
+               V3 lastSeen; float sightT = -99, visT = -99, strafeAcc = 0, crouchUntil = -99, jumpUntil = -99, waitUntil = -99, shootUntil = -99, backUntil = -99; int seenWho = -1; bool set = false; };
+static Q3Bot q3bots[NSLOT];
+static void q3Reset() { for (auto& b : q3bots) b = Q3Bot(); }
+static Q3Bot& q3bot(const Fighter& f) {
+    Q3Bot& q = q3bots[f.id];
+    if (!q.set) { q.set = true; auto r = [&](unsigned k) { return wfx::R01((uint32_t)(f.car + 7), (uint32_t)f.id, k, 0x51u); };
+        q.skill = 0.55f + 0.4f * r(1); q.jumper = 0.02f + 0.10f * r(2); q.croucher = 0.02f + 0.12f * r(3); q.throttle = 0.75f + 0.2f * r(4); q.react = 0.25f + 0.45f * (1 - q.skill) + 0.1f * r(5); }
+    return q;
+}
+// BotAggression: how much it wants the fight, 0..100, from its health, armour and best gun (Quake's numbers, scaled to this game's health and guns)
+static float q3Aggression(const Fighter& f) {
+    if (f.hp < 35) return 0; if (f.hp < 55 && f.armour < 20) return 0;
+    switch (bestGun(f)) { case G_RIFLE: return 95; case G_SMG: return 85; case G_LAUNCHER: return 80; case G_SHOTGUN: return 60; default: return f.hp > 80 ? 55.0f : 40.0f; }   // (a pistol: up for it only while whole)
+}
+// BotAttackMove: circle-strafe at the range the gun likes, changing direction now and then (more unpredictably the
+// better the bot), a step back at random, sometimes a jump or a crouch. A strafe that would run into something, or out
+// of the ring, flips. Quake thinks ten times a second: the chances are scaled to this step.
+static V3 q3AttackMove(Fighter& f, Q3Bot& q, int tg, float dist, FootIn& in, float dt) {
+    static const float IDEAL[NGUNS] = { 1.0f, 14, 24, 11, 6, 20 }; float k = dt * 10.0f, attackDist = IDEAL[f.gun], range = f.gun == G_FISTS ? 0.3f : 3.0f;
+    V3 fw(fighters[tg].pos.x - f.pos.x, 0, fighters[tg].pos.z - f.pos.z); float L = len(fw); fw = L > 0.01f ? fw * (1 / L) : yawDir(f.yaw); V3 back = fw * -1.0f;
+    if (q.crouchUntil < T - 1 && f.gun != G_FISTS) {   // walk, crouch or jump
+        if (grng.f() < q.jumper * k) { if (q.jumpUntil < T) { in.jump = true; q.jumpUntil = T + 1; } }
+        else if (grng.f() < q.croucher * k) q.crouchUntil = T + q.croucher * 5;
+    }
+    if (q.crouchUntil > T) in.crouch = true;
+    if (q.skill <= 0.4f) return dist > attackDist + range ? fw : dist < attackDist - range ? back : V3();   // a poor fighter just walks to or from them
+    q.strafeAcc += dt; float change = 0.4f + (1 - q.skill) * 0.2f + (q.skill > 0.7f ? grng.r(-0.2f, 0.2f) : 0.0f);
+    if (q.strafeAcc > change && grng.f() < 0.065f * k) { f.strafe = -f.strafe; q.strafeAcc = 0; }
+    if (grng.f() < 0.1f * k) q.backUntil = T + 0.15f;
+    for (int i = 0; i < 2; i++) {
+        V3 side = V3(fw.z, 0, -fw.x) * f.strafe, mv = side;
+        if (q.backUntil > T) mv = mv + back; else if (dist > attackDist + range) mv = mv + fw; else if (dist < attackDist - range) mv = mv + back;
+        float ml = len(mv); if (ml > 0.01f) mv = mv * (1 / ml); V3 to = f.pos + mv * 1.6f;
+        bool can = flatDist(to, shdSite) < shdRingTgt - 2.5f && (nav::ok ? nav::clearWalk(f.pos, to) : ffReach(to));
+        if (can) return mv * (f.gun == G_FISTS && dist < 1.6f ? 0.2f : 1.0f);
+        f.strafe = -f.strafe; q.strafeAcc = 0;   // no room that way: the other
+    }
+    return dist > attackDist + range ? fw : V3();
+}
+// BotCheckAttack: not before its reaction time has passed since it first saw them, and the trigger is held in spells
+// (the fire-throttle characteristic), not for ever
+static bool q3CheckAttack(const Fighter& f, Q3Bot& q) {
+    if (T - q.sightT < q.react) return false; if (f.swapT > 0) return false; if (q.waitUntil > T) return false;
+    if (q.shootUntil < T) { if (grng.f() > q.throttle) { q.waitUntil = T + (1 - q.throttle) * 2.0f; q.shootUntil = -99; return false; } q.shootUntil = T + 0.6f + q.throttle; }
+    return true;
+}
+static int botStuck = 0;   // (tests) times a bot walked into something and had to go round
 static FootIn botThink(Fighter& f, float dt) {
     FootIn in; if (!showdownOn || shdPhase == SH_OVER) return in;
     bool fight = shdPhase == SH_FIGHT; V3 eye = f.pos + V3(0, 1.4f, 0);
     f.strafeT -= dt; if (f.strafeT <= 0) { f.strafe = -f.strafe; f.strafeT = grng.r(0.9f, 2.4f); }
     f.reactT = std::max(0.0f, f.reactT - dt); f.burstT += dt; f.sideT = std::max(0.0f, f.sideT - dt);
-    f.stuckT += dt; if (f.stuckT > 0.5f) { if (f.wantMove && flatDist(f.pos, f.lastPos) < 0.3f) { f.strafe = -f.strafe; f.sideT = 0.8f; } f.lastPos = f.pos; f.stuckT = 0; }   // walked into something: go round
+    f.stuckT += dt; if (f.stuckT > 0.5f) { if (f.wantMove && flatDist(f.pos, f.lastPos) < 0.3f) { f.strafe = -f.strafe; f.sideT = 0.8f; botStuck++; } f.lastPos = f.pos; f.stuckT = 0; }   // walked into something: go round
     // who to fight: whoever is shooting at me, else the nearest
     int tg = -1; float td = 1e9f;
     if (fight) {
@@ -361,7 +414,7 @@ static FootIn botThink(Fighter& f, float dt) {
             if (sc < td) { td = sc; tg = i; }
         }
     }
-    if (tg != f.lastTgt) { f.reactT = BOT_REACT; f.lastTgt = tg; }
+    f.lastTgt = tg;
     f.target = tg; bool see = false; if (tg >= 0) { td = flatDist(f.pos, fighters[tg].pos); see = canSee(eye, tgtPos(tg), true); }
     { int want = bestGun(f); if (want == G_LAUNCHER && tg >= 0 && td < (f.gun == G_LAUNCHER ? 11.0f : 13.0f)) { want = baseGun(); for (int g = G_SHOTGUN; g > G_PISTOL; g--) if (f.ammo[g] > 0) { want = g; break; } }   // not at their own feet (with a little give, so it does not flick between them)
       if (want != f.gun && f.swapT <= 0) selectGun(f, want); }   // (2.7: a swap takes them as long as it takes you)
@@ -369,43 +422,35 @@ static FootIn botThink(Fighter& f, float dt) {
     // the pick-up most worth the run
     int bd = -1; float bv = 0;
     for (size_t i = 0; i < drops.size(); i++) { float v = dropValue(f, drops[i]); if (v <= 0 || flatDist(drops[i].p, shdSite) > shdRing - 2 || !ffReach(drops[i].p)) continue; float sc = v * (fight ? 14.0f : 40.0f) - flatDist(f.pos, drops[i].p); if (sc > bv) { bv = sc; bd = (int)i; } }
-    V3 mv; float ringD = flatDist(f.pos, shdSite);
-    auto toward = [&](V3 q) { V3 d(q.x - f.pos.x, 0, q.z - f.pos.z); float L = len(d); return L > 0.01f ? d * (1 / L) : V3(); };
+    V3 mv; float ringD = flatDist(f.pos, shdSite); Q3Bot& q = q3bot(f);
+    auto toward = [&](V3 p) { V3 d(p.x - f.pos.x, 0, p.z - f.pos.z); float L = len(d); return L > 0.01f ? d * (1 / L) : V3(); };
+    auto goTo = [&](V3 p) { V3 d; return nav::way(f.id, f.pos, p, d) ? d : toward(p); };   // round whatever is in the way (nav.h); straight at it if the mesh has no answer
     bool closing = shdRingTgt < shdRing - 0.4f;
-    if (ringD > shdRing - 4 || (closing && ringD > shdRingTgt + 1)) { if (!ffWay(f.pos, mv)) mv = toward(shdSite); in.sprint = ringD > shdRing - 1; }          // the ring comes first: the way round what blocks a runner
-    else if (bd >= 0 && (!fight || !see || bv > 12)) { mv = toward(drops[bd].p); in.sprint = !fight || td > 16;
-        bool heal = fight && drops[bd].kind == D_MED && f.hp < 35; if (heal && !bcov[f.id].healing) botHealRuns++; bcov[f.id].healing = heal; bcov[f.id].mode = 0; }
-    else if (BOT_COVER && tg >= 0 && fight && (see || bcov[f.id].mode) && td > 9 && f.gun != G_FISTS && f.gun != G_SHOTGUN && (bcov[f.id].mode || (bcov[f.id].look -= dt) <= 0) && [&] {
-            BotCov& bc = bcov[f.id]; bc.healing = false; V3 te = fighters[tg].pos + V3(0, 1.5f, 0); bool low = f.hp < 35;
-            if (bc.mode == 0) { bc.look = grng.r(1.2f, 2.2f); if (!botCoverAt(f, te, bc)) return false; bc.mode = 1; bc.t = low ? grng.r(1.8f, 2.8f) : grng.r(0.6f, 1.2f); }
-            V3 side = norm(V3(te.z - f.pos.z, 0, -(te.x - f.pos.x)));
-            if (flatDist(f.pos, bc.c) > 11 || flatDist(bc.c, shdSite) > shdRingTgt - 2) { bc.mode = 0; return false; }   // (it has been pushed off, or the ring has come in)
-            if (bc.mode == 1) {   // into cover; there, a breath (seen there anyway: it looks for another)
-                float dc = flatDist(f.pos, bc.c); mv = dc > 0.4f ? toward(bc.c) : V3();
-                if (dc < 0.7f) { if (canSee(f.pos + V3(0, 1.2f, 0), te, true)) { bc.mode = 0; bc.look = 0; return false; } bc.t -= dt; botCoverT += dt; }
-                if (bc.t <= 0) { bc.mode = 2; bc.t = grng.r(1.2f, 2.0f); }
-            } else {   // out to the side, strafing across the gap while it fires
-                mv = (flatDist(f.pos, bc.pk) > 0.5f ? toward(bc.pk) : V3()) + side * (f.strafe * 0.6f); bc.t -= dt;
-                if (bc.t <= 0) {   // back in. 2.7 fix: two turns out without a shot (no clear line from there after all): give the cover up and go at them
-                    if (f.sinceShot > 2.6f) bc.dry++; else bc.dry = 0;
-                    if (bc.dry >= 2) { bc.dry = 0; bc.mode = 0; bc.look = 5.0f; return false; }
-                    bc.mode = 1; bc.t = low ? grng.r(1.8f, 2.8f) : grng.r(0.6f, 1.2f); }
-            }
-            return true; }()) {}
-    else if (tg >= 0) {   // keep the range this gun likes, and never stand still
-        bcov[f.id].mode = 0; bcov[f.id].healing = false;
-        static const float IDEAL[NGUNS] = { 1.0f, 14, 24, 11, 6, 20 }; float ideal = IDEAL[f.gun]; V3 to = toward(fighters[tg].pos), side(to.z, 0, -to.x);
-        mv = to * (!see ? 1.0f : td > ideal + (f.gun == G_FISTS ? 0.3f : 2.0f) ? 1.0f : td < ideal - 2 ? -0.8f : 0.0f) + side * (f.strafe * (f.gun == G_FISTS ? 0.15f : see ? 0.8f : 0.5f)); in.sprint = td > ideal + 14;
-    } else if (!fight) {  // armed and waiting: take a position off to one side of the line
-        V3 post = shdSite + yawDir(f.id * 2.1f + 0.7f) * 17.0f; if (flatDist(f.pos, post) > 2.5f) mv = toward(post);
-    }
+    if (tg >= 0 && see) { if (T - q.visT > 1.0f) q.sightT = T; q.visT = T; q.lastSeen = fighters[tg].pos; q.seenWho = tg; }   // (first sight starts the reaction time)
+    if (tg != q.seenWho) q.visT = -99;
+    float aggr = q3Aggression(f); bool heal = false;
+    // the tree: the first of these that applies is what the bot does this step (after Quake III's ai_dmnet.c nodes)
+    bt::selector(
+        [&] { return bt::when(ringD > shdRing - 4 || (closing && ringD > shdRingTgt + 1), [&] {   // the ring comes first: the way round what blocks a runner
+            if (!ffWay(f.pos, mv)) mv = goTo(shdSite); in.sprint = ringD > shdRing - 1; return bt::OK; }); },
+        [&] { return bt::when(bd >= 0 && !fight, [&] { mv = goTo(drops[bd].p); in.sprint = true; return bt::OK; }); },   // before the fight: arm yourself
+        [&] { return bt::when(bd >= 0 && tg >= 0 && aggr < 50, [&] {   // Battle_Retreat: not feeling good (hurt, or only a pistol): go for what would help, shooting on the way if they are in sight
+            mv = goTo(drops[bd].p); in.sprint = !see || td > 16; heal = drops[bd].kind == D_MED && f.hp < 35; return bt::OK; }); },
+        [&] { return bt::when(bd >= 0 && (tg < 0 || (see && bv > 12 && flatDist(f.pos, drops[bd].p) < 12) || (!see && T - q.visT > 2)), [&] {   // Battle_NBG: something worth having close by; or nobody about
+            mv = goTo(drops[bd].p); in.sprint = tg < 0 || td > 16; return bt::OK; }); },
+        [&] { return bt::when(tg >= 0 && see, [&] { mv = q3AttackMove(f, q, tg, td, in, dt); return bt::OK; }); },   // Battle_Fight
+        [&] { return bt::when(tg >= 0, [&] {   // Battle_Chase: to where they were last seen; after that, to wherever they are (so every fight ends)
+            V3 to = T - q.visT < 10 && flatDist(f.pos, q.lastSeen) > 1.5f ? q.lastSeen : fighters[tg].pos; mv = goTo(to); in.sprint = td > 20; return bt::OK; }); },
+        [&] { return bt::when(!fight, [&] {   // armed and waiting: take a position off to one side of the line
+            V3 post = shdSite + yawDir(f.id * 2.1f + 0.7f) * 17.0f; if (flatDist(f.pos, post) > 2.5f) mv = goTo(post); return bt::OK; }); });
+    if (heal && !bcov[f.id].healing) botHealRuns++; bcov[f.id].healing = heal;
     if (f.sideT > 0) mv = mv + V3(mv.z, 0, -mv.x) * (f.strafe * 1.3f);
     if (len(mv) > 0.1f && ffReach(f.pos)) {   // never a step to somewhere with no way back up into the ring (a drop off a ledge, a pocket below a wall)
         V3 u = mv * (1 / len(mv)), w;
         if (!ffReach(f.pos + u * 2.5f) || !ffReach(f.pos + u * 1.2f)) { if (ffWay(f.pos, w)) mv = w; else mv = V3(); }
     }
     float L = len(mv); f.wantMove = L > 0.1f; if (L > 1) mv = mv * (1 / L); in.mx = mv.x; in.mz = mv.z;
-    if (fight && tg >= 0 && see && td < GUNS[f.gun].range * 0.9f && f.reactT <= 0) in.fire = f.gun == G_SMG ? fmodf(f.burstT, 1.2f) < 0.7f : true;
+    if (fight && tg >= 0 && see && td < GUNS[f.gun].range * 0.9f && q3CheckAttack(f, q)) in.fire = f.gun == G_SMG ? fmodf(f.burstT, 1.2f) < 0.7f : true;
     if (f.hurtT > 0 && !f.flinched) { f.flinched = true; if (f.rollCD <= 0 && grng.f() < 0.4f) { in.roll = true; if (L < 0.1f) { in.mx = cosf(f.yaw) * f.strafe; in.mz = -sinf(f.yaw) * f.strafe; } } }   // hit: sometimes dive out of the way
     if (f.hurtT <= 0) f.flinched = false;
     in.jump = f.sideT > 0.74f;   // 2.8 (walked into something: hop it, or climb it if it is a low wall or a car)
@@ -490,6 +535,7 @@ static void stepShowdown(float dt) {
         if (all || shdT > SH_DRIVE_MAX) {   // everyone is in (or has had long enough): out of the cars, and the countdown starts
             shdDriveTook = shdT; shdLate = 0; for (int i = 0; i < NFIGHT; i++) if (!fighters[i].arrived) shdLate++;
             for (int i = 0; i < NFIGHT; i++) shdOut(i);
+            nav::build(shdSite, true);   // (the cars are parked: they are in the way on foot now)
             shdPhase = SH_PREP; shdT = 0; shdPrepAt = T; say("ARM YOURSELF  -  20 SECONDS", SAY_INFO, 2.5f); tone(520, 0.2f, 0.5f, 2);
         }
     } else if (shdPhase == SH_PREP) {

@@ -143,7 +143,7 @@ static void netShdFrame(float dt) {
     // the stage is the server's
     ShdPhase want = m.stage == net::SD_DRIVE ? SH_DRIVE : m.stage == net::SD_PREP ? SH_PREP : m.stage == net::SD_LIVE ? SH_FIGHT : SH_OVER; float was = shdT;
     if (want != shdPhase) {
-        if (want == SH_PREP) { shdPrepAt = T; for (int i = 0; i < NFIGHT; i++) if (netLocalFighter(i)) shdOut(i); say("ARM YOURSELF  -  20 SECONDS", SAY_INFO, 2.5f); tone(520, 0.2f, 0.5f, 2); }   // all in: anyone still in a car is out of it now
+        if (want == SH_PREP) { nav::build(shdSite, true); shdPrepAt = T; for (int i = 0; i < NFIGHT; i++) if (netLocalFighter(i)) shdOut(i); say("ARM YOURSELF  -  20 SECONDS", SAY_INFO, 2.5f); tone(520, 0.2f, 0.5f, 2); }   // all in: anyone still in a car is out of it now
         if (want == SH_FIGHT) { for (int i = 0; i < NFIGHT; i++) if (netLocalFighter(i)) shdOut(i); say("FIGHT!", SAY_WARN, 1.6f); tone(880, 0.6f, 0.6f, 2); }
         if (want == SH_OVER) {
             shdWinner = m.winner < net::SD_FIGHT ? netLocal[m.winner] : -1;

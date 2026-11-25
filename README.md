@@ -92,6 +92,19 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.8
+
+- **Showdown bots find their way.** The game now builds a walking map of the ring with Recast & Detour, and the
+  bots use it to go round buildings, walls and parked cars instead of walking into them.
+- **Showdown bots fight like Quake III's.** Their fighting is adapted from the Quake III Arena bot code: they
+  circle-strafe at the range their gun likes, jump and crouch in a fight, chase to where they last saw you, and
+  back off for a medkit or a better gun when hurt or under-armed. Each has its own character (skill, reaction
+  time, how much it jumps and crouches, how it holds the trigger).
+- **You can circle-strafe.** With the mouse or a pad's right stick to look, sideways is a pure sidestep and the
+  racer faces where you look. (With keys or a touch stick alone, the view still swings round as you sidestep.)
+- A small behaviour tree (`src/bt.h`) now lays out what a bot does each step.
+- The game is free software under the GPL v3 or later; see [CREDITS.md](CREDITS.md) for what it is built on.
+
 ## What's new in 2.7.2
 
 - **Rampage bots take the quickest way to the ring, not the shortest.** The road is fast, paved backstreets are
@@ -753,5 +766,5 @@ Fog City Fury is free software under the **GNU General Public License, version 3
 You may copy, change and share it, as long as what you share stays under the same licence with its source.
 
 - "Dolphin" by **Tarnyloo** (Blend Swap #83681), CC-BY 3.0: the dolphins. See [models/dolphin/README.md](models/dolphin/README.md).
-- SDL 2 (zlib) and xsdk (MIT) carry the PC, Android and Xbox 360 builds.
+- SDL 2 (zlib) and xsdk (MIT) carry the PC, Android and Xbox 360 builds. Recast & Detour (zlib) finds the way on foot; the showdown bots' fighting is adapted from Quake III Arena's bots (Id Software, GPL).
 - Everything the game is built on, and the rules for bringing in other projects' code, are in [CREDITS.md](CREDITS.md).
