@@ -1933,8 +1933,10 @@ def showdown_ring_burns_and_closes():
 @test
 def blood_and_the_grenade_launcher():
     t = prep_at()
-    d = sim(*SHOW, "--hold", "F", "--faceai", "--gun", 3, seconds=t + 20 + 5)
-    check(d["footHits"] > 0 and d["splats"] > 0, "bullets draw blood: it is left on the ground", (d["footHits"], d["splats"]))
+    # (a player holding the trigger from where they got out hits only whoever strafes into their sights: a handful of
+    # hits a round, and none in some rounds. So three rounds, and it is enough that their bullets land in one of them)
+    runs = [sim(*SHOW, "--hold", "F", "--faceai", "--gun", 3, "--seed", sd, seconds=t + 20 + 5) for sd in (1, 2, 3)]
+    check(sum(d["footHits"] for d in runs) > 0 and all(d["splats"] > 0 for d in runs), "bullets draw blood: it is left on the ground", [(d["footHits"], d["splats"]) for d in runs])
     d = sim(*SHOW, "--footai", "--gun", 5, seconds=t + 20 + 12)
     fs = fighters(d)
     check(d["gibs"] >= 1 and sum(1 for f in fs if not f["alive"]) >= d["gibs"], "a grenade landing beside someone kills them outright and leaves pieces", (d["gibs"], d["fighters"]))
