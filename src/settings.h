@@ -64,6 +64,7 @@ static State viewState() { return state == OPTS ? optReturn : state; }        //
 // which buttons the current screen needs, in HUD units (the screen is uiW x 720). Round buttons where thumbs rest,
 // pills for words; spaced so a thumb never lands on two; only what the moment needs (ROCKET only with rockets on board);
 // and clear of the HUD's panels (speedometer right of middle, position top left, minimap left of middle)
+static bool roamAfterOk();   // (showdown.h)
 static bool haveGun(const Fighter& f, int g); static bool usesMag(const Fighter& f);   // (foot.h)
 static bool touchHasAmmo(); static bool edTesting(); static int edToolNow(); static bool selIsCustom();
 static void touchLayout() {
@@ -140,7 +141,7 @@ static void touchLayout() {
         if (edTesting()) pKey("EDITOR", W / 2 + 120, 560, 200, SDLK_F4);
 #endif
         break;
-    case RESULTS: pKey("OK", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey("LEAVE", W - 490, H - 110, 220, SDLK_ESCAPE); break;
+    case RESULTS: pKey(!champOn && roamAfterOk() ? "ROAM" : "OK", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey(!champOn && roamAfterOk() ? "MENU" : "LEAVE", W - 490, H - 110, 220, SDLK_ESCAPE); break;   // (2.9.3 ROAM: the race's world carries on)
     case NETLOBBY:
         if (voteOpen() && !voteMine()) { pKey("ACCEPT", W - 250, H - 110, 220, SDLK_y, TS_GO, 84); pKey("NO", W - 490, H - 110, 220, SDLK_n, TS_STOP, 84); break; }
         if (shareOpen) { dpad(true, false); okBack("SHARE", "CLOSE", SDLK_RETURN, SDLK_t); break; }

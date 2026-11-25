@@ -120,6 +120,8 @@ static void voteSpline(const TrackDef& d, std::vector<V3>& out, int per) {
         for (int k = 0; k < per; k++) { float t = k / (float)per, t2 = t * t, t3 = t2 * t; out.push_back((p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5f); } }
 }
 
+static bool roamAfterOk();
+static const char* resultsPrompt() { return !champOn && roamAfterOk() ? P("ENTER: ROAM ON     ESC: MENU", "{A} ROAM ON     {B} MENU") : P("PRESS ENTER", "PRESS {A}"); }   // (2.9.3)
 static void drawHUD() {
     float Wd = ui.W, Hd = ui.H; char b[160]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f);
     if (state == OPTS) {
@@ -473,7 +475,7 @@ static void drawHUD() {
             float y = 226 + 34 * nl; fmtTime(t, raceT); snprintf(b, sizeof b, "TOTAL   %s", t); ui.text(Wd / 2, y, 4.5f, yel, b, 1);
             if (trialNewRecord) ui.text(Wd / 2, y + 56, 3.6f, V3(0.4f, 1, 0.5f), "NEW RECORD!", 1);
             else if (trialRecord > 0) { fmtTime(t, trialRecord); char d2[32]; snprintf(d2, sizeof d2, "+%.2f", raceT - trialRecord); snprintf(b, sizeof b, "RECORD  %s   %s", t, d2); ui.text(Wd / 2, y + 56, 3, white, b, 1); }
-            if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, y + 110, 3.5f, white, P("PRESS ENTER", "PRESS {A}"), 1);
+            if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, y + 110, 3.5f, white, resultsPrompt(), 1);
         } else if (state == RESULTS) {
             ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 330, 150, 660, 400, 0.75f); if (champOn) champBar();
             static const char* suf[12] = { "", "ST", "ND", "RD", "TH", "TH", "TH", "TH", "TH", "TH", "TH", "TH" };
@@ -483,7 +485,7 @@ static void drawHUD() {
             snprintf(b, sizeof b, "KEYS FOUND  %d/%d", keyCount(W.id), NKEYS); ui.text(Wd / 2, 390, 4, yel, b, 1);
             if (finalPlace == 1 && !timeUp) ui.text(Wd / 2, 440, 4, V3(0.4f, 1, 0.5f), "WINNER!", 1);
             if (rampage && !timeUp && finalPlace > NFIGHT) ui.text(Wd / 2, 440, 3, V3(1, 0.5f, 0.3f), "ONLY THE TOP 5 GO TO THE SHOWDOWN", 1);
-            if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 500, 3.5f, white, P("PRESS ENTER", "PRESS {A}"), 1);
+            if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 500, 3.5f, white, resultsPrompt(), 1);
         }
     }
 }

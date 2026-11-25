@@ -2415,6 +2415,22 @@ def the_racers_cars_take_damage_and_get_knocked_off():
 
 
 @test
+def roam_on_after_the_race():
+    """2.9.3: from the results, ENTER (A, the ROAM button) carries the race's world on as free roam from where the car
+    stopped: the racers go, the mini Wardens and the town's pick-ups come out. ESC goes back to the menus as before.
+    After a rampage's showdown too."""
+    r = sim("--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", "--press", "85:RETURN", seconds=130)
+    check(r["state"] == 3 and r["explore"] == 1 and r["roamAfters"] == 1, "ENTER: roaming the track", (r["state"], r["explore"], r["roamAfters"]))
+    check(r["miniJets"] > 0 and r["drops"] > 10, "mini Wardens come, and the pick-ups are about the town", (r["miniJets"], r["drops"]))
+    m = sim("--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", "--press", "85:ESCAPE", seconds=90)
+    check(m["state"] != 3 and m["roamAfters"] == 0, "ESC: back to the menus", (m["state"], m["roamAfters"]))
+    s = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--footai", "--press", "125:RETURN", seconds=140)
+    check(s["state"] == 3 and s["explore"] == 1 and s["onFoot"] == 0, "after a rampage's showdown: roaming, back in the car", (s["state"], s["explore"], s["onFoot"]))
+    t = sim("--touch", "--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", seconds=85)
+    check("ROAM" in t["touchBtns"] and "MENU" in t["touchBtns"], "on a touch screen: ROAM and MENU", t["touchBtns"])
+
+
+@test
 def showdown_always_ends_with_one_winner():
     off, cov, heal, wall = [], [], [], []
     for track in range(NTRACKS):

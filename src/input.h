@@ -3,6 +3,23 @@
 // above its #include there, and what follows the #include can use what is declared here.
 #pragma once
 // ------------------------------------------------------------------ menus / input events
+// 2.9.3 roam after the race: from the results (ENTER / A / OK) the race's own world carries on as free roam, from where your
+// car stopped: the racers go home, the mini Wardens and the town's pick-ups come out, keys are there to find. The pause
+// menu's quit goes back to the menus as ever. Not after an online race, a championship round, the editors' test drives
+static int roamAfters = 0;   // (tests) how many times a race went on into roam
+static bool roamAfterOk() {
+#ifdef FCF_EDITOR
+    if (ed::testing || evx::testing) return false;
+#endif
+    return !netRace && !nc.on && !champOn && !secret::on;
+}
+static void roamAfter() {
+    V3 at = player.pos; float yaw = player.yaw;
+    footReset(); exploreMode = true; rampage = false; trialMode = false; raceLaps = 99; countdown = 0; introT = 0; timeUp = false; place = 1; wrongT = 0;
+    if (player.dead) respawn(player); else { player.pos = at; player.yaw = yaw; } player.vel = V3(); player.vf = 0; player.hp = 100; player.shield = 0;
+    rockets.clear(); miniReset(); sayClear(); state = RACE; roamAfters++;
+    char b[64]; snprintf(b, sizeof b, "ROAM  -  %s", W.def->name); say(b, SAY_INFO, 3.5f); say("FIND THE KEYS  -  WATCH THE ROOFS", SAY_INFO, 3.0f);
+}
 static void onKey(SDL_Keycode k, int sc = 0) {
     auto blip = [] { tone(700, 0.08f, 0.3f, 2); }; auto ok = [] { tone(520, 0.12f, 0.4f, 2); tone(1040, 0.2f, 0.4f, 2, 0, 0.08f); };
     int np = chromeUnlocked ? NPAINT : NPAINT - 1;
@@ -101,6 +118,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (netRace) {
             if (k == SDLK_ESCAPE) netLeave("");
         } else if ((k == SDLK_RETURN || k == SDLK_ESCAPE) && resultsT > 1) {
+            if (k == SDLK_RETURN && !champOn && roamAfterOk()) { ok(); roamAfter(); return; }   // 2.9.3 ENTER: the race's world carries on as roam; ESC: the menus
             if (champOn) champAdvance(k == SDLK_ESCAPE);
             else if (secret::on) {
                 secret::comeBack();
@@ -238,7 +256,7 @@ static void printJSON(FILE* o) {
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
     fprintf(o,
             "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
-            "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"mechT\":%.2f,\"navOk\":%d,\"navPolys\":%d,\"navMs\":%.0f,\"navQueries\":%d,\"navFails\":%d,\"strafeOnly\":%d,\"footYaw\":%.3f,\"meYaw\":%.3f,\"aiDmgTaken\":%.0f,\"aiDmgWrecks\":%d,\"aiCrashes\":%d,\"aiOffT\":%.1f,\"aiPasses\":%d,\"aiHeadErr\":%.4f,\"aiLatMax\":%.2f,\"botWallT\":%.1f,\"botCarT\":%.1f,\"botStuck\":%d,\"driveRoadT\":%.1f,\"driveOffT\":%.1f,\"driveTook\":%.2f,\"driveLate\":%d,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
+            "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"mechT\":%.2f,\"navOk\":%d,\"navPolys\":%d,\"navMs\":%.0f,\"navQueries\":%d,\"navFails\":%d,\"strafeOnly\":%d,\"footYaw\":%.3f,\"meYaw\":%.3f,\"roamAfters\":%d,\"explore\":%d,\"aiDmgTaken\":%.0f,\"aiDmgWrecks\":%d,\"aiCrashes\":%d,\"aiOffT\":%.1f,\"aiPasses\":%d,\"aiHeadErr\":%.4f,\"aiLatMax\":%.2f,\"botWallT\":%.1f,\"botCarT\":%.1f,\"botStuck\":%d,\"driveRoadT\":%.1f,\"driveOffT\":%.1f,\"driveTook\":%.2f,\"driveLate\":%d,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
             "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
             "\"bright\":%d,\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
             shdRingDeaths, mech::unit[0].at.x, mech::unit[0].at.y, mech::unit[0].at.z, mech::unit[0].yaw, mech::tris, mech::unit[0].gait,
@@ -250,7 +268,7 @@ static void printJSON(FILE* o) {
             tm.aiRocketsFired, tm.aiRocketHits, tm.rocketsAtMe, tm.bumps, tm.maxShove, tm.maxWob, onBrNow, loopNow, tm.maxWrongT, W.id, player.type,
             weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id],
             (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft, gibCount, (int)splats.size(), (int)shdOffRoad,
-            showdownOn || shdResult ? flatDist(avatarPos(), shdSite) : -1.0f, mechT, (int)nav::ok, nav::polys, nav::buildMs, nav::queries, nav::fails, (int)footStrafeOnly, footYaw, me.yaw, aiDmgTaken, aiDmgWrecks, aiCrashes, aiOffT, aiPasses, aiHeadErrN ? aiHeadErr / aiHeadErrN : 0.0, aiLatMax, botWallT, botCarT, botStuck, shdRoadT, shdOffT, shdDriveTook, shdLate, shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount,
+            showdownOn || shdResult ? flatDist(avatarPos(), shdSite) : -1.0f, mechT, (int)nav::ok, nav::polys, nav::buildMs, nav::queries, nav::fails, (int)footStrafeOnly, footYaw, me.yaw, roamAfters, (int)exploreMode, aiDmgTaken, aiDmgWrecks, aiCrashes, aiOffT, aiPasses, aiHeadErrN ? aiHeadErr / aiHeadErrN : 0.0, aiLatMax, botWallT, botCarT, botStuck, shdRoadT, shdOffT, shdDriveTook, shdLate, shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount,
             netSlot, (int)nc.hosts, netBotsMost, (int)shdSpectate, shdWatch, (int)shdPhase, shdAlive(), shdRing, me.place, shdWinner, (int)shdResult,
             dropsThere(), fStr.c_str(), me.gun, me.ammo[me.gun], me.hp, me.armour, me.stamina, (int)(me.rollT > 0), me.target, me.shots, me.hits,
             footPickups, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp, (int)me.on, me.pos.x,

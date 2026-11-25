@@ -92,6 +92,14 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.9.3
+
+- **Roam on after the race.** On the results screen, ENTER (A on a pad, ROAM on a touch screen) carries the race's
+  world on as free roam, from where your car stopped. The racers go home; the mini Wardens and the town's ammunition
+  and medkits come out, and the keys are there to find. ESC (B, MENU) goes back to the menus as before. After a
+  rampage's showdown too, back in your car. Not after an online race, a championship round or the editors' test
+  drives. Leave the roam from the pause menu.
+
 ## What's new in 2.9.2
 
 - **Bumping has consequences for the computer drivers too.** Their cars take damage the way yours does: hard knocks

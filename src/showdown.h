@@ -678,6 +678,8 @@ static void footFrame(float dt) {
         } }
 }
 // a new race (or a trip back to the menus): everyone back in their cars, pockets refilled
+static void footReset();
+static bool roamAfterOk();
 static void footReset() {
     for (auto& f : fighters) f = Fighter(); for (int i = 0; i < NSLOT; i++) { fighters[i].id = i; if (i >= NFIGHT) fighters[i].alive = false; }   // (the places past the five are for free roam's mini Wardens: out of it here)
     netShd = shdSpectate = carHidden = false; shdWatch = 0;
@@ -902,6 +904,7 @@ static void drawShdDriveHUD() {
     }
     ui.text(Wd / 2, 128, 2.6f, yel, "DRIVE TO THE RING", 1, 0.9f);
 }
+static const char* resultsPrompt();
 static void drawShowdownResults() {
     float Wd = ui.W, Hd = ui.H; char b[96], t[32]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), dim(0.6f, 0.62f, 0.68f);
     ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 360, 96, 720, 530, 0.78f); int pl = (int)clampf((float)me.place, 1, NFIGHT);
@@ -918,5 +921,5 @@ static void drawShowdownResults() {
     else { snprintf(b, sizeof b, "SHOTS %d   HITS %d   ACCURACY %d%%", me.shots, me.hits, me.shots ? std::min(100, me.hits * 100 / me.shots) : 0); ui.text(Wd / 2, 486, 2.6f, dim, b, 1); }
     snprintf(b, sizeof b, "KEYS FOUND  %d/%d", totalKeys(), NKEYS * NTRACKS_KEYS); ui.text(Wd / 2, 516, 2.6f, yel, b, 1);
     for (int g = G_PISTOL; g < NGUNS; g++) if (!gunUnlocked(g)) { int need = GUNS[g].keys - totalKeys(); snprintf(b, sizeof b, "%d MORE KEY%s AND THE %s IS YOURS TO USE", need, need == 1 ? "" : "S", GUNS[g].name); ui.text(Wd / 2, 544, 2.2f, dim, b, 1); break; }
-    if (!touchOn && fmodf(T, 1.0f) < 0.65f) ui.text(Wd / 2, 584, 3.2f, white, "PRESS ENTER", 1);
+    if (!touchOn && fmodf(T, 1.0f) < 0.65f) ui.text(Wd / 2, 584, 3.2f, white, resultsPrompt(), 1);
 }
