@@ -94,6 +94,16 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.4
+
+- **fcfedit's preview has a tape.** While previewing a race in the event editor: `F5` pauses, `F6` / `F7` go back and
+  on (5 s, `SHIFT` 1 s, a single step when paused), `F8` / `F9` play it from 0.1x to 4x, `F10` jumps to just before the
+  last event that went off, `HOME` to the start. A panel under the race clock marks each event on the tape and the race
+  time it went off at, so trigger lines and timings can be tuned without driving the lap again. Going back replays
+  the race exactly; drive during playback to take over. See [docs/FCFEDIT.md](docs/FCFEDIT.md#the-previews-tape).
+- Smoke, sparks and the camera's shake no longer draw on the race's dice, and cars start a race with nothing left
+  over from the last one, so a race run twice from the same start is the same race.
+
 ## What's new in 2.9.3
 
 - **Roam on after the race.** On the results screen, ENTER (A on a pad, ROAM on a touch screen) carries the race's

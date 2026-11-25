@@ -30,7 +30,8 @@ to change track. Your changes are saved first.
 3. **Drag the red ring onto a building.** The building is outlined in red and **COLLAPSE** changes to **YES, IT FALLS**.
    The rocket hitting the building brings it down, so you don't place a separate collapse. Leave the ring on open
    ground and the rocket just explodes there.
-4. **Press `P`** to preview the race. Cross the line on lap 1 and watch the tower fall. `F4` comes back to the editor.
+4. **Press `P`** to preview the race. Cross the line on lap 1 and watch the tower fall. `F4` comes back to the editor. Missed it? `F10` takes
+   you back to 3 seconds before it; `F8` slows it down (see [The preview's tape](#the-previews-tape)).
 5. **`CTRL+S`** (or the **SAVE** button) saves it.
 
 ![The misfire selected: its chain top left, its settings on the right](img/fcfedit-misfire.jpg)
@@ -118,6 +119,33 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 | SIZE | a dolphin's size; for mini Wardens, HOW MANY (1–4) |
 | THEN THEY | mini Wardens only: JETPACK DOWN to the road, or STAY UP AND SNIPE from the roof's edge (they shoot at you on foot) |
 
+## The preview's tape
+
+![The tape in a preview: time, speed, the last event and where each went off](img/fcfedit-tape.jpg)
+
+A preview (`P`) records itself as it runs. The panel under the race clock shows where you are, how fast it plays, and a
+tick on the bar for every event that has gone off (in its colour). **LAST** names the latest one and the race clock it
+went off at, on the race clock (the one the HUD shows, from the green light): that's the number to put in an ON TIME event, or to judge a trigger line by.
+
+| Key | Does |
+| --- | --- |
+| `F5` (or `PAUSE`) | pause / play |
+| `F6` | back 5 s (`SHIFT`: 1 s; paused: one step, 1/60 s) |
+| `F7` | on 5 s (`SHIFT`: 1 s; paused: one step) |
+| `F8` / `F9` | slower / faster: 0.1x, 0.25x, 0.5x, 1x, 2x, 4x |
+| `F10` | back to 3 s before the last event that went off |
+| `HOME` | back to the start |
+| `F4` | back to the editor |
+
+Going back plays your own driving again exactly as you drove it, so a misfire comes down on the same car every time.
+**Drive while it plays back** and you take over from there: the rest of the tape is dropped and a new run starts from
+that moment. Past the end of the tape, `F7` lets the car coast.
+
+To change an event, go back to the editor (`F4`), move it, and preview again: the tape starts fresh with each preview.
+
+Going back runs the race again from the start, silently, so on a long race a step back takes a moment (about a second
+for three minutes of racing). On foot the tape doesn't follow you: going back puts you in the car.
+
 ## Keys
 
 | Key / mouse | Does |
@@ -133,6 +161,7 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 | `DEL` | remove the selection (removing a step also removes the steps chained after it) |
 | `CTRL+Z` / `CTRL+S` | undo / save |
 | `P`, then `F4` | preview a race with the events as they are now, then come back |
+| `F5` `F6` `F7` `F8` `F9` `F10` `HOME` | in a preview: pause, back, on, slower, faster, before the last event, the start ([the tape](#the-previews-tape)) |
 | `TAB` | fly view: `W A S D` move, `Q E` down and up, right drag looks round, `SHIFT` fast |
 | `<` `>` (or `[` `]`, `PGUP` `PGDN`) | previous / next track |
 | `ALT` while dragging a red ring | don't snap it to a building |

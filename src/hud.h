@@ -488,8 +488,12 @@ static void drawHUD() {
             if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 500, 3.5f, white, resultsPrompt(), 1);
         }
     }
+#ifdef FCF_EDITOR
+    if (evx::tape::racing() && !touchOn) evx::tape::draw(Wd, Hd);   // fcfedit's preview: the tape
+#endif
 }
 
+static Rng camRng;   // the camera's shake: its own dice, so drawing a frame never changes the race's (fcfedit's preview tape replays it exactly)
 static void render(int fbw, int fbh) {
 #ifdef FCF_GFX_XSDK
     static int traceFrames = 0; traceDrawGroups = traceFrames++ == 0;
@@ -522,8 +526,8 @@ static void render(int fbw, int fbh) {
         }
         fov = 64 + clampf(sp / 75, 0, 1) * 22 + fovKick;
         float amp = shake * 0.25f + smooth(0.8f, 1.0f, sp / S.top) * 0.018f + (player.offroad && player.grounded ? clampf(sp / 40, 0, 1) * 0.03f : 0);
-        eye = camPos + V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1)) * amp + V3(0, camDip, 0); upv = norm(V3(0, 1, 0) + cs * camRoll); chase = true;
-        if (footView()) { footCamera(camPos, camTgt, upv, fov, dt); eye = camPos + V3(grng.r(-1, 1), grng.r(-1, 1), grng.r(-1, 1)) * (shake * 0.25f); }   // on foot: over the shoulder
+        eye = camPos + V3(camRng.r(-1, 1), camRng.r(-1, 1), camRng.r(-1, 1)) * amp + V3(0, camDip, 0); upv = norm(V3(0, 1, 0) + cs * camRoll); chase = true;
+        if (footView()) { footCamera(camPos, camTgt, upv, fov, dt); eye = camPos + V3(camRng.r(-1, 1), camRng.r(-1, 1), camRng.r(-1, 1)) * (shake * 0.25f); }   // on foot: over the shoulder
         if (introT > 0 && state == RACE) {   // fly-in: hold the view from straight above the grid, then sweep down to the usual camera
             float t = 1 - introT / INTRO_LEN, e = clampf((t - 0.22f) / 0.78f, 0, 1); e = e * e * (3 - 2 * e);
             V3 topTgt = player.pos + f * 17, topEye = topTgt + V3(0, 44, 0) - f * 0.6f;

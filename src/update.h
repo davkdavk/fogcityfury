@@ -34,6 +34,9 @@ static void update(float dt) {
     snd.musicDuck = state == PAUSED ? 0.35f : (state == RACE || state == RESULTS ? 0.85f : 1.0f);
     mus::want = (state == TITLE || state == CARSEL || state == OPTS || state == NETJOIN || state == NETLOBBY) ? 0 : showdownOn ? 5 : trackSong(state == TRACKSEL ? selTrack : W.id);   // each track has its own song, the showdown too; the menus keep the title song
     if ((state == PAUSED && !netRace) || (state == OPTS && optReturn == PAUSED)) return;   // an online race cannot be paused: the car coasts while the menu is up
+#ifdef FCF_EDITOR
+    evx::tape::stepBegins();   // (fcfedit's preview: a step on its tape)
+#endif
     Input in; bool go = true;
     if (state == RACE && introT > 0) introT = std::max(0.0f, introT - dt);
     if (state == RACE) { if (countdown > 0) { float c0 = countdown; countdown -= (introT > 0 && !netRace) ? 0 : dt;   // offline the countdown waits for the fly-in; online the server's clock runs on
@@ -76,6 +79,9 @@ static void update(float dt) {
             in.steer = 0;
             in.brake = 0;
         }
+#ifdef FCF_EDITOR
+        in = evx::tape::controls(in);   // (fcfedit's preview: played back from its tape, or recorded onto it)
+#endif
     } else if (state == TITLE) in = autoInput(player);
     if ((state == TITLE || (state == RACE && autoDrive && go)) && !player.dead && !me.on) { static float stuck = 0; stuck = fabsf(player.vf) < 3 ? stuck + dt : 0; if (stuck > 2) { respawn(player); stuck = 0; } }   // the autopilot cannot reverse
     else if (state == RESULTS) { in.brake = player.vf > 1 ? 0.6f : 0; resultsT += dt; if (simMode && champOn && !champDone && resultsT > 3) champAdvance(false); }   // (sims: the rounds go on by themselves)

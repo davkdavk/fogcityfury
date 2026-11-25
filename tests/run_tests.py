@@ -2408,8 +2408,9 @@ def the_racers_cars_take_damage_and_get_knocked_off():
     off = sum(sim("--track", 3, "--state", 3, "--auto", "--nobotguns", "--knock", "%d,12" % k, seconds=14)["aiOffT"] > 1 for k in range(9))
     nudge = sum(sim("--track", 3, "--state", 3, "--auto", "--nobotguns", "--knock", "%d,3" % k, seconds=14)["aiOffT"] for k in range(4))
     check(off >= 3 and nudge == 0, "a hard side knock puts them off the road (from the outside of the road); a nudge never", (off, nudge))
-    calm = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=150)
-    check(calm["aiOffT"] == 0 and calm["aiDmgWrecks"] == 0 and calm["wrecks"] == 0, "a clean race: nobody off the road, nobody wrecked", (calm["aiOffT"], calm["aiDmgWrecks"], calm["wrecks"]))
+    for seed in (1, 2, 3):   # (2.9.4: three races, not one: the cars do knock each other about, and 2.9.3's one race happened to be clean)
+        calm = sim("--seed", seed, "--track", 1, "--state", 3, "--auto", "--nobotguns", seconds=150)
+        check(calm["aiOffT"] < 25 and calm["aiDmgWrecks"] == 0 and calm["wrecks"] == 0, "a race without guns: off the road only briefly after a hard knock, nobody wrecked", (seed, calm["aiOffT"], calm["aiDmgWrecks"], calm["wrecks"]))
     m = sim("--track", 1, "--state", 3, "--mode", 4, "--auto", seconds=20)
     check(m["aiDmgTaken"] == 0, "not in MANIC", m["aiDmgTaken"])
 
@@ -2428,6 +2429,28 @@ def roam_on_after_the_race():
     check(s["state"] == 3 and s["explore"] == 1 and s["onFoot"] == 0, "after a rampage's showdown: roaming, back in the car", (s["state"], s["explore"], s["onFoot"]))
     t = sim("--touch", "--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", seconds=85)
     check("ROAM" in t["touchBtns"] and "MENU" in t["touchBtns"], "on a touch screen: ROAM and MENU", t["touchBtns"])
+
+
+@test
+def fcfedit_preview_rewinds_exactly():
+    """2.9.4 fcfedit's preview has a tape: pause, back, on and slow motion. Going back runs the race again from the
+    start to that moment, so it must come out the same: the car where it was, each event going off at the same step
+    (a mini Warden drop, a rocket at a building, a blast), on every stock track."""
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    ev = ("event minis -147 30 -93; set to -170 0 -110; set k 3; set on time 4; event rocket -200 10 -100; set on time 10; "
+          "set to -150 0 -90; set fells yes; event blast 0 0 0; set on time 20; preview")
+    def run(track, script, back, secs):
+        p = subprocess.run([BIN, "--sim", "--seconds", str(secs), "--auto", "--evedit", "--track", str(track), "--evscript", script, "--tapeback", back],
+                           cwd=tmp, capture_output=True, text=True, timeout=200)
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    for back in ("50:8", "50:30", "50:45"):
+        d = run(0, ev, back, 60)
+        check(d["tapeSeeks"] == 1 and d["tapeErr"] == 0, "back to %s s: the car exactly where it was" % back.split(":")[1], (d["tapeSeeks"], d["tapeErr"]))
+        check(d["tapeMarks"] == 3 and d["jetDrops"] == 3, "each event once on the tape, the drop again", (d["tapeMarks"], d["jetDrops"]))
+    for t in range(7):
+        d = run(t, "preview", "110:70", 120)
+        check(d["tapeErr"] == 0, "track %d: back from 110 s to 70 s, the same race" % t, d["tapeErr"])
 
 
 @test

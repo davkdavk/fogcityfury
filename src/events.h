@@ -209,8 +209,9 @@ static void trigger(int ev, int lap) {
     if ((int)roll >= e.chance) return;
     pend.push_back({ ev, raceT + e.delay });
 }
+static void (*onHappen)(int ev) = nullptr;   // (fcfedit's preview tape: marks when each event went off)
 static void happen(int ev) {
-    Event& e = evs[ev]; firedTotal++;
+    Event& e = evs[ev]; firedTotal++; if (onHappen) onHappen(ev);
     switch (e.kind) {
     case ROCKET: {
         V3 at = e.at; int u = -1, nu = mech::count();

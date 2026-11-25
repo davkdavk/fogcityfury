@@ -24,6 +24,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
     auto blip = [] { tone(700, 0.08f, 0.3f, 2); }; auto ok = [] { tone(520, 0.12f, 0.4f, 2); tone(1040, 0.2f, 0.4f, 2, 0, 0.08f); };
     int np = chromeUnlocked ? NPAINT : NPAINT - 1;
 #ifdef FCF_EDITOR
+    if (evx::testing && !netRace && evx::tape::key(k)) return;   // the preview's tape: pause, back, on, speed
     if (evx::testing && !netRace) { if (k == SDLK_F4 && (state == RACE || state == PAUSED || state == RESULTS)) { evx::resume(); return; } if (state != RACE && state != PAUSED && state != RESULTS) evx::testing = false; }
     if (state == EVEDIT) { evx::key(k); return; }
     if (ed::testing && !netRace) { if (k == SDLK_F4 && (state == RACE || state == PAUSED || state == RESULTS)) { ed::resume(); return; } if (state != RACE && state != PAUSED && state != RESULTS) ed::testing = false; }
@@ -232,6 +233,9 @@ static void printJSON(FILE* o) {
             [] { static std::string m; m.clear(); for (int i = 1; i < NFIGHT; i++) { char q[24]; snprintf(q, sizeof q, "%s%d/%d", i > 1 ? ";" : "", fighters[i].mag[fighters[i].gun], fighters[i].reloads); m += q; } return m.c_str(); }(), dr.c_str());
     }
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
+#ifdef FCF_EDITOR
+    fprintf(o, "\"tapeFrame\":%d,\"tapeLen\":%d,\"tapeSeeks\":%d,\"tapeMarks\":%d,\"tapeErr\":%.4f,", evx::tape::frame, (int)evx::tape::ins.size(), evx::tape::seeks, (int)evx::tape::marks.size(), evx::tape::cliErr);
+#endif
     fprintf(o, "\"fallen\":%d,\"lots\":%d,\"leaps\":%d,\"dolphinSplashes\":%d,\"dolphinRings\":%d,", fall::fallenTotal, (int)W.lots.size(), dolphin::leaps, dolphin::splashesIn, dolphin::ringsOut);
     fprintf(o, "\"podDolphins\":%d,\"dolphinsNow\":%d,\"podLeaps\":%d,\"swum\":%.0f,\"dolphinMinDepth\":%.2f,\"jetDrops\":%d,\"jetLanded\":%d,\"jetShots\":%d,\"wxNow\":%d,\"wxTurns\":%d,\"wxMix\":%.2f,\"sea\":%.2f,\"pods\":%d,\"drift\":%.0f,\"eventsFrom\":\"%s\",\"netEventFiles\":%d,",
             dolphin::poddies, (int)dolphin::dols.size(), dolphin::fromPod, dolphin::swum, dolphin::minDepth, jetdrop::drops, jetdrop::landed, jetdrop::shots, weather, director::turns, wxMixK, seaNow(), (int)director::pods.size(), director::drift, director::loadedFrom.c_str(), netEventFiles);
@@ -378,7 +382,11 @@ static void pressNamed(const std::string& n) {
     handleKey(n.size() == 1 ? (SDL_Keycode)tolower((unsigned char)n[0]) : SDL_SCANCODE_TO_KEYCODE(sc), sc);
 }
 struct HoldAt { float t, dur; int sc; bool on = false; }; static std::vector<HoldAt> holdAts;   // 2.8 --holdat T:KEY[:SECONDS] (tests): a key held down for a while (0.15 s if not said)
-static void stepFixed() { float d = 1 / 60.f; fixedT += d; for (auto& p : presses) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; pressNamed(p.name); }
+static void stepFixed() { float d = 1 / 60.f; fixedT += d;
+#ifdef FCF_EDITOR
+    if (evx::tape::cliDue()) { evx::tape::seek(evx::tape::cliTo); evx::tape::cliAt = -1; }   // (--tapeback A:B)
+#endif
+    for (auto& p : presses) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; pressNamed(p.name); }
     for (auto& p : holdsAt) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; int sc = SDL_GetScancodeFromName(p.name.c_str()); if (sc) heldKeys.push_back(sc); }   // (--hold T:KEY)
     for (auto& h : holdAts) { bool want = fixedT >= h.t && fixedT < h.t + h.dur; if (want && !h.on) heldKeys.push_back(h.sc); if (!want && h.on) { auto it = std::find(heldKeys.begin(), heldKeys.end(), h.sc); if (it != heldKeys.end()) heldKeys.erase(it); } h.on = want; }
     for (auto& p : taps) if (p.t >= 0 && fixedT >= p.t) { p.t = -1; int b = touchFind(p.name); if (b >= 0) { touchDown(7000, tbtn[b].x + tbtn[b].w / 2, tbtn[b].y + tbtn[b].h / 2); touchUp(7000); } }
@@ -390,6 +398,9 @@ static void stepFixed() { float d = 1 / 60.f; fixedT += d; for (auto& p : presse
         int b = touchFind(touchHoldLabels[k]);
         if (!have && b >= 0) fingers.push_back({id, b});
     }
+#ifdef FCF_EDITOR
+    if (evx::tape::racing()) slowT = 0;   // (fcfedit's preview runs at the tape's speed, as on screen)
+#endif
     if (slowT > 0) {
         slowT -= d;
         d *= 0.3f;

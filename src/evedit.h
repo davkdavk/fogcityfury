@@ -11,6 +11,7 @@
 //   PGUP / PGDN the previous / next track (saves first)    ESC drops the tool or the selection
 //   the panel on the right: click a setting to step it on, right-click to step it back
 //   fly view: W A S D move, Q E down and up, right mouse drag looks round
+static void update(float dt);   // (update.h: the tape runs the race a step at a time)
 namespace evx {
 
 using director::Line; using director::Event;
@@ -153,13 +154,98 @@ static void open(int t) {
     flyPos = camTgt + V3(0, 60, -80); flyYaw = 0; flyPitch = -0.35f;
     char b[200]; snprintf(b, sizeof b, "%s  -  %d LINES, %d EVENTS%s", W.def->name, (int)director::lines.size(), (int)director::evs.size(), director::loadedFrom.empty() ? "  (NEW)" : ""); tell(b);
 }
+// ---- the preview's tape: pause, rewind, fast-forward and slow motion, to tune where a trigger sits ----
+// The preview runs in fixed steps of 1/60 s and keeps every step's controls. The race is the same every time from the
+// same start (the dice are put back), so going back means starting it again and running it, silently and at full
+// speed, to the step you want. Driving while it plays the tape takes over from there: the rest of the tape is dropped.
+namespace tape {
+static const float STEP = 1 / 60.f;
+static const float SPEEDS[] = { 0.1f, 0.25f, 0.5f, 1, 2, 4 }; static const int NSPEED = 6;
+static int speedI = 3, frame = 0, seeks = 0, takeovers = 0;
+static bool paused = false, seeking = false, liveNow = true;
+static double acc = 0;
+static std::vector<Input> ins;                            // the controls, one per step
+struct Mark { int frame, ev; float raceT; }; static std::vector<Mark> marks;   // when each event went off
+static uint32_t seed0 = 0; static float T0 = 0; static int fn0 = 0;
+static int cliAt = -1, cliTo = -1; static V3 cliPos; static bool cliHave = false; static float cliErr = -1;   // --tapeback A:B (tests)
+static float secs(int f) { return f * STEP; }
+static void onHappen(int ev) { if (!testing) return; for (const Mark& m : marks) if (m.frame == frame && m.ev == ev) return; marks.push_back({ frame, ev, raceT }); }
+static void begin() {   // a preview starts: an empty tape
+    seed0 = grng.s; T0 = T; fn0 = frameNo; frame = 0; acc = 0; paused = false; speedI = 3; ins.clear(); marks.clear(); liveNow = true; seeks = takeovers = 0; cliHave = false; cliErr = -1;
+    director::onHappen = onHappen;
+}
+static bool racing() { return testing && !netRace && (state == RACE || state == RESULTS); }
+static void stepBegins() {   // update(): a step of the race starts
+    if (!racing()) return;
+    int i = frame++; liveNow = i >= (int)ins.size(); if (liveNow) ins.push_back(Input());
+    if (i == cliTo && !cliHave && cliAt >= 0) { cliPos = player.pos; cliHave = true; }
+}
+static bool active(const Input& in) { return fabsf(in.steer) > 0.15f || in.gas > 0.15f || in.brake > 0.15f || in.hb || in.nitro || in.fire; }
+static Input controls(Input in) {   // update(): the step's controls, from the tape or recorded onto it
+    if (!racing() || frame <= 0) return in; int i = frame - 1;
+    if (!liveNow) {
+        if (seeking || autoDrive || !active(in)) return ins[i];
+        ins.resize(i + 1); liveNow = true; takeovers++;   // you drove: from here on it is a new run
+        for (size_t k = 0; k < marks.size();) if (marks[k].frame > i) { marks[k] = marks.back(); marks.pop_back(); } else k++;
+    }
+    if (seeking) in = Input();   // (past the end of the tape the car coasts)
+    ins[i] = in; return in;
+}
+static void restart() { grng.s = seed0; T = T0; frameNo = fn0; int m = selMode; selMode = 0; startRace(); selMode = m; introT = 0; frame = 0; }   // (no fly-in in a preview)
+static void seek(int to) {   // run the race again from the start to step `to` (silently, as fast as it goes)
+    to = std::max(0, to); uint32_t a = adev; adev = 0; seeking = true; seeks++;
+    restart(); while (frame < to && racing()) update(STEP);
+    seeking = false; adev = a; acc = 0; slowT = 0;
+    if (cliHave && cliErr < 0) cliErr = len(player.pos - cliPos);
+}
+static void back(float s) { seek(frame - (int)lroundf(s / STEP)); }
+static void ahead(float s) { int to = frame + (int)lroundf(s / STEP); uint32_t a = adev; adev = 0; seeking = true; while (frame < to && racing()) update(STEP); seeking = false; adev = a; acc = 0; slowT = 0; }
+static void frameStep(float realDt) {   // the main loop, in a preview: the race in fixed steps, at the tape's speed
+    if (state == PAUSED || !racing()) { update(realDt); return; }
+    slowT = 0;   // (the wreck slow motion would make every run different: the tape has its own)
+    if (paused) { acc = 0; return; }
+    acc += realDt * SPEEDS[speedI]; int n = 0;
+    while (acc >= STEP && n++ < 8) { update(STEP); acc -= STEP; }
+    if (acc > STEP * 8) acc = 0;
+}
+static bool cliDue() { return cliAt >= 0 && racing() && frame == cliAt && !seeking; }
+static bool key(int k) {   // the preview's keys; true if it was one
+    if (!racing()) return false;
+    bool sh = (SDL_GetModState() & KMOD_SHIFT) != 0;
+    switch (k) {
+    case SDLK_F5: case SDLK_PAUSE: paused = !paused; return true;
+    case SDLK_F6: if (paused) seek(frame - 1); else back(sh ? 1 : 5); return true;                 // back a step (paused), else 5 s (SHIFT 1 s)
+    case SDLK_F7: if (paused) ahead(STEP); else ahead(sh ? 1 : 5); return true;                    // on a step (paused), else 5 s
+    case SDLK_F8: speedI = std::max(0, speedI - 1); return true;                                    // slower
+    case SDLK_F9: speedI = std::min(NSPEED - 1, speedI + 1); return true;                           // faster
+    case SDLK_F10: { int best = -1; for (const Mark& m : marks) if (m.frame < frame - 30 && m.frame > best) best = m.frame; seek(std::max(0, best - 180)); return true; }   // 3 s before the last event that went off
+    case SDLK_HOME: seek(0); return true;                                                           // the start
+    }
+    return false;
+}
+static void draw(float Wd, float Hd) {   // the tape: a panel under the race clock
+    (void)Hd; char b[160], t[32], u[32]; float w = 700, x0 = Wd / 2 - w / 2, x1 = x0 + w, y = 138;
+    int len_ = std::max(frame, (int)ins.size()); float L = std::max(secs(len_), 1.0f);
+    ui.rect(x0 - 14, y - 10, w + 28, 92, V3(0, 0, 0), 0.55f);
+    float sp = SPEEDS[speedI]; char sx[16]; if (sp < 1) snprintf(sx, sizeof sx, "%gX", sp); else snprintf(sx, sizeof sx, "%dX", (int)sp);
+    fmtTime(t, secs(frame)); fmtTime(u, secs((int)ins.size()));
+    snprintf(b, sizeof b, "%s %s  %s/%s", paused ? "PAUSED" : "PLAY", sx, t, u); ui.text(x0, y, 2.2f, paused ? ORG : WHT, b);
+    int last = -1; for (size_t k = 0; k < marks.size(); k++) if (marks[k].frame <= frame && (last < 0 || marks[k].frame >= marks[last].frame)) last = (int)k;
+    if (last >= 0 && !director::evs.empty()) { const Mark& m = marks[last]; std::string id = director::evs[std::min(m.ev, (int)director::evs.size() - 1)].id; for (char& c : id) c = (char)toupper((unsigned char)c); fmtTime(t, m.raceT); snprintf(b, sizeof b, "LAST %s AT %s", id.c_str(), t); ui.text(x1, y + 3, 1.8f, CYA, b, 2); }
+    float by = y + 34;
+    ui.rect(x0, by, w, 8, V3(0.3f, 0.32f, 0.38f), 1); ui.rect(x0, by, w * secs((int)ins.size()) / L, 8, V3(0.5f, 0.55f, 0.65f), 1); ui.rect(x0, by, w * secs(frame) / L, 8, YEL, 1);
+    if (!director::evs.empty()) for (const Mark& m : marks) { const Event& e = director::evs[std::min(m.ev, (int)director::evs.size() - 1)]; ui.rect(x0 + w * secs(m.frame) / L - 2, by - 7, 4, 22, KCOL[e.kind], 1); }
+    ui.rect(x0 + w * secs(frame) / L - 1, by - 10, 3, 28, WHT, 1);
+    ui.text(Wd / 2, by + 24, 1.6f, GREY, "F5 PAUSE  F6 F7 BACK ON  F8 F9 SPEED  F10 LAST EVENT  HOME START  F4 EDIT", 1);
+}
+}  // namespace tape
 static void preview() {   // a race on this track with the events as they are now, saved or not
     director::overrideText = true; director::overrideBody = director::write();
-    testing = true; debugTop = false; fixedCam = false; selTrack = track; int m = selMode; selMode = 0; startRace(); selMode = m;
-    say("PREVIEW  -  F4 GOES BACK TO THE EDITOR", YEL, 4);
+    testing = true; debugTop = false; fixedCam = false; selTrack = track; tape::begin(); tape::restart();
+    say("PREVIEW  -  F5 PAUSE  F6 F7 BACK ON  F8 F9 SPEED  F4 EDITOR", YEL, 4);
 }
 static void resume() {
-    testing = false; footReset(); state = EVEDIT; debugTop = !fly; fixedCam = fly; setupCars(false);
+    testing = false; tape::paused = false; director::onHappen = nullptr; footReset(); state = EVEDIT; debugTop = !fly; fixedCam = fly; setupCars(false);
     std::string keep = director::overrideBody; director::overrideText = true; director::overrideBody = keep; director::load(track); director::overrideText = false;
 }
 

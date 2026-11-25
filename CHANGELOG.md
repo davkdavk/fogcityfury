@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| **2.9.4** | | fcfedit's preview tape: pause, rewind, step and 0.1x–4x playback, events marked on the race clock; races replay exactly |
 | **2.9.3** | Roam on after the race: the race's world carries on as free roam, after a rampage's showdown too | |
 | **2.9.2** | Rival cars take damage, show their health, smoke, burn and get wrecked; hard knocks put them off the road | |
 | **2.9.1** | Rival drivers back to the 2.8 feel, now steering through lane changes and overtaking cleanly; stock tracks left unscripted for your own events; guns only in the rampage ring; Android on-foot controls (weapon menu, finger to aim and fire, CROUCH) | Showdown cars sit on the road and pitch with the ground |

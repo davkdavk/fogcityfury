@@ -237,9 +237,11 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
     aiLatMax = std::max(aiLatMax, fabsf(c.aiLatV));
     bool canLeave = !c.brOn && !W.ts[i].br && !W.ts[i].tun && go;   // (off a bridge or out of a tunnel there is nowhere to go)
     if (c.latV != 0) {   // knocked sideways: drift across (2.9.2: off the road too, when it is hit hard), then steer back to its line
+        if (fabsf(c.latV) > 5.0f) c.hardKnock = true;   // (2.9.4 remembered for the whole drift: a nudge near the edge used to count as hard and put bots off)
         c.lat += c.latV * dt; c.latV *= expf(-1.6f * dt); if (fabsf(c.latV) < 0.2f) c.latV = 0; else c.latT = c.lat;
-        bool hard = fabsf(c.latV) > 5.0f || fabsf(c.lat) > ROADW - 1.19f;   // (only a hard knock takes it off; a nudge leaves it at the edge)
+        bool hard = c.hardKnock;   // (only a hard knock takes it off; a nudge leaves it at the edge)
         float lm = c.brOn ? 3.6f : canLeave && hard ? ROADW + 9.0f : ROADW - 1.2f; if (fabsf(c.lat) > lm) { c.lat = clampf(c.lat, -lm, lm); c.latV = 0; }
+        if (c.latV == 0) c.hardKnock = false;
     }
     if (!c.brOn && c.offT <= 0 && c.latV == 0 && fabsf(c.lat) > ROADW - 1.2f) c.lat = clampf(c.lat, -(ROADW - 1.2f), ROADW - 1.2f);   // (on the road unless a knock put it off: as before)
     bool offRoad = !c.brOn && fabsf(c.lat) > ROADW + 0.3f;

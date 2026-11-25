@@ -57,6 +57,8 @@ static void placeOnGrid(Car& c, float s, float lat) {
     c.dead = false;
     c.hp = 100;
     c.grounded = true;
+    c.latV = c.wob = c.wobV = c.pitchV = c.deadT = c.airT = c.landT = c.slipF = c.slipR = c.wheelRot = c.ride = 0; for (float& w : c.wy) w = 0;   // nothing left over from the last race (a bot knocked sideways
+    c.sunk = c.braking = c.wheelspin = c.offroad = c.wet = c.hardKnock = false; c.aiLatV = c.aiHead = c.aiPassT = c.offT = c.hurtShow = 0; c.aiPassing = -1; c.aiPassSide = 0;   // went on drifting on the new grid)
     c.heave = c.heaveV = c.squat = c.accS = c.prevVf = c.droop = c.yawRate = c.brakeS = c.boost = 0;
     c.nitro = 1;
     c.nitroLock = false;

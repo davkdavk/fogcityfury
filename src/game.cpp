@@ -98,6 +98,7 @@ struct Car {
     float latV = 0, wob = 0, wobV = 0;             // a bot knocked sideways: drift across the road (m/s), and a yaw wobble that springs back
     int botAmmo = 0, botRLap = -99; float botFireCD = 0;   // a bot's rockets: how many, the lap it last took a crate, time till it may fire
     float hp = 100;   // shot damage on foot: a car with no hp left is wrecked
+    bool hardKnock = false;   // 2.9.4 a computer driver drifting from a hard knock (it may leave the road), not a nudge
     float hurtShow = 0, offT = 0;   // 2.9.2 a computer driver: seconds its health bar stays up after a knock; how long it has been off the road
 };
 struct Input { float steer = 0, gas = 0, brake = 0; bool hb = false, nitro = false, fire = false, pedal = false; };   // pedal: the throttle came from an analog trigger (part way holds a lower speed)
@@ -109,9 +110,9 @@ static const float RAIN_MINW = 0.0017f, RAIN_LEN = 1.25f, RAIN_V = 0.12f;   // r
 static const float RAIN_MINW = 0.0011f, RAIN_LEN = 1.0f, RAIN_V = 1.0f;
 #endif
 struct Particle { V3 p, v; float life, maxLife, size, grow; V3 col; float a, add, seed, buoy, stretch; };   // stretch > 0: drawn as a streak along its velocity, not a billboard
-static std::vector<Particle> parts;
+static std::vector<Particle> parts; static Rng partRng;   // (a particle's own dice: smoke and sparks must never change the race's)
 static void spawn(V3 p, V3 v, float life, float size, float grow, V3 col, float a, float add = 0, float buoy = 0.6f, float stretch = 0) {
-    if (parts.size() > 5200) return; parts.push_back({ p, v, life, life, size, grow, col, a, add, grng.f(), buoy, stretch });
+    if (parts.size() > 5200) return; parts.push_back({ p, v, life, life, size, grow, col, a, add, partRng.f(), buoy, stretch });
 }
 
 // ------------------------------------------------------------------ audio
@@ -448,6 +449,10 @@ int main(int argc, char** argv) {
             topH = F(1);
             camTgt = V3(F(2), 0, F(3));
             i += 3;
+#ifdef FCF_EDITOR
+        } else if (a == "--tapeback" && i + 1 < argc) {   // (tests) fcfedit's preview: at A seconds go back to B
+            float A = 0, B = 0; if (sscanf(argv[++i], "%f:%f", &A, &B) == 2) { evx::tape::cliAt = (int)lroundf(A * 60); evx::tape::cliTo = (int)lroundf(B * 60); }
+#endif
         } else if (a == "--auto") autoDrive = true;
         else if (a == "--bright") vidBright = std::max(50, std::min(150, atoi(argv[++i])));
         else if (a == "--autocut") {
@@ -932,9 +937,18 @@ int main(int argc, char** argv) {
             if (e.type == plat::EV_FG_ENTER && adev) plat::audioPause(adev, false);
         }
         uint64_t now = plat::ticks(); float dt = clampf((now - last) / (float)plat::tickFreq(), 0.0005f, 0.05f); last = now;
-        frameDt = dt; if (slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
+        frameDt = dt;
+#ifdef FCF_EDITOR
+        bool onTape = evx::testing && !netRace && (state == RACE || state == RESULTS || state == PAUSED);   // fcfedit's preview: fixed steps, on its tape
+#else
+        bool onTape = false;
+#endif
+        if (!onTape && slowT > 0) { slowT -= dt; dt *= 0.3f; }   // slow motion on a wreck
 #ifdef FCF_GFX_XSDK
         uint64_t updateBegin = plat::ticks();
+#endif
+#ifdef FCF_EDITOR
+        if (onTape) evx::tape::frameStep(dt); else
 #endif
         update(dt); int fw, fh;
 #ifdef FCF_GFX_XSDK
