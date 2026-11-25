@@ -82,7 +82,7 @@ static void update(float dt) {
     if (autoDrive && showdownOn && shdPhase == SH_DRIVE && !me.on && !shdSpectate && state == RACE) {   // the autopilot (tests) drives the bots' way: the car map, the farthest point in plain sight
         V3 aim; float left; if (cfAim(player.pos, aim, left)) {
             V3 d = aim - player.pos; float err = wrapPi(atan2f(d.x, d.z) - player.yaw), L = flatDist(aim, player.pos);
-            float want = std::min({ 24.0f, sqrtf(2 * 4.0f * left) + 4.0f, sqrtf(2 * 5.0f * L) + 6.0f }); want = std::min(want, std::max(5.0f, 24.0f - 28.0f * fabsf(err)));
+            float ds = flatDist(player.pos, shdSite), want = std::min({ std::max(cfSpeedAt(player.pos) - 1.0f, 11.0f), sqrtf(2 * 4.0f * ds) + 4.0f, sqrtf(2 * 5.0f * L) + 6.0f }); want = std::min(want, std::max(5.0f, 33.0f - 36.0f * fabsf(err)));
             in = Input(); in.steer = clampf(err * 2.5f, -1, 1); in.gas = player.vf < want ? 1.0f : 0.0f; in.brake = player.vf > want + 3 ? 0.7f : 0.0f;
         }
     }

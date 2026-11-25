@@ -76,7 +76,8 @@ static void layTownDrops() {
 // straight clear run in from the road (which is how the bots get there). If nowhere like that turns up, or a place on the
 // road is asked for (u: how far round the lap, 0..1), it is a stretch of road, never on a bridge.
 static V3 shdExitP; static bool shdOffRoad = false;
-static int shdRingDeaths = 0, shdLate = -1; static float shdDriveTook = -1;   // (tests) shdLate: how many were still out of the ring when the drive timed out
+static int shdRingDeaths = 0, shdLate = -1; static float shdDriveTook = -1; static float shdRoadT = 0, shdOffT = 0;   // (tests) bot-seconds of the drive spent on the road, and off it
+   // (tests) shdLate: how many were still out of the ring when the drive timed out
    // (tests) computer fighters the ring burned to death
 static std::vector<V3> shdPath; static V3 shdLastSite; static bool shdHaveLast = false, grngSeeded = false;   // shdPath: the backstreets a bot off the road takes to the ring; shdLastSite: last race's ring (the next goes elsewhere)
 static bool shdClear(V3 p) { float h = W.H(p.x, p.z); return h > 0.3f && fabsf(p.x) < HALF - 60 && fabsf(p.z) < HALF - 60 && !solidAt(V3(p.x, h + 1.0f, p.z), false); }
@@ -197,7 +198,10 @@ static bool ffReach(V3 p) {
 // the road is cheapest, then the backstreets and open ground. A bot follows it from wherever it is, aiming at the farthest
 // point down the way it can see in a straight line, so it cuts across open ground and takes the alleys that are shorter.
 static const int CF_N = (int)(2 * HALF / 4); static const float CF_CELL = 4.0f;
-static std::vector<float> cfDist; static std::vector<uint8_t> cfOk; static V3 cfSite(1e9f, 0, 1e9f);
+// 2.7.2: the cost of a cell is the time to cross it: the road is quick (34 m/s), paved backstreets slower (18), dirt and grass slow (12).
+// So the way is the quickest, not the shortest: along the road, through the alleys where that saves time, across country only when the road goes a long way round
+static const float CF_V_ROAD = 34.0f, CF_V_PAVED = 18.0f, CF_V_DIRT = 12.0f;
+static std::vector<float> cfDist, cfCost; static std::vector<uint8_t> cfOk; static V3 cfSite(1e9f, 0, 1e9f);
 static inline bool cfCellOf(V3 p, int& i, int& j) { i = (int)floorf((p.x + HALF) / CF_CELL); j = (int)floorf((p.z + HALF) / CF_CELL); return i >= 0 && j >= 0 && i < CF_N && j < CF_N; }
 static inline V3 cfCentre(int i, int j) { return V3(-HALF + (i + 0.5f) * CF_CELL, 0, -HALF + (j + 0.5f) * CF_CELL); }
 static bool cfDry(float x, float z) {   // a car can be here: dry ground (or the road, bridges too), under nothing solid
@@ -205,12 +209,12 @@ static bool cfDry(float x, float z) {   // a car can be here: dry ground (or the
     float y = W.ground(x, z, (road ? std::max(h, 0.0f) + 2.0f : h + 0.6f)); return !solidAt(V3(x, y + 1.0f, z), false);
 }
 static void cfBuild() {
-    cfSite = shdSite; const int N = CF_N * CF_N; cfDist.assign(N, 1e9f); cfOk.assign(N, 0); std::vector<float> g(N, 0), cost(N, 1.0f);
+    cfSite = shdSite; const int N = CF_N * CF_N; cfDist.assign(N, 1e9f); cfOk.assign(N, 0); cfCost.assign(N, 1.0f); std::vector<float> g(N, 0); std::vector<float>& cost = cfCost;
     for (int j = 0; j < CF_N; j++) for (int i = 0; i < CF_N; i++) {
         V3 c = cfCentre(i, j); int k = j * CF_N + i; if (fabsf(c.x) > HALF - 40 || fabsf(c.z) > HALF - 40) continue;
         bool ok = cfDry(c.x, c.z) && cfDry(c.x + 1.3f, c.z + 1.3f) && cfDry(c.x - 1.3f, c.z - 1.3f) && cfDry(c.x + 1.3f, c.z - 1.3f) && cfDry(c.x - 1.3f, c.z + 1.3f);
         if (!ok) continue; cfOk[k] = 1; bool road = W.RD(c.x, c.z) < ROADW; float h = W.H(c.x, c.z);
-        g[k] = W.ground(c.x, c.z, road ? std::max(h, 0.0f) + 2.0f : h + 0.6f); cost[k] = road ? 1.0f : 1.35f;
+        g[k] = W.ground(c.x, c.z, road ? std::max(h, 0.0f) + 2.0f : h + 0.6f); cost[k] = road ? 1.0f : W.cityGround(c.x, c.z) ? CF_V_ROAD / CF_V_PAVED : CF_V_ROAD / CF_V_DIRT;
     }
     typedef std::pair<float, int> Q; std::priority_queue<Q, std::vector<Q>, std::greater<Q>> q;
     int si, sj; if (cfCellOf(shdSite, si, sj)) for (int dj = -3; dj <= 3; dj++) for (int di = -3; di <= 3; di++) {
@@ -236,6 +240,14 @@ static bool cfLine(V3 a, V3 b) {   // a car's width of drivable cells all the wa
         for (float o : { -1.4f, 0.0f, 1.4f }) { int i, j; if (!cfCellOf(p + r * o, i, j) || cfAt(i, j) > 1e8f) return false; } }
     return true;
 }
+// what the straight run from a to b costs (as the map counts it; < 0: something is in the way)
+static float cfLineCost(V3 a, V3 b) {
+    if (!cfLine(a, b)) return -1; V3 d(b.x - a.x, 0, b.z - a.z); float L = len(d); int n = (int)(L / 2.0f) + 1; float sum = 0;
+    for (int s = 0; s < n; s++) { V3 p = a + d * ((s + 0.5f) / n); int i, j; if (cfCellOf(p, i, j)) sum += cfCost[j * CF_N + i] * (L / n); }
+    return sum;
+}
+// how fast a car may go on the ground at p
+static float cfSpeedAt(V3 p) { int i, j; if (!cfCellOf(p, i, j) || cfCost.empty()) return CF_V_DIRT; return CF_V_ROAD / cfCost[j * CF_N + i]; }
 // where to steer from p: the farthest point down the way that is in plain sight (false: no way from here)
 static bool cfAim(V3 p, V3& aim, float& left) {
     if (flatDist(cfSite, shdSite) > 0.5f) cfBuild();
@@ -246,13 +258,13 @@ static bool cfAim(V3 p, V3& aim, float& left) {
         if (best > 1e8f) return false; i = bi; j = bj; here = best;
     }
     left = here; aim = cfCentre(i, j); if (here <= 0) { aim = shdSite; return true; }
-    std::vector<V3> way; int ci = i, cj = j;
+    std::vector<V3> way; std::vector<float> wd; int ci = i, cj = j;
     for (int s = 0; s < 45; s++) {   // down the way, up to 180 m
         float best = cfAt(ci, cj); int bi = ci, bj = cj;
         for (int d = 0; d < 8; d++) { static const int DI[8] = { 1, -1, 0, 0, 1, 1, -1, -1 }, DJ[8] = { 0, 0, 1, -1, 1, -1, 1, -1 }; float v = cfAt(ci + DI[d], cj + DJ[d]); if (v < best) { best = v; bi = ci + DI[d]; bj = cj + DJ[d]; } }
-        if (bi == ci && bj == cj) break; ci = bi; cj = bj; way.push_back(cfCentre(ci, cj)); if (best <= 0) { way.back() = shdSite; break; }
+        if (bi == ci && bj == cj) break; ci = bi; cj = bj; way.push_back(cfCentre(ci, cj)); wd.push_back(best); if (best <= 0) { way.back() = shdSite; break; }
     }
-    for (int k = (int)way.size() - 1; k >= 0; k--) if (cfLine(p, way[k])) { aim = way[k]; return true; }
+    for (int k = (int)way.size() - 1; k >= 0; k--) { float lc = cfLineCost(p, way[k]); if (lc >= 0 && lc <= (here - wd[k]) * 1.08f + 3.0f) { aim = way[k]; return true; } }   // (a short cut only if it is no slower than the way: never off the road onto the dirt to save a few metres)
     if (!way.empty()) aim = way[0];
     return true;
 }
@@ -272,7 +284,7 @@ static float botCoverT = 0; static int botHealRuns = 0;   // (test metrics)
 static bool showdownStart(int racePlace) {   // called as you cross the line. The top five fight; finish lower and you watch them
     for (auto& b : bcov) b = BotCov(); botCoverT = 0; botHealRuns = 0;
     bool watch = racePlace > NFIGHT;
-    showdownOn = true; shdCut = true; shdPhase = SH_DRIVE; shdT = 0; shdRing = shdRingTgt = SH_RING0; shdWinner = -1; shdOverT = 0; shdRacePlace = racePlace; shdResult = false; wrongT = 0;
+    shdRoadT = shdOffT = 0; showdownOn = true; shdCut = true; shdPhase = SH_DRIVE; shdT = 0; shdRing = shdRingTgt = SH_RING0; shdWinner = -1; shdOverT = 0; shdRacePlace = racePlace; shdResult = false; wrongT = 0;
     shdPickSite(sdSite >= 0 ? sdSite : -1.0f);
     shdBuildField(); cfBuild();
     int order[NAI]; for (int k = 0; k < NAI; k++) order[k] = k;   // the four best of the others come too; the rest of the field has gone home
@@ -418,8 +430,8 @@ static void shdDriveBots(float dt) {
         if ((fin && L < 1.5f) || (!fin && ds < 14.0f)) { shdOut(i); continue; }
         if (!fin && L < 2.0f) f.drvT = 0;   // at the aim: look again next step
         V3 dir = L > 0.01f ? d * (1 / L) : yawDir(a.yaw); float turn = wrapPi(atan2f(dir.x, dir.z) - a.yaw), err = fabsf(turn);
-        float want = fin ? std::min(17.0f, sqrtf(2 * 6.0f * L) + 1.0f) : std::min({ 27.0f, sqrtf(2 * 5.0f * f.stopS) + 6.0f, sqrtf(2 * 7.0f * L) + 7.0f });   // easing off for the next corner (the aim is where the clear line ends) and for the ring
-        want = std::min(want, std::max(5.0f, 27.0f - 30.0f * err));
+        float want = fin ? std::min(17.0f, sqrtf(2 * 6.0f * L) + 1.0f) : std::min({ cfSpeedAt(a.pos), sqrtf(2 * 5.0f * ds) + 6.0f, sqrtf(2 * 7.0f * L) + 7.0f });   // easing off for the next corner (the aim is where the clear line ends) and for the ring
+        want = std::min(want, std::max(5.0f, CF_V_ROAD - 38.0f * err)); if (!fin) shdRoadT += dt * (cfSpeedAt(a.pos) > CF_V_ROAD - 1 ? 1.0f : 0.0f), shdOffT += dt * (cfSpeedAt(a.pos) > CF_V_ROAD - 1 ? 0.0f : 1.0f);
         a.speed += clampf(want - a.speed, -24 * dt, 9 * dt); if (a.speed < 0) a.speed = 0;
         a.yaw = wrapPi(a.yaw + clampf(turn, -2.4f * dt, 2.4f * dt));
         V3 np = a.pos + yawDir(a.yaw) * (a.speed * dt); int ci, cj;

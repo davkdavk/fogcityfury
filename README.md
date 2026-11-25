@@ -92,6 +92,12 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.7.2
+
+- **Rampage bots take the quickest way to the ring, not the shortest.** The road is fast, paved backstreets are
+  slower and dirt is slow, and they drive at those speeds. So they stay on the road, cut through the alleys where
+  that saves time, and go across country only when the road goes a long way round.
+
 ## What's new in 2.7.1
 
 - **The triggers are pedals.** Pull the right trigger part way and the car holds a lower speed; all the way is full
