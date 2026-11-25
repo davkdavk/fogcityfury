@@ -286,7 +286,8 @@ inline int16_t padAxisRaw(Pad* p, PadAxis a) {
     if(!p) return 0; XamInputGetState(p->port,0,&p->state);
     switch(a){ case AX_LX:return p->state.gamepad.thumb_lx; case AX_LY:{int16_t v=p->state.gamepad.thumb_ly;return v==-32768?32767:(int16_t)-v;}
     case AX_RX:return p->state.gamepad.thumb_rx; case AX_RY:{int16_t v=p->state.gamepad.thumb_ry;return v==-32768?32767:(int16_t)-v;}
-    case AX_TRIG_L:return (int16_t)(p->state.gamepad.left_trigger*257); default:return (int16_t)(p->state.gamepad.right_trigger*257); }
+    // triggers: 0..255 from the pad, 0..32767 here as SDL gives them (x257 overflowed int16 past half way: a hard pull read as none)
+    case AX_TRIG_L:return (int16_t)(p->state.gamepad.left_trigger*32767/255); default:return (int16_t)(p->state.gamepad.right_trigger*32767/255); }
 }
 inline bool padButton(Pad* p, PadBtn b) {
     if(!p)return false; XamInputGetState(p->port,0,&p->state); uint16_t m=0;
