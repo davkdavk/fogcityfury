@@ -92,6 +92,29 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.9.1
+
+Back to basics.
+
+- **The computer drivers are the 2.8 ones again, with three things added.** The 2.9 racing line, defending and slides
+  are gone. Now:
+  - across the road they steer like cars: the sideways speed builds and eases off, and the nose points the way the
+    car is going (no more sliding sideways on a rail);
+  - they go round a slower car on one side and stay on that side until they are past;
+  - with no room either side they sit behind it instead of driving into it.
+- **The stock tracks carry no scripted events.** Every trigger line and event (misfires, collapses, leaps, mini
+  Warden drops, weather changes) is gone from the seven tracks, ready for your own in fcfedit. Dolphin pods and
+  Warden posts stay.
+- **No guns lying about outside rampage.** The town has ammunition and medkits only; guns are in the showdown ring.
+- **The drive to the showdown ring looks right.** Cars sit on the road instead of sinking into its edges, nose up a
+  hill instead of down, and steer smoothly, turning more gently the faster they go.
+- **Android on foot:**
+  - the GUN button shows the gun in hand, in its rarity's colour, with the rounds in the magazine;
+  - a tap on it opens a menu of the guns you have;
+  - a finger on the right of the screen is the crosshair and the trigger: the shot goes where it is, locking on to
+    anyone right by it. Held at the right edge or near the middle, the view turns that way;
+  - DUCK is now CROUCH.
+
 ## What's new in 2.9
 
 - **The computer drivers race a proper line.** Before each race the game works out a racing line for the track

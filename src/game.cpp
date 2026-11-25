@@ -94,7 +94,7 @@ struct Car {
     float stot = 0, lat = 0, latT = 0, speed = 0, aiTop = 60, progress = 0, finishT = -1; int lap = 0, nextCp = 0;
     bool brOn = false; int brK = 0; float bu = 0, brBase = 0;   // a bot on an alternate route: which one, metres along it, and the lap's start in stot
     float shield = 0;                              // seconds of shield left (any car)
-    float aiOff = 0, aiSlip = 0, aiPassT = 0; int aiPassing = -1;   // a computer driver: its own offset from the racing line, how far it is sliding (drawn), and whom it is going round (and for how long)
+    float aiLatV = 0, aiHead = 0, aiPassT = 0; int aiPassing = -1, aiPassSide = 0;   // 2.9.1 a computer driver: how fast it moves across the road, its nose's angle off the road from that, whom it is going round, which side, and how long it keeps that lane
     float latV = 0, wob = 0, wobV = 0;             // a bot knocked sideways: drift across the road (m/s), and a yaw wobble that springs back
     int botAmmo = 0, botRLap = -99; float botFireCD = 0;   // a bot's rockets: how many, the lap it last took a crate, time till it may fire
     float hp = 100;   // shot damage on foot: a car with no hp left is wrecked
@@ -184,7 +184,7 @@ static const int CHAMP_TRACK[4] = { 0, 1, 2, 3 }, CHAMP_LAPS[4] = { 1, 2, 2, 3 }
 static bool rampage = false, showdownOn = false;
 #include "fighter.h"
 static bool exploreMode = false, timeUp = false, chromeUnlocked = false, quit = false, debugTop = false, autoDrive = false, hideUI = false;
-static float rpm = 0, camYaw = 0, topH = 900; static V3 camPos, camTgt; static bool camInit = false, fixedCam = false;
+static float rpm = 0, camYaw = 0, topH = 900; static V3 camPos, camTgt; static float camFovNow = 62, camAspNow = 16.0f / 9; static bool camInit = false, fixedCam = false;
 static unsigned keysGot[MAXT] = {}; static float bestLap[MAXT] = {};
 static plat::Pad* pad = nullptr;
 static bool netRace = false; static int raceLaps = LAPS; static M4 lastVP;   // online race in progress; laps this race; last view-projection (name tags)
@@ -266,7 +266,7 @@ namespace director { static void reset(); static void placeWardens(); }
 namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)
 namespace dolphin { static bool spawn(V3 at, V3 to, float k); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void laugh(int idx, V3 at); static void blastAt(V3 p, float r); static bool firstAt(V3& p); }   // (dolphin.h)
 namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void hurt(int idx, float dmg, V3 dir); static void blastAt(V3 p, float r, float dmg); static bool firstAt(V3& p); static V3 posOf(int idx); static int downedCount(); static int count(); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
-#include "raceline.h"   // the computer drivers' racing line and corner speeds
+static int aiPasses = 0; static float aiHeadErr = 0, aiLatMax = 0; static long aiHeadErrN = 0;   // (tests) overtakes; how far a driver's nose is off the way it moves; the fastest it crossed the road
 #include "combat.h"   // wreckage and debris, crates, shields, the multiplayer race start and leave, splashes, explosions, rockets
 #include "events.h"   // the race director: scripted events from a track's event file
 #include "collapse.h"   // buildings that come down (a rocket aimed at one, or an event's cue)
@@ -568,6 +568,7 @@ int main(int argc, char** argv) {
         else if (a == "--keys") fakeKeys = atoi(argv[++i]);
         else if (a == "--sdsite") sdSite = (float)atof(argv[++i]);
         else if (a == "--sdplace") sdPlace = atoi(argv[++i]);
+        else if (a == "--touchaim") { touchOn = true; taim.on = true; taim.id = 7100; sscanf(argv[++i], "%f,%f", &taim.x, &taim.y); }   // (tests, 2.9.1: a finger held there as the crosshair)
         else if (a == "--stick") {
             testStick = touchOn = true;
             sscanf(argv[++i], "%f,%f", &stickX, &stickY);

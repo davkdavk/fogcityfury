@@ -171,7 +171,6 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
 // from the bot, its paint and the lap (no random numbers drawn: races stay repeatable)
 static bool aiTakes(const Car& c, int k, float base) { unsigned hsh = (unsigned)(c.paint * 131 + c.type * 17 + (int)(base / W.n) * 7 + (int)c.aiTop + k * 101) * 2654435761u; return (hsh >> 16) % 100 < 50u; }
 static void stepAI(Car& c, float dt, bool go, float playerProg) {
-    rline::ensure();
     float lat0 = c.lat; int n = W.n; int i = (((int)floorf(c.stot)) % n + n) % n; float mc = 0;
     // the tightest bend in the next 80 m of the way it will go: along a shortcut and on past its end onto the loop, or
     // along the loop and into a shortcut it is about to take
@@ -184,12 +183,6 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
                 for (int q = 0; q < (int)br.ts.size() && q < 80 - ahead; q += 6) mc = std::max(mc, br.ts[q].curv); } }
     }
     float tgt = std::min(c.aiTop * (0.55f + 0.45f * wx().grip), sqrtf(21.0f * wx().grip / std::max(mc, 1e-4f)));
-    bool onLine = !c.brOn && rline::n == n && n >= 64; int self = &c >= ai && &c < ai + NAI ? (int)(&c - ai) : -1;
-    if (onLine) {   // 2.9 on the loop: the racing line's speed for here (it has the braking for what is ahead in it), unless a shortcut it is about to take wants less
-        float lv = rline::v[i] * sqrtf(wx().grip) * (1 + 0.05f * clampf(fabsf(c.aiSlip) / 0.12f, 0, 1));   // (a car that is sliding carries a little more: the drift pays)
-        bool cut = false; if (W.hasBranch() && go && c.finishT < 0) { float base = floorf(c.stot / n) * n, f = c.stot - base; for (int k = 0; k < (int)W.brs.size(); k++) { float ahead = W.brs[k].a - f; if (ahead >= 0 && ahead <= 80 && aiTakes(c, k, base)) cut = true; } }
-        tgt = std::min(c.aiTop * (0.55f + 0.45f * wx().grip), cut ? std::min(tgt, lv) : lv);
-    }
     tgt *= clampf(1 + (playerProg - c.stot) * 0.0007f, 0.90f, 1.10f);
     if (!go || c.finishT >= 0) tgt = go ? 22 : 0;
     c.speed += clampf(tgt - c.speed, -26 * dt, 12 * dt);
@@ -211,37 +204,35 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
         }
     }
     if (!go) c.latT = c.lat;                                                                         // on the grid: stay in the box
-    else if (grng.f() < dt * 0.25f) { float r = c.brOn ? grng.r(-2.5f, 2.5f) : grng.r(-5, 5); if (onLine) c.aiOff = r * 0.3f; else c.latT = r; }   // (the same draws as ever: each driver's own idea of the line, a metre or so either side)
-    bool passing = false;
-    if (onLine && go) {   // the racing line a little way on, its own offset, and the cars about it
-        float want = clampf(rline::lat[(i + 6) % n] + c.aiOff, -ROADW + 2.2f, ROADW - 2.2f); c.aiPassT = std::max(0.0f, c.aiPassT - dt);
-        // overtaking: someone slower close ahead in its way: round the side with more room (the line's side if both have it); no room: sit behind
-        float bestGap = 34; float oLat = 0, oSpd = 0; int who = -1;
+    else if (grng.f() < dt * 0.25f) c.latT = c.brOn ? grng.r(-2.5f, 2.5f) : grng.r(-5, 5);
+    // 2.9.1 overtaking: a slower car close ahead in its lane: round it on the side nearer where it already is (with room), the side
+    // kept until it is past, then the lane held a moment; no room either side: it sits behind instead of driving into it
+    int self = &c >= ai && &c < ai + NAI ? (int)(&c - ai) : -1; c.aiPassT = std::max(0.0f, c.aiPassT - dt);
+    if (go && !c.brOn && c.finishT < 0) {
+        float bestGap = 28, oLat = 0, oSpd = 0; int who = -1;
         for (int t = 0; t <= NAI; t++) {
-            const Car* o = t == NAI ? (exploreMode || me.on || trialMode ? nullptr : &player) : t == self ? nullptr : &ai[t]; if (!o || o->dead) continue;
-            float os = t == NAI ? playerProg : o->stot, gap = os - c.stot; if (t != NAI && o->brOn) continue; if (gap < 2.5f || gap > bestGap) continue;
-            float ol = t == NAI ? clampf((o->pos.x - W.ts[rline::idx(os)].x) * W.ts[rline::idx(os)].tz - (o->pos.z - W.ts[rline::idx(os)].z) * W.ts[rline::idx(os)].tx, -ROADW, ROADW) : o->lat;
-            float osp = t == NAI ? o->vf : o->speed; if (osp > c.speed - 0.5f && gap > 9) continue;   // (pulling away: leave it)
+            const Car* o = t == NAI ? (exploreMode || me.on || trialMode ? nullptr : &player) : t == self ? nullptr : &ai[t]; if (!o || o->dead || (t != NAI && o->brOn)) continue;
+            float os = t == NAI ? playerProg : o->stot, gap = os - c.stot; if (gap < 2.5f || gap > bestGap) continue;
+            float osp = t == NAI ? o->vf : o->speed; if (osp > c.speed - 1.0f && gap > 8) continue;   // (not catching it: leave it)
+            int si = ((int)floorf(os) % n + n) % n; float ol = t == NAI ? clampf((o->pos.x - W.ts[si].x) * W.ts[si].tz - (o->pos.z - W.ts[si].z) * W.ts[si].tx, -ROADW, ROADW) : o->lat;
+            if (fabsf(ol - c.lat) > 2.6f) continue;   // (not in its lane)
             bestGap = gap; oLat = ol; oSpd = osp; who = t;
         }
-        if (who >= 0 && fabsf(oLat - want) < 2.6f) {
-            float lft = oLat - 2.9f, rgt = oLat + 2.9f; bool lok = lft > -ROADW + 2.0f, rok = rgt < ROADW - 2.0f;
-            float side = lok && rok ? (fabsf(lft - want) < fabsf(rgt - want) ? lft : rgt) : lok ? lft : rok ? rgt : oLat;
-            if (lok || rok) { want = side; passing = true; if (c.aiPassing != who) { c.aiPassing = who; c.aiPassT = 4; rline::passes++; } }
-            if (bestGap < 9 && fabsf(c.lat - oLat) < 2.2f) tgt = std::min(tgt, oSpd + 1.0f);   // right behind and not yet clear of it: no ramming
-        } else if (c.aiPassT <= 0) c.aiPassing = -1;
-        // defending: on a straight, someone closing from just behind: ease a metre towards their side (no more: it is a nudge, not a wall)
-        if (!passing && fabsf(rline::turn[i]) < 0.004f) for (int t = 0; t <= NAI; t++) {
-            const Car* o = t == NAI ? (exploreMode || me.on || trialMode ? nullptr : &player) : t == self ? nullptr : &ai[t]; if (!o || o->dead) continue;
-            float os = t == NAI ? playerProg : o->stot, gap = c.stot - os, osp = t == NAI ? o->vf : o->speed; if (gap < 3 || gap > 16 || osp < c.speed + 2.5f) continue;
-            float ol = t == NAI ? clampf((o->pos.x - W.ts[rline::idx(os)].x) * W.ts[rline::idx(os)].tz - (o->pos.z - W.ts[rline::idx(os)].z) * W.ts[rline::idx(os)].tx, -ROADW, ROADW) : o->lat;
-            want = clampf(want + clampf(ol - want, -1.2f, 1.2f), -ROADW + 2.2f, ROADW - 2.2f); rline::defendT += dt; break;
-        }
-        c.latT = want;
+        if (who >= 0) {
+            float lft = oLat - 3.0f, rgt = oLat + 3.0f; bool lok = lft > -ROADW + 1.8f, rok = rgt < ROADW - 1.8f;
+            bool keep = c.aiPassing == who && ((c.aiPassSide < 0 && lok) || (c.aiPassSide > 0 && rok));
+            int sd = keep ? c.aiPassSide : lok && rok ? (fabsf(lft - c.lat) < fabsf(rgt - c.lat) ? -1 : 1) : lok ? -1 : rok ? 1 : 0;
+            if (sd) { c.latT = sd < 0 ? lft : rgt; if (c.aiPassing != who) { c.aiPassing = who; aiPasses++; } c.aiPassSide = sd; c.aiPassT = 2.0f; }
+            if (bestGap < 9 && fabsf(c.lat - oLat) < 2.2f) { tgt = std::min(tgt, oSpd + 0.5f); c.speed = std::min(c.speed, tgt + 1.0f); }   // (alongside not yet: no ramming)
+        } else if (c.aiPassT <= 0) { c.aiPassing = -1; c.aiPassSide = 0; }
     }
     float dl = 0; bool dg = go && !c.brOn && dodge(i, c.lat, 95, dl); if (dg) c.latT = dl;                  // opponents pull out round wrecks too
     if (c.brOn) c.latT = clampf(c.latT, -2.5f, 2.5f);                                                 // the backstreet is narrower
-    { float lr = dg ? 6.0f : passing ? 4.5f : onLine ? 3.6f : 2.5f; c.lat += clampf(c.latT - c.lat, -lr * dt, lr * dt); }
+    if (go && !dg) {   // 2.9.1 across the road as a car does it: the sideways speed builds and eases off (it steers), never more than its speed allows
+        float lim = std::min(c.aiPassing >= 0 ? 3.0f : 2.5f, 0.07f * c.speed + 0.4f), want = clampf((c.latT - c.lat) * 1.1f, -lim, lim);
+        c.aiLatV += clampf(want - c.aiLatV, -3.0f * dt, 3.0f * dt); c.lat += c.aiLatV * dt;
+    } else { float lr = dg ? 6.0f : 2.5f, nl = c.lat + clampf(c.latT - c.lat, -lr * dt, lr * dt); c.aiLatV = dt > 0 ? (nl - c.lat) / dt : 0; c.lat = nl; }
+    aiLatMax = std::max(aiLatMax, fabsf(c.aiLatV));
     if (c.latV != 0) {   // knocked sideways: drift across, then steer back to its line
         c.lat += c.latV * dt; c.latV *= expf(-3.5f * dt); if (fabsf(c.latV) < 0.2f) c.latV = 0; else c.latT = c.lat;
         float lm = c.brOn ? 3.6f : ROADW - 1.2f; if (fabsf(c.lat) > lm) { c.lat = clampf(c.lat, -lm, lm); c.latV = 0; }
@@ -250,12 +241,9 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
     V3 p, pa; float yaw, ya;
     if (c.brOn) { W.brs[c.brK].at(c.bu, c.lat, p, yaw); W.brs[c.brK].at(c.bu + 2.5f, c.lat, pa, ya); } else { W.at(c.stot, c.lat, p, yaw); W.at(c.stot + 2.5f, c.lat, pa, ya); }
     float y = p.y, yahead = pa.y; V3 old = c.pos; bool onBr = !c.brOn && W.ts[i].br;   // road height, not terrain height: the road may be on a bridge
-    {   // 2.9 the slide: hard round a bend at the line's speed, the tail steps out and the nose points into the turn (drawn only, with a little smoke)
-        float k = onLine && go ? rline::turn[i] : 0, lim = onLine ? rline::v[i] * sqrtf(wx().grip) : 1e9f, hard = clampf((c.speed - 0.82f * lim) / (0.18f * lim + 0.1f), 0, 1);
-        float wantSlip = fabsf(k) > 0.012f ? clampf(k * c.speed * c.speed * 0.011f, -0.24f, 0.24f) * hard : 0.0f; c.aiSlip += (wantSlip - c.aiSlip) * std::min(1.0f, 5 * dt);
-        if (fabsf(c.aiSlip) > 0.06f && go) rline::driftT += dt;
-    }
-    c.pos = V3(p.x, y, p.z); c.vel = (c.pos - old) * (dt > 0 ? 1 / dt : 0); c.yaw = yaw + c.wob + c.aiSlip;
+    { float head = c.speed > 2 ? atan2f(c.aiLatV, c.speed) : 0.0f; c.aiHead += (head - c.aiHead) * std::min(1.0f, 6 * dt); }   // 2.9.1 the nose points the way it is going, across the road too
+    c.pos = V3(p.x, y, p.z); c.vel = (c.pos - old) * (dt > 0 ? 1 / dt : 0); c.yaw = yaw + c.wob + c.aiHead;
+    if (dt > 0 && c.speed > 8 && go) { V3 mv = c.pos - old; aiHeadErr += fabsf(wrapPi(atan2f(mv.x, mv.z) - c.yaw + c.wob)); aiHeadErrN++; }
     if (dt > 0) { float lr = clampf((c.lat - lat0) / dt, -12, 12); c.vel.x = sinf(yaw) * c.speed + cosf(yaw) * lr; c.vel.z = cosf(yaw) * c.speed - sinf(yaw) * lr; }   // (a shove's position fix is not speed)
     c.pitch += (atan2f(yahead - y, 2.5f) - c.pitch) * std::min(1.0f, 10 * dt);
     V3 sd(cosf(yaw), 0, -sinf(yaw)); float hl = onBr ? 0 : W.H(p.x + sd.x, p.z + sd.z), hr = onBr ? 0 : W.H(p.x - sd.x, p.z - sd.z); c.roll += (atan2f(hl - hr, 2) - c.roll) * std::min(1.0f, 10 * dt);

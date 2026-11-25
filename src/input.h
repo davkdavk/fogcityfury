@@ -238,7 +238,7 @@ static void printJSON(FILE* o) {
     fprintf(o, "\"ufoWrecks\":%d,\"ufoOnRoad\":%d,\"flowers\":%d,\"wardenDiscs\":%d,", (int)wfx::wrecks.size(), (int)std::count_if(wfx::wrecks.begin(), wfx::wrecks.end(), [](const wfx::UWreck& w) { return w.road; }), (int)wfx::flowers.size(), (int)W.discs.size());
     fprintf(o,
             "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
-            "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"mechT\":%.2f,\"navOk\":%d,\"navPolys\":%d,\"navMs\":%.0f,\"navQueries\":%d,\"navFails\":%d,\"strafeOnly\":%d,\"footYaw\":%.3f,\"meYaw\":%.3f,\"lineBuilds\":%d,\"lineLap\":%.1f,\"lineLapOld\":%.1f,\"linePasses\":%d,\"lineDefendT\":%.1f,\"lineDriftT\":%.1f,\"aiLead\":%.0f,\"aiLast\":%.0f,\"botWallT\":%.1f,\"botCarT\":%.1f,\"botStuck\":%d,\"driveRoadT\":%.1f,\"driveOffT\":%.1f,\"driveTook\":%.2f,\"driveLate\":%d,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
+            "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"mechT\":%.2f,\"navOk\":%d,\"navPolys\":%d,\"navMs\":%.0f,\"navQueries\":%d,\"navFails\":%d,\"strafeOnly\":%d,\"footYaw\":%.3f,\"meYaw\":%.3f,\"aiPasses\":%d,\"aiHeadErr\":%.4f,\"aiLatMax\":%.2f,\"botWallT\":%.1f,\"botCarT\":%.1f,\"botStuck\":%d,\"driveRoadT\":%.1f,\"driveOffT\":%.1f,\"driveTook\":%.2f,\"driveLate\":%d,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
             "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
             "\"bright\":%d,\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
             shdRingDeaths, mech::unit[0].at.x, mech::unit[0].at.y, mech::unit[0].at.z, mech::unit[0].yaw, mech::tris, mech::unit[0].gait,
@@ -250,7 +250,7 @@ static void printJSON(FILE* o) {
             tm.aiRocketsFired, tm.aiRocketHits, tm.rocketsAtMe, tm.bumps, tm.maxShove, tm.maxWob, onBrNow, loopNow, tm.maxWrongT, W.id, player.type,
             weather, player.pos.x, player.pos.y, player.pos.z, player.yaw, player.vf, player.yawRate, player.lap, player.nextCp, W.n, keysGot[W.id],
             (int)player.dead, state == RESULTS ? finalPlace : place, timeLeft, gibCount, (int)splats.size(), (int)shdOffRoad,
-            showdownOn || shdResult ? flatDist(avatarPos(), shdSite) : -1.0f, mechT, (int)nav::ok, nav::polys, nav::buildMs, nav::queries, nav::fails, (int)footStrafeOnly, footYaw, me.yaw, rline::builds, rline::lapEst, rline::lapEstOld, rline::passes, rline::defendT, rline::driftT, [] { float m = -1e9f; for (auto& a : ai) m = std::max(m, a.stot); return m; }(), [] { float m = 1e9f; for (auto& a : ai) if (!a.dead) m = std::min(m, a.stot); return m; }(), botWallT, botCarT, botStuck, shdRoadT, shdOffT, shdDriveTook, shdLate, shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount,
+            showdownOn || shdResult ? flatDist(avatarPos(), shdSite) : -1.0f, mechT, (int)nav::ok, nav::polys, nav::buildMs, nav::queries, nav::fails, (int)footStrafeOnly, footYaw, me.yaw, aiPasses, aiHeadErrN ? aiHeadErr / aiHeadErrN : 0.0, aiLatMax, botWallT, botCarT, botStuck, shdRoadT, shdOffT, shdDriveTook, shdLate, shdPrepAt, shdBack, selLaps, raceLaps, (int)netShd, netShdCount,
             netSlot, (int)nc.hosts, netBotsMost, (int)shdSpectate, shdWatch, (int)shdPhase, shdAlive(), shdRing, me.place, shdWinner, (int)shdResult,
             dropsThere(), fStr.c_str(), me.gun, me.ammo[me.gun], me.hp, me.armour, me.stamina, (int)(me.rollT > 0), me.target, me.shots, me.hits,
             footPickups, (int)shells.size(), (int)std::count_if(ai, ai + NAI, [](const Car& a) { return a.dead; }), aiMinHp, (int)me.on, me.pos.x,
@@ -307,7 +307,8 @@ static void handleKey(SDL_Keycode k, int sc) {
 static void touchPress(int b) {
     const TouchBtn t = tbtn[b];
     if (t.act == TA_RESET) { if (state == PAUSED) state = RACE; doReset(); } else if (t.act == TA_FIRE) { if (!me.on) fireRocket(); } else if (t.act == TA_CAM) camMode = (camMode + 1) % 3;
-    else if (t.act == TA_EXIT) footToggle(); else if (t.act == TA_RELOAD) reloadMe();   // (TA_WEAPON acts when the finger lifts: touchUp)
+    else if (t.act == TA_EXIT) footToggle(); else if (t.act == TA_RELOAD) reloadMe();
+    else if (t.act == TA_GUNSEL) { if (me.on && me.alive && haveGun(me, (int)t.key)) selectGun(me, (int)t.key); touchGunMenu = false; touchLaid = -1; tone(900, 0.05f, 0.25f, 2); }   // 2.9.1 a gun picked from the menu   // (TA_WEAPON acts when the finger lifts: touchUp)
     else if (t.key) handleKey(t.key, t.key == SDLK_RETURN ? SDL_SCANCODE_RETURN : 0);
 }
 static int touchHit(float x, float y) { for (size_t i = 0; i < tbtn.size(); i++) if (x >= tbtn[i].x && x <= tbtn[i].x + tbtn[i].w && y >= tbtn[i].y && y <= tbtn[i].y + tbtn[i].h) return (int)i; return -1; }
@@ -318,7 +319,9 @@ static void touchDown(SDL_FingerID id, float x, float y) {
 #ifdef FCF_EDITOR
         if (state == EDIT) { edTouchDown(id, x, y); return; }
 #endif
+        if (touchGunMenu) { touchGunMenu = false; touchLaid = -1; return; }   // (a tap off the weapon menu closes it)
         if (me.on && state == RACE && !tstick.on && x < uiW * 0.5f && y > 150) { tstick.on = true; tstick.id = id; tstick.ox = tstick.x = x; tstick.oy = tstick.y = y; }
+        else if (me.on && state == RACE && !taim.on && x >= uiW * 0.5f && y > 110) { taim.on = true; taim.id = id; taim.x = x; taim.y = y; }   // 2.9.1 the crosshair and the trigger
         // lists: tap a row to pick it, tap the picked one again to choose it
         const float mx = x, Wd = uiW;   // (the menus are drawn in the same units)
         if (state == NETJOIN && !nc.on && srvMode == 0 && y >= 145 && y < 145 + 40 * (float)servers.size() && fabsf(mx - Wd / 2) < 580) {
@@ -336,6 +339,7 @@ static void touchMove(SDL_FingerID id, float x, float y) {   // sliding a thumb 
     if (state == EDIT) { edTouchMove(id, x, y); return; }
 #endif
     if (tstick.on && tstick.id == id) { tstick.x = x; tstick.y = y; return; }
+    if (taim.on && taim.id == id) { taim.x = x; taim.y = y; return; }
     for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold >= 0) { int b = touchHit(x, y); if (b >= 0 && tbtn[b].hold >= 0) f.btn = b; }
     for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].act == TA_WEAPON && fabsf(x - f.sx) > 45) { cycleGunDir(x > f.sx ? 1 : -1); f.sx = x; f.swiped = true; }   // 2.7 a swipe across GUN: next / previous, a step per 45
 }
@@ -344,7 +348,8 @@ static void touchUp(SDL_FingerID id) {
     if (edt.n && edTouchUp(id)) return;
 #endif
     if (tstick.on && tstick.id == id) tstick.on = false;
-    for (size_t i = 0; i < fingers.size();) if (fingers[i].id == id) { Finger f = fingers[i]; fingers.erase(fingers.begin() + i); if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].act == TA_WEAPON && !f.swiped) cycleGun(); } else i++; }   // (a tap on GUN: the next one)
+    if (taim.on && taim.id == id) taim.on = false;
+    for (size_t i = 0; i < fingers.size();) if (fingers[i].id == id) { Finger f = fingers[i]; fingers.erase(fingers.begin() + i); if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].act == TA_WEAPON && !f.swiped) { touchGunMenu = !touchGunMenu; touchLaid = -1; } } else i++; }   // (2.9.1 a tap on GUN opens the weapon menu; a swipe still steps through)
 static int touchFind(const std::string& label) { touchLayout(); for (size_t i = 0; i < tbtn.size(); i++) if (label == tbtn[i].label) return (int)i; return -1; }
 static std::vector<std::string> touchHoldLabels;   // --touchhold LABEL (tests): a finger that never lets go
 struct Press { float t; std::string name; }; static std::vector<Press> presses, taps, holdsAt; static float fixedT = 0;   // --press T:KEY, --tap T:LABEL

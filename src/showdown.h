@@ -68,7 +68,7 @@ static void layTownDrops() {
         if (W.dry(p.x, p.z) || W.HW(p.x, p.z) < 0.5f || solidAt(p + V3(0, 1.0f, 0), false) || solidAt(p + V3(0, 0.3f, 0), false)) continue;
         int ni = W.nearest(p.x, p.z); if (flatDist(p, V3(W.ts[ni].x, 0, W.ts[ni].z)) < 13) continue;   // (off the road)
         bool clear = true; for (const Drop& o : drops) if (flatDist(o.p, p) < 40) clear = false; if (!clear) continue;
-        Drop d = { p, drops.size() % 3 == 2 ? (int)D_MED : drops.size() % 6 == 4 ? (int)(G_RIFLE + (h >> 8) % 4) : (int)D_AMMO }; d.rar = dropRar(d); drops.push_back(d);   // (2.7: every sixth a gun)
+        Drop d = { p, drops.size() % 3 == 2 ? (int)D_MED : (int)D_AMMO }; d.rar = dropRar(d); drops.push_back(d);   // (2.9.1: ammunition and medkits only; guns lie about only in a rampage's ring)
     }
     townDrops = (int)drops.size();
 }
@@ -464,6 +464,13 @@ static void shdFinish() {   // to the results. Anyone still standing is placed b
     shdResult = true; state = RESULTS; resultsT = 0; timeUp = false; footMouseFire = false; writeSave();
 }
 // the computer-driven fighters (the ones this game runs) drive to the ring
+// 2.9.1 where a car sits: on the road ribbon's own height while on the road (the ground beside a raised road is lower: the
+// cars sank into it at the edges), else on the ground as drawn
+static float shdCarY(float x, float z, float curY) {
+    float g = W.ground(x, z, curY + 1.5f);
+    if (W.RD(x, z) < ROADW + 0.5f) { int ni = W.nearest(x, z); float ry = W.ts[ni].y; if (fabsf(ry - curY) < 4.0f || fabsf(ry - g) < 4.0f) g = std::max(g, ry); }
+    return g;
+}
 static void shdDriveBots(float dt) {
     for (int i = 0; i < NFIGHT; i++) {
         Fighter& f = fighters[i]; if (f.on || f.car < 0 || f.remote) continue; Car& a = ai[f.car];
@@ -476,13 +483,16 @@ static void shdDriveBots(float dt) {
         if (!fin && L < 2.0f) f.drvT = 0;   // at the aim: look again next step
         V3 dir = L > 0.01f ? d * (1 / L) : yawDir(a.yaw); float turn = wrapPi(atan2f(dir.x, dir.z) - a.yaw), err = fabsf(turn);
         float want = fin ? std::min(17.0f, sqrtf(2 * 6.0f * L) + 1.0f) : std::min({ cfSpeedAt(a.pos), sqrtf(2 * 5.0f * ds) + 6.0f, sqrtf(2 * 7.0f * L) + 7.0f });   // easing off for the next corner (the aim is where the clear line ends) and for the ring
-        want = std::min(want, std::max(5.0f, CF_V_ROAD - 38.0f * err)); if (!fin) shdRoadT += dt * (cfSpeedAt(a.pos) > CF_V_ROAD - 1 ? 1.0f : 0.0f), shdOffT += dt * (cfSpeedAt(a.pos) > CF_V_ROAD - 1 ? 0.0f : 1.0f);
+        want = std::min(want, std::max(6.0f, CF_V_ROAD - 48.0f * err)); if (!fin) shdRoadT += dt * (cfSpeedAt(a.pos) > CF_V_ROAD - 1 ? 1.0f : 0.0f), shdOffT += dt * (cfSpeedAt(a.pos) > CF_V_ROAD - 1 ? 0.0f : 1.0f);
         a.speed += clampf(want - a.speed, -24 * dt, 9 * dt); if (a.speed < 0) a.speed = 0;
-        a.yaw = wrapPi(a.yaw + clampf(turn, -2.4f * dt, 2.4f * dt));
+        { float rate = std::min(2.4f, 13.0f / std::max(a.speed, 1.0f)); a.yaw = wrapPi(a.yaw + clampf(turn * 4.0f * dt, -rate * dt, rate * dt)); }   // 2.9.1 steered, not swung: the faster it goes the gentler it turns (about 1.3 g at most), easing into the heading
         V3 np = a.pos + yawDir(a.yaw) * (a.speed * dt); int ci, cj;
         if (!cfCellOf(np, ci, cj) || cfAt(ci, cj) > 1e8f) np = a.pos + dir * std::min(a.speed * dt, L);   // the heading would clip a wall: go the way itself
-        np.y = W.ground(np.x, np.z, a.pos.y + 1.5f); a.vel = (np - a.pos) * (1 / dt); float hy = np.y - a.pos.y; a.pos = np;
-        a.pitch += (atan2f(-hy, a.speed * dt + 1e-4f) - a.pitch) * std::min(1.0f, 8 * dt); a.roll *= expf(-4 * dt);
+        np.y = shdCarY(np.x, np.z, a.pos.y); a.vel = (np - a.pos) * (1 / dt); a.pos = np;
+        {   // 2.9.1 sat on the ground as a racer is: nose up a slope it is climbing (from the ground ahead, as stepAI does), tilted with the ground across it
+            V3 fw = yawDir(a.yaw), sd(fw.z, 0, -fw.x); float ya = shdCarY(np.x + fw.x * 2.5f, np.z + fw.z * 2.5f, np.y), hl = shdCarY(np.x + sd.x, np.z + sd.z, np.y), hr = shdCarY(np.x - sd.x, np.z - sd.z, np.y);
+            a.pitch += (atan2f(ya - np.y, 2.5f) - a.pitch) * std::min(1.0f, 10 * dt); a.roll += (atan2f(hl - hr, 2) - a.roll) * std::min(1.0f, 10 * dt);
+        }
         a.vf = a.speed; a.steer = clampf(turn * 2, -1, 1); a.wheelRot += a.speed / SPECS[a.type].wr * dt;
     }
 }   // (a bot has arrived once it is out at its place: shdOut)
@@ -596,7 +606,7 @@ static void footFrame(float dt) {
     if (cliOnFoot && act && countdown <= 0 && !me.on && !showdownOn) { cliOnFoot = false; footLeaveCar(); }   // (--onfoot, tests: out of the car once the race is on)
     for (auto& f : fighters) {
         if (!f.on) continue; if (f.remote) { if (!f.mini) netStepRemote(f, dt); continue; } FootIn in;   // (a remote mini Warden: netroam.h moves it)
-        if (act && f.alive) { if (f.mini) in = mini::think(f, dt); else if (f.bot) in = &f == &me && !showdownOn && exploreMode ? mini::youThink(f, dt) : botThink(f, dt); else if (!(simMode && heldKeys.empty() && fingers.empty() && !tstick.on)) in = readFootInput(footTurn, dt); else if (&f == &me && cliAds) { in.ads = in.fire = true; footAdsNow = true; } else if (&f == &me && cliHip) in.fire = true; }   // (--ads, tests: down the sights, firing; --hipfire: firing from the hip, the lock-on aiming)
+        if (act && f.alive) { if (f.mini) in = mini::think(f, dt); else if (f.bot) in = &f == &me && !showdownOn && exploreMode ? mini::youThink(f, dt) : botThink(f, dt); else if (!(simMode && heldKeys.empty() && fingers.empty() && !tstick.on && !taim.on)) in = readFootInput(footTurn, dt); else if (&f == &me && cliAds) { in.ads = in.fire = true; footAdsNow = true; } else if (&f == &me && cliHip) in.fire = true; }   // (--ads, tests: down the sights, firing; --hipfire: firing from the hip, the lock-on aiming)
         stepFighter(f, in, dt, canFire, canMove);
     }
     for (int i = 0; i < NFIGHT; i++) for (int j = i + 1; j < NFIGHT; j++) {   // nobody stands inside anybody
@@ -656,7 +666,16 @@ static void footFrame(float dt) {
         float t = rayWorld(pv, D, 250, false), t2; int k2; footAimHot = false;
         for (int i = 1; i < NSLOT; i++) { const Fighter& o = fighters[i]; if (!o.on || !o.alive) continue; for (float hh : { 0.5f, 1.0f, 1.5f }) { V3 q = o.pos + V3(0, hh * bodyK(o), 0) - pv; float tt = dot(q, D); if (tt > 0 && tt < t && len(q - D * tt) < 0.45f) { t = tt; footAimHot = true; } } }
         if (jetdrop::hitLine(pv, D, t, t2, k2)) { t = t2; footAimHot = true; } if (dolphin::hitLine(pv, D, t, t2, k2)) t = t2;
-        footAimPt = pv + D * std::max(t, 1.0f); }
+        footAimPt = pv + D * std::max(t, 1.0f);
+        if (footTouchAim && !footAdsNow) {   // 2.9.1 the finger's ray from the camera, through the screen where it is
+            V3 fw = D, rt = yawRight(footYaw), up = V3(rt.y * fw.z - rt.z * fw.y, rt.z * fw.x - rt.x * fw.z, rt.x * fw.y - rt.y * fw.x), ce = pv - D * clampf(rayWorld(pv, D * -1.0f, 4.6f, false) - 0.4f, 0.7f, 4.6f);   // (the camera as footCamera places it, unsmoothed)
+            float th = tanf(camFovNow * 0.5f * 3.14159265f / 180), nx = taim.x / uiW * 2 - 1, ny = 1 - taim.y / 720 * 2; V3 R = norm(fw + rt * (nx * th * camAspNow) + up * (ny * th));
+            float tt = rayWorld(ce, R, 300, false); footAimHot = false;
+            for (int i = 1; i < NSLOT; i++) { const Fighter& o = fighters[i]; if (!o.on || !o.alive) continue; for (float hh : { 0.5f, 1.0f, 1.5f }) { V3 q = o.pos + V3(0, hh * bodyK(o), 0) - ce; float u = dot(q, R); if (u > 0 && u < tt && len(q - R * u) < 0.5f) { tt = u; footAimHot = true; } } }
+            if (jetdrop::hitLine(ce, R, tt, t2, k2)) { tt = t2; footAimHot = true; }
+            footAimPt = ce + R * std::max(tt, 2.0f);
+            float fx = taim.x / uiW; if (fx > 0.9f) footYaw -= std::min(1.0f, (fx - 0.9f) / 0.07f) * 1.8f * dt; else if (fx < 0.57f) footYaw += std::min(1.0f, (0.57f - fx) / 0.06f) * 1.8f * dt;   // (held at the right edge, or the middle of the screen: the view turns that way)
+        } }
 }
 // a new race (or a trip back to the menus): everyone back in their cars, pockets refilled
 static void footReset() {

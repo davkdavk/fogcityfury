@@ -708,7 +708,7 @@ def mini_wardens_jetpack_off_a_roof():
     d = sim("--track", 0, "--state", 3, "--events", f, seconds=8)
     check(d["jetDrops"] == 3 and d["jetLanded"] == 3, "three came down", (d["jetDrops"], d["jetLanded"]))
     m = sim("--track", 3, "--state", 3, "--auto", "--nobotguns", seconds=110)
-    check(m["jetLanded"] == 3 and m["jetShots"] >= 1 and m["jetDrops"] == 5, "Midnight Mile's drop: they land and shoot (and two snipers stay up)", (m["jetLanded"], m["jetShots"], m["jetDrops"]))
+    check(m["jetDrops"] == 0, "2.9.1: a stock track drops none by itself (its events are the player's to make)", m["jetDrops"])
 
 
 @test
@@ -724,7 +724,7 @@ def the_editor_makes_dolphins_minis_and_weather():
     check(os.path.exists(f), "saved")
     if not os.path.exists(f): return
     t = open(f).read()
-    check(t.count("\npod ") == 2 and t.count(" dolphin ") == 3, "a pod and two leaps (with Bayside's own pod and its leap)", t[:300])
+    check(t.count("\npod ") == 2 and t.count(" dolphin ") == 2, "a pod and two leaps (with Bayside's own pod)", t[:300])
     check(" minis " in t and " weather " in t and "drift 90" in t, "the minis, the weather and the drift", t[:400])
 
 @test
@@ -1388,7 +1388,7 @@ def touch_buttons_drive_the_car_and_the_menus():
     d = sim("--touch", "--tap", "0.3:OPTIONS", "--tap", "0.6:VIDEO", "--tap", "0.9:DOWN", "--tap", "1.2:DOWN", "--tap", "1.5:<", seconds=2)
     check(d["state"] == 8 and d["aa"] == 2, "so can the options", (d["state"], d["aa"]))
     d = sim("--touch", "--state", 3, "--mode", 0, "--track", 0, "--faceai", "--tap", "0.2:OUT", "--touchhold", "FIRE", seconds=2)
-    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "RELOAD", "CAR", "II", "JUMP", "DUCK"}, "OUT gets out of the car, and the buttons change to the fighter's", d["touchBtns"])
+    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "RELOAD", "CAR", "II", "JUMP", "CROUCH"}, "OUT gets out of the car, and the buttons change to the fighter's", d["touchBtns"])
     check(d["footShots"] >= 3, "a thumb held on FIRE shoots", d["footShots"])
     out = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", seconds=1)
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--stick", "0,1", seconds=3)
@@ -1396,7 +1396,7 @@ def touch_buttons_drive_the_car_and_the_menus():
     d = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--tap", "0.8:CAR", seconds=1.2)
     check(d["onFoot"] == 0 and "GAS" in d["touchBtns"].split(","), "CAR gets back in", (d["onFoot"], d["touchBtns"]))
     d = sim("--touch", *SHOW, seconds=prep_at() + 2)
-    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "RELOAD", "II", "SKIP", "JUMP", "DUCK"}, "in the showdown there is no car to go back to", d["touchBtns"])
+    check(d["onFoot"] == 1 and set(d["touchBtns"].split(",")) == {"FIRE", "ROLL", "RUN", "GUN", "RELOAD", "II", "SKIP", "JUMP", "CROUCH"}, "in the showdown there is no car to go back to", d["touchBtns"])
 
 
 # ----------------------------------------------------------------------------- nitro
@@ -1857,9 +1857,9 @@ def rarity_tiers_on_the_guns_lying_about():
     for t in range(4):
         d = sim("--track", t, "--state", 3, seconds=0.2)
         guns = [(k, r) for k, r in tiers(d) if k < 6]
-        check(len(guns) >= 3, "track %d: some guns lie about the town" % t, d["dropRar"])
-        allt |= {r for k, r in guns}
-    allt |= {r for k, r in tiers(a) + tiers(c) if k < 6}
+        check(len(guns) == 0 and len(tiers(d)) > 10, "track %d: 2.9.1 the town has ammunition and medkits, no guns (those are the showdown's)" % t, d["dropRar"])
+    for sd in range(7, 15):
+        allt |= {r for k, r in tiers(sim(*SHOW, "--seed", sd, seconds=0.5)) if k < 6}
     check(len(allt) >= 4, "the tiers turn up", sorted(allt))
 
 
@@ -2187,21 +2187,17 @@ def the_wardens_minigun_tracks_and_fires_bursts():
         check(d["mechFootErr"] < 0.05, "track %d: the feet still land where they should" % t, d["mechFootErr"])
 
 @test
-def the_race_director_plays_a_tracks_events():
-    """Hilltop Heights' events (events/track0.fcfe): on lap 1, at Warden 1's line, its misfire brings down the tower
-    ahead, with a message after it; a pod of two dolphins off the start, one leaping every lap. Three laps: 5 events,
-    one building down, three leaps. The file is built into the game too (src/events_builtin.h, for the 360 and
-    Android), and that copy is up to date. 2.3: every built-in track has a scripted moment."""
-    d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=230)
-    check(d["eventsLoaded"] == 10 and d["eventLines"] == 4 and d["pods"] == 1, "the track's events are loaded", (d["eventsLoaded"], d["eventLines"], d["pods"]))
-    check(d["lap"] >= 3 and d["events"] == 12, "three laps: a misfire on lap 1, a tower down on lap 2 and another on lap 3 (each with a shake and words), a leap a lap, the snipers (2.6.2)", (d["lap"], d["events"]))
-    check(d["fallen"] == 3 and d["finished"] == 1 and d["wrecks"] == 0, "three buildings come down, and the race goes on", (d["fallen"], d["finished"], d["wrecks"]))
-    check(d["leaps"] == 3 and d["podLeaps"] == 3, "the pod's dolphins take the leaps", (d["leaps"], d["podLeaps"]))
+def the_stock_tracks_carry_no_scripted_events():
+    """2.9.1: the seven stock tracks come with no trigger lines and no scripted events: those are the player's to make in
+    fcfedit. Their dolphin pods and Warden posts stay. The files are built into the game too (src/events_builtin.h, for
+    the 360 and Android), and that copy is up to date."""
+    for t in range(7):
+        e = sim("--track", t, "--state", 3, seconds=1)
+        check(e["eventsLoaded"] == 0 and e["eventLines"] == 0, "track %d: no lines, no events" % t, (e["eventsLoaded"], e["eventLines"]))
+    d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", seconds=150)
+    check(d["events"] == 0 and d["fallen"] == 0 and d["wrecks"] == 0 and d["lap"] >= 2, "a race on its own: nothing scripted happens, and it runs clean", (d["events"], d["fallen"], d["wrecks"], d["lap"]))
     sys.path.insert(0, os.path.join(ROOT, "tools")); import embed_events
     check(embed_events.build() == open(os.path.join(ROOT, "src", "events_builtin.h")).read(), "src/events_builtin.h matches events/ (run tools/embed_events.py)")
-    for t in range(1, 7):
-        e = sim("--track", t, "--state", 3, seconds=1)
-        check(e["eventsLoaded"] + e["pods"] > 0, "track %d has a scripted moment" % t, (e["eventsLoaded"], e["pods"]))
 
 
 @test
@@ -2241,10 +2237,10 @@ def the_event_editor_saves_files_the_game_races():
     check(os.path.exists(f), "the editor saved events/track1.fcfe")
     if not os.path.exists(f): return
     txt = open(f).read()
-    check(txt.count("\nline ") == 5 and txt.count("\nevent ") == 16, "one line and five events in the file (and Bayside's own four lines and eleven events)", (txt.count("\nline "), txt.count("\nevent ")))
+    check(txt.count("\nline ") == 1 and txt.count("\nevent ") == 5, "one line and five events in the file", (txt.count("\nline "), txt.count("\nevent ")))
     check("on after rocket1" in txt and "laps 2" in txt and "chance 0" in txt and 'text "LAP TWO"' in txt, "with their settings")
     runs = [sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=230) for _ in range(2)]
-    check(runs[0]["eventsLoaded"] == 16 and runs[0]["events"] >= 4, "a race fires the ones that can happen", (runs[0]["eventsLoaded"], runs[0]["events"]))
+    check(runs[0]["eventsLoaded"] == 5 and runs[0]["events"] >= 4, "a race fires the ones that can happen", (runs[0]["eventsLoaded"], runs[0]["events"]))
     check(runs[0] == runs[1], "the same way twice")
     p = subprocess.run([BIN, "--sim", "--seconds", "60", "--auto", "--evedit", "--track", "0", "--evscript", "event shake 0 0 0; set on time 3; preview"],
                        cwd=tmp, capture_output=True, text=True, timeout=200)
@@ -2268,9 +2264,9 @@ def a_warden_misfire_is_one_click_in_the_editor():
     if not os.path.exists(f): return
     txt = open(f).read()
     check("line warden3 " in txt and "from warden3" in txt and "on warden3" in txt and "on after misfire1" in txt, "Warden 3's misfire: its line, its rocket, its words", txt[:400])
-    check(txt.count("\nline ") == 5 and txt.count("\nevent ") == 13, "five lines (Hilltop's four, Warden 3's) and thirteen events (Hilltop's ten, three new)", (txt.count("\nline "), txt.count("\nevent ")))
+    check(txt.count("\nline ") == 1 and txt.count("\nevent ") == 3, "one line (Warden 3's) and three events", (txt.count("\nline "), txt.count("\nevent ")))
     r = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=120)
-    check(r["eventsLoaded"] == 13 and r["events"] >= 9, "a race sets them off (the lap 2 and 3 ones later)", (r["eventsLoaded"], r["events"]))
+    check(r["eventsLoaded"] == 3 and r["events"] >= 3, "a race sets them off", (r["eventsLoaded"], r["events"]))
 
 @test
 def the_ronin_120_comes_from_blender_and_races():
@@ -2372,16 +2368,31 @@ def strafing_is_a_pure_sidestep_when_something_else_looks():
 
 
 @test
-def computer_drivers_follow_a_racing_line():
-    """2.9: each track gets a racing line before the race (wide in, apex, wide out) with corner speeds and braking points
-    worked out from it. The drivers follow it, go round slower cars, and slide through the hard bends."""
-    passes = drift = 0
+def computer_drivers_steer_and_overtake():
+    """2.9.1: the 2.8 drivers, with three things added: across the road they steer (the nose points the way the car is
+    going, and the sideways speed builds and eases off), they go round a slower car on one side and stay on it, and
+    with no room they sit behind it instead of driving into it."""
+    passes = 0
     for track in range(NTRACKS):
         d = sim("--track", track, "--state", 3, "--auto", "--nobotguns", seconds=70)
-        check(d["lineBuilds"] >= 1 and d["lineLap"] < d["lineLapOld"] * 1.001, "track %d: a line, and it is no slower round the lap than following the middle" % track, (d["lineLap"], d["lineLapOld"]))
-        check(d["aiDead"] == 0 and d["aiLast"] > 900, "track %d: all ten are still racing, none left behind" % track, (d["aiDead"], d["aiLast"]))
-        passes += d["linePasses"]; drift += d["lineDriftT"]
-    check(passes > 40 and drift > 20, "they overtake, and they slide through bends", (passes, drift))
+        check(d["aiDead"] == 0 and d["aiHeadErr"] < 0.012, "track %d: all ten racing, noses pointing the way they move" % track, (d["aiDead"], d["aiHeadErr"]))
+        passes += d["aiPasses"]
+    check(passes > 40, "they overtake", passes)
+
+
+@test
+def touch_on_foot_crosshair_and_weapon_menu():
+    """2.9.1 Android on foot: a finger on the open right of the screen is the crosshair and the trigger; the GUN button
+    shows the gun in hand, and a tap opens a menu of the guns you have; DUCK is called CROUCH."""
+    no = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", seconds=3)
+    yes = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--tap", "0.2:OUT", "--touchaim", "900,300", seconds=3)
+    check(no["footShots"] == 0 and yes["footShots"] > 0, "a finger held on the screen fires", (no["footShots"], yes["footShots"]))
+    check(abs(yes["meYaw"] - no["meYaw"]) > 0.2, "and he turns to where it is", (no["meYaw"], yes["meYaw"]))
+    m = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--keys", 5, "--tap", "0.2:OUT", "--tap", "0.8:GUN", seconds=1.2)
+    b = m["touchBtns"].split(",")
+    check("SHOTGUN" in b and "RIFLE" in b and "FIRE" not in b, "a tap on GUN opens the weapon menu (and only that)", m["touchBtns"])
+    p = sim("--touch", "--state", 3, "--mode", 1, "--track", 0, "--keys", 5, "--tap", "0.2:OUT", "--tap", "0.8:GUN", "--tap", "1.2:SHOTGUN", seconds=2)
+    check(p["gun"] == 4 and "CROUCH" in p["touchBtns"] and "SHOTGUN" not in p["touchBtns"].split(","), "picking one takes it up and closes the menu", (p["gun"], p["touchBtns"]))
 
 
 @test

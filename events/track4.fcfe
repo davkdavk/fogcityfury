@@ -1,18 +1,3 @@
 # Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)
 warden 1  339.0 -446.0
 pod pod1  -18.0 -502.0  r 45  n 3  k 1
-line warden1  264.6 -437.1  268.3 -464.9
-line fall2  395.2 268.4  421.0 279.2
-line fall3  -49.3 455.7  -49.7 483.7
-line dol1  -146.7 -448.9  -148.8 -476.8
-event misfire1 rocket  at 339.0 28.2 -446.0  to 339.0 30.7 -390.0  fells  from warden1  laps 1  delay 0  times once  chance 100  by player  on warden1
-event message1 say  at 0.0 0.0 0.0  text "WARDEN MISFIRE!"  laps all  delay 0.4  times once  chance 100  by player  on after misfire1
-event falls1 collapse  at 366.0 0.0 393.0  laps 2  delay 0  times once  chance 100  by player  on fall2
-event shake1 shake  at 0.0 0.0 0.0  k 1.2  laps all  delay 0.3  times once  chance 100  by player  on after falls1
-event message2 say  at 0.0 0.0 0.0  text "THE CITY IS COMING DOWN!"  laps all  delay 0.6  times once  chance 100  by player  on after falls1
-event falls2 collapse  at -174.0 0.0 501.0  laps 3  delay 0  times once  chance 100  by player  on fall3
-event shake2 shake  at 0.0 0.0 0.0  k 1.2  laps all  delay 0.3  times once  chance 100  by player  on after falls2
-event message3 say  at 0.0 0.0 0.0  text "ANOTHER ONE COMES DOWN!"  laps all  delay 0.6  times once  chance 100  by player  on after falls2
-event leap1 dolphin  at -18.0 0.0 -502.0  to 7.0 0.0 -502.0  k 1  laps all  delay 0  times lap  chance 100  by player  on dol1
-event weather1 weather  at 0.0 0.0 0.0  wx rain  over 14  laps 2  delay 0  times once  chance 100  by player  on lap
-event message4 say  at 0.0 0.0 0.0  text "HERE COMES THE RAIN"  laps 2  delay 0  times once  chance 100  by player  on lap

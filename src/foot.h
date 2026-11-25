@@ -341,7 +341,8 @@ static void fireGun(Fighter& f, float aimYaw) {
     const GunSpec& g = GUNS[f.gun]; int gi = f.gun; f.cd = g.cd; f.kick = 1; f.shots++;
     V3 fw = yawDir(f.yaw), rt = yawRight(f.yaw), o = f.pos + V3(0, 1.40f * bodyK(f), 0) + fw * 0.55f + rt * 0.16f;
     bool ads = &f == &me && !f.bot && footAdsNow;   // down the sights: to the middle of the screen, steadier
-    V3 d = norm((ads ? footAimPt : f.target >= 0 ? tgtPos(f.target) : o + yawDir(aimYaw) * 40) - o);
+    bool tAim = &f == &me && !f.bot && footTouchAim && f.target < 0; if (tAim) touchAimShots++;   // (2.9.1 a finger on the screen: to the finger, unless it is near enough someone to lock on)
+    V3 d = norm((ads || tAim ? footAimPt : f.target >= 0 ? tgtPos(f.target) : o + yawDir(aimYaw) * 40) - o);
     float s = g.spread * (1 + std::min(f.run, f.slideT > 0 ? 2.0f : 99.0f) / FOOT_RUN * 1.3f + f.bloom * 2.5f) * (f.bot ? BOT_SPREAD : footAimMul) * (ads ? 0.3f : 1.0f) * (1 - 0.35f * f.crouchK) * (f.air ? 1.5f : 1.0f) * RAR[f.rar[gi]].spread;   // (2.8: steadier crouched or sliding, wilder in the air)
     if (ads && f.run < 0.4f && f.bloom < 0.05f && g.pellets == 1) s = 0;   // (settled, still, down the sights: the first shot goes exactly where it points)
     f.bloom = std::min(1.0f, f.bloom + FEEL[gi].bloomAdd * (1 - 0.3f * f.crouchK)); f.sinceShot = 0;   // (crouched, it opens less)
@@ -425,8 +426,10 @@ static void stepFighter(Fighter& f, FootIn in, float dt, bool canFire, bool canM
     // 2.6 the trigger, for you: a tap just before the gun is ready is kept (a fifth of a second) and fires the moment it is
     static bool prevFire = false; static float tapBuf = 0; bool you = &f == &me && !f.bot;
     if (you) { if (in.fire && !prevFire) tapBuf = 0.2f; else tapBuf = std::max(0.0f, tapBuf - dt); prevFire = in.fire; if (tapBuf > 0 && canFire) in.fire = true; }
-    bool trigger = in.fire && canFire && !rolling && !mantling; float aimYaw = f.bot ? f.yaw : footYaw; bool ads = in.ads && !f.bot && !rolling && !mantling;
-    if (!f.bot) { if (ads) f.target = -1; else if (trigger || f.aimHold > 0) f.target = pickFoe(f, footYaw, 1.05f); else f.target = -1; }   // (down the sights: no lock, you aim)
+    bool trigger = in.fire && canFire && !rolling && !mantling; float aimYaw = f.bot ? f.yaw : footYaw;
+    if (you && footTouchAim) { V3 d = footAimPt - f.pos; aimYaw = atan2f(d.x, d.z); }   // (2.9.1 he turns to the finger)
+    bool ads = in.ads && !f.bot && !rolling && !mantling;
+    if (!f.bot) { if (ads) f.target = -1; else if (footTouchAim && you) f.target = trigger ? pickFoe(f, aimYaw, 0.14f) : -1; else if (trigger || f.aimHold > 0) f.target = pickFoe(f, footYaw, 1.05f); else f.target = -1; }   // (a finger: locks only onto someone right by it)   // (down the sights: no lock, you aim)
     if (f.target >= 0 && !tgtAlive(f.target)) f.target = -1;
     if (f.target >= 0) { V3 d = tgtPos(f.target) - f.pos; aimYaw = atan2f(d.x, d.z); }
     if (trigger) f.aimHold = 0.6f; else f.aimHold = std::max(0.0f, f.aimHold - dt);
@@ -525,6 +528,7 @@ static FootIn readFootInput(float& turn, float dt) {
     in.crouch = dn(B_CAM) || key(SDL_SCANCODE_LCTRL) || key(SDL_SCANCODE_RCTRL);
     { bool d = touchHolds(H_DUCK); if (d && !prevDuck) duckTog = !duckTog; prevDuck = d; }
     if (tstick.on) { fwd = clampf((tstick.oy - tstick.y) / 70, -1, 1); str = clampf((tstick.x - tstick.ox) / 70, -1, 1); }
+    footTouchAim = taim.on && !in.ads; if (taim.on) in.fire = true;   // 2.9.1 a finger on the screen: the trigger, and where the shot goes
     if (pad) {
         auto ax = [&](plat::PadAxis a) { float v = plat::padAxisRaw(pad, a) / 32767.f; return fabsf(v) > 0.16f ? v : 0.0f; };
         float lx = ax(plat::AX_LX), ly = ax(plat::AX_LY); if (lx != 0 || ly != 0) { str = lx; fwd = -ly; }

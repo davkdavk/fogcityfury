@@ -521,7 +521,7 @@ static void render(int fbw, int fbh) {
         }
     }
     if (!chase) eye = camPos;
-    M4 V = lookAt(eye, camTgt, debugTop ? V3(0, 0, -1) : upv), P = perspective(fov * M_PI / 180, asp, 0.3f, 6000); lastVP = mul(P, V);
+    camFovNow = fov; camAspNow = asp; M4 V = lookAt(eye, camTgt, debugTop ? V3(0, 0, -1) : upv), P = perspective(fov * M_PI / 180, asp, 0.3f, 6000); lastVP = mul(P, V);
     gfx::bind(0, shadowTex); gfx::bind(1, cubeTex); gfx::bind(2, W.htex);
 #ifdef FCF_GFX_XSDK
     if (xsdkPasses == 0) {

@@ -9,10 +9,10 @@ static const int BIND_DEF[NBIND][2] = { { SDL_SCANCODE_LEFT, SDL_SCANCODE_A }, {
     { SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT }, { SDL_SCANCODE_F, SDL_SCANCODE_E }, { SDL_SCANCODE_R, SDL_SCANCODE_BACKSPACE }, { SDL_SCANCODE_C, 0 }, { SDL_SCANCODE_G, 0 }, { SDL_SCANCODE_Q, 0 }, { SDL_SCANCODE_R, 0 } };   // (R: on foot it reloads, in the car it is BACK ON TRACK)
 static std::vector<int> heldKeys; static int binds[NBIND][2];
 // ---- touch screens: on-screen buttons. Shown once a finger touches the screen (always on Android), or with --touch ----
-enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON, TA_RELOAD };
+enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON, TA_RELOAD, TA_GUNSEL };   // TA_GUNSEL: a gun in the weapon menu (key = which)
 // hold: a Bind held while a finger is on it (-1: a tap button). Drawn round (pill false: x, y, w, h is the circle's box) or as a pill;
 // icon: a symbol instead of the label (the label still names it, for tests); style: its colour
-enum TouchIcon { IC_NONE, IC_LEFT, IC_RIGHT, IC_UP, IC_DOWN, IC_PAUSE, IC_CAM, IC_RESET };
+enum TouchIcon { IC_NONE, IC_LEFT, IC_RIGHT, IC_UP, IC_DOWN, IC_PAUSE, IC_CAM, IC_RESET, IC_GUN };   // IC_GUN: the gun in hand (GUN) or the one in key (the menu)
 enum TouchStyle { TS_PLAIN, TS_GO, TS_STOP, TS_NITRO, TS_FIRE };
 struct TouchBtn { const char* label; float x, y, w, h; int hold; int act; SDL_Keycode key; bool pill = false; int icon = IC_NONE, style = TS_PLAIN; };
 struct Finger { SDL_FingerID id; int btn; float sx = 0; bool swiped = false; };   // sx: where it came down (2.7: a swipe across GUN changes guns either way)
@@ -64,10 +64,12 @@ static State viewState() { return state == OPTS ? optReturn : state; }        //
 // which buttons the current screen needs, in HUD units (the screen is uiW x 720). Round buttons where thumbs rest,
 // pills for words; spaced so a thumb never lands on two; only what the moment needs (ROCKET only with rockets on board);
 // and clear of the HUD's panels (speedometer right of middle, position top left, minimap left of middle)
+static bool haveGun(const Fighter& f, int g); static bool usesMag(const Fighter& f);   // (foot.h)
 static bool touchHasAmmo(); static bool edTesting(); static int edToolNow(); static bool selIsCustom();
 static void touchLayout() {
     long long sig = (long long)state * 100 + srvMode * 10 + optPage + (me.on ? 2 : 0) + (showdownOn ? 4 : 0) + (nc.on ? 5000 : 0) + (long long)uiW * 10000
-                  + ((long long)touchHasAmmo() << 32) + ((long long)edTesting() << 36) + ((long long)edToolNow() << 37) + ((long long)selIsCustom() << 41) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35);
+                  + ((long long)touchHasAmmo() << 32) + ((long long)edTesting() << 36) + ((long long)edToolNow() << 37) + ((long long)selIsCustom() << 41) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35)
+                  + ((long long)touchGunMenu << 42) + ((long long)(me.on ? me.gun : 0) << 43) + ((long long)[] { int m = 0; for (int g = 0; g < NGUNS; g++) if (haveGun(me, g)) m |= 1 << g; return m; }() << 47);
     static long long laidSig = -1; if (sig == laidSig && touchLaid >= 0) return;
     laidSig = sig; touchLaid = 1; tbtn.clear(); fingers.clear(); float W = uiW, H = 720;
     auto push = [&](TouchBtn b) { tbtn.push_back(b); };
@@ -105,10 +107,17 @@ static void touchLayout() {
     case RACE:
         cKey("II", 300, topY, 36, SDLK_ESCAPE, IC_PAUSE);
         if (me.on) {   // on foot: the left thumb gets a stick wherever it lands (see touchDown); the right thumb gets the gun
+            if (touchGunMenu) {   // 2.9.1 the weapon menu: the guns you have, in an arc round GUN, and nothing else to land on by mistake
+                cAct("GUN", W - 465, H - 80, 52, TA_WEAPON, IC_GUN); int n = 0; for (int g = 0; g < NGUNS; g++) if (haveGun(me, g)) n++;
+                int k = 0; for (int g = 0; g < NGUNS; g++) if (haveGun(me, g)) { float a = 3.14159f * (0.97f - 0.62f * (n > 1 ? k / (float)(n - 1) : 0.5f)), r = 200;
+                    TouchBtn b{ GUNS[g].name, W - 465 + cosf(a) * r - 50, H - 80 - sinf(a) * r - 50, 100, 100, -1, TA_GUNSEL, (SDL_Keycode)g }; b.icon = IC_GUN; b.style = g == me.gun ? TS_FIRE : TS_PLAIN; push(b); k++; }
+                break;
+            }
             cHold("FIRE", W - 125, H - 130, 92, B_FIRE, IC_NONE, TS_FIRE);
             cHold("RUN", W - 300, H - 80, 58, B_NITRO, IC_NONE, TS_NITRO); cHold("ROLL", W - 420, H - 220, 52, H_ROLL);   // (left of the weapon panel)
-            cHold("JUMP", W - 150, H - 292, 50, B_HB); cHold("DUCK", W - 296, H - 200, 44, H_DUCK);   // 2.8 (DUCK toggles the crouch: tap it while running to slide)
-            cAct("GUN", W - 465, H - 80, 46, TA_WEAPON); cAct("RELOAD", W - 270, H - 330, 44, TA_RELOAD); if (!showdownOn) cAct("CAR", W - 420, 56, 36, TA_EXIT);
+            cHold("JUMP", W - 150, H - 292, 50, B_HB); cHold("CROUCH", W - 296, H - 200, 44, H_DUCK);   // 2.8 (CROUCH toggles: tap it while running to slide)
+            cAct("GUN", W - 465, H - 80, 52, TA_WEAPON, IC_GUN);   // 2.9.1 the gun in hand; a tap opens the weapon menu
+            cAct("RELOAD", W - 270, H - 330, 44, TA_RELOAD); if (!showdownOn) cAct("CAR", W - 420, 56, 36, TA_EXIT);
             if (showdownOn) pKey("SKIP", 390, topY - 30, 120, SDLK_RETURN, TS_PLAIN, 60);
             break;
         }
@@ -178,12 +187,26 @@ static void drawTouch() {
         case IC_DOWN: ui.tri(cx, cy + s, cx + s, cy - s * 0.7f, cx - s, cy - s * 0.7f, ink, ia); break;
         case IC_PAUSE: ui.rect(cx - s * 0.65f, cy - s * 0.8f, s * 0.45f, s * 1.6f, ink, ia); ui.rect(cx + s * 0.2f, cy - s * 0.8f, s * 0.45f, s * 1.6f, ink, ia); break;
         case IC_CAM: ui.rect(cx - s, cy - s * 0.55f, s * 1.5f, s * 1.1f, ink, ia); ui.tri(cx + s * 0.5f, cy, cx + s * 1.05f, cy - s * 0.55f, cx + s * 1.05f, cy + s * 0.55f, ink, ia); break;
+        case IC_GUN: {   // a little side-on silhouette of the gun, its name under it in the colour of its rarity
+            int g = t.act == TA_GUNSEL ? (int)t.key : me.gun; g = clampf(g, 0, NGUNS - 1); V3 c = ink; float u = s * 0.42f, gy = cy - s * 0.25f;
+            if (g == G_FISTS) { ui.disc(cx, gy, u * 1.5f, c, ia); ui.rect(cx - u * 1.6f, gy - u * 0.4f, u * 3.2f, u * 0.35f, V3(0.1f, 0.1f, 0.12f), ia); }
+            else { float L = g == G_PISTOL ? 2.4f : g == G_SMG ? 3.6f : g == G_LAUNCHER ? 3.6f : 4.6f, Hh = g == G_LAUNCHER ? 1.0f : 0.6f;
+                ui.rect(cx - L * u * 0.5f, gy - Hh * u * 0.5f, L * u, Hh * u, c, ia); ui.rect(cx - L * u * 0.5f + (g == G_PISTOL ? 0.2f : 0.9f) * u, gy + Hh * u * 0.5f, 0.6f * u, 1.3f * u, c, ia);
+                if (g == G_RIFLE || g == G_SHOTGUN) ui.rect(cx - L * u * 0.5f - 1.1f * u, gy - 0.1f * u, 1.2f * u, 0.9f * u, c, ia);
+                if (g == G_SMG) ui.rect(cx - 0.2f * u, gy + 0.3f * u, 0.45f * u, 1.4f * u, c, ia); }
+            const char* nm = GUNS[g].name; float sc = std::min(2.2f, t.w * 0.8f / (strlen(nm) * 6.4f)); int rr = me.rar[g]; ui.text(cx, cy + s * 0.75f, sc, rr ? RAR[rr].col : ink, nm, 1, ia);
+            if (t.act == TA_WEAPON && usesMag(me) && me.on) { char b[16]; snprintf(b, sizeof b, "%d", me.mag[me.gun]); ui.text(cx + t.w * 0.42f, cy - t.h * 0.5f, 1.8f, ink, b, 1, ia); }   // (rounds in the magazine, at its shoulder)
+            break; }
         case IC_RESET: { const int N = 14; for (int k = 0; k < N; k++) { float a0 = -0.6f + k * 4.6f / N, a1 = -0.6f + (k + 1) * 4.6f / N; ui.line(cx + cosf(a0) * s * 0.85f, cy + sinf(a0) * s * 0.85f, cx + cosf(a1) * s * 0.85f, cy + sinf(a1) * s * 0.85f, 3, ink, ia); }
             float ax = cx + cosf(-0.6f) * s * 0.85f, ay = cy + sinf(-0.6f) * s * 0.85f; ui.tri(ax - s * 0.45f, ay - s * 0.1f, ax + s * 0.4f, ay - s * 0.25f, ax + s * 0.05f, ay + s * 0.5f, ink, ia); } break;
         default: {   // a word: as big as fits
             size_t n = strlen(t.label); float sc = std::min(t.h * 0.05f, (t.w * (t.pill ? 0.82f : 0.74f)) / (n * 6.4f)); sc = std::max(sc, 1.6f);
             ui.text(cx, cy - sc * 3.5f, sc, ink, t.label, 1, ia); }
         }
+    }
+    if (me.on && state == RACE && taim.on) {   // 2.9.1 the crosshair where the finger is: red while it is on someone
+        V3 c = footAimHot ? V3(1, 0.3f, 0.25f) : V3(1, 1, 1); ring(taim.x, taim.y, 26, 3, c, 0.9f); ui.rect(taim.x - 40, taim.y - 1.5f, 24, 3, c, 0.9f); ui.rect(taim.x + 16, taim.y - 1.5f, 24, 3, c, 0.9f);
+        ui.rect(taim.x - 1.5f, taim.y - 40, 3, 24, c, 0.9f); ui.rect(taim.x - 1.5f, taim.y + 16, 3, 24, c, 0.9f);
     }
     if (me.on && state == RACE) {   // the thumb-stick: a ring where the thumb went down, a knob where it is now
         float ox = tstick.on ? tstick.ox : 190, oy = tstick.on ? tstick.oy : 560, kx = tstick.on ? ox + clampf(tstick.x - ox, -70, 70) : ox, ky = tstick.on ? oy + clampf(tstick.y - oy, -70, 70) : oy;

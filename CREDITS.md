@@ -25,11 +25,6 @@ Code brought in, with its authors, where it came from, its licence and what was 
 The small behaviour tree in `src/bt.h` is our own; its selector and sequence nodes follow the shape of
 [BehaviorTree.CPP](https://github.com/BehaviorTree/BehaviorTree.CPP) (MIT), none of whose code is used.
 
-The computer drivers' racing line (`src/raceline.h`) is our own code. Its method (a line worked out from the track
-before the race, corner speeds from its curvature, braking points from a pass backwards round the lap) follows the
-robots of [TORCS](https://sourceforge.net/projects/torcs/) and [Speed Dreams](https://www.speed-dreams.net) (GPL
-v2 or later), none of whose code is used.
-
 Projects we still mean to draw on:
 
 | Project | For | Licence |
