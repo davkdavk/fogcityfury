@@ -92,6 +92,8 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+> **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
+
 ## What's new in 2.9.3
 
 - **Roam on after the race.** On the results screen, ENTER (A on a pad, ROAM on a touch screen) carries the race's
