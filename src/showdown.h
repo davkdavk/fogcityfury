@@ -266,7 +266,8 @@ static void shdPlanBot(Fighter& f) {
     f.park = shdSite + yawDir(i * 1.5708f + 0.6f) * 10.0f;
 }
 // 2.9 (botThink) each bot's cover, by fighter id
-static struct BotCov { V3 c, pk; float t = 0, look = 0; int mode = 0; bool healing = false; } bcov[NSLOT];
+static const bool BOT_COVER = false;   // 2.7: showdown bots do not use cover yet (one could step in and out of it for ever without a shot); to come back, tested on its own
+static struct BotCov { V3 c, pk; float t = 0, look = 0; int mode = 0, dry = 0; bool healing = false; } bcov[NSLOT];
 static float botCoverT = 0; static int botHealRuns = 0;   // (test metrics)
 static bool showdownStart(int racePlace) {   // called as you cross the line. The top five fight; finish lower and you watch them
     for (auto& b : bcov) b = BotCov(); botCoverT = 0; botHealRuns = 0;
@@ -327,7 +328,8 @@ static bool botCoverAt(const Fighter& f, V3 eye, BotCov& bc) {
         float a = a0 + k * 0.5236f; V3 c(f.pos.x + cosf(a) * r, 0, f.pos.z + sinf(a) * r); if (!ok(c)) continue;
         if (canSee(c + V3(0, 0.95f, 0), eye, true) || canSee(c + V3(0, 1.45f, 0), eye, true)) continue;   // (its body out of sight: a parked car hides all but the head)
         V3 to(eye.x - c.x, 0, eye.z - c.z); to = to * (1 / std::max(len(to), 0.1f)); V3 sd(to.z, 0, -to.x);
-        for (float o : { 1.3f, -1.3f, 2.2f, -2.2f }) { V3 pk = c + sd * o; if (ok(pk) && canSee(pk + V3(0, 1.5f, 0), eye, true) && clear(c, pk) && clear(f.pos, c)) { bc.c = c; bc.pk = pk; return true; } }
+        for (float o : { 1.3f, -1.3f, 2.2f, -2.2f }) { V3 pk = c + sd * o; if (ok(pk) && canSee(pk + V3(0, 1.5f, 0), eye, true) && canSee(pk + V3(0, 1.4f, 0), eye - V3(0, 0.4f, 0), true) &&   // (seen as its gun sees: eye to chest)
+            clear(c, pk) && clear(f.pos, c)) { bc.c = c; bc.pk = pk; return true; } }
     }
     return false;
 }
@@ -361,7 +363,7 @@ static FootIn botThink(Fighter& f, float dt) {
     if (ringD > shdRing - 4 || (closing && ringD > shdRingTgt + 1)) { if (!ffWay(f.pos, mv)) mv = toward(shdSite); in.sprint = ringD > shdRing - 1; }          // the ring comes first: the way round what blocks a runner
     else if (bd >= 0 && (!fight || !see || bv > 12)) { mv = toward(drops[bd].p); in.sprint = !fight || td > 16;
         bool heal = fight && drops[bd].kind == D_MED && f.hp < 35; if (heal && !bcov[f.id].healing) botHealRuns++; bcov[f.id].healing = heal; bcov[f.id].mode = 0; }
-    else if (tg >= 0 && fight && (see || bcov[f.id].mode) && td > 9 && f.gun != G_FISTS && f.gun != G_SHOTGUN && (bcov[f.id].mode || (bcov[f.id].look -= dt) <= 0) && [&] {
+    else if (BOT_COVER && tg >= 0 && fight && (see || bcov[f.id].mode) && td > 9 && f.gun != G_FISTS && f.gun != G_SHOTGUN && (bcov[f.id].mode || (bcov[f.id].look -= dt) <= 0) && [&] {
             BotCov& bc = bcov[f.id]; bc.healing = false; V3 te = fighters[tg].pos + V3(0, 1.5f, 0); bool low = f.hp < 35;
             if (bc.mode == 0) { bc.look = grng.r(1.2f, 2.2f); if (!botCoverAt(f, te, bc)) return false; bc.mode = 1; bc.t = low ? grng.r(1.8f, 2.8f) : grng.r(0.6f, 1.2f); }
             V3 side = norm(V3(te.z - f.pos.z, 0, -(te.x - f.pos.x)));
@@ -372,7 +374,10 @@ static FootIn botThink(Fighter& f, float dt) {
                 if (bc.t <= 0) { bc.mode = 2; bc.t = grng.r(1.2f, 2.0f); }
             } else {   // out to the side, strafing across the gap while it fires
                 mv = (flatDist(f.pos, bc.pk) > 0.5f ? toward(bc.pk) : V3()) + side * (f.strafe * 0.6f); bc.t -= dt;
-                if (bc.t <= 0) { bc.mode = 1; bc.t = low ? grng.r(1.8f, 2.8f) : grng.r(0.6f, 1.2f); }
+                if (bc.t <= 0) {   // back in. 2.7 fix: two turns out without a shot (no clear line from there after all): give the cover up and go at them
+                    if (f.sinceShot > 2.6f) bc.dry++; else bc.dry = 0;
+                    if (bc.dry >= 2) { bc.dry = 0; bc.mode = 0; bc.look = 5.0f; return false; }
+                    bc.mode = 1; bc.t = low ? grng.r(1.8f, 2.8f) : grng.r(0.6f, 1.2f); }
             }
             return true; }()) {}
     else if (tg >= 0) {   // keep the range this gun likes, and never stand still

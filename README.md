@@ -117,7 +117,7 @@ Gunplay, along Fortnite lines but in the game's own spirit: quick, clean and sat
     goes round your flank.
   - Mini Wardens are plated: pistol and SMG rounds lose damage at range; shotgun, rifle, grenades, fists and headshots
     go through. A vest no longer covers the head in a showdown.
-  - Showdown bots use cover and go for a medkit when hurt.
+  - Showdown bots go for a medkit when hurt.
 
 ## What's new in 2.6.3
 
