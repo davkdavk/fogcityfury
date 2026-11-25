@@ -92,6 +92,18 @@ Touchscreens on Windows and Linux get the same on-screen buttons the moment the 
 The keyboard keys above are the defaults; every driving key can be changed
 in the options.
 
+## What's new in 2.9
+
+- **The computer drivers race a proper line.** Before each race the game works out a racing line for the track
+  (wide in, clip the apex, wide out), how fast each bend can be taken on it, and where the braking has to start.
+  The drivers follow it instead of the middle of the road, each with a slightly different idea of it.
+- **They overtake.** A driver that catches a slower car goes round the side with more room; with no room it sits
+  behind until there is, instead of driving into it. On a straight, a driver being caught eases a little towards the
+  side it is being passed on.
+- **They slide.** Hard through a bend the tail steps out, the tyres smoke, and the car carries a little more speed.
+- The method follows the robots of TORCS and Speed Dreams; the code is our own (see [CREDITS.md](CREDITS.md)).
+  Rockets, shields and shortcuts work as before.
+
 ## What's new in 2.8
 
 - **Showdown bots find their way.** The game now builds a walking map of the ring with Recast & Detour, and the

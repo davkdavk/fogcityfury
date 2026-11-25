@@ -100,6 +100,11 @@ static void update(float dt) {
             if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn && !trialMode) for (auto& a : ai) {   // the racers stop for the showdown (manic: there are none)
                 if (a.dead) { a.deadT -= h; if (a.deadT <= 0) { a.dead = false; a.stot += 8; a.lat = a.latT = a.lat > 0 ? a.lat - 4.5f : a.lat + 4.5f; } continue; }   // hit by a rocket: back on the road beside its wreck
                 stepAI(a, h, go, player.progress);
+                if (!g_noGL && fabsf(a.aiSlip) > 0.09f && a.speed > 14 && parts.size() < 5000) {   // 2.9 sliding: smoke off the back tyres (looks only: its own counter, no race dice)
+                    static float acc[NAI] = {}; static unsigned sk = 0; int q = (int)(&a - ai); float px = player.pos.x - a.pos.x, pz = player.pos.z - a.pos.z;
+                    if (px * px + pz * pz < 220 * 220) for (acc[q] += h * 30 * fabsf(a.aiSlip) / 0.24f; acc[q] >= 1; acc[q] -= 1) { sk++; float j = (sk * 37 % 17) / 17.0f - 0.5f; V3 fw(sinf(a.yaw), 0, cosf(a.yaw)), sd(fw.z, 0, -fw.x);
+                        parts.push_back({ a.pos - fw * 1.5f + sd * (sk & 1 ? 0.7f : -0.7f) + V3(0, 0.2f, 0), a.vel * 0.25f + V3(j, 0.8f, -j), 0.7f, 0.7f, 0.5f, 1.6f, V3(0.78f, 0.78f, 0.8f), 0.32f, 0, (sk % 97) / 97.0f, 0.5f, 0 }); }
+                }
                 float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz); int ak = (int)(&a - ai); whooshCD[ak] -= h;
                 if (d < 7 && d > 2.3f && fabsf(player.vf - a.speed) > 9 && whooshCD[ak] <= 0 && state == RACE) { whooshCD[ak] = 2; tone(700, 0.35f, 0.22f, 1, 5000); }
                 Contact k;

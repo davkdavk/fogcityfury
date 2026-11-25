@@ -117,6 +117,7 @@ static void startRace() {
     lapStart = 0;
     bestLapRace = 0;
     lastLap = 0;
+    rline::passes = 0; rline::defendT = rline::driftT = 0;
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; sayClear(); state = RACE; place = exploreMode ? 1 : NAI + 1; introT = exploreMode ? 0 : INTRO_LEN;   // we start from the back of the grid, after the fly-in
     miniReset();
     if (exploreMode) say("FREE ROAM  -  FIND THE KEYS", SAY_INFO, 3.5f);

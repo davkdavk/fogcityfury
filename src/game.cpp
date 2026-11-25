@@ -94,6 +94,7 @@ struct Car {
     float stot = 0, lat = 0, latT = 0, speed = 0, aiTop = 60, progress = 0, finishT = -1; int lap = 0, nextCp = 0;
     bool brOn = false; int brK = 0; float bu = 0, brBase = 0;   // a bot on an alternate route: which one, metres along it, and the lap's start in stot
     float shield = 0;                              // seconds of shield left (any car)
+    float aiOff = 0, aiSlip = 0, aiPassT = 0; int aiPassing = -1;   // a computer driver: its own offset from the racing line, how far it is sliding (drawn), and whom it is going round (and for how long)
     float latV = 0, wob = 0, wobV = 0;             // a bot knocked sideways: drift across the road (m/s), and a yaw wobble that springs back
     int botAmmo = 0, botRLap = -99; float botFireCD = 0;   // a bot's rockets: how many, the lap it last took a crate, time till it may fire
     float hp = 100;   // shot damage on foot: a car with no hp left is wrecked
@@ -265,6 +266,7 @@ namespace director { static void reset(); static void placeWardens(); }
 namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)
 namespace dolphin { static bool spawn(V3 at, V3 to, float k); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void laugh(int idx, V3 at); static void blastAt(V3 p, float r); static bool firstAt(V3& p); }   // (dolphin.h)
 namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void hurt(int idx, float dmg, V3 dir); static void blastAt(V3 p, float r, float dmg); static bool firstAt(V3& p); static V3 posOf(int idx); static int downedCount(); static int count(); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
+#include "raceline.h"   // the computer drivers' racing line and corner speeds
 #include "combat.h"   // wreckage and debris, crates, shields, the multiplayer race start and leave, splashes, explosions, rockets
 #include "events.h"   // the race director: scripted events from a track's event file
 #include "collapse.h"   // buildings that come down (a rocket aimed at one, or an event's cue)

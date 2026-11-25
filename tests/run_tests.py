@@ -2372,6 +2372,19 @@ def strafing_is_a_pure_sidestep_when_something_else_looks():
 
 
 @test
+def computer_drivers_follow_a_racing_line():
+    """2.9: each track gets a racing line before the race (wide in, apex, wide out) with corner speeds and braking points
+    worked out from it. The drivers follow it, go round slower cars, and slide through the hard bends."""
+    passes = drift = 0
+    for track in range(NTRACKS):
+        d = sim("--track", track, "--state", 3, "--auto", "--nobotguns", seconds=70)
+        check(d["lineBuilds"] >= 1 and d["lineLap"] < d["lineLapOld"] * 1.001, "track %d: a line, and it is no slower round the lap than following the middle" % track, (d["lineLap"], d["lineLapOld"]))
+        check(d["aiDead"] == 0 and d["aiLast"] > 900, "track %d: all ten are still racing, none left behind" % track, (d["aiDead"], d["aiLast"]))
+        passes += d["linePasses"]; drift += d["lineDriftT"]
+    check(passes > 40 and drift > 20, "they overtake, and they slide through bends", (passes, drift))
+
+
+@test
 def showdown_always_ends_with_one_winner():
     off, cov, heal, wall = [], [], [], []
     for track in range(NTRACKS):
