@@ -126,15 +126,15 @@ static void drawHUD() {
     float Wd = ui.W, Hd = ui.H; char b[160]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f);
     if (state == OPTS) {
         ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.62f); ui.text(Wd / 2, 30, 6, yel, "OPTIONS", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f);
-        ui.text(Wd / 2 - 150, 100, 3.5f, optPage == 0 ? yel : dim, "CONTROLS", 1); ui.text(Wd / 2 + 150, 100, 3.5f, optPage == 1 ? yel : dim, "VIDEO", 1); ui.rect(Wd / 2 + (optPage ? 150 : -150) - 90, 130, 180, 3, org, 1);
+        { static const char* tabs[3] = { "CONTROLS", "VIDEO", "STICKS" }; for (int q = 0; q < 3; q++) ui.text(Wd / 2 + (q - 1) * 300.0f, 100, 3.5f, optPage == q ? yel : dim, tabs[q], 1); ui.rect(Wd / 2 + (optPage - 1) * 300.0f - 90, 130, 180, 3, org, 1); }
         panel(Wd / 2 - 520, 150, 1040, 470, 0.72f);
         if (optPage == 0) {
             ui.text(Wd / 2 - 490, 166, 2, dim, "ACTION"); ui.text(Wd / 2 - 20, 166, 2, dim, "KEY", 1); ui.text(Wd / 2 + 270, 166, 2, dim, "SECOND KEY", 1);
             for (int i = 0; i < NBIND; i++) {
-                float y = 190 + i * 30.0f; bool sel = i == optRow; ui.text(Wd / 2 - 490, y + 6, 2.6f, sel ? white : V3(0.8f, 0.82f, 0.86f), BIND_NAME[i]);
+                float y = 188 + i * 28.0f; bool sel = i == optRow; ui.text(Wd / 2 - 490, y + 5, 2.5f, sel ? white : V3(0.8f, 0.82f, 0.86f), BIND_NAME[i]);
                 for (int c = 0; c < 2; c++) {
-                    float x = Wd / 2 - 20 + c * 290; bool cur = sel && c == optCol; ui.rect(x - 130, y, 260, 27, cur ? hi : V3(0.06f, 0.07f, 0.10f), cur ? 0.95f : 0.6f);
-                    if (cur && optCapture) { if (fmodf(T, 0.6f) < 0.4f) ui.text(x, y + 6, 2.4f, yel, "PRESS A KEY", 1); } else ui.text(x, y + 6, 2.4f, cur ? white : V3(0.75f, 0.85f, 1), keyName(binds[i][c]), 1);
+                    float x = Wd / 2 - 20 + c * 290; bool cur = sel && c == optCol; ui.rect(x - 130, y, 260, 25, cur ? hi : V3(0.06f, 0.07f, 0.10f), cur ? 0.95f : 0.6f);
+                    if (cur && optCapture) { if (fmodf(T, 0.6f) < 0.4f) ui.text(x, y + 5, 2.3f, yel, "PRESS A KEY", 1); } else ui.text(x, y + 5, 2.3f, cur ? white : V3(0.75f, 0.85f, 1), keyName(binds[i][c]), 1);
                 }
             }
             ui.text(Wd / 2 - 490, 528, 2, yel, "GAMEPAD (FIXED)");
@@ -143,7 +143,24 @@ static void drawHUD() {
             ui.text(Wd / 2 - 490, 589, 2, dim, "IN THE MENUS:  {DPAD} MOVE   {A} OK   {B} BACK   {X} OPTIONS");
             if (!padOnly) ui.text(Wd / 2 + 490, 528, 2, dim, "KEYBOARD, ALWAYS: ESC PAUSE  M MUSIC  F1 OPTIONS  F11 FULL SCREEN", 2);
             if (optCapture) ui.text(Wd / 2, 646, 2.2f, white, "PRESS THE KEY TO USE     ESC: CANCEL", 1);
-            else { if (!touchOn && !padUI) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, P("TAB: VIDEO SETTINGS     ESC: BACK", "{LB} {RB} VIDEO SETTINGS     {B} BACK"), 1); }
+            else { if (!touchOn && !padUI) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, P("TAB: VIDEO AND STICKS     ESC: BACK", "{LB} {RB} VIDEO AND STICKS     {B} BACK"), 1); }
+        } else if (optPage == 2) {   // 2.9.5 the sticks: a pad's, and the touch screen's steering
+            static const char* nm[NSTICKROWS] = { "STEERING SENSITIVITY", "AIM STICK (ON FOOT)", "TOUCH STEERING", "TOUCH STICK WIDTH" };
+            static const char* help[NSTICKROWS] = { "HIGHER: MORE TURN FOR A SMALL PUSH. LOWER: FINER IN THE MIDDLE. FULL PUSH: FULL LOCK",
+                    "HOW FAST THE RIGHT STICK TURNS YOU ON FOOT", "STICK: SLIDE YOUR LEFT THUMB WHERE IT LANDS. BUTTONS: THE OLD < AND >", "HOW FAR YOUR THUMB SLIDES FOR FULL LOCK" };
+            char v[NSTICKROWS][48]; static const char* wide[3] = { "NARROW", "MEDIUM", "WIDE" };
+            snprintf(v[0], 48, "%d%%", optSteerSens); snprintf(v[1], 48, "%d%%", optAimSens); snprintf(v[2], 48, "%s", optTouchSteer ? "BUTTONS" : "STICK"); snprintf(v[3], 48, "%s", wide[std::max(0, std::min(2, optTouchWide))]);
+            for (int i = 0; i < NSTICKROWS; i++) {
+                float y = 170 + i * 52.0f; bool sel = i == optRow; ui.rect(Wd / 2 - 500, y - 6, 1000, 40, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.9f : 0.5f);
+                ui.text(Wd / 2 - 470, y + 5, 3, sel ? white : V3(0.8f, 0.82f, 0.86f), nm[i]); snprintf(b, sizeof b, "%s %.47s %s", sel ? "<" : " ", v[i], sel ? ">" : " "); ui.text(Wd / 2 + 300, y + 5, 3, sel ? yel : V3(0.75f, 0.85f, 1), b, 1);
+                if (sel) ui.text(Wd / 2, 420, 2.0f, dim, help[i], 1);
+            }
+            {   // the curve: how much the car turns for each push of the stick
+                float gx = Wd / 2 - 160, gy = 560, gw = 320, gh = 100; ui.rect(gx, gy - gh, gw, gh, V3(0.06f, 0.07f, 0.10f), 0.6f); ui.rect(gx, gy, gw, 2, dim, 0.8f); ui.rect(gx, gy - gh, 2, gh, dim, 0.8f);
+                for (int q = 0; q < 32; q++) { float a = q / 31.0f; ui.rect(gx + a * gw - 2, gy - steerCurve(a) * gh - 2, 5, 5, yel, 1); }
+                ui.text(gx + gw / 2, gy + 10, 1.6f, dim, "STICK PUSH", 1); ui.text(gx - 12, gy - gh, 1.6f, dim, "TURN", 2);
+            }
+            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, P("UP / DOWN: SETTING    LEFT / RIGHT: CHANGE    TAB: CONTROLS    ESC: BACK", "{DPAD} PICK AND CHANGE    {LB} {RB} OTHER PAGES    {B} BACK"), 1);
         } else {
             char v[NVIDROWS][48]; static const char* nm[NVIDROWS] = { "DISPLAY", "RESOLUTION", "ANTI-ALIASING", "ANISOTROPIC FILTERING", "VSYNC", "BRIGHTNESS", "WATER RINGS", "SPLASH MIST", "GRASS" };
             static const char* help[NVIDROWS] = {"F11 SWITCHES THIS AT ANY TIME", "", "MSAA: SMOOTHS THE EDGES OF CARS AND BUILDINGS",
@@ -162,7 +179,7 @@ static void drawHUD() {
                 const char* h = i == 1 ? (vidFull ? "FULL SCREEN: THE GAME IS DRAWN AT THIS SIZE AND SCALED TO THE SCREEN" : "THE SIZE OF THE WINDOW") : help[i]; if (sel) ui.text(Wd / 2, 530, 2.2f, dim, h, 1);
             }
             snprintf(b, sizeof b, "DRAWING AT %d X %d", lastRW, lastRH); ui.text(Wd / 2, 570, 2, dim, b, 1);
-            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, P("UP / DOWN: SETTING    LEFT / RIGHT: CHANGE (APPLIED AT ONCE)    TAB: CONTROLS    ESC: BACK", "{DPAD} PICK AND CHANGE (APPLIED AT ONCE)    {LB} {RB} CONTROLS    {B} BACK"), 1);
+            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, P("UP / DOWN: SETTING    LEFT / RIGHT: CHANGE (APPLIED AT ONCE)    TAB: STICKS    ESC: BACK", "{DPAD} PICK AND CHANGE (APPLIED AT ONCE)    {LB} {RB} OTHER PAGES    {B} BACK"), 1);
         }
     } else if (state == NETLOBBY) {
         // the ready-up screen: who is on the server and who has pressed READY (the server sends each player's flag)

@@ -453,6 +453,9 @@ int main(int argc, char** argv) {
         } else if (a == "--tapeback" && i + 1 < argc) {   // (tests) fcfedit's preview: at A seconds go back to B
             float A = 0, B = 0; if (sscanf(argv[++i], "%f:%f", &A, &B) == 2) { evx::tape::cliAt = (int)lroundf(A * 60); evx::tape::cliTo = (int)lroundf(B * 60); }
 #endif
+        } else if (a == "--touchsteer" && i + 1 < argc) { cliTouchSteer = (float)atof(argv[++i]); touchOn = true;
+        } else if (a == "--steersens" && i + 1 < argc) { optSteerSens = atoi(argv[++i]);
+        } else if (a == "--steerbuttons") { optTouchSteer = 1;
         } else if (a == "--auto") autoDrive = true;
         else if (a == "--bright") vidBright = std::max(50, std::min(150, atoi(argv[++i])));
         else if (a == "--autocut") {
@@ -885,7 +888,7 @@ int main(int argc, char** argv) {
                     if (state == PAUSED) state = RACE;
                     doReset();
                     break;
-                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (!me.on) fireRocket(); break;   // (2.7.1 on foot LB is held to aim down the sights: foot.h; RB and Y change guns)
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_PAGEUP); else if (!me.on) fireRocket(); break;   // (2.7.1 on foot LB is held to aim down the sights: foot.h; RB and Y change guns)
                 case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(1); break;
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); else if (state == RACE && me.on) reloadMe(); break;   // (on foot X reloads)
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break;

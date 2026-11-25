@@ -45,6 +45,12 @@ static const float MIST_GAIN = 1.5f;
 #else
 static const float MIST_GAIN = 3.0f;
 #endif
+static int optSteerSens = 100, optAimSens = 100, optTouchSteer = 0, optTouchWide = 1;   // 2.9.5 the STICKS page: steering sensitivity (50-200 %: the curve of the stick, pad and touch), aim stick speed on foot (25-300 %), touch steering (0 a thumb-stick, 1 the < > buttons) and how wide the touch stick is (0-2)
+static const int NSTICKROWS = 4;
+static float touchSteerR() { static const float R[3] = { 100, 140, 190 }; return R[optTouchWide < 0 ? 0 : optTouchWide > 2 ? 2 : optTouchWide]; }   // half the touch stick's travel, in UI pixels (720 high)
+static float steerCurve(float a) { return powf(std::max(0.0f, std::min(1.0f, a)), 100.0f / std::max(50, std::min(200, optSteerSens))); }   // a: 0..1 past the dead zone; 100 %: straight, more: quicker off the centre, less: finer
+static struct TouchSteer { bool on = false; SDL_FingerID id = 0; float ox = 0, x = 0, y = 0; } tsteer;   // 2.9.5 the car's touch steering stick: where the thumb went down (it follows past full lock) and where it is
+static float cliTouchSteer = -9;   // --touchsteer X (tests): a thumb held on the steering stick at X of full lock (+ right)
 static int optRings = 100, optMist = 100, optGrass = 100;   // effects, %: the size of the rings on the water, how much spray a splash throws up, how thick the grass grows (0: off)
 static int vidBright = 85;   // brightness, %: scales the light going into the tone curve (50-150; 85 since 1.72, 100 was the old look)
 #ifdef __ANDROID__
@@ -70,7 +76,7 @@ static bool touchHasAmmo(); static bool edTesting(); static int edToolNow(); sta
 static void touchLayout() {
     long long sig = (long long)state * 100 + srvMode * 10 + optPage + (me.on ? 2 : 0) + (showdownOn ? 4 : 0) + (nc.on ? 5000 : 0) + (long long)uiW * 10000
                   + ((long long)touchHasAmmo() << 32) + ((long long)edTesting() << 36) + ((long long)edToolNow() << 37) + ((long long)selIsCustom() << 41) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35)
-                  + ((long long)touchGunMenu << 42) + ((long long)(me.on ? me.gun : 0) << 43) + ((long long)[] { int m = 0; for (int g = 0; g < NGUNS; g++) if (haveGun(me, g)) m |= 1 << g; return m; }() << 47);
+                  + ((long long)optTouchSteer << 58) + ((long long)touchGunMenu << 42) + ((long long)(me.on ? me.gun : 0) << 43) + ((long long)[] { int m = 0; for (int g = 0; g < NGUNS; g++) if (haveGun(me, g)) m |= 1 << g; return m; }() << 47);
     static long long laidSig = -1; if (sig == laidSig && touchLaid >= 0) return;
     laidSig = sig; touchLaid = 1; tbtn.clear(); fingers.clear(); float W = uiW, H = 720;
     auto push = [&](TouchBtn b) { tbtn.push_back(b); };
@@ -123,7 +129,7 @@ static void touchLayout() {
             break;
         }
         cAct("CAM", 380, topY, 36, TA_CAM, IC_CAM); cAct("RESET", 460, topY, 36, TA_RESET, IC_RESET); cAct("OUT", 540, topY, 36, TA_EXIT);   // (left of the race clock)
-        cHold("<", 115, H - 120, 86, B_LEFT, IC_LEFT); cHold(">", 305, H - 120, 86, B_RIGHT, IC_RIGHT);
+        if (optTouchSteer == 1) { cHold("<", 115, H - 120, 86, B_LEFT, IC_LEFT); cHold(">", 305, H - 120, 86, B_RIGHT, IC_RIGHT); }   // (2.9.5 else the left thumb gets a steering stick: touchDown)
         // the right thumb: GAS under it, BRAKE and NITRO along the bottom, DRIFT and ROCKET above them (left of the speedometer)
         cHold("GAS", W - 125, H - 125, 95, B_GAS, IC_NONE, TS_GO); cHold("BRAKE", W - 305, H - 80, 62, B_BRAKE, IC_NONE, TS_STOP);
         cHold("NITRO", W - 445, H - 92, 56, B_NITRO, IC_NONE, TS_NITRO); cHold("DRIFT", W - 370, H - 236, 50, B_HB);
@@ -159,7 +165,7 @@ static void touchLayout() {
         break;
     case OPTS:   // the settings table is wide: slim columns at the very edges
         cKey("UP", 52, 200, 40, SDLK_UP, IC_UP); cKey("DOWN", 52, 295, 40, SDLK_DOWN, IC_DOWN); cKey("<", 52, 410, 40, SDLK_LEFT, IC_LEFT); cKey(">", 52, 505, 40, SDLK_RIGHT, IC_RIGHT);
-        cKey(optPage ? "KEYS" : "VIDEO", W - 56, 220, 46, SDLK_TAB, IC_NONE, TS_GO); cKey("BACK", W - 56, 330, 44, SDLK_ESCAPE); break;
+        cKey(optPage == 0 ? "VIDEO" : optPage == 1 ? "STICKS" : "KEYS", W - 56, 220, 46, SDLK_TAB, IC_NONE, TS_GO); cKey("BACK", W - 56, 330, 44, SDLK_ESCAPE); break;
     default: break;
     }
 }
@@ -209,6 +215,12 @@ static void drawTouch() {
         V3 c = footAimHot ? V3(1, 0.3f, 0.25f) : V3(1, 1, 1); ring(taim.x, taim.y, 26, 3, c, 0.9f); ui.rect(taim.x - 40, taim.y - 1.5f, 24, 3, c, 0.9f); ui.rect(taim.x + 16, taim.y - 1.5f, 24, 3, c, 0.9f);
         ui.rect(taim.x - 1.5f, taim.y - 40, 3, 24, c, 0.9f); ui.rect(taim.x - 1.5f, taim.y + 16, 3, 24, c, 0.9f);
     }
+    if (!me.on && state == RACE && optTouchSteer == 0 && !(showdownOn && shdSpectate)) {   // 2.9.5 the steering stick: a wide track, the knob where the thumb is
+        float R = touchSteerR(), ox = tsteer.on ? tsteer.ox : std::max(R + 50, 230.0f), oy = tsteer.on ? tsteer.y : 720 - 120, kx = tsteer.on ? ox + clampf(tsteer.x - ox, -R, R) : ox;
+        oy = std::max(oy, 400.0f); ui.rect(ox - R - 40, oy - 34, 2 * R + 80, 68, V3(0.04f, 0.05f, 0.08f), tsteer.on ? 0.35f : 0.22f);
+        ui.rect(ox - R, oy - 2, 2 * R, 4, V3(0.9f, 0.93f, 1), tsteer.on ? 0.5f : 0.3f); ui.rect(ox - 1.5f, oy - 14, 3, 28, V3(0.9f, 0.93f, 1), tsteer.on ? 0.6f : 0.35f);
+        ui.disc(kx, oy, 30, V3(0.9f, 0.93f, 1), tsteer.on ? 0.6f : 0.25f); if (!tsteer.on) ui.text(ox, oy - 62, 1.8f, V3(0.9f, 0.93f, 1), "STEER", 1, 0.45f);
+    }
     if (me.on && state == RACE) {   // the thumb-stick: a ring where the thumb went down, a knob where it is now
         float ox = tstick.on ? tstick.ox : 190, oy = tstick.on ? tstick.oy : 560, kx = tstick.on ? ox + clampf(tstick.x - ox, -70, 70) : ox, ky = tstick.on ? oy + clampf(tstick.y - oy, -70, 70) : oy;
         ui.disc(ox, oy, 86, V3(0.04f, 0.05f, 0.08f), tstick.on ? 0.35f : 0.22f); ring(ox, oy, 84, 3, V3(0.9f, 0.93f, 1), tstick.on ? 0.7f : 0.4f);
@@ -238,6 +250,7 @@ static void loadCfg() {
         int lp = 0; if (fscanf(f, " laps %d", &lp) == 1 && lp >= 1 && lp <= 9) selLaps = lp;
         int fl = 0; if (fscanf(f, " flowers %d", &fl) == 1 && fl >= 0) roamFlowers = fl;
         char cn[200]; unsigned cm = 0; while (fscanf(f, " ckey %199s %u", cn, &cm) == 2) customKeysSaved.push_back({ cn, cm });
+        { int a = 0, b = 0, c = 0, d = 0; if (fscanf(f, " sticks %d %d %d %d", &a, &b, &c, &d) == 4) { optSteerSens = std::max(50, std::min(200, a)); optAimSens = std::max(25, std::min(300, b)); optTouchSteer = c ? 1 : 0; optTouchWide = std::max(0, std::min(2, d)); } }
         int br = 0; if (fscanf(f, " bright %d", &br) == 1) vidBright = std::max(50, std::min(150, br));
         { int a = 0, b = 0, c = 0; if (fscanf(f, " fx %d %d %d", &a, &b, &c) == 3) { optRings = std::max(0, std::min(300, a)); optMist = std::max(0, std::min(200, b)); optGrass = std::max(0, std::min(150, c)); } }   // free roam: flowers picked up, the levels they make (minis.h)
     }
@@ -282,7 +295,7 @@ static void saveCfg() {
             if (sl != std::string::npos) n = n.substr(sl + 1);
             if (n.find(' ') == std::string::npos) fprintf(f, "ckey %s %u\n", n.c_str(), keysGot[t]);
         } // keys found on your own tracks
-    fprintf(f, "bright %d\n", vidBright); fprintf(f, "fx %d %d %d\n", optRings, optMist, optGrass);
+    fprintf(f, "sticks %d %d %d %d\n", optSteerSens, optAimSens, optTouchSteer, optTouchWide); fprintf(f, "bright %d\n", vidBright); fprintf(f, "fx %d %d %d\n", optRings, optMist, optGrass);
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the

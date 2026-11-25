@@ -32,13 +32,19 @@ static void onKey(SDL_Keycode k, int sc = 0) {
     if (k == SDLK_m && state != NETJOIN && state != EDIT && !(state == RACE && (bindHit(B_CAM, sc) || bindHit(B_RESET, sc) || bindHit(B_FIRE, sc)))) { snd.musicOn = !snd.musicOn; return; }
     switch (state) {
     case OPTS: {
-        int rows = optPage == 0 ? NBIND : NVIDROWS;
+        int rows = optPage == 0 ? NBIND : optPage == 1 ? NVIDROWS : NSTICKROWS;
         if (k == SDLK_ESCAPE) { saveCfg(); state = optReturn; ok(); break; }
-        if (k == SDLK_TAB || k == SDLK_F1) { optPage ^= 1; optRow = 0; blip(); break; }
+        if (k == SDLK_TAB || k == SDLK_F1) { optPage = (optPage + 1) % 3; optRow = 0; blip(); break; }   // (2.9.5 three pages: keys, video, sticks)
+        if (k == SDLK_PAGEUP) { optPage = (optPage + 2) % 3; optRow = 0; blip(); break; }
         if (k == SDLK_UP) { optRow = (optRow + rows - 1) % rows; blip(); } if (k == SDLK_DOWN) { optRow = (optRow + 1) % rows; blip(); }
         if (optPage == 0) {
             if (k == SDLK_LEFT || k == SDLK_RIGHT) { optCol ^= 1; blip(); } if (k == SDLK_RETURN) { optCapture = true; blip(); }
             if (k == SDLK_DELETE) { binds[optRow][optCol] = 0; saveCfg(); } if (k == SDLK_F5) { bindDefaults(); saveCfg(); ok(); }
+        } else if (optPage == 2 && (k == SDLK_LEFT || k == SDLK_RIGHT)) {   // 2.9.5 the sticks
+            int d = k == SDLK_RIGHT ? 1 : -1; blip();
+            if (optRow == 0) optSteerSens = std::max(50, std::min(200, optSteerSens + d * 10)); if (optRow == 1) optAimSens = std::max(25, std::min(300, optAimSens + d * 25));
+            if (optRow == 2) { optTouchSteer ^= 1; touchLaid = -1; } if (optRow == 3) optTouchWide = std::max(0, std::min(2, optTouchWide + d));
+            saveCfg();
         } else if (k == SDLK_LEFT || k == SDLK_RIGHT) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
             auto cycle = [&](const int* o, int n, int cur, int lim) { int i = 0; for (int q = 0; q < n; q++) if (o[q] == cur) i = q; for (int t = 0; t < n; t++) { i = (i + d + n) % n; if (o[i] <= lim) break; } return o[i]; };
@@ -232,6 +238,7 @@ static void printJSON(FILE* o) {
             me.mag[me.gun], reserveOf(me, me.gun), me.rar[me.gun], (int)(me.reloadT > 0), me.swapT, reloadTook, swapTook, reloadsDone, me.reloads, botReloads, swapsDone, dryClicks,
             [] { static std::string m; m.clear(); for (int i = 1; i < NFIGHT; i++) { char q[24]; snprintf(q, sizeof q, "%s%d/%d", i > 1 ? ";" : "", fighters[i].mag[fighters[i].gun], fighters[i].reloads); m += q; } return m.c_str(); }(), dr.c_str());
     }
+    fprintf(o, "\"steerSens\":%d,\"aimSens\":%d,\"touchSteer\":%d,\"touchWide\":%d,", optSteerSens, optAimSens, optTouchSteer, optTouchWide);
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
 #ifdef FCF_EDITOR
     fprintf(o, "\"tapeFrame\":%d,\"tapeLen\":%d,\"tapeSeeks\":%d,\"tapeMarks\":%d,\"tapeErr\":%.4f,", evx::tape::frame, (int)evx::tape::ins.size(), evx::tape::seeks, (int)evx::tape::marks.size(), evx::tape::cliErr);
@@ -342,7 +349,8 @@ static void touchDown(SDL_FingerID id, float x, float y) {
         if (state == EDIT) { edTouchDown(id, x, y); return; }
 #endif
         if (touchGunMenu) { touchGunMenu = false; touchLaid = -1; return; }   // (a tap off the weapon menu closes it)
-        if (me.on && state == RACE && !tstick.on && x < uiW * 0.5f && y > 150) { tstick.on = true; tstick.id = id; tstick.ox = tstick.x = x; tstick.oy = tstick.y = y; }
+        if (!me.on && state == RACE && optTouchSteer == 0 && !tsteer.on && x < uiW * 0.45f && y > 300) { tsteer.on = true; tsteer.id = id; tsteer.ox = tsteer.x = x; tsteer.y = y; }   // 2.9.5 the steering stick, where the thumb lands
+        else if (me.on && state == RACE && !tstick.on && x < uiW * 0.5f && y > 150) { tstick.on = true; tstick.id = id; tstick.ox = tstick.x = x; tstick.oy = tstick.y = y; }
         else if (me.on && state == RACE && !taim.on && x >= uiW * 0.5f && y > 110) { taim.on = true; taim.id = id; taim.x = x; taim.y = y; }   // 2.9.1 the crosshair and the trigger
         // lists: tap a row to pick it, tap the picked one again to choose it
         const float mx = x, Wd = uiW;   // (the menus are drawn in the same units)
@@ -360,6 +368,7 @@ static void touchMove(SDL_FingerID id, float x, float y) {   // sliding a thumb 
 #ifdef FCF_EDITOR
     if (state == EDIT) { edTouchMove(id, x, y); return; }
 #endif
+    if (tsteer.on && tsteer.id == id) { float R = touchSteerR(); tsteer.x = x; if (x - tsteer.ox > R) tsteer.ox = x - R; if (tsteer.ox - x > R) tsteer.ox = x + R; return; }   // (past full lock the middle follows, so the way back is short)
     if (tstick.on && tstick.id == id) { tstick.x = x; tstick.y = y; return; }
     if (taim.on && taim.id == id) { taim.x = x; taim.y = y; return; }
     for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold >= 0) { int b = touchHit(x, y); if (b >= 0 && tbtn[b].hold >= 0) f.btn = b; }
@@ -370,6 +379,7 @@ static void touchUp(SDL_FingerID id) {
     if (edt.n && edTouchUp(id)) return;
 #endif
     if (tstick.on && tstick.id == id) tstick.on = false;
+    if (tsteer.on && tsteer.id == id) tsteer.on = false;
     if (taim.on && taim.id == id) taim.on = false;
     for (size_t i = 0; i < fingers.size();) if (fingers[i].id == id) { Finger f = fingers[i]; fingers.erase(fingers.begin() + i); if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].act == TA_WEAPON && !f.swiped) { touchGunMenu = !touchGunMenu; touchLaid = -1; } } else i++; }   // (2.9.1 a tap on GUN opens the weapon menu; a swipe still steps through)
 static int touchFind(const std::string& label) { touchLayout(); for (size_t i = 0; i < tbtn.size(); i++) if (label == tbtn[i].label) return (int)i; return -1; }

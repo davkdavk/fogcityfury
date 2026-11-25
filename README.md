@@ -94,6 +94,18 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.5
+
+- **A STICKS page in the options** (TAB, or LB / RB on a pad, to the third page):
+  - **STEERING SENSITIVITY** (50–200 %) shapes how the car turns for each push of the left stick (a pad on PC, Android
+    and the Xbox 360) and of the touch steering stick. Higher turns more for a small push; lower is finer around the
+    middle; a full push is always full lock. A small graph shows the curve.
+  - **AIM STICK** (25–300 %): how fast the right stick turns you on foot.
+- **Android: a steering stick.** In the car the left thumb gets a wide thumb-stick wherever it lands in the lower left:
+  slide right to steer right; past full lock the middle follows your thumb, so the way back is short. **TOUCH
+  STEERING** on the STICKS page brings back the old < and > buttons; **TOUCH STICK WIDTH** sets how far the thumb
+  slides for full lock (narrow, medium, wide).
+
 ## What's new in 2.9.4
 
 - **fcfedit's preview has a tape.** While previewing a race in the event editor: `F5` pauses, `F6` / `F7` go back and

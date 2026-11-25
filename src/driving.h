@@ -344,8 +344,10 @@ static Input readInput() {
     auto dn = [&](int b) { return key(binds[b][0]) || key(binds[b][1]) || touchHolds(b); };   // bindings: see the controls screen
     if (dn(B_LEFT)) in.steer += 1; if (dn(B_RIGHT)) in.steer -= 1; if (dn(B_GAS)) in.gas = 1; if (dn(B_BRAKE)) in.brake = 1; in.hb = dn(B_HB); in.nitro = dn(B_NITRO); in.fire = dn(B_FIRE);
     if (cliPedal >= 0 && in.gas > 0) { in.gas = cliPedal; in.pedal = true; }
+    if (cliTouchSteer > -2 && state == RACE && !me.on) { tsteer.on = true; tsteer.ox = 230; tsteer.x = 230 + cliTouchSteer * touchSteerR(); tsteer.y = 600; }   // (--touchsteer, tests)
+    if (tsteer.on && state == RACE && !me.on) { float v = clampf((tsteer.x - tsteer.ox) / touchSteerR(), -1, 1), a = fabsf(v); if (a > 0.06f) in.steer = clampf(in.steer - copysignf(steerCurve((a - 0.06f) / 0.94f), v), -1, 1); }   // 2.9.5 the touch stick: right of where the thumb went down steers right
     if (pad) {
-        float ax = plat::padAxisRaw(pad, plat::AX_LX) / 32767.f; if (fabsf(ax) > 0.12f) in.steer = clampf(in.steer - ax, -1, 1);
+        float ax = plat::padAxisRaw(pad, plat::AX_LX) / 32767.f; if (fabsf(ax) > 0.12f) in.steer = clampf(in.steer - copysignf(steerCurve((fabsf(ax) - 0.12f) / 0.88f), ax), -1, 1);   // (2.9.5 past the dead zone, on the sensitivity curve)
         // the triggers are analog: a little dead zone, then a gentle curve so the first part of the pull is fine control (2.7.1)
         auto trig = [&](plat::PadAxis t) { float v = plat::padAxisRaw(pad, t) / 32767.f; v = clampf((v - 0.06f) / 0.94f, 0, 1); return v * (0.55f + 0.45f * v); };
         padGas = trig(plat::AX_TRIG_R); padBrake = trig(plat::AX_TRIG_L); if (padGas > in.gas) { in.gas = padGas; in.pedal = true; } in.brake = std::max(in.brake, padBrake);
