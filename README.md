@@ -94,6 +94,14 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.6
+
+- **fcfedit: rocket crates and shields, one by one.** `R` and `H` put them where you click. Once a track has any,
+  they replace its own; drag to move, `DEL` to remove.
+- **fcfedit: mini Wardens one by one, and armed.** SPLIT turns a group into one event per mini Warden, each with its
+  own roof spot and landing ring. Each gets a **WEAPON**: its one rocket at the car (a rifle at you on foot, for the
+  rooftop ones), or a **MACHINE GUN** that fires bursts at your car, from the ground or from the roof.
+
 ## What's new in 2.9.5
 
 - **A STICKS page in the options** (TAB, or LB / RB on a pad, to the third page):

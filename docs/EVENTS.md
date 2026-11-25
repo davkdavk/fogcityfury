@@ -24,12 +24,14 @@ Lines before the lines and events:
 
     pod p1  210 -380  r 60  n 3  k 1        dolphins roaming this ring of sea all race: middle, radius, how many, size
     drift 90                                the weather turns by itself about every 90 s (clear, rain, storm; clear, fog)
+    pickup rocket  -480 9.7 -175            a rocket crate here (2.9.6); with any pickup lines, they replace the track's own
+    pickup shield  -470 9.8 -170            a shield here (up to 8 count)
 
 Kinds now (the editor's name in brackets where it differs): **rocket** (flies to its target and bursts there, or on the first wall it meets), **blast** (EXPLOSION), **splash**,
 **shake**, **say** (MESSAGE: words on screen), **collapse** (BUILDING FALLS: the building there comes down),
 **dolphin** (DOLPHIN LEAP: at `at` towards `to`; the nearest pod dolphin takes it, or one swims in; `k` its size),
 **weather** (`wx clear|rain|fog|storm  over SECONDS`; offline only), **minis** (`k` mini Wardens, 1-4, on the roof at `at`
-jetpack down to `to`; with `stay` they keep the roof's edge and snipe at you when you are on foot). A rocket also has:
+jetpack down to `to`; with `stay` they keep the roof's edge and snipe at you when you are on foot; with `gun mg` they fire machine-gun bursts at your car instead, 2.9.6). A rocket also has:
 
 | Setting | Values |
 | --- | --- |

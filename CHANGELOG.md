@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| **2.9.6** | Machine-gun mini Wardens | fcfedit places rocket crates, shields and single mini Wardens |
 | **2.9.5** | Android steering stick; steering and aim sensitivity for pads and touch | Options get a STICKS page |
 | **2.9.4** | | fcfedit's preview tape: pause, rewind, step and 0.1x–4x playback, events marked on the race clock; races replay exactly |
 | **2.9.3** | Roam on after the race: the race's world carries on as free roam, after a rampage's showdown too | |

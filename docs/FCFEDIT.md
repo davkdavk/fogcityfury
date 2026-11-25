@@ -119,6 +119,31 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 | SIZE | a dolphin's size; for mini Wardens, HOW MANY (1–4) |
 | THEN THEY | mini Wardens only: JETPACK DOWN to the road, or STAY UP AND SNIPE from the roof's edge (they shoot at you on foot) |
 
+## Rocket crates and shields
+
+Press `R` and click to put a rocket crate down; `H` for a shield. The tool stays on, so click on for more; `ESC` when
+done. Drag one to move it, `DEL` removes it.
+
+As soon as a track has one placed, **yours replace the track's own** (all of them, crates and shields: the faint
+squares and dots are where the track puts them while you have none). Delete the last one and the track's own come
+back. Up to 8 shields count; crates as many as you like. A crate gives a lap's rockets, as before.
+
+## Mini Wardens one by one
+
+A MINI WARDENS moment puts a group on a roof (HOW MANY, 1–4). Select it and click **SPLIT: ONE MINI WARDEN EACH**:
+the group becomes one event per mini Warden, each with the same trigger, a beat apart, on its own spot on the roof and
+its own landing ring. Drag each one where you want it.
+
+**WEAPON** sets what each one fires:
+
+| WEAPON | Jetpack down | Stay up on the roof |
+| --- | --- | --- |
+| ONE ROCKET / RIFLE | one rocket just ahead of your car as you come by | a rifle, at you on foot only |
+| MACHINE GUN | bursts of six at your car while it's within 75 m and in sight | the same, from the roof |
+
+Machine-gun rounds wear your car down (a shield stops them); they miss more the further off and the faster you go.
+On foot, a landed one still fights you from cover as before.
+
 ## The preview's tape
 
 ![The tape in a preview: time, speed, the last event and where each went off](img/fcfedit-tape.jpg)
@@ -154,6 +179,7 @@ for three minutes of racing). On foot the tape doesn't follow you: going back pu
 | Right drag, wheel | move and zoom the map |
 | `N` | new moment |
 | `6` | place a Warden (then click it for **+ MISFIRE**) |
+| `R` / `H` | place rocket crates / shields (click on for more, `ESC` when done) |
 | `L` | draw a line by hand (click its two ends) |
 | `1`–`5`, `7`–`9`, `0` | place a single event by hand: rocket, explosion, splash, shake, message, building falls, dolphin leap, mini Wardens, weather |
 | `D` | dolphins: a pod, then its leap spots |

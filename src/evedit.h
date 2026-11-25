@@ -15,8 +15,9 @@ static void update(float dt);   // (update.h: the tape runs the race a step at a
 namespace evx {
 
 using director::Line; using director::Event;
-enum Tool { SELECT, LINE, PLACE, WARDEN };
+enum Tool { SELECT, LINE, PLACE, WARDEN, PICKUP };
 static int tool = SELECT, placeKind = director::BLAST, track = 0;
+static int selPick = -1, pickKind = 0;   // 2.9.6 a placed rocket crate or shield: the selected one; which the PICKUP tool puts down (0 rockets, 1 a shield)
 static int selLine = -1, selEv = -1, selW = -1, grab = -1;   // grab: 0/1 a line's ends, 2 an event's spot, 3 a rocket's target, 4 a Warden's start
 static bool pan = false, fly = false, look = false, dirty = false, testing = false, typing = false, half = false;
 static float mx = 0, my = 0, pmx = 0, pmy = 0, flyYaw = 0, flyPitch = -0.35f, noteT = 0; static V3 flyPos, lineA;
@@ -251,12 +252,12 @@ static void resume() {
 
 // ---- the panel: the selected event's settings ----
 static const float PX = 0, PW = 430, VX = 190;   // (the panel: from the right edge; VX: where the values start)   // (from the right edge: x = uiW - PW)
-enum Row { R_KIND, R_ON, R_TIME, R_LAPS, R_DELAY, R_TIMES, R_CHANCE, R_BY, R_SIZE, R_HEIGHT, R_TEXT, R_TARGET, R_FROM, R_FELLS, R_WX, R_OVER, R_STAY, NROW };
+enum Row { R_KIND, R_ON, R_TIME, R_LAPS, R_DELAY, R_TIMES, R_CHANCE, R_BY, R_SIZE, R_HEIGHT, R_TEXT, R_TARGET, R_FROM, R_FELLS, R_WX, R_OVER, R_STAY, R_GUN, NROW };
 static bool rowShown(const Event& e, int r) {
     if (r == R_TIME) return e.on == director::ON_TIME;
     if (r == R_SIZE) return e.kind != director::ROCKET && e.kind != director::SAY && e.kind != director::COLLAPSE && e.kind != director::WEATHER;   // (mini Wardens: how many)
     if (r == R_WX || r == R_OVER) return e.kind == director::WEATHER;
-    if (r == R_STAY) return e.kind == director::MINIS;
+    if (r == R_STAY || r == R_GUN) return e.kind == director::MINIS;
     if (r == R_TEXT) return e.kind == director::SAY;
     if (r == R_HEIGHT) return e.kind != director::SAY && e.kind != director::SHAKE && e.kind != director::COLLAPSE && e.kind != director::DOLPHIN && e.kind != director::WEATHER && e.kind != director::MINIS && !(e.kind == director::ROCKET && e.from);
     if (r == R_TARGET || r == R_FROM || r == R_FELLS) return e.kind == director::ROCKET;
@@ -296,6 +297,7 @@ static void stepRow(Event& e, int r, int dir, float lapX) {
     case R_SIZE: if (e.kind == director::MINIS) e.k = (float)wrap((int)lroundf(e.k) - 1 + dir, 4) + 1; else e.k = std::max(0.1f, std::min(5.0f, e.k + dir * 0.25f)); break;
     case R_WX: e.wx = wrap(e.wx + dir, 4); break;
     case R_STAY: e.stay = !e.stay; break;
+    case R_GUN: e.gun ^= 1; break;   // 2.9.6
     case R_OVER: e.over = std::max(1.0f, std::min(60.0f, e.over + dir * (half ? 1.0f : 5.0f))); break;
     case R_HEIGHT: e.at.y += dir * (half ? 0.5f : 2.0f); break;
     case R_TEXT: typing = true; plat::textInput(true); break;
@@ -306,7 +308,8 @@ static void stepRow(Event& e, int r, int dir, float lapX) {
 }
 static bool onSave(float x, float y) { return y > 10 && y < 54 && x > uiW - 170 && x < uiW - 20; }   // the SAVE button, top right
 static bool onWBtn(float x, float y) { return selW >= 0 && x > uiW - PW + 16 && x < uiW - 16 && y > 130 && y < 172; }
-static bool inPanel(float x, float y) { return selEv >= 0 && x > uiW - PW && y > 80 && y < rowY(NROW) + 52; }
+static bool canSplit();
+static bool inPanel(float x, float y) { return selEv >= 0 && x > uiW - PW && y > 80 && y < rowY(NROW) + (canSplit() ? 96 : 52); }
 
 // a new event of this kind on the ground at g, set off by the newest line if there is one (the usual next step)
 static const char* STEM[director::NKIND] = { "rocket", "explosion", "splash", "shake", "message", "falls", "leap", "weather", "minis" };
@@ -432,7 +435,7 @@ static std::string stepWords(const Event& e) {
     case director::SAY: snprintf(b, sizeof b, "MESSAGE \"%s\"", e.text.c_str()); break;
     case director::DOLPHIN: snprintf(b, sizeof b, "A DOLPHIN LEAPS%s", director::pods.empty() ? " (ONE SWIMS IN)" : " (THE NEAREST OF THE POD)"); break;
     case director::WEATHER: snprintf(b, sizeof b, "THE WEATHER TURNS TO %s (OVER %.0f S)", WXUP[e.wx & 3], e.over); break;
-    case director::MINIS: snprintf(b, sizeof b, e.stay ? "%d MINI WARDEN%s ON THE ROOF, SNIPING" : "%d MINI WARDEN%s JETPACK OFF THE ROOF", (int)lroundf(e.k), lroundf(e.k) == 1 ? "" : "S"); break;
+    case director::MINIS: snprintf(b, sizeof b, e.stay ? "%d MINI WARDEN%s ON THE ROOF, %s" : "%d MINI WARDEN%s JETPACK OFF THE ROOF%s", (int)lroundf(e.k), lroundf(e.k) == 1 ? "" : "S", e.stay ? (e.gun ? "MACHINE GUN" : "SNIPING") : (e.gun ? ", MACHINE GUN" : "")); break;
     default: snprintf(b, sizeof b, "%s", KNAME[e.kind]); break;
     }
     std::string s = b; if (e.delay > 0) { char d[32]; snprintf(d, sizeof d, "  (%.1f S LATER)", e.delay); s += d; } return s;
@@ -442,6 +445,20 @@ static bool onPrev(float x, float y) { return y > 10 && y < 54 && x > uiW - 340 
 static bool onNext(float x, float y) { return y > 10 && y < 54 && x > uiW - 258 && x < uiW - 183; }
 static bool onNew(float x, float y) { return y > 10 && y < 54 && x > uiW - 560 && x < uiW - 350; }
 static bool onThen(float x, float y) { return selEv >= 0 && x > uiW - PW + 16 && x < uiW - 16 && y > rowY(NROW) + 14 && y < rowY(NROW) + 48; }
+static bool canSplit() { return selEv >= 0 && selEv < (int)director::evs.size() && director::evs[selEv].kind == director::MINIS && lroundf(director::evs[selEv].k) > 1; }
+static bool onSplit(float x, float y) { return canSplit() && x > uiW - PW + 16 && x < uiW - 16 && y > rowY(NROW) + 56 && y < rowY(NROW) + 90; }
+// 2.9.6 a group of mini Wardens into one each: the same trigger and settings, each on its own spot on the roof and its
+// own landing spot (where the group put them), to drag and arm one by one
+static void splitMinis() {
+    if (!canSplit()) return; push(); Event g = director::evs[selEv]; int n = (int)lroundf(g.k);
+    V3 dir(g.to.x - g.at.x, 0, g.to.z - g.at.z); float dl = len(dir); dir = dl > 0.1f ? dir * (1 / dl) : V3(0, 0, 1); V3 side(dir.z, 0, -dir.x);
+    for (int i = 0; i < n; i++) {
+        float o = (i - (n - 1) * 0.5f) * 2.6f; Event e = g; e.k = 1;
+        e.at = V3(g.at.x + side.x * o, g.at.y, g.at.z + side.z * o); float lx = g.to.x + side.x * o * 1.6f, lz = g.to.z + side.z * o * 1.6f; e.to = V3(lx, W.H(lx, lz), lz);
+        if (i == 0) director::evs[selEv] = e; else { e.id = freshId("minis"); e.on = g.on; e.delay = g.delay + i * 0.45f; director::evs.push_back(e); }   // (a beat apart, as a group comes down)
+    }
+    char b[96]; snprintf(b, sizeof b, "%d MINI WARDENS, ONE EACH: DRAG THEM, SET EACH ONE'S WEAPON", n); tell(b); dirty = true;
+}
 static int pickAt(float x, float y) { float px = uiW / 2 - 260; for (int k = 0; k < NM; k++) { float py = 162 + k * 52; if (x > px && x < px + 520 && y > py && y < py + 46) return k; } return -1; }
 
 // ---- the event list and timeline (E), and a pod's panel ----
@@ -468,6 +485,7 @@ static void mouseDown(int button) {
     if (wiz == WZ_PICK) { if (button == SDL_BUTTON_LEFT) { int k = pickAt(mx, my); if (k >= 0) wizPick(k); else wiz = WZ_OFF; } return; }
     if (button == SDL_BUTTON_LEFT && onWBtn(mx, my)) { int i = misfireOf(selW); if (i >= 0) { selEv = i; selW = -1; } else addMisfire(selW); return; }
     if (button == SDL_BUTTON_LEFT && onThen(mx, my)) { wizStart(director::evs[selEv].id); return; }
+    if (button == SDL_BUTTON_LEFT && onSplit(mx, my)) { splitMinis(); return; }
     if (listOn && wiz == WZ_OFF && button == SDL_BUTTON_LEFT && mx > LX && mx < LX + LW && my > LY && my < LY + 34 + 18 * LH) {   // the event list: pick a row; a lap cell turns that lap on or off
         if (onDrift(mx, my)) { push(); static const float D[5] = { 0, 60, 90, 150, 240 }; int k = 0; for (int i = 0; i < 5; i++) if (fabsf(director::drift - D[i]) < 1) k = i; director::drift = D[(k + 1) % 5]; return; }
         std::vector<LRow> rows = listRows(); int r = (int)((my - LY - 34) / LH); if (r < 0 || r >= (int)rows.size()) return;
@@ -499,6 +517,11 @@ static void mouseDown(int button) {
         selLine = (int)director::lines.size() - 1; selEv = -1; grab = -1; tool = SELECT; return;
     }
     if (tool == PLACE) { place(placeKind, g); return; }
+    if (tool == PICKUP) {   // 2.9.6 a rocket crate or a shield where the click is (it stays the tool: click on for more)
+        push(); director::Pickup p; p.kind = pickKind; p.p = g; director::pickups.push_back(p); selPick = (int)director::pickups.size() - 1; selEv = selLine = selW = -1; dirty = true;
+        int nr = 0, ns = 0; for (auto& q : director::pickups) (q.kind ? ns : nr)++; char b[120]; snprintf(b, sizeof b, "%d ROCKET CRATE%s, %d SHIELD%s PLACED (THE TRACK'S OWN ARE GONE)  -  ESC WHEN DONE", nr, nr == 1 ? "" : "S", ns, ns == 1 ? "" : "S"); tell(b);
+        if (ns > MAXSHIELDPU) tell("ONLY 8 SHIELDS COUNT ON A TRACK"); return;
+    }
     if (tool == WARDEN) {   // the next Warden not yet placed (all four placed: the selected one, or Warden 1, moves)
         int u = selW; if (u < 0) for (int k = 3; k >= 0; k--) if (!director::wardenAt[k].set) u = k; if (u < 0) u = 0;
         push(); director::wardenAt[u] = { true, g.x, g.z }; selW = u; selEv = selLine = -1; tool = SELECT; return;
@@ -508,8 +531,10 @@ static void mouseDown(int button) {
         if (near(V3(pd.x + pd.r, 0, pd.z), 14)) { selPod = q; selEv = selLine = selW = -1; grab = 6; push(); return; }
         if (near(V3(pd.x, 0, pd.z), 16)) { selPod = q; selEv = selLine = selW = -1; grab = 5; push(); return; } }
     selPod = -1;
-    for (int u = 0; u < 4; u++) if (director::wardenAt[u].set && near(wardenSpot(u), 16)) { selW = u; selEv = selLine = -1; grab = 4; push(); return; }
+    for (int u = 0; u < 4; u++) if (director::wardenAt[u].set && near(wardenSpot(u), 16)) { selW = u; selEv = selLine = -1; selPick = -1; grab = 4; push(); return; }
     selW = -1;
+    for (int q = (int)director::pickups.size() - 1; q >= 0; q--) if (near(director::pickups[q].p, 14)) { selPick = q; selEv = selLine = -1; grab = 7; push(); return; }
+    selPick = -1;
     for (int i = (int)director::evs.size() - 1; i >= 0; i--) {
         const Event& e = director::evs[i];
         if ((e.kind == director::ROCKET || e.kind == director::DOLPHIN || e.kind == director::MINIS) && near(e.to)) { selEv = i; selLine = -1; grab = 3; push(); return; }
@@ -530,6 +555,7 @@ static void mouseMove(float x, float y) {
         if (e.kind == director::SPLASH || e.kind == director::DOLPHIN) e.at.y = 0; if (e.kind == director::DOLPHIN) e.to = e.at + V3(d.x, 0, d.z);   // (a leap keeps its heading)
         if (e.kind == director::MINIS) { int bi = director::boxAt(g.x, g.z); e.at.y = bi >= 0 ? W.boxes[bi].top : g.y + 12; } }   // (on the roof under it)
     if (selW >= 0 && grab == 4) { director::wardenAt[selW].x = g.x; director::wardenAt[selW].z = g.z; }
+    if (selPick >= 0 && selPick < (int)director::pickups.size() && grab == 7) { director::pickups[selPick].p = g; dirty = true; }
     if (selPod >= 0 && grab == 5) { director::pods[selPod].x = g.x; director::pods[selPod].z = g.z; }
     if (selPod >= 0 && grab == 6) { director::Pod& pd = director::pods[selPod]; pd.r = clampf(len(V3(g.x - pd.x, 0, g.z - pd.z)), 15, 250); }
     if (selEv >= 0 && grab == 3) { Event& e = director::evs[selEv];
@@ -574,9 +600,12 @@ static void key(SDL_Keycode k, bool down = true) {
     case SDLK_d: wizStart(""); wizPick(M_DOLPHINS); break;
     case SDLK_e: listOn = !listOn; break;
     case SDLK_1: case SDLK_2: case SDLK_3: case SDLK_4: case SDLK_5: tool = PLACE; placeKind = (int)(k - SDLK_1); { char b[80]; snprintf(b, sizeof b, "CLICK WHERE THE %s GOES", director::KIND[placeKind]); for (char* c = b; *c; c++) *c = (char)toupper(*c); tell(b); } break;
+    case SDLK_r: tool = PICKUP; pickKind = 0; tell("CLICK WHERE A ROCKET CRATE GOES (CLICK ON FOR MORE; ESC WHEN DONE)"); break;
+    case SDLK_h: tool = PICKUP; pickKind = 1; tell("CLICK WHERE A SHIELD GOES (CLICK ON FOR MORE; ESC WHEN DONE)"); break;
     case SDLK_6: tool = WARDEN; tell("CLICK BESIDE THE ROAD WHERE A WARDEN STARTS WALKING"); break;
     case SDLK_DELETE: case SDLK_BACKSPACE:
         if (selW >= 0) { push(); director::wardenAt[selW].set = false; selW = -1; break; }
+        if (selPick >= 0 && selPick < (int)director::pickups.size()) { push(); director::pickups.erase(director::pickups.begin() + selPick); selPick = -1; dirty = true; if (director::pickups.empty()) tell("NONE PLACED: THE TRACK'S OWN CRATES AND SHIELDS ARE BACK"); break; }
         if (selPod >= 0 && selEv < 0) { push(); director::pods.erase(director::pods.begin() + selPod); selPod = -1; break; }
         if (selEv >= 0) { push(); dropEvent(selEv); selEv = -1; }
         else if (selLine >= 0) { push(); std::string id = director::lines[selLine].id; director::lines.erase(director::lines.begin() + selLine); selLine = -1;
@@ -613,6 +642,15 @@ static void draw(float Wd) {
         bool s = u == selW; ui.rect(sx - 9, sy - 9, 18, 18, CYA, 1); if (s) ed::ring(sx, sy, 17, WHT, 1, 2);
         snprintf(b, sizeof b, "WARDEN %d STARTS HERE%s", u + 1, u < mech::count() ? "" : " (TRACK HAS FEWER)"); label(sx, sy, CYA, b);
     }
+    {   // 2.9.6 rocket crates and shields: the ones placed here, or (none placed) the track's own, faint
+        static const V3 PC[2] = { V3(1, 0.55f, 0.15f), V3(0.35f, 0.7f, 1) };
+        if (!director::pickups.empty()) for (int q = 0; q < (int)director::pickups.size(); q++) { const director::Pickup& p = director::pickups[q]; if (!toScreen(p.p, sx, sy)) continue;
+            bool s = q == selPick; if (p.kind) ui.disc(sx, sy, 9, PC[1], 1); else ui.rect(sx - 8, sy - 8, 16, 16, PC[0], 1); if (s) ed::ring(sx, sy, 16, WHT, 1, 2); label(sx, sy, PC[p.kind], p.kind ? "SHIELD" : "ROCKETS"); }
+        else {
+            for (const Crate& c : crates) if (toScreen(c.p, sx, sy)) ui.rect(sx - 6, sy - 6, 12, 12, PC[0], 0.4f);
+            for (int k = 0; k < nShieldPU; k++) if (toScreen(shieldPU[k].p, sx, sy)) ui.disc(sx, sy, 7, PC[1], 0.4f);
+        }
+    }
     for (int q = 0; q < (int)director::pods.size(); q++) {   // dolphin pods: the ring of sea they roam, its middle and the handle on its edge
         const director::Pod& pd = director::pods[q]; bool s = q == selPod; V3 c = KCOL[director::DOLPHIN]; float px[33], py[33]; bool ok = true;
         for (int k = 0; k <= 32; k++) { float a = k * 6.2831853f / 32; ok &= toScreen(V3(pd.x + cosf(a) * pd.r, 0, pd.z + sinf(a) * pd.r), px[k], py[k]); }
@@ -647,7 +685,7 @@ static void draw(float Wd) {
         const Event& e = director::evs[selEv]; float x = Wd - PW;
         ui.rect(x, 80, PW, rowY(NROW) - 70, V3(0.02f, 0.03f, 0.06f), 0.75f); ui.rect(x, 80, PW, 3, KCOL[e.kind], 1);
         snprintf(b, sizeof b, "EVENT %s", e.id.c_str()); for (char* q = b; *q; q++) *q = (char)toupper(*q); ui.text(x + 16, 90, 2.6f, WHT, b);
-        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET", "FIRED FROM", "COLLAPSE", "TURNS TO", "OVER", "THEN THEY" };
+        static const char* RN[NROW] = { "KIND", "SET OFF BY", "AT TIME", "LAPS", "DELAY", "HOW OFTEN", "CHANCE", "WHOSE CAR", "SIZE", "HEIGHT", "TEXT", "TARGET", "FIRED FROM", "COLLAPSE", "TURNS TO", "OVER", "THEN THEY", "WEAPON" };
         for (int r = 0; r < NROW; r++) {
             if (!rowShown(e, r)) continue; float y = rowY(r); ui.text(x + 16, y, 2.2f, GREY, r == R_SIZE && e.kind == director::MINIS ? "HOW MANY" : RN[r]);
             switch (r) {
@@ -662,6 +700,7 @@ static void draw(float Wd) {
             case R_SIZE: if (e.kind == director::MINIS) snprintf(b, sizeof b, "%d", (int)lroundf(e.k)); else snprintf(b, sizeof b, "%.2f", e.k); break;
             case R_WX: snprintf(b, sizeof b, "%s", WXUP[e.wx & 3]); break;
             case R_STAY: snprintf(b, sizeof b, "%s", e.stay ? "STAY UP AND SNIPE" : "JETPACK DOWN"); break;
+            case R_GUN: snprintf(b, sizeof b, "%s", e.gun ? "MACHINE GUN" : e.stay ? "RIFLE (YOU ON FOOT)" : "ONE ROCKET"); break;
             case R_OVER: snprintf(b, sizeof b, "%.0f S", e.over); break;
             case R_HEIGHT: snprintf(b, sizeof b, "%.1f M UP", e.at.y - W.H(e.at.x, e.at.z)); break;
             case R_TEXT: snprintf(b, sizeof b, "\"%s%s\"", e.text.c_str(), typing && fmodf(T, 0.8f) < 0.4f ? "_" : ""); break;
@@ -673,6 +712,7 @@ static void draw(float Wd) {
         }
         ui.text(x + 16, rowY(NROW) - 4, 1.4f, GREY, "CLICK: NEXT   RIGHT-CLICK: BACK   SHIFT: FINER");
         { bool hov = onThen(mx, my); ui.rect(x + 16, rowY(NROW) + 14, PW - 32, 34, V3(0.2f, 0.5f, 0.3f), hov ? 1 : 0.8f); ui.text(x + PW / 2, rowY(NROW) + 21, 2.2f, WHT, "+ THEN...  (THE NEXT STEP)", 1); }
+        if (canSplit()) { bool hov = onSplit(mx, my); ui.rect(x + 16, rowY(NROW) + 56, PW - 32, 34, V3(0.45f, 0.2f, 0.15f), hov ? 1 : 0.8f); ui.text(x + PW / 2, rowY(NROW) + 63, 2.2f, WHT, "SPLIT: ONE MINI WARDEN EACH", 1); }
         // the chain: what sets it off, then each step in order (click one to pick it)
         std::vector<int> ch = chainOf(selEv); const Event& r0 = director::evs[ch[0]];
         if (!listOn) {
@@ -736,7 +776,7 @@ static void draw(float Wd) {
       ui.rect(Wd - 258, 10, 75, 44, bg, onNext(mx, my) ? 1 : 0.85f); ui.text(Wd - 220, 22, 2.0f, WHT, "NEXT >", 1); }
     { bool hov = onSave(mx, my); ui.rect(Wd - 170, 10, 150, 44, dirty ? ORG : V3(0.25f, 0.27f, 0.32f), hov ? 1 : 0.85f); ui.text(Wd - 95, 20, 2.6f, dirty ? V3(0, 0, 0) : WHT, dirty ? "SAVE *" : "SAVED", 1); }
     ui.rect(0, 656, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
-    ui.text(20, 666, 1.45f, WHT, "N NEW MOMENT  E EVENT LIST  D DOLPHINS  6 WARDEN  L LINE  0-9 ONE EVENT  DEL  CTRL+Z  CTRL+S SAVE  P PREVIEW  TAB FLY  < > TRACK");
+    ui.text(20, 666, 1.45f, WHT, "N NEW MOMENT  E LIST  D DOLPHINS  6 WARDEN  R ROCKETS  H SHIELD  L LINE  0-9 ONE EVENT  DEL  CTRL+Z  CTRL+S SAVE  P PREVIEW  TAB FLY  < > TRACK");
     if (wiz == WZ_PICK) {
         ui.rect(Wd / 2 - 280, 110, 560, 62 + NM * 52, V3(0.02f, 0.03f, 0.06f), 0.88f); ui.text(Wd / 2, 122, 2.6f, YEL, "NEW MOMENT: WHAT HAPPENS?", 1);
         for (int k = 0; k < NM; k++) { float px = Wd / 2 - 260, py = 162 + k * 52; bool h = pickAt(mx, my) == k; ui.rect(px, py, 520, 46, h ? V3(0.3f, 0.34f, 0.45f) : V3(0.14f, 0.16f, 0.22f), 1);
@@ -785,6 +825,9 @@ static void script(const char* p) {
         else if (t[0] == "list") listOn = true;
         else if (t[0] == "lapstart") { if (wiz == WZ_LINE_A) { wLine.clear(); wizNext(); } }
         else if (t[0] == "wmisfire" && t.size() >= 2) { int u = atoi(t[1].c_str()) - 1; if (u >= 0 && u < 4 && director::wardenAt[u].set) addMisfire(u); }   // as the Warden panel's + MISFIRE
+        else if (t[0] == "pickup" && t.size() >= 4) { push(); director::Pickup p; p.kind = t[1] == "shield" ? 1 : 0; float x = (float)atof(t[2].c_str()), z = (float)atof(t[3].c_str()); p.p = V3(x, W.H(x, z), z); director::pickups.push_back(p); }
+        else if (t[0] == "split") splitMinis();
+        else if (t[0] == "gun" && selEv >= 0) { push(); director::evs[selEv].gun = t.size() >= 2 && t[1] == "mg" ? 1 : 0; }
         else if (t[0] == "save") save();
         else if (t[0] == "preview") preview();
         else if (t[0] == "view" && t.size() >= 4) { camTgt = V3((float)atof(t[1].c_str()), 0, (float)atof(t[2].c_str())); topH = (float)atof(t[3].c_str()); }

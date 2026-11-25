@@ -21,21 +21,23 @@ enum Tac { T_NONE, T_MOVE, T_HIDE, T_PEEK };   // a landed one fighting you on f
 struct M { V3 roof, land, p; float yaw = 0, t = 0, wait = 0, stride = 0, aim = 0, hp = 60, snipeCD = 2, hurtT = 0; int st = ROOF, id = 0; bool shot = false, stay = false;
     // 2.9 lz: where the sniper's laser rests (it trails you); cov, peek: the cover and the step out of it; charge: the glow before a burst
     V3 lz, cov, peek; float laserT = 0, tacT = 0, charge = 0, run = 0, seenT = 0, fireT = 0; int tac = T_NONE, peeks = 0, burst = 0, grp = 0, seq = 0;
-    bool flank = false, laserOn = false, toned = false, inCover = false; };
+    bool flank = false, laserOn = false, toned = false, inCover = false;
+    bool mg = false; float mgCD = 1.5f, mgT = 0, mgCharge = 0; int mgLeft = 0, mgSeq = 0; };   // 2.9.6 a machine gun: bursts at the car
 static std::vector<M> ms;
 static const int MAXM = 8;
 static const float JET_T = 2.4f, STAY = 30, LASER = 1.0f, CHARGE = 0.6f, FIGHT_R = 90;
 static int drops = 0, landed = 0, shots = 0, downed = 0, snipes = 0, snipeHits = 0;   // test metrics
+static int mgBursts = 0, mgRounds = 0, mgHits = 0;   // (2.9.6 test metrics)
 static int lasers = 0, dodged = 0, laserTones = 0, covers = 0, flanks = 0, bursts = 0, rounds = 0, roundHits = 0, hitsCover = 0, hitsOpen = 0;   // (2.9)
 static float minLaser = 99, coverT = 0, openT = 0, dmgTaken = 0;
 static int nextId = 0, nextGrp = 0;
 
-static void reset() { ms.clear(); drops = landed = shots = downed = snipes = snipeHits = 0; nextId = nextGrp = 0;
+static void reset() { ms.clear(); drops = landed = shots = downed = snipes = snipeHits = 0; nextId = nextGrp = 0; mgBursts = mgRounds = mgHits = 0;
     lasers = dodged = laserTones = covers = flanks = bursts = rounds = roundHits = hitsCover = hitsOpen = 0; minLaser = 99; coverT = openT = dmgTaken = 0; }
 // the dice for their choices: a hash of who and how many times, the same on every machine (grng is the race's)
 static float hf(unsigned a, unsigned b) { unsigned h = a * 2654435761u ^ (b + 0x9e3779b9u) * 2246822519u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13; return (h & 0xFFFFFF) / 16777216.0f; }
 // n mini Wardens on the roof at `roof` (its top is found), coming down to `land` (on the ground there)
-static void spawn(V3 roof, V3 land, int n, bool stay) {
+static void spawn(V3 roof, V3 land, int n, bool stay, int gun) {
     int bi = director::boxAt(roof.x, roof.z); float top = bi >= 0 ? W.boxes[bi].top : W.H(roof.x, roof.z) + 12;
     V3 dir(land.x - roof.x, 0, land.z - roof.z); float dl = len(dir); dir = dl > 0.1f ? dir * (1 / dl) : V3(0, 0, 1); V3 side(dir.z, 0, -dir.x);
     for (int i = 0; i < n && (int)ms.size() < MAXM; i++) {
@@ -43,7 +45,7 @@ static void spawn(V3 roof, V3 land, int n, bool stay) {
         m.roof = V3(roof.x + side.x * o, top, roof.z + side.z * o) + dir * 1.5f;   // (on the edge that faces the road)
         float lx = land.x + side.x * o * 1.6f, lz = land.z + side.z * o * 1.6f; m.land = V3(lx, W.ground(lx, lz, W.H(lx, lz) + 1.0f), lz);
         if (stay && bi >= 0) { V3 q = m.roof; for (int k = 0; k < 120 && director::boxAt(q.x, q.z) == bi; k++) q = q + dir * 0.25f; m.roof = V3(q.x, top, q.z) - dir * 0.7f; }   // (a sniper stands at the edge, looking over it)
-        m.p = m.roof; m.yaw = atan2f(dir.x, dir.z); m.wait = 0.5f + i * 0.45f; m.id = nextId++; m.stay = stay; m.snipeCD = 1.5f + i * 0.7f; m.grp = nextGrp; m.flank = i == 1 && n >= 2; ms.push_back(m); drops++;
+        m.p = m.roof; m.yaw = atan2f(dir.x, dir.z); m.wait = 0.5f + i * 0.45f; m.id = nextId++; m.stay = stay; m.snipeCD = 1.5f + i * 0.7f; m.grp = nextGrp; m.flank = i == 1 && n >= 2; m.mg = gun == 1; m.mgCD = 1.2f + i * 0.5f; ms.push_back(m); drops++;
     }
     nextGrp++;
 }
@@ -154,10 +156,35 @@ static void fight(M& m, float dt) {
     }
     if (m.inCover) coverT += dt; else openT += dt;
 }
+// 2.9.6 a machine gun at the car: in range and in sight, a short glow at the muzzle, then a burst of six. It leads the
+// car a little and misses more the further off and the faster you go; each round that hits wears the car down. From the
+// ground or from a roof. The dice are hashes, never grng
+static void mgFire(M& m, float dt) {
+    const float RANGE = 75; V3 o = m.p + V3(0, 1.9f, 0), tgt = player.pos + V3(0, 0.7f, 0); float L = len(tgt - o);
+    if (me.on || player.dead || trialMode || L > RANGE || L < 4) { m.mgCharge = 0; m.mgLeft = 0; m.mgCD = std::max(m.mgCD, 0.6f); return; }
+    if (m.stay || m.st == ROOF) { V3 to = player.pos - m.p; float want = atan2f(to.x, to.z), dd = want - m.yaw; while (dd > 3.14159f) dd -= 6.28318f; while (dd < -3.14159f) dd += 6.28318f; m.yaw += clampf(dd, -3.0f * dt, 3.0f * dt); m.aim = std::min(1.0f, m.aim + dt * 3); }
+    o = o + yawDir(m.yaw) * 0.6f;
+    if (m.mgLeft <= 0) {
+        m.mgCD -= dt; if (m.mgCD > 0) return;
+        if (!canSee(o, tgt, false)) { m.mgCD = 0.4f; return; }
+        if (m.mgCharge <= 0) { mgBursts++; sfx(m.p, 640, 0.35f, 0.25f, 0, 900); } m.mgCharge += dt;
+        if (m.mgCharge < 0.35f) return;
+        m.mgCharge = 0; m.mgLeft = 6; m.mgT = 0;
+    }
+    m.mgT -= dt; if (m.mgT > 0) return; m.mgT = 0.09f; m.mgLeft--; m.mgSeq++; mgRounds++;
+    if (m.mgLeft <= 0) m.mgCD = 1.6f + hf(m.id * 13, m.mgSeq) * 1.2f;
+    V3 lead = tgt + player.vel * (L / 260.0f), d = norm(lead - o); float sp = len(player.vel);
+    float pHit = clampf(0.55f - (L - 15) * 0.007f, 0.12f, 0.55f) * (sp > 30 ? 0.65f : sp > 15 ? 0.85f : 1.0f);
+    bool clear = rayWorld(o, d, L, false) >= L - 1.5f, hit = clear && hf(m.id * 41 + 3, m.mgSeq) < pHit;
+    V3 side = yawRight(m.yaw) * ((m.mgSeq % 2) ? 1.0f : -1.0f) * (1.2f + 1.6f * hf(m.id, m.mgSeq + 77));
+    tracer(o, hit ? lead : o + norm(lead + side - o) * std::min(L + 12, rayWorld(o, norm(lead + side - o), L + 12, false)), V3(4, 1.6f, 0.6f));
+    sfx(o, 2300, 0.05f, 0.32f, 1, -1500);
+    if (hit) { mgHits++; damageCar(2.2f); shake = std::max(shake, 0.12f); sfx(player.pos, 900, 0.05f, 0.25f, 1, -500); }
+}
 static void step(float dt) {
     for (size_t i = 0; i < ms.size();) {
         M& m = ms[i]; m.t += dt; m.hurtT = std::max(0.0f, m.hurtT - dt);
-        if (m.st == ROOF && m.stay) { snipe(m, dt); i++; continue; }   // a sniper: it keeps the roof
+        if (m.st == ROOF && m.stay) { if (m.mg && !me.on) mgFire(m, dt); else snipe(m, dt); i++; continue; }   // a sniper: it keeps the roof (2.9.6 with a machine gun: at the car)
         if (m.st == ROOF) { if (m.t >= m.wait) { m.st = JET; m.t = 0; tone(180, 0.9f, 0.35f * nearK(m.p), 1, 260); } }
         else if (m.st == JET) {   // out and down: an arc from the roof to the ground, a little up first
             float u = clampf(m.t / JET_T, 0, 1), e = u * u * (3 - 2 * u);
@@ -168,7 +195,8 @@ static void step(float dt) {
             V3 to = player.pos - m.p; to.y = 0; float d = len(to);
             if (d > 0.5f && m.tac == T_NONE) { float want = atan2f(to.x, to.z), dd = want - m.yaw; while (dd > 3.14159f) dd -= 6.28318f; while (dd < -3.14159f) dd += 6.28318f; m.yaw += clampf(dd, -2.5f * dt, 2.5f * dt); }
             m.aim = clampf(m.aim + (d < 120 ? dt : -dt) * 2, 0, 1);
-            if (!m.shot && !trialMode && !me.on && m.t > 1.2f + m.id % 3 * 0.5f && d < 75 && d > 12 && !player.dead) {
+            if (m.mg) { if (!me.on) mgFire(m, dt); }   // (2.9.6)
+            else if (!m.shot && !trialMode && !me.on && m.t > 1.2f + m.id % 3 * 0.5f && d < 75 && d > 12 && !player.dead) {
                 m.shot = true; shots++; V3 muzzle = m.p + V3(0, 1.9f, 0) + V3(sinf(m.yaw), 0, cosf(m.yaw)) * 0.6f;
                 V3 fwd = len(player.vel) > 1 ? norm(V3(player.vel.x, 0, player.vel.z)) : V3(sinf(player.yaw), 0, cosf(player.yaw));
                 V3 aim = player.pos + player.vel * 0.55f + fwd * 7.0f + V3(fwd.z, 0, -fwd.x) * (m.id % 2 ? 3.5f : -3.5f);

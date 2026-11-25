@@ -264,10 +264,10 @@ static std::string tracksDir() {
 }
 #include "serverlist.h"   // the server list on the online screen: lookups, asking each server what it runs, joining
 #include "settings.h"   // settings (key bindings, video and effects options, fogcityfury.cfg), the touch-screen layout, the save file
-namespace director { static void reset(); static void placeWardens(); }
+namespace director { static void reset(); static void placeWardens(); static void placePickups(); }
 namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)
 namespace dolphin { static bool spawn(V3 at, V3 to, float k); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void laugh(int idx, V3 at); static void blastAt(V3 p, float r); static bool firstAt(V3& p); }   // (dolphin.h)
-namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void hurt(int idx, float dmg, V3 dir); static void blastAt(V3 p, float r, float dmg); static bool firstAt(V3& p); static V3 posOf(int idx); static int downedCount(); static int count(); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
+namespace jetdrop { static void spawn(V3 roof, V3 land, int n, bool stay = false, int gun = 0); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void hurt(int idx, float dmg, V3 dir); static void blastAt(V3 p, float r, float dmg); static bool firstAt(V3& p); static V3 posOf(int idx); static int downedCount(); static int count(); }   // (jetdrop.h)   // (events.h, after combat.h: a race start resets the scripted events)
 static float aiDmgTaken = 0, aiOffT = 0; static int aiDmgWrecks = 0, aiCrashes = 0;   // test metrics
 static int cliKnockK = -1; static float cliKnockJ = 0;
 static int aiPasses = 0; static float aiHeadErr = 0, aiLatMax = 0; static long aiHeadErrN = 0;   // (tests) overtakes; how far a driver's nose is off the way it moves; the fastest it crossed the road

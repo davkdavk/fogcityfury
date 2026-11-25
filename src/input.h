@@ -238,6 +238,7 @@ static void printJSON(FILE* o) {
             me.mag[me.gun], reserveOf(me, me.gun), me.rar[me.gun], (int)(me.reloadT > 0), me.swapT, reloadTook, swapTook, reloadsDone, me.reloads, botReloads, swapsDone, dryClicks,
             [] { static std::string m; m.clear(); for (int i = 1; i < NFIGHT; i++) { char q[24]; snprintf(q, sizeof q, "%s%d/%d", i > 1 ? ";" : "", fighters[i].mag[fighters[i].gun], fighters[i].reloads); m += q; } return m.c_str(); }(), dr.c_str());
     }
+    fprintf(o, "\"mgBursts\":%d,\"mgRounds\":%d,\"mgHits\":%d,\"pickupsPlaced\":%d,\"crate0\":[%.1f,%.1f],\"shield0\":[%.1f,%.1f],\"carHp\":%.1f,", jetdrop::mgBursts, jetdrop::mgRounds, jetdrop::mgHits, (int)director::pickups.size(), crates.empty() ? 0.0f : crates[0].p.x, crates.empty() ? 0.0f : crates[0].p.z, nShieldPU ? shieldPU[0].p.x : 0.0f, nShieldPU ? shieldPU[0].p.z : 0.0f, player.hp);
     fprintf(o, "\"steerSens\":%d,\"aimSens\":%d,\"touchSteer\":%d,\"touchWide\":%d,", optSteerSens, optAimSens, optTouchSteer, optTouchWide);
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
 #ifdef FCF_EDITOR

@@ -43,11 +43,14 @@ struct Event {
     std::string id; int kind = BLAST; V3 at, to; float k = 1; std::string text; bool fells = false;   // fells: a rocket brings down the building it is aimed at
     int wx = 1; float over = 10;   // weather: what it turns to, and how many seconds that takes
     bool stay = false;   // mini Wardens: they stay up on the roof and snipe (2.4)
+    int gun = 0;   // 2.9.6 mini Wardens: 0 their usual (one rocket at the car; a rifle on the roof, at you on foot), 1 a machine gun (bursts at the car)
     int from = 0;   // a rocket fired from: 0 its own spot (at), 1-4 that Warden's cannon, 5 the nearest Warden's (wherever it has walked to)
     unsigned laps = 0; float delay = 0; int times = ONCE, chance = 100, by = PLAYER, on = ON_LAP; std::string ref; float time = 0;
     int fired = 0, lastLap = -99; float lastT = -99;   // (the race so far)
 };
 struct Pending { int ev; float at; };
+struct Pickup { int kind = 0; V3 p; };   // 2.9.6 a rocket crate (0) or a shield (1) placed by hand: if a track has any, they replace its own
+static std::vector<Pickup> pickups;
 
 static std::vector<Line> lines; static std::vector<Event> evs; static std::vector<Pending> pend;
 struct Pod { std::string id; float x = 0, z = 0, r = 60; int n = 3; float k = 1; }; static std::vector<Pod> pods;   // dolphins that roam (dolphin.h)
@@ -84,7 +87,7 @@ static std::string lapsText(unsigned m) {
     return s;
 }
 static void parse(const std::string& body) {
-    lines.clear(); evs.clear(); pods.clear(); drift = 0; for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
+    lines.clear(); evs.clear(); pods.clear(); pickups.clear(); drift = 0; for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
     while (i <= body.size()) {
         size_t j = body.find('\n', i); if (j == std::string::npos) j = body.size();
         std::vector<std::string> t = tokens(body.substr(i, j - i)); i = j + 1;
@@ -93,6 +96,7 @@ static void parse(const std::string& body) {
         if (t.size() >= 4 && t[0] == "pod") { Pod p; p.id = t[1]; p.x = (float)atof(t[2].c_str()); p.z = (float)atof(t[3].c_str());
             for (size_t k = 4; k + 1 < t.size(); k += 2) { if (t[k] == "r") p.r = std::max(10.0f, (float)atof(t[k + 1].c_str())); else if (t[k] == "n") p.n = std::max(1, std::min(6, atoi(t[k + 1].c_str()))); else if (t[k] == "k") p.k = (float)atof(t[k + 1].c_str()); }
             pods.push_back(p); continue; }
+        if (t.size() >= 5 && t[0] == "pickup") { Pickup p; p.kind = t[1] == "shield" ? 1 : 0; p.p = V3((float)atof(t[2].c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str())); pickups.push_back(p); continue; }
         if (t.size() >= 2 && t[0] == "drift") { drift = std::max(0.0f, (float)atof(t[1].c_str())); if (drift > 0) drift = std::max(drift, 20.0f); continue; }
         if (t.size() < 3 || t[0] != "event") continue;
         Event e; e.id = t[1]; e.kind = lookup(KIND, NKIND, t[2], -1); if (e.kind < 0) continue;
@@ -104,6 +108,7 @@ static void parse(const std::string& body) {
             else if (w == "text" && k + 1 < t.size()) { e.text = t[++k]; }
             else if (w == "fells") { e.fells = true; }
             else if (w == "stay") { e.stay = true; }
+            else if (w == "gun" && k + 1 < t.size()) { e.gun = t[++k] == "mg" ? 1 : 0; }
             else if (w == "wx" && k + 1 < t.size()) { e.wx = std::max(0, lookup(WXNAME, 4, t[++k], 1)); }
             else if (w == "over" && k + 1 < t.size()) { e.over = std::max(0.5f, f(1)); k++; }
             else if (w == "from" && k + 1 < t.size()) { const std::string& v = t[++k]; e.from = v == "nearest" ? 5 : v.compare(0, 6, "warden") == 0 ? std::max(0, std::min(4, atoi(v.c_str() + 6))) : 0; }
@@ -128,12 +133,14 @@ static std::string write() {
     for (int u = 0; u < 4; u++) if (wardenAt[u].set) { snprintf(b, sizeof b, "warden %d  %.1f %.1f\n", u + 1, wardenAt[u].x, wardenAt[u].z); s += b; }
     if (drift > 0) { snprintf(b, sizeof b, "drift %.0f\n", drift); s += b; }
     for (const Pod& p : pods) { snprintf(b, sizeof b, "pod %s  %.1f %.1f  r %.0f  n %d  k %.2g\n", p.id.c_str(), p.x, p.z, p.r, p.n, p.k); s += b; }
+    for (const Pickup& p : pickups) { snprintf(b, sizeof b, "pickup %s  %.1f %.1f %.1f\n", p.kind ? "shield" : "rocket", p.p.x, p.p.y, p.p.z); s += b; }
     for (const Line& l : lines) { snprintf(b, sizeof b, "line %s  %.1f %.1f  %.1f %.1f\n", l.id.c_str(), l.ax, l.az, l.bx, l.bz); s += b; }
     for (const Event& e : evs) {
         snprintf(b, sizeof b, "event %s %s  at %.1f %.1f %.1f", e.id.c_str(), KIND[e.kind], e.at.x, e.at.y, e.at.z); s += b;
         if (e.kind == DOLPHIN || e.kind == MINIS) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f", e.to.x, e.to.y, e.to.z); s += b; }
         if (e.kind == WEATHER) { snprintf(b, sizeof b, "  wx %s  over %.3g", WXNAME[e.wx & 3], e.over); s += b; }
         if (e.kind == MINIS && e.stay) s += "  stay";
+        if (e.kind == MINIS && e.gun == 1) s += "  gun mg";
         if (e.kind == ROCKET) { snprintf(b, sizeof b, "  to %.1f %.1f %.1f%s", e.to.x, e.to.y, e.to.z, e.fells ? "  fells" : ""); s += b; if (e.from == 5) s += "  from nearest"; else if (e.from > 0) { snprintf(b, sizeof b, "  from warden%d", e.from); s += b; } }
         if (e.kind != ROCKET && e.kind != SAY && e.kind != COLLAPSE && e.kind != WEATHER) { snprintf(b, sizeof b, "  k %.2g", e.k); s += b; }
         if (e.kind == SAY) s += "  text \"" + e.text + "\"";
@@ -229,7 +236,7 @@ static void happen(int ev) {
     case COLLAPSE: fall::collapse(e.at); break;
     case DOLPHIN: dolphin::spawn(e.at, e.to, e.k); break;
     case WEATHER: if (!netRace && !W.space) turnWeather(e.wx, e.over); break;   // (online the server's weather holds)
-    case MINIS: jetdrop::spawn(e.at, e.to, std::max(1, std::min(4, (int)lroundf(e.k))), e.stay); break;
+    case MINIS: jetdrop::spawn(e.at, e.to, std::max(1, std::min(4, (int)lroundf(e.k))), e.stay, e.gun); break;
     }
     for (int k = 0; k < (int)evs.size(); k++) if (evs[k].on == ON_AFTER && evs[k].ref == e.id) trigger(k, lapNo(-1));
 }
@@ -243,6 +250,12 @@ static void placeWardens() {
         mech::Unit& m = mech::unit[u]; m.route = lat < 0 ? 0 : 1;
         m.s0 = mech::arcOfS(m.route, (float)i) + mech::walked(6 + m.tOff);   // (there when the race starts: in a race its clock is raceT + 6, update.h)
     }
+}
+// 2.9.6 a race starts (setupCars, after the track's own are laid): the crates and shields placed by hand replace them
+static void placePickups() {
+    if (pickups.empty() || trialMode) return;
+    crates.clear(); nShieldPU = 0;
+    for (const Pickup& q : pickups) { V3 p = q.p + V3(0, 1.0f, 0); if (q.kind == 0) crates.push_back({ p, 0 }); else if (nShieldPU < MAXSHIELDPU) shieldPU[nShieldPU++] = { p, -2, 0 }; }
 }
 // a race starts (setupCars): the track's events, all unfired
 static void reset() {

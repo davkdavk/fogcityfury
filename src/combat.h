@@ -43,7 +43,7 @@ static const float SHIELD_TIME = 15; static float shieldFx = 0, shieldPopT = 0;
 // two shields on the route. The first car through takes one, and it stays gone until that car has come round again
 // (a whole lap later), so on any lap one car at most gets each
 struct ShieldPU { V3 p; int holder; float at; };   // holder: -2 nobody yet, -1 us, 0.. a bot; at: the holder's race progress when it took it
-static ShieldPU shieldPU[2]; static int nShieldPU = 0;
+static const int MAXSHIELDPU = 8; static ShieldPU shieldPU[MAXSHIELDPU]; static int nShieldPU = 0;
 static int carLap(int who) { return who == -1 ? player.lap : (int)floorf(ai[who].stot / W.n); }
 static float carDist(int who) { return who == -1 ? player.progress : ai[who].stot; }
 static bool puHere(const ShieldPU& u) { return u.holder == -2 || carDist(u.holder) > u.at + W.n * 0.9f || (u.holder >= 0 && ai[u.holder].finishT >= 0); }
@@ -93,6 +93,7 @@ static void setupCars(bool race) {
     director::reset(); fall::reset(); dolphin::reset(); jetdrop::reset();   // the track's scripted events (events.h), all unfired; every building standing again
     mech::setup(); director::placeWardens(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
     for (int k = 0; k < (trialMode ? 0 : NCRATES * 2); k++) { V3 p; float yaw; W.at(W.n * (k / 2 + 0.55f) / NCRATES, (k % 2) ? 3.3f : -3.3f, p, yaw); crates.push_back({ V3(p.x, p.y + 1.0f, p.z), 0 }); }   // rocket pick-ups: a pair side by side at six places round the lap
+    director::placePickups();   // 2.9.6 the crates and shields placed in fcfedit, in place of the track's own (events.h)
 }
 static void netLoadingNotice();   // (netclient.h) online: tell the server we are about to go quiet while the track builds
 static float loadStall = 0;   // --loadstall S (tests): online, each track build takes S seconds longer, as on a slow machine

@@ -2460,6 +2460,25 @@ def fcfedit_preview_rewinds_exactly():
 
 
 @test
+def fcfedit_places_pickups_and_single_minis():
+    """2.9.6 fcfedit: rocket crates (R) and shields (H) placed one by one replace the track's own; a group of mini
+    Wardens SPLITs into one each, on its own spot, and each can carry a machine gun that fires bursts at the car."""
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    subprocess.run([BIN, "--sim", "--seconds", "0.1", "--evedit", "--track", "0", "--evscript",
+                    "moment 8; lapstart; click -147 -93; click -170 -110; split; gun mg; pickup rocket -480 -175; pickup shield -470 -170; save"],
+                   cwd=tmp, capture_output=True, timeout=120)
+    f = os.path.join(tmp, "events", "track0.fcfe"); t = open(f).read() if os.path.exists(f) else ""
+    check(t.count(" minis ") == 3 and t.count("  k 1 ") == 3 and t.count("gun mg") == 1, "split into three single minis, the first with a machine gun", t[:600])
+    check("pickup rocket" in t and "pickup shield" in t, "the crate and the shield saved", t[:300])
+    d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=30)
+    check(d["crateCount"] == 1 and d["shieldPUs"] == 1 and abs(d["crate0"][0] + 480) < 0.5 and abs(d["shield0"][0] + 470) < 0.5, "one crate and one shield, where they were put", (d["crateCount"], d["shieldPUs"], d["crate0"], d["shield0"]))
+    check(d["jetDrops"] == 3 and d["mgBursts"] >= 1 and d["mgRounds"] >= 6 and d["mgHits"] >= 1 and d["jetShots"] == 2, "three come down; one fires a machine gun burst that hits, the other two a rocket each", (d["jetDrops"], d["mgBursts"], d["mgRounds"], d["mgHits"], d["jetShots"]))
+    n = sim("--track", 0, "--state", 3, seconds=1)
+    check(n["crateCount"] == 12 and n["pickupsPlaced"] == 0, "without any placed, the track's own crates", (n["crateCount"], n["pickupsPlaced"]))
+
+
+@test
 def showdown_always_ends_with_one_winner():
     off, cov, heal, wall = [], [], [], []
     for track in range(NTRACKS):
