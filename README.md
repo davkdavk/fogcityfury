@@ -747,6 +747,11 @@ architecture, the handling model and the testing guide.
     tools/shot.sh   headless screenshots
     docs/           architecture, handling, testing
 
-## Credits
+## Licence and credits
+
+Fog City Fury is free software under the **GNU General Public License, version 3 or later** ([LICENSE](LICENSE)).
+You may copy, change and share it, as long as what you share stays under the same licence with its source.
 
 - "Dolphin" by **Tarnyloo** (Blend Swap #83681), CC-BY 3.0: the dolphins. See [models/dolphin/README.md](models/dolphin/README.md).
+- SDL 2 (zlib) and xsdk (MIT) carry the PC, Android and Xbox 360 builds.
+- Everything the game is built on, and the rules for bringing in other projects' code, are in [CREDITS.md](CREDITS.md).

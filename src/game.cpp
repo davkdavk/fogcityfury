@@ -1,3 +1,8 @@
+// Fog City Fury. Copyright (C) 2026 Dave (davkdavk) and contributors.
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+// License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+// version. It comes with ABSOLUTELY NO WARRANTY. See LICENSE and CREDITS.md.
+// SPDX-License-Identifier: GPL-3.0-or-later
 // FOG CITY FURY - an arcade hill-jumping street racer for Linux (SDL2 + OpenGL 3.3 / GLSL 3.30)
 // Phones and tablets (GLES) draw the world in chunks, as the 360 does: the 48 m cells outside the view are skipped,
 // distant ones use coarser ground, and the small props only near the camera. -DFCF_NO_CHUNKS turns it off.

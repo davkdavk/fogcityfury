@@ -1,3 +1,8 @@
+// Fog City Fury. Copyright (C) 2026 Dave (davkdavk) and contributors.
+// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+// License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+// version. It comes with ABSOLUTELY NO WARRANTY. See LICENSE and CREDITS.md.
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Fog City Fury dedicated server. Headless, no SDL/OpenGL: builds from this file and net.h.
 //
 // The server owns the session: who is connected, which track is up, the lobby / countdown / race / results cycle,
