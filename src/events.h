@@ -175,8 +175,20 @@ static void load(int track) {
         if (!p.empty() && readFile(p, body)) loadedFrom = p;   // (the PC reads events/ itself, so the editor's saves show at once)
 #else
         if (track < NTRACKS && !p.empty()) {   // 2.9.8 the 360: an events folder beside the XEX, if there is one, over the built-in files
-            std::string k = keyFor(track); const std::string tries[2] = { "events\\" + k + ".fcfe", p };   // (the events subfolder beside the XEX)
-            for (const std::string& q : tries) if (readFile(q, body)) { loadedFrom = q; break; }
+            // (2.9.8.2 the console has no working folder, so "events\\" alone finds nothing. "game:" is the folder the
+            // XEX was started from, wherever it is kept (HDD, USB, any folder): the kernel maps it when a title launches.
+            // Depending on the C library underneath, it is reached as game:\\... or through the object manager as
+            // \\??\\game:\\...; the first that opens is kept, and the first race logs every try)
+            std::string k = keyFor(track), f = "\\events\\" + k + ".fcfe";
+            static const char* roots[] = { "game:", "\\??\\game:", "GAME:", "" };
+            static int good = -1; static bool tried = false;
+            if (good >= 0) { std::string q = std::string(roots[good]) + (roots[good][0] ? f : f.substr(1)); if (readFile(q, body)) loadedFrom = q; }
+            else for (int r = 0; r < (int)(sizeof roots / sizeof roots[0]); r++) {
+                std::string q = std::string(roots[r]) + (roots[r][0] ? f : f.substr(1)); FILE* h = fopen(q.c_str(), "rb");
+                if (!tried) xsdk_log_write("events: try %s -> %s", q.c_str(), h ? "OPEN" : "no");
+                if (h) { fclose(h); if (readFile(q, body)) { loadedFrom = q; good = r; break; } }
+            }
+            tried = true;
             static int logged = -1; if (logged != track) { logged = track; xsdk_log_write("events: %s from %s", k.c_str(), loadedFrom.empty() ? "built in" : loadedFrom.c_str()); }
         }
 #endif

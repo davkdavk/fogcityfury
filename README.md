@@ -94,6 +94,12 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.8.2
+
+- **Xbox 360: the events folder found where it really is.** The console has no working folder, so `events\` beside
+  the XEX wasn't found. It now looks in `game:\events`, `game:` being the folder the XEX was started from wherever
+  it's kept (any drive, any folder). The log lists every try.
+
 ## What's new in 2.9.8.1
 
 - **Your car drives itself after the flag.** While the results are up, the autopilot takes your car on round the

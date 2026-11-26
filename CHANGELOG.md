@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.8.2 | | The 360 finds the events folder beside the XEX on the console |
 | 2.9.8.1 | The car drives itself at the results until you roam; RACE OVER | |
 | 2.9.8 | | The Xbox 360 reads an events folder beside the XEX |
 | 2.9.7 | | fcfedit: ROAM MINIS on/off per track |
