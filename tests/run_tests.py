@@ -146,12 +146,14 @@ def alternate_route():
 
 @test
 def shield_on_the_alternate_route():
-    d = sim("--track", 1, "--state", 3, "--mode", 1, seconds=0.5)
+    d = sim("--track", 1, "--state", 3, seconds=0.5)
     check(d["shieldT"] == 0 and d["shields"] == 0 and d["shieldsUp"] == 2, "two shields wait on the backstreet, none on the car", (d["shieldT"], d["shields"], d["shieldsUp"]))
     x, z = d["shieldX"], d["shieldZ"]
-    d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", x, z, 3.14, seconds=3)
+    d = sim("--track", 1, "--state", 3, "--pos", x, z, 3.14, seconds=3)
     check(d["onBranch"] >= 0, "the shield sits on the backstreet", (x, z, d["onBranch"]))
-    check(d["shields"] == 1 and 10 < d["shieldT"] < 15 and d["shieldsUp"] == 1, "driving through one puts a shield up, and it is gone for everyone else", (d["shields"], d["shieldT"], d["shieldsUp"]))
+    check(d["shields"] == 1 and d["heldShields"] == 1 and d["shieldT"] == 0 and d["shieldsUp"] == 1, "2.9.8.3 driving through one: it's held (not up yet), and gone for everyone else", (d["shields"], d["heldShields"], d["shieldT"], d["shieldsUp"]))
+    d = sim("--track", 1, "--state", 3, "--pos", x, z, 3.14, "--press", "1.5:X", seconds=3)
+    check(d["heldShields"] == 0 and 10 < d["shieldT"] < 15, "X puts it up", (d["heldShields"], d["shieldT"]))
     t, k = find_key("courtyard")
     d = keyrun(t, k, "--gas", "--shield", seconds=10)
     check(d["wrecks"] == 0 and d["shieldSaves"] == 1 and d["shieldT"] == 0, "a flat-out crash breaks the shield instead of the car", (d["wrecks"], d["shieldSaves"], d["shieldT"]))
@@ -1053,15 +1055,22 @@ def rockets_lock_on_and_wreck_the_nearest_car():
 def rockets_come_from_pickups_two_at_a_time():
     crates = dump(1)["crates"]
     check(len(crates) == 12, "six pairs of crates round the lap", len(crates))
-    here = ("--track", 1, "--state", 3, "--mode", 1, "--pos", crates[0]["x"], crates[0]["z"], 0)
+    here = ("--track", 1, "--state", 3, "--pos", crates[0]["x"], crates[0]["z"], 0)
     d = sim(*here, seconds=2)
     check(d["pickups"] == 1 and d["rockets"] == 2, "driving into a crate gives two rockets", (d["pickups"], d["rockets"]))
     d = sim(*here, seconds=14)
-    check(d["pickups"] == 1 and d["rockets"] == 2, "sitting on the crate gives nothing more: one set per lap", (d["pickups"], d["rockets"]))
+    check(d["pickups"] == 1 and d["rockets"] == 2, "sitting on the crate gives nothing more: that crate is gone for you until your next lap", (d["pickups"], d["rockets"]))
+    d = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", crates[0]["x"], crates[0]["z"], 0, seconds=2)
+    check(d["pickups"] == 0 and d["rockets"] == 0, "2.9.8.3 roaming: no rockets to pick up (they're for races)", (d["pickups"], d["rockets"]))
+    for xp, cap in ((0, 5), (10, 6), (35, 8), (99, 10)):
+        d = sim(*here, "--rockets", 12, "--xp", xp, seconds=1)
+        check(d["rocketCap"] == cap and d["rockets"] == cap and d["pickups"] == 0, "2.9.8.3 level %d holds %d rockets; a full rack leaves the crate" % (xp // 10, cap), (d["rocketCap"], d["rockets"], d["pickups"]))
+    d = sim(*here, "--rockets", 4, seconds=2)
+    check(d["rockets"] == 5 and d["pickups"] == 1, "a crate tops you up to what you can hold", (d["rockets"], d["pickups"]))
     d = sim(*here, "--fire", 0.5, seconds=2)
     check(d["rocketsFired"] == 1 and d["rockets"] == 1, "one fired, one left", (d["rocketsFired"], d["rockets"]))
     race = sim("--track", 1, "--state", 3, "--auto", seconds=330)
-    check(race["finished"] == 1 and 1 <= race["pickups"] <= 4, "over a whole race the autopilot gets at most one set per lap (the run to the line counts as one)", race["pickups"])
+    check(race["finished"] == 1 and 1 <= race["pickups"] <= 3 * 12 + 2, "over a whole race the autopilot takes each crate at most once a lap", race["pickups"])
 
 
 @test
@@ -1348,25 +1357,25 @@ def options_controls_can_be_rebound():
     run = _home()
     drive = ("--track", 1, "--state", 3, "--mode", 1)
     check(run(*drive, "--hold", "Up")["dist"] > 10, "default: Up accelerates", None)
-    check(run(*drive, "--hold", "X")["dist"] < 1, "default: X does nothing", None)
-    d = run(*_presses("F1", "DOWN", "DOWN", "RETURN", "X", "ESCAPE"))     # third row is ACCELERATE, first slot
+    check(run(*drive, "--hold", "V")["dist"] < 1, "default: V does nothing", None)
+    d = run(*_presses("F1", "DOWN", "DOWN", "RETURN", "V", "ESCAPE"))     # third row is ACCELERATE, first slot
     binds = [tuple(int(v) for v in b.split(",")) for b in d["binds"].split(";")]
-    check(len(binds) == 12 and binds[2] == (27, 26), "accelerate is now X, with W still as the second key", binds[2])
-    check(run(*drive, "--hold", "X")["dist"] > 10, "X accelerates after rebinding (and after a restart)", None)
+    check(len(binds) == 14 and binds[2] == (25, 26), "accelerate is now V, with W still as the second key", binds[2])
+    check(run(*drive, "--hold", "V")["dist"] > 10, "V accelerates after rebinding (and after a restart)", None)
     check(run(*drive, "--hold", "Up")["dist"] < 1, "Up no longer does", None)
     check(run(*drive, "--hold", "W")["dist"] > 10, "the second key still works", None)
-    d = run(*_presses("F1", "RETURN", "X", "ESCAPE"))                     # give X to STEER LEFT instead
+    d = run(*_presses("F1", "RETURN", "V", "ESCAPE"))                     # give V to STEER LEFT instead
     binds = [tuple(int(v) for v in b.split(",")) for b in d["binds"].split(";")]
-    check(binds[0][0] == 27 and binds[2][0] == 0, "a key belongs to one action: it was taken away from accelerate", (binds[0], binds[2]))
+    check(binds[0][0] == 25 and binds[2][0] == 0, "a key belongs to one action: it was taken away from accelerate", (binds[0], binds[2]))
     d = run(*_presses("F1", "RETURN", "ESCAPE", "ESCAPE"))
-    check(d["state"] == 0 and d["binds"].startswith("27,"), "Esc cancels a pending change without binding Esc", d["binds"][:8])
+    check(d["state"] == 0 and d["binds"].startswith("25,"), "Esc cancels a pending change without binding Esc", d["binds"][:8])
     d = run("--state", 3, "--mode", 1, "--rockets", 1, *_presses("G"), seconds=2)
     check(d["rocketsFired"] == 0, "G is not a fire key by default", d["rocketsFired"])
     run(*_presses("F1", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "RETURN", "G", "ESCAPE"))
     d = run("--state", 3, "--mode", 1, "--rockets", 1, *_presses("G"), seconds=2)
     check(d["rocketsFired"] == 1, "after rebinding FIRE ROCKET to G, G fires", d["rocketsFired"])
     d = run(*_presses("F1", "F5", "ESCAPE"))
-    check(d["binds"] == "80,4;79,7;82,26;81,22;44,0;225,229;9,8;21,42;6,0;10,0;20,0;21,0", "F5 restores the defaults", d["binds"])
+    check(d["binds"] == "80,4;79,7;82,26;81,22;44,0;225,229;9,8;21,42;6,0;10,0;20,0;21,0;27,0;29,0", "F5 restores the defaults (2.9.8.3 with X and Z for the shield / ghost)", d["binds"])
 
 
 # ----------------------------------------------------------------------------- touch screen
@@ -2481,7 +2490,53 @@ def fcfedit_places_pickups_and_single_minis():
     g = os.path.join(tmp, "roam.fcfe"); open(g, "w").write("roamminis off\nevent m1 minis  at -147 30 -93  to -170 0 -110  k 1  gun mg  on time 5\n")
     on = sim("--track", 0, "--state", 3, "--mode", 1, "--auto", "--nobotguns", seconds=150)
     off = sim("--track", 0, "--state", 3, "--mode", 1, "--auto", "--nobotguns", "--events", g, seconds=150)
+    subprocess.run([BIN, "--sim", "--seconds", "0.1", "--evedit", "--track", "0", "--evscript", "race 3; racename night run; racemode rampage; raceweather fog; racelaps 2; pickup ghost -480 -175; save"], cwd=tmp, capture_output=True, timeout=120)
+    f3 = os.path.join(tmp, "events", "track0-r3.fcfe"); t3 = open(f3).read() if os.path.exists(f3) else ""
+    check('race "NIGHT RUN"  mode rampage  weather fog  laps 2' in t3 and "pickup ghost" in t3, "2.9.8.3 fcfedit: race 3's own file, its race line and a ghost", t3[:300])
     check(on["miniSpawned"] >= 3 and off["miniSpawned"] == 0 and off["jetDrops"] == 1, "2.9.7 ROAM MINIS OFF: no groups drop in while roaming; the one placed still comes", (on["miniSpawned"], off["miniSpawned"], off["jetDrops"]))
+
+
+@test
+def career_garage_races_and_the_grid():
+    """2.9.8.3 the career: CAREER on the track screen opens the track's race list (five races, each its own event file
+    with a race line: name, mode, weather, laps). Pick one and it starts as any race does (the camera comes down from
+    above), with you on the grid where you finished last time on this track. ESC after the race: back to the list,
+    where the next race starts from your new place."""
+    import tempfile
+    tmp = tempfile.mkdtemp(); os.makedirs(os.path.join(tmp, "events"))
+    open(os.path.join(tmp, "events", "track1.fcfe"), "w").write('race "SHORT ONE"  mode race  weather clear  laps 1\n')
+    open(os.path.join(tmp, "events", "track1-r2.fcfe"), "w").write('race "SHORT TWO"  mode race  weather rain  laps 1\n')
+    def run(*a, seconds):
+        p = subprocess.run([BIN, "--sim", "--seconds", str(seconds), "--track", "1"] + [str(x) for x in a], cwd=tmp, capture_output=True, text=True, timeout=300)
+        return json.loads(p.stdout.strip().splitlines()[-1])
+    g = run("--career", 0, seconds=0.5)
+    check(g["state"] == 11 and g["career"] == 1, "the race list", (g["state"], g["career"]))
+    w = run("--career", 1, "--qual", 3, seconds=1)
+    check(w["toGrid"] == 0 and w["gridSlot"] == 2 and w["introT"] > 0 and w["raceName"] == "SHORT ONE", "race 1: 3rd on the grid, the camera coming down from above", (w["toGrid"], w["gridSlot"], w["introT"], w["raceName"]))
+    r = run("--career", 1, "--auto", "--nobotguns", "--press", "95:ESCAPE", "--press", "97:DOWN", "--press", "98:RETURN", seconds=104)
+    check(r["careerRace"] == 1 and r["raceName"] == "SHORT TWO" and r["weather"] == 1 and r["raceLaps"] == 1, "race 2: its own name, rain, one lap", (r["careerRace"], r["raceName"], r["weather"], r["raceLaps"]))
+    check(r["careerQual"] >= 1 and r["gridSlot"] == r["careerQual"] - 1 and r["careerBest"][0] == r["careerQual"], "you start race 2 where you finished race 1", (r["careerQual"], r["gridSlot"], r["careerBest"]))
+    check(r["xp"] >= 1, "finishing a race earns experience", r["xp"])
+
+
+@test
+def held_shields_and_ghosts():
+    """2.9.8.3 shields and ghosts you drive through are held (up to 3 each) and used when you choose: X (pad: D-pad up)
+    uses the selected one, Z (D-pad left / right) switches. A ghost gives 7 seconds when you pass through other cars."""
+    d = sim("--track", 1, "--state", 3, seconds=0.2)
+    gx, gz = d["ghostPU0"]
+    check(d["ghostPUs"] == 2, "two ghosts round the lap", d["ghostPUs"])
+    h = sim("--track", 1, "--state", 3, "--pos", gx, gz, 0, seconds=2)
+    check(h["heldGhosts"] == 1 and h["itemSel"] == 1 and h["ghostLeft"] == 0, "driving through a ghost: it's held, and selected", (h["heldGhosts"], h["itemSel"], h["ghostLeft"]))
+    u = sim("--track", 1, "--state", 3, "--pos", gx, gz, 0, "--press", "1:X", seconds=2)
+    check(u["heldGhosts"] == 0 and u["ghostsUsed"] == 1 and 5.5 < u["ghostLeft"] < 6.5, "X: 7 seconds of ghost", (u["heldGhosts"], u["ghostsUsed"], u["ghostLeft"]))
+    a = sim("--track", 1, "--state", 3, "--overlap", "--held", 1, seconds=3)
+    b = sim("--track", 1, "--state", 3, "--overlap", "--held", 1, "--press", "0.02:Z", "--press", "0.03:X", seconds=3)
+    check(a["carTouches"] > 5 and b["ghostsUsed"] == 1 and b["ghostPasses"] > 30 and b["carTouches"] <= 2, "started inside the pole car: it shoves you out; as a ghost you sit in it untouched", (a["carTouches"], b["ghostsUsed"], b["ghostPasses"], b["carTouches"]))
+    s = sim("--track", 1, "--state", 3, "--held", 2, "--press", "0.5:X", "--press", "1:Z", "--press", "1.5:X", seconds=2)
+    check(s["shieldsUsed"] == 1 and s["ghostsUsed"] == 1 and s["heldShields"] == 1 and s["heldGhosts"] == 1, "the shield first, then Z switches to the ghost", (s["shieldsUsed"], s["ghostsUsed"], s["heldShields"], s["heldGhosts"]))
+    r = sim("--track", 1, "--state", 3, "--mode", 1, "--pos", gx, gz, 0, seconds=2)
+    check(r["heldGhosts"] == 0, "roaming: no ghosts to pick up", r["heldGhosts"])
 
 
 @test

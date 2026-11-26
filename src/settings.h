@@ -3,13 +3,13 @@
 // above its #include there, and what follows the #include can use what is declared here.
 #pragma once
 // ---- settings: key bindings and video options, kept in fogcityfury.cfg beside the save file ----
-enum Bind { B_LEFT, B_RIGHT, B_GAS, B_BRAKE, B_HB, B_NITRO, B_FIRE, B_RESET, B_CAM, B_EXIT, B_WEAPON, B_RELOAD, NBIND };
-static const char* BIND_NAME[NBIND] = { "STEER LEFT", "STEER RIGHT", "ACCELERATE", "BRAKE / REVERSE", "HANDBRAKE", "NITRO", "FIRE ROCKET / GUN", "BACK ON TRACK", "CHANGE CAMERA", "GET OUT / IN", "LAST WEAPON", "RELOAD (ON FOOT)" };
+enum Bind { B_LEFT, B_RIGHT, B_GAS, B_BRAKE, B_HB, B_NITRO, B_FIRE, B_RESET, B_CAM, B_EXIT, B_WEAPON, B_RELOAD, B_ITEM, B_ITEMSEL, NBIND };   // (2.9.8.3 B_ITEM uses the shield or ghost you hold, B_ITEMSEL switches between them)
+static const char* BIND_NAME[NBIND] = { "STEER LEFT", "STEER RIGHT", "ACCELERATE", "BRAKE / REVERSE", "HANDBRAKE", "NITRO", "FIRE ROCKET / GUN", "BACK ON TRACK", "CHANGE CAMERA", "GET OUT / IN", "LAST WEAPON", "RELOAD (ON FOOT)", "USE SHIELD / GHOST", "SWITCH SHIELD / GHOST" };
 static const int BIND_DEF[NBIND][2] = { { SDL_SCANCODE_LEFT, SDL_SCANCODE_A }, { SDL_SCANCODE_RIGHT, SDL_SCANCODE_D }, { SDL_SCANCODE_UP, SDL_SCANCODE_W }, { SDL_SCANCODE_DOWN, SDL_SCANCODE_S }, { SDL_SCANCODE_SPACE, 0 },
-    { SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT }, { SDL_SCANCODE_F, SDL_SCANCODE_E }, { SDL_SCANCODE_R, SDL_SCANCODE_BACKSPACE }, { SDL_SCANCODE_C, 0 }, { SDL_SCANCODE_G, 0 }, { SDL_SCANCODE_Q, 0 }, { SDL_SCANCODE_R, 0 } };   // (R: on foot it reloads, in the car it is BACK ON TRACK)
+    { SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT }, { SDL_SCANCODE_F, SDL_SCANCODE_E }, { SDL_SCANCODE_R, SDL_SCANCODE_BACKSPACE }, { SDL_SCANCODE_C, 0 }, { SDL_SCANCODE_G, 0 }, { SDL_SCANCODE_Q, 0 }, { SDL_SCANCODE_R, 0 }, { SDL_SCANCODE_X, 0 }, { SDL_SCANCODE_Z, 0 } };   // (R: on foot it reloads, in the car it is BACK ON TRACK)
 static std::vector<int> heldKeys; static int binds[NBIND][2];
 // ---- touch screens: on-screen buttons. Shown once a finger touches the screen (always on Android), or with --touch ----
-enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON, TA_RELOAD, TA_GUNSEL };   // TA_GUNSEL: a gun in the weapon menu (key = which)
+enum TouchAct { TA_KEY, TA_RESET, TA_FIRE, TA_CAM, TA_EXIT, TA_WEAPON, TA_RELOAD, TA_GUNSEL, TA_ITEM, TA_ITEMSEL };   // (2.9.8.3 TA_ITEM uses the shield or ghost you hold, TA_ITEMSEL switches)   // TA_GUNSEL: a gun in the weapon menu (key = which)
 // hold: a Bind held while a finger is on it (-1: a tap button). Drawn round (pill false: x, y, w, h is the circle's box) or as a pill;
 // icon: a symbol instead of the label (the label still names it, for tests); style: its colour
 enum TouchIcon { IC_NONE, IC_LEFT, IC_RIGHT, IC_UP, IC_DOWN, IC_PAUSE, IC_CAM, IC_RESET, IC_GUN };   // IC_GUN: the gun in hand (GUN) or the one in key (the menu)
@@ -50,6 +50,13 @@ static const int NSTICKROWS = 4;
 static float touchSteerR() { static const float R[3] = { 100, 140, 190 }; return R[optTouchWide < 0 ? 0 : optTouchWide > 2 ? 2 : optTouchWide]; }   // half the touch stick's travel, in UI pixels (720 high)
 static float steerCurve(float a) { return powf(std::max(0.0f, std::min(1.0f, a)), 100.0f / std::max(50, std::min(200, optSteerSens))); }   // a: 0..1 past the dead zone; 100 %: straight, more: quicker off the centre, less: finer
 static struct TouchSteer { bool on = false; SDL_FingerID id = 0; float ox = 0, x = 0, y = 0; } tsteer;   // 2.9.5 the car's touch steering stick: where the thumb went down (it follows past full lock) and where it is
+// 2.9.8.3 levelling up: experience from each race you finish (more the higher you place), a level every 10, up to 5.
+// Each level holds one more rocket: 5 to start, 10 at level 5. Kept with the career (fogcityfury.career)
+static int xp = 0, cliXp = -1, cliHeld = -1; static bool cliOverlap = false;   // (--overlap, tests: the race starts with your car inside the pole sitter's)   // (--held N, tests: start each race holding N shields and N ghosts)
+static int level() { return std::min(5, xp / 10); }
+static int rocketCap() { return 5 + level(); }
+static int xpFor(int place) { return place <= 0 ? 0 : place == 1 ? 5 : place == 2 ? 4 : place == 3 ? 3 : place <= 5 ? 2 : 1; }
+static int cliCareer = -1, cliQual = 0;   // (--qual P, tests: you finished P-th last time on this track)   // --career R (tests): 0 the garage of --track, 1-5 out to that race
 static float cliTouchSteer = -9;   // --touchsteer X (tests): a thumb held on the steering stick at X of full lock (+ right)
 static int optRings = 100, optMist = 100, optGrass = 100;   // effects, %: the size of the rings on the water, how much spray a splash throws up, how thick the grass grows (0: off)
 static int vidBright = 85;   // brightness, %: scales the light going into the tone curve (50-150; 85 since 1.72, 100 was the old look)
@@ -72,10 +79,10 @@ static State viewState() { return state == OPTS ? optReturn : state; }        //
 // and clear of the HUD's panels (speedometer right of middle, position top left, minimap left of middle)
 static bool roamAfterOk();   // (showdown.h)
 static bool haveGun(const Fighter& f, int g); static bool usesMag(const Fighter& f);   // (foot.h)
-static bool touchHasAmmo(); static bool edTesting(); static int edToolNow(); static bool selIsCustom();
+static bool touchHasAmmo(); static int touchItems(); static bool careerToGrid(); static bool edTesting(); static int edToolNow(); static bool selIsCustom();
 static void touchLayout() {
     long long sig = (long long)state * 100 + srvMode * 10 + optPage + (me.on ? 2 : 0) + (showdownOn ? 4 : 0) + (nc.on ? 5000 : 0) + (long long)uiW * 10000
-                  + ((long long)touchHasAmmo() << 32) + ((long long)edTesting() << 36) + ((long long)edToolNow() << 37) + ((long long)selIsCustom() << 41) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35)
+                  + ((long long)touchHasAmmo() << 32) + ((long long)touchItems() << 59) + ((long long)careerToGrid() << 62) + ((long long)edTesting() << 36) + ((long long)edToolNow() << 37) + ((long long)selIsCustom() << 41) + ((long long)(voteOpen() && !voteMine()) << 33) + ((long long)shareOpen << 34) + ((long long)!shareList().empty() << 35)
                   + ((long long)optTouchSteer << 58) + ((long long)touchGunMenu << 42) + ((long long)(me.on ? me.gun : 0) << 43) + ((long long)[] { int m = 0; for (int g = 0; g < NGUNS; g++) if (haveGun(me, g)) m |= 1 << g; return m; }() << 47);
     static long long laidSig = -1; if (sig == laidSig && touchLaid >= 0) return;
     laidSig = sig; touchLaid = 1; tbtn.clear(); fingers.clear(); float W = uiW, H = 720;
@@ -134,9 +141,12 @@ static void touchLayout() {
         cHold("GAS", W - 125, H - 125, 95, B_GAS, IC_NONE, TS_GO); cHold("BRAKE", W - 305, H - 80, 62, B_BRAKE, IC_NONE, TS_STOP);
         cHold("NITRO", W - 445, H - 92, 56, B_NITRO, IC_NONE, TS_NITRO); cHold("DRIFT", W - 370, H - 236, 50, B_HB);
         if (touchHasAmmo()) cAct("ROCKET", W - 530, H - 250, 54, TA_FIRE, IC_NONE, TS_FIRE);   // only with rockets on board
+        if (careerToGrid()) pKey("TO THE GRID", W / 2 - 130, 120, 260, SDLK_RETURN, TS_GO, 60);   // 2.9.8.3 straight to your grid spot
+        { int it = touchItems(); if (it & 3) { cAct((it & 4) ? "GHOST" : "SHIELD", W - 650, H - 250, 50, TA_ITEM, IC_NONE, TS_NITRO); if ((it & 3) == 3) cAct("SWAP", W - 650, H - 350, 34, TA_ITEMSEL); } }   // 2.9.8.3 the item you hold: tap to use; SWAP when you hold both
         break;
     case TITLE: pKey("RACE", W - 250, H - 110, 220, SDLK_RETURN, TS_GO, 84); pKey("ONLINE", W - 490, H - 110, 220, SDLK_o, TS_PLAIN, 84); pKey("OPTIONS", 30, H - 110, 200, SDLK_F1); break;
     case CARSEL: dpad(true, true); okBack("OK", "BACK"); break;
+    case GARAGE: dpad(true, false); okBack("DRIVE OUT", "TRACKS"); break;   // 2.9.8.3
     case TRACKSEL: dpad(true, true); okBack("START", "BACK");
 #ifdef FCF_EDITOR
         pKey("EDIT", W - 300, 20, 130, SDLK_F4, TS_PLAIN, 58); pKey("NEW", W - 160, 20, 140, SDLK_F6, TS_PLAIN, 58); if (selIsCustom()) pKey("DELETE", 20, 20, 170, SDLK_DELETE, TS_STOP, 58);   // the track editor

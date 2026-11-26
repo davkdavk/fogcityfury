@@ -121,9 +121,10 @@ static void voteSpline(const TrackDef& d, std::vector<V3>& out, int per) {
 }
 
 static bool roamAfterOk();
-static const char* resultsPrompt() { return !champOn && roamAfterOk() ? P("ENTER: ROAM ON     ESC: MENU", "{A} ROAM ON     {B} MENU") : P("PRESS ENTER", "PRESS {A}"); }   // (2.9.3)
+static const char* resultsPrompt() { if (career::on && roamAfterOk()) return P("ENTER: ROAM ON     ESC: THE GARAGE", "{A} ROAM ON     {B} THE GARAGE"); return !champOn && roamAfterOk() ? P("ENTER: ROAM ON     ESC: MENU", "{A} ROAM ON     {B} MENU") : P("PRESS ENTER", "PRESS {A}"); }   // (2.9.3)
 static void drawHUD() {
     float Wd = ui.W, Hd = ui.H; char b[160]; V3 white(1, 1, 1), yel(1, 0.82f, 0.15f), org(1, 0.5f, 0.1f);
+    if (state == GARAGE) { career::drawGarage(Wd, Hd); return; }   // 2.9.8.3
     if (state == OPTS) {
         ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.62f); ui.text(Wd / 2, 30, 6, yel, "OPTIONS", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f);
         { static const char* tabs[3] = { "CONTROLS", "VIDEO", "STICKS" }; for (int q = 0; q < 3; q++) ui.text(Wd / 2 + (q - 1) * 300.0f, 100, 3.5f, optPage == q ? yel : dim, tabs[q], 1); ui.rect(Wd / 2 + (optPage - 1) * 300.0f - 90, 130, 180, 3, org, 1); }
@@ -131,15 +132,15 @@ static void drawHUD() {
         if (optPage == 0) {
             ui.text(Wd / 2 - 490, 166, 2, dim, "ACTION"); ui.text(Wd / 2 - 20, 166, 2, dim, "KEY", 1); ui.text(Wd / 2 + 270, 166, 2, dim, "SECOND KEY", 1);
             for (int i = 0; i < NBIND; i++) {
-                float y = 188 + i * 28.0f; bool sel = i == optRow; ui.text(Wd / 2 - 490, y + 5, 2.5f, sel ? white : V3(0.8f, 0.82f, 0.86f), BIND_NAME[i]);
+                float y = 176 + i * 24.0f; bool sel = i == optRow; ui.text(Wd / 2 - 490, y + 4, 2.2f, sel ? white : V3(0.8f, 0.82f, 0.86f), BIND_NAME[i]);
                 for (int c = 0; c < 2; c++) {
-                    float x = Wd / 2 - 20 + c * 290; bool cur = sel && c == optCol; ui.rect(x - 130, y, 260, 25, cur ? hi : V3(0.06f, 0.07f, 0.10f), cur ? 0.95f : 0.6f);
-                    if (cur && optCapture) { if (fmodf(T, 0.6f) < 0.4f) ui.text(x, y + 5, 2.3f, yel, "PRESS A KEY", 1); } else ui.text(x, y + 5, 2.3f, cur ? white : V3(0.75f, 0.85f, 1), keyName(binds[i][c]), 1);
+                    float x = Wd / 2 - 20 + c * 290; bool cur = sel && c == optCol; ui.rect(x - 130, y, 260, 22, cur ? hi : V3(0.06f, 0.07f, 0.10f), cur ? 0.95f : 0.6f);
+                    if (cur && optCapture) { if (fmodf(T, 0.6f) < 0.4f) ui.text(x, y + 4, 2.1f, yel, "PRESS A KEY", 1); } else ui.text(x, y + 4, 2.1f, cur ? white : V3(0.75f, 0.85f, 1), keyName(binds[i][c]), 1);
                 }
             }
             ui.text(Wd / 2 - 490, 528, 2, yel, "GAMEPAD (FIXED)");
             ui.text(Wd / 2 - 490, 549, 2, dim, "{LS} STEER   {RT} / {A} ACCELERATE   {LT} / {B} BRAKE   {X} HANDBRAKE");
-            ui.text(Wd / 2 - 490, 569, 2, dim, "{RB} NITRO   {LB} ROCKET   {Y} CAMERA   {BACK} BACK ON TRACK   {START} PAUSE");
+            ui.text(Wd / 2 - 490, 569, 2, dim, "{RB} NITRO   {LB} ROCKET   {Y} CAMERA   {DPAD} UP: SHIELD / GHOST   LEFT / RIGHT: SWITCH   {BACK} RESET");
             ui.text(Wd / 2 - 490, 589, 2, dim, "IN THE MENUS:  {DPAD} MOVE   {A} OK   {B} BACK   {X} OPTIONS");
             if (!padOnly) ui.text(Wd / 2 + 490, 528, 2, dim, "KEYBOARD, ALWAYS: ESC PAUSE  M MUSIC  F1 OPTIONS  F11 FULL SCREEN", 2);
             if (optCapture) ui.text(Wd / 2, 646, 2.2f, white, "PRESS THE KEY TO USE     ESC: CANCEL", 1);
@@ -321,7 +322,7 @@ static void drawHUD() {
         static const V3 wcol[NWX] = { { 1, 0.85f, 0.3f }, { 0.45f, 0.75f, 1 }, { 0.7f, 0.74f, 0.78f }, { 0.6f, 0.55f, 1 } };
         snprintf(b, sizeof b, "WEATHER  %s %-7s %s  %s", selRow == 1 ? "<" : " ", WX[selWeather].name, selRow == 1 ? ">" : " ", WX[selWeather].sub);
         ui.text(96, ry[1], 2.8f, wcol[selWeather], b);
-        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE", "CHAMP", "MANIC" }; static const char* MODE_BLURB[NMODES] = { "A RACE AGAINST 9 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "RACE, THEN THE PODIUM FIGHTS ON FOOT", "FOUR TRACKS, POINTS, A SHOWDOWN EACH ROUND", "TIME TRIAL AGAINST YOUR OWN GHOST" };
+        static const char* MODE_NAME[NMODES] = { "RACE", "ROAM", "RAMPAGE", "CHAMP", "MANIC", "CAREER" }; static const char* MODE_BLURB[NMODES] = { "A RACE AGAINST 9 OPPONENTS", "NO CLOCK, NO TRAFFIC - KEY HUNT", "RACE, THEN THE PODIUM FIGHTS ON FOOT", "FOUR TRACKS, POINTS, A SHOWDOWN EACH ROUND", "TIME TRIAL AGAINST YOUR OWN GHOST" , "THE TRACK'S GARAGE: FIVE RACES, YOUR FINISH SETS YOUR GRID" };
         snprintf(b, sizeof b, "MODE     %s %-7s %s  %s", selRow == 2 ? "<" : " ", MODE_NAME[selMode], selRow == 2 ? ">" : " ", MODE_BLURB[selMode]);
         ui.text(96, ry[2], 2.8f, selMode ? V3(0.4f, 1, 0.6f) : org, b);
         if (selMode == 3) ui.text(96, ry[3], 2.8f, V3(0.45f, 0.47f, 0.52f), "LAPS     1 / 2 / 2 / 3, SET BY THE CHAMPIONSHIP");
@@ -353,15 +354,23 @@ static void drawHUD() {
         if (!trialMode) {   // rockets: two slots; the reticle marks the car a rocket would go for (manic: none)
             float nx = Wd - 300, ny = Hb - 238, nw = 280, nh = 38; V3 rc(1, 0.42f, 0.14f);
             ui.rect(nx, ny, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f); ui.text(nx + 10, ny + 13, 2.0f, ammo > 0 ? rc : V3(0.5f, 0.5f, 0.55f), "ROCKETS");
-            for (int k = 0; k < CRATE_ROCKETS; k++) {
+            for (int k = 0; k < rocketCap(); k++) {   // (2.9.8.3 one slot for each rocket your level holds)
                 bool on = k < ammo;
-                float x = nx + 98 + k * 40;
-                ui.rect(x, ny + 13, 30, 12, on ? (ammoFlash > 0 && fmodf(T, 0.16f) < 0.08f ? V3(1, 1, 1) : rc) : V3(0.18f, 0.2f, 0.24f),
-                        on ? 1 : 0.8f);
-                if (on) ui.rect(x + 30, ny + 15, 6, 8, V3(0.9f, 0.9f, 0.9f), 1);
+                float x = nx + 98 + k * 17;
+                ui.rect(x, ny + 11, 13, 16, on ? (ammoFlash > 0 && fmodf(T, 0.16f) < 0.08f ? V3(1, 1, 1) : rc) : V3(0.18f, 0.2f, 0.24f), on ? 1 : 0.8f);
             }
-            if (ammo == 0 && !cratesOn()) ui.text(nx + nw - 10, ny + 13, 2.0f, V3(0.5f, 0.5f, 0.55f), "NEXT LAP", 2);
-            if (ammo > 0) { snprintf(b, sizeof b, "%.6s: FIRE", keyName(binds[B_FIRE][0] ? binds[B_FIRE][0] : binds[B_FIRE][1])); ui.text(nx + nw - 10, ny + 13, 2.0f, V3(0.85f, 0.85f, 0.85f), b, 2); }
+            if (ammo == 0 && !cratesOn()) ui.text(nx + nw - 10, ny + 13, 1.7f, V3(0.5f, 0.5f, 0.55f), "NEXT LAP", 2);
+            if (heldShields + heldGhosts > 0 || ghosting()) {   // 2.9.8.3 what you hold: shields and ghosts, the one in use picked out
+                float iy = ny - 44; ui.rect(nx, iy, nw, nh, V3(0.02f, 0.03f, 0.06f), 0.55f);
+                int sel = itemSel; if ((sel == 0 ? heldShields : heldGhosts) == 0) sel ^= 1; V3 sc(0.45f, 0.85f, 1), gc(0.8f, 0.85f, 1);
+                for (int q = 0; q < 2; q++) {
+                    int n = q ? heldGhosts : heldShields; float x = nx + 10 + q * 120; bool on = q == sel && n > 0;
+                    if (on) ui.rect(x - 4, iy + 4, 112, nh - 8, q ? V3(0.25f, 0.3f, 0.45f) : V3(0.1f, 0.3f, 0.45f), itemFlash > 0 && fmodf(T, 0.16f) < 0.08f ? 1 : 0.85f);
+                    snprintf(b, sizeof b, "%s %d", q ? "GHOST" : "SHIELD", n); ui.text(x, iy + 13, 2.0f, n > 0 ? (q ? gc : sc) : V3(0.4f, 0.42f, 0.48f), b);
+                }
+                if (ghosting()) { snprintf(b, sizeof b, "%.1f", ghostT); ui.text(nx + nw - 10, iy + 13, 2.0f, V3(0.8f, 0.9f, 1), b, 2); }
+                else ui.text(nx + nw - 10, iy + 13, 1.7f, V3(0.85f, 0.85f, 0.85f), touchOn ? "" : padUI ? "{DPAD} UP" : keyName(binds[B_ITEM][0] ? binds[B_ITEM][0] : binds[B_ITEM][1]), 2);
+            }
             Car* tc = lockTgt >= 0 ? tgtCar(lockTgt) : nullptr;
             if (tc && state == RACE) {
                 V3 q = tc->pos + V3(0, 0.7f, 0); const float* m = lastVP.m;
@@ -500,6 +509,7 @@ static void drawHUD() {
             fmtTime(t, raceT); snprintf(b, sizeof b, "RACE TIME   %s", t); ui.text(Wd / 2, 300, 4, white, b, 1);
             if (bestLapRace > 0) fmtTime(t, bestLapRace); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST LAP    %s", t); ui.text(Wd / 2, 345, 4, white, b, 1);
             snprintf(b, sizeof b, "KEYS FOUND  %d/%d", keyCount(W.id), NKEYS); ui.text(Wd / 2, 390, 4, yel, b, 1);
+            if (xpGot > 0 || levelledUp) { snprintf(b, sizeof b, levelledUp ? "+%d XP   LEVEL %d!   %d ROCKETS" : "+%d XP   LEVEL %d   %d ROCKETS", xpGot, level(), rocketCap()); ui.text(Wd / 2, 262, 2.4f, levelledUp ? V3(0.4f, 1, 0.5f) : V3(0.7f, 0.75f, 0.85f), b, 1); }   // 2.9.8.3
             if (finalPlace == 1 && !timeUp) ui.text(Wd / 2, 440, 4, V3(0.4f, 1, 0.5f), "WINNER!", 1);
             if (rampage && !timeUp && finalPlace > NFIGHT) ui.text(Wd / 2, 440, 3, V3(1, 0.5f, 0.3f), "ONLY THE TOP 5 GO TO THE SHOWDOWN", 1);
             if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 500, 3.5f, white, resultsPrompt(), 1);
@@ -508,6 +518,7 @@ static void drawHUD() {
 #ifdef FCF_EDITOR
     if (evx::tape::racing() && !touchOn) evx::tape::draw(Wd, Hd);   // fcfedit's preview: the tape
 #endif
+    if (career::on) career::draw(Wd, Hd);   // 2.9.8.3 your grid spot; the garage while you roam
 }
 
 static Rng camRng;   // the camera's shake: its own dice, so drawing a frame never changes the race's (fcfedit's preview tape replays it exactly)
@@ -525,8 +536,8 @@ static void render(int fbw, int fbh) {
     // ---- camera ----
     if (fixedCam) { /* set from the command line */ }
     else if (debugTop) { camPos = V3(camTgt.x, topH, camTgt.z + 0.01f); }
-    else if (state == CARSEL || state == TRACKSEL || state == NETJOIN || state == NETLOBBY) {
-        float a = T * 0.35f + 0.6f, r = state == CARSEL ? 7.2f : 11.0f; camTgt = player.pos + V3(0, 0.7f, 0); camPos = player.pos + V3(sinf(a) * r, state == CARSEL ? 1.9f : 3.6f, cosf(a) * r); fov = 48;
+    else if (state == CARSEL || state == TRACKSEL || state == NETJOIN || state == NETLOBBY || state == GARAGE) {
+        float a = T * 0.35f + 0.6f, r = state == CARSEL || state == GARAGE ? 7.2f : 11.0f; camTgt = player.pos + V3(0, 0.7f, 0); camPos = player.pos + V3(sinf(a) * r, state == CARSEL ? 1.9f : 3.6f, cosf(a) * r); fov = 48;
     } else {
         float dt = frameDt; const CarSpec& S = SPECS[player.type];
         if (!camInit) { camYaw = player.yaw; camInit = true; camPos.y = player.pos.y + 2.3f; camRoll = camLag = camDip = camDipV = 0; }

@@ -119,7 +119,7 @@ static void spawn(V3 p, V3 v, float life, float size, float grow, V3 col, float 
 #include "audio.h"
 
 // ------------------------------------------------------------------ game state
-enum State { TITLE, CARSEL, TRACKSEL, RACE, PAUSED, RESULTS, NETJOIN, NETLOBBY, OPTS, EDIT, EVEDIT };   // EVEDIT: the event editor (fcfedit)   // OPTS: the options screens (controls, video)
+enum State { TITLE, CARSEL, TRACKSEL, RACE, PAUSED, RESULTS, NETJOIN, NETLOBBY, OPTS, EDIT, EVEDIT, GARAGE };   // GARAGE (2.9.8.3): a track's garage, its five races (career.h)   // EVEDIT: the event editor (fcfedit)   // OPTS: the options screens (controls, video)
 static State state = TITLE;
 static World W;
 static Car player, ai[NAI];
@@ -156,7 +156,7 @@ static int xsdkPasses = 0;   // debug bring-up: 0 direct, 1 post, 2 shadows, 3 r
 #else
 static int xsdkPasses = 3;
 #endif
-static const int NMODES = 5;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races), 4 manic
+static const int NMODES = 6;   // 0 race, 1 roam, 2 rampage (race with guns, then the showdown), 3 championship (four rampage races), 4 manic, 5 career (2.9.8.3: a track's garage and its five races)
 // Manic (2.5; 2.6.1: against your own ghost): a time trial, your laps against the clock, alone on the track from the
 // middle of the start line. A see-through ghost car drives your best lap on this track (kept in the save's .ghostN file,
 // recorded 20 times a second) in step with your lap; no rockets or shields, nobody fires, no countdown clock. Each lap's
@@ -362,6 +362,7 @@ static void hud(float Wd, float Hd) {
 }
 }   // namespace secret
 #include "champ.h"
+#include "career.h"   // 2.9.8.3 the career: a track's five races, and where you start
 #ifndef FCF_GFX_XSDK
 #define FCF_EDITOR 1
 #include "editor.h"
@@ -456,6 +457,11 @@ int main(int argc, char** argv) {
         } else if (a == "--touchsteer" && i + 1 < argc) { cliTouchSteer = (float)atof(argv[++i]); touchOn = true;
         } else if (a == "--steersens" && i + 1 < argc) { optSteerSens = atoi(argv[++i]);
         } else if (a == "--steerbuttons") { optTouchSteer = 1;
+        } else if (a == "--overlap") { cliOverlap = true;
+        } else if (a == "--held" && i + 1 < argc) { cliHeld = atoi(argv[++i]);
+        } else if (a == "--xp" && i + 1 < argc) { cliXp = xp = atoi(argv[++i]);   // (tests) your experience: 10 a level
+        } else if (a == "--qual" && i + 1 < argc) { cliQual = atoi(argv[++i]);
+        } else if (a == "--career" && i + 1 < argc) { cliCareer = atoi(argv[++i]);   // (tests) the career: --career 0 opens the garage, 1-5 drives out to that race
         } else if (a == "--auto") autoDrive = true;
         else if (a == "--bright") vidBright = std::max(50, std::min(150, atoi(argv[++i])));
         else if (a == "--autocut") {
@@ -606,6 +612,7 @@ int main(int argc, char** argv) {
     if (!cliServers.empty()) { servers.clear(); for (auto h : cliServers) srvAdd(h); }   // --server: use exactly these (tests)
     if (cliAA >= 0) vidAA = nearestOpt(AA_OPT, 4, cliAA); if (cliAF >= 0) vidAF = nearestOpt(AF_OPT, 5, cliAF); if (fullSet) vidFull = true; if (!sizeSet) { w = vidW; h = vidH; } windowed = !vidFull;
     auto startGame = [&] {
+        if (cliXp < 0) career::loadOnce(); else xp = cliXp;   // 2.9.8.3 your level and the career's places
         initTracks(); loadSave(); chromeUnlocked = allKeys();
         if ((int)TRACKS.size() == NTRACKS) {   // custom tracks: the folder's, then one named on the command line
             if (!noSave || !tracksDirOverride.empty()) { std::string dir = tracksDir(); trackMkdir(dir); tracksLoadDir(dir);
@@ -638,7 +645,9 @@ int main(int argc, char** argv) {
         }
         if (posSet) { player.pos = V3(px, W.H(px, pz) + 0.2f, pz); player.yaw = pyaw; }
         if (speedSet) player.vel = V3(sinf(player.yaw), 0, cosf(player.yaw)) * speed0;
+        if (cliOverlap && state == RACE) { player.pos = ai[0].pos + V3(0, 0.05f, 0); player.yaw = ai[0].yaw; }
         if (wxSet) { weatherOf[selTrack] = selWeather; writeSave(); } else { selWeather = weatherOf[selTrack]; weather = selWeather; }   // remember the weather chosen for each track
+        if (cliCareer >= 0) { if (cliQual > 0) career::qual[selTrack] = cliQual; career::enter(selTrack); if (cliCareer > 0) career::startRace_(std::min(cliCareer, 5) - 1); }
         if (netWanted) { nc.skipMenus = true; player.type = selCar; player.paint = selPaint; state = NETJOIN; netConnect(); }   // --connect: straight to the server's lobby
     };
     if (sim) {   // headless: no window, no GL, no audio device. Runs the simulation and prints one JSON line.
@@ -875,7 +884,7 @@ int main(int argc, char** argv) {
             }
 #endif
             if (e.type == plat::EV_PAD_DOWN) {
-                padUI = true; switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else showdownSkip(); break;
+                padUI = true; switch (e.button) { case SDL_CONTROLLER_BUTTON_START: onKey(state == RACE || state == PAUSED ? SDLK_ESCAPE : SDLK_RETURN); break; case SDL_CONTROLLER_BUTTON_A: if (state != RACE) onKey(SDLK_RETURN); else if (career::toGrid) career::snapToGrid(); else showdownSkip(); break;
                 case SDL_CONTROLLER_BUTTON_B:
                     if (state != RACE) onKey(SDLK_ESCAPE);
                     break;
@@ -891,10 +900,11 @@ int main(int argc, char** argv) {
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_PAGEUP); else if (!me.on) fireRocket(); break;   // (2.7.1 on foot LB is held to aim down the sights: foot.h; RB and Y change guns)
                 case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(1); break;
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); else if (state == RACE && me.on) reloadMe(); break;   // (on foot X reloads)
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT: onKey(SDLK_LEFT); break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: onKey(SDLK_RIGHT); break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT: if (state == RACE && !me.on) switchItem(); else onKey(SDLK_LEFT); break;   // (2.9.8.3 in the car the D-pad: left / right switch shield and ghost, up uses it)
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: if (state == RACE && !me.on) switchItem(); else onKey(SDLK_RIGHT); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_UP:
-                    if (state == RACE && me.on) cycleGun();
+                    if (state == RACE && !me.on) useItem();
+                    else if (state == RACE && me.on) cycleGun();
                     else onKey(SDLK_UP);
                     break;
                 case SDL_CONTROLLER_BUTTON_DPAD_DOWN:

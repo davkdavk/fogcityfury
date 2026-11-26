@@ -12,6 +12,7 @@ static void rippleWakes() {
     wake(player); for (auto& c : ai) wake(c);
     V3 a = avatarPos(); if (me.on && a.y < 0.6f) ripple::add(a.x, a.z, 0.3f);
 }
+static float fullSayT = 0; static int ghostPasses = 0, carTouches = 0;   // (2.9.8.3 "ROCKETS FULL" now and then, not every frame)
 static void update(float dt) {
     secret::step(dt);
     rippleWakes();
@@ -37,9 +38,9 @@ static void update(float dt) {
 #ifdef FCF_EDITOR
     evx::tape::stepBegins();   // (fcfedit's preview: a step on its tape)
 #endif
-    Input in; bool go = true;
+    Input in; bool go = true; career::step(dt);   // (2.9.8.3 the career: your grid spot, the result, the garage)
     if (state == RACE && introT > 0) introT = std::max(0.0f, introT - dt);
-    if (state == RACE) { if (countdown > 0) { float c0 = countdown; countdown -= (introT > 0 && !netRace) ? 0 : dt;   // offline the countdown waits for the fly-in; online the server's clock runs on
+    if (state == RACE) { if (countdown > 0) { float c0 = countdown; countdown -= ((introT > 0 && !netRace) || career::toGrid) ? 0 : dt;   // offline the countdown waits for the fly-in; online the server's clock runs on
         go = false; for (int k = 3; k >= 1; k--) if (c0 > k - 0.4f + 0.0f && countdown <= k - 0.4f) tone(440, 0.25f, 0.5f, 2); if (countdown <= 0) { tone(880, 0.6f, 0.6f, 2); say("GO!", SAY_GOOD, 1.2f);
             if (gasHold > 0.01f && gasHold < 0.4f) {
                 player.vel = player.vel + V3(sinf(player.yaw), 0, cosf(player.yaw)) * 13;
@@ -75,7 +76,7 @@ static void update(float dt) {
             in.gas = 1;
             in.brake = 0;
         }
-        if (!go) {
+        if (!go && !career::toGrid) {   // (2.9.8.3 driving to your grid spot: the field waits, you drive)
             in.steer = 0;
             in.brake = 0;
         }
@@ -99,9 +100,9 @@ static void update(float dt) {
     if (driving) {
         const int sub = std::max(1, (int)ceilf(dt / (1 / 120.f)));
         for (int s = 0; s < sub; s++) {
-            float h = dt / sub; Input pin = in; if (!go) { pin.gas = 0; pin.nitro = false; }   // on the grid: no throttle and no nitro (nitro pushes the car with the throttle up)
+            float h = dt / sub; Input pin = in; if (!go && !career::toGrid) { pin.gas = 0; pin.nitro = false; } else if (!go) pin.nitro = false;   // on the grid: no throttle and no nitro (nitro pushes the car with the throttle up)
             stepPlayer(player, pin, h);
-            if (netRace) for (auto& r : nc.r) {   // other players: push our own car out of theirs
+            if (netRace && !ghosting()) for (auto& r : nc.r) {   // other players: push our own car out of theirs (2.9.8.3 not as a ghost)
                 if (!r.present || !r.racing || r.car.dead || player.dead) continue; const Car& a = r.car;
                 Contact k; if (carContact(player, a, k)) bumpPlayer(k, a.vel, 1);   // their own game knocks them about
             }
@@ -112,7 +113,8 @@ static void update(float dt) {
                 float dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = sqrtf(dx * dx + dz * dz); int ak = (int)(&a - ai); whooshCD[ak] -= h;
                 if (d < 7 && d > 2.3f && fabsf(player.vf - a.speed) > 9 && whooshCD[ak] <= 0 && state == RACE) { whooshCD[ak] = 2; tone(700, 0.35f, 0.22f, 1, 5000); }
                 Contact k;
-                if (!player.dead && state != RESULTS && !trialMode && carContact(player, a, k)) {   // (time trial: they are ghosts)   // (after the flag the field passes through a finished car, not shoving it about)
+                if (ghosting() && !player.dead && carContact(player, a, k)) ghostPasses++;   // (2.9.8.3 test metric: steps a ghost spent inside another car)
+                if (!player.dead && state != RESULTS && !trialMode && !ghosting() && carContact(player, a, k)) { carTouches++;   // (2.9.8.3 a ghost passes through)   // (time trial: they are ghosts)   // (after the flag the field passes through a finished car, not shoving it about)
                     V3 av = a.vel; float rv = bumpPlayer(k, av, 0.5f);   // we and the bot share the push and the knock
                     if (rv < -4) { damageCar((-rv - 4) * 0.8f); damageBot(a, (-rv - 4) * 0.8f, true); }   // (a hard knock hurts both cars)
                     bumpBot(a, -k.nx, -k.nz, k.pen * 0.5f, rv < 0 ? -rv * 0.65f : 0, k.at); if (rv < -1) tm.bumps++;
@@ -121,7 +123,7 @@ static void update(float dt) {
         }
         if ((!exploreMode || state == TITLE) && !nc.on && !showdownOn && !trialMode) carContacts(go && state != RESULTS);
         if (cliKnockK >= 0 && go && raceT > 4 && !ai[cliKnockK].dead) { Car& a = ai[cliKnockK]; float y = a.yaw - a.wob; bumpBot(a, cosf(y), -sinf(y), 0, cliKnockJ, a.pos); cliKnockK = -1; }   // (--knock K,J tests: a side knock to bot K)
-        if (!go && in.gas > 0) player.wheelspin = true;   // rev on the line
+        if (!go && !career::toGrid && in.gas > 0) player.wheelspin = true;   // rev on the line
         if (!go && showAI()) for (int k = 0; k < NAI; k++) tm.gridDrift = std::max(tm.gridDrift, hypotf(ai[k].pos.x - aiGrid[k].x, ai[k].pos.z - aiGrid[k].z));   // test metric: nobody creeps before the start
     }
     const CarSpec& S = SPECS[player.type]; maxAir = std::max(maxAir, player.airT);
@@ -169,13 +171,15 @@ static void update(float dt) {
     if (state == RACE) {
         for (auto& t : fireAt) if (t >= 0 && raceT >= t) { fireRocket(); t = -1; }
         for (auto& t : resetAt) if (t >= 0 && raceT >= t) { doReset(); t = -1; }
-        if (cratesOn() && !player.dead && !me.on && !showdownOn) for (auto& c : crates) {   // any crate gives this lap's rockets; then they are all gone until we cross the line again
-            V3 d = c.p - (player.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
-            rocketLap = player.lap; ammo = CRATE_ROCKETS; ammoFlash = 1; tm.pickups++; say("ROCKETS X2", SAY_GOOD, 1.8f); tone(330, 0.12f, 0.45f, 2); tone(495, 0.12f, 0.45f, 2, 0, 0.09f); tone(660, 0.22f, 0.45f, 2, 0, 0.18f); rumble(0.4f, 200);
+        if (!exploreMode && !player.dead && !me.on && !showdownOn) for (auto& c : crates) {   // 2.9.8.3 each crate: two more rockets, up to what your level holds; that crate is gone for you until your next lap. Only in a race
+            if (c.lapTaken == player.lap) continue; V3 d = c.p - (player.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
+            if (ammo >= rocketCap()) { if (fullSayT <= 0) { say("ROCKETS FULL", SAY_INFO, 1.2f); fullSayT = 3; } continue; }   // (full: it stays)
+            c.lapTaken = player.lap; rocketLap = player.lap; int got = std::min(CRATE_ROCKETS, rocketCap() - ammo); ammo += got; ammoFlash = 1; tm.pickups++; { char rb[48]; snprintf(rb, sizeof rb, "ROCKETS +%d  (%d/%d)", got, ammo, rocketCap()); say(rb, SAY_GOOD, 1.8f); } tone(330, 0.12f, 0.45f, 2); tone(495, 0.12f, 0.45f, 2, 0, 0.09f); tone(660, 0.22f, 0.45f, 2, 0, 0.18f); rumble(0.4f, 200);
             for (int i = 0; i < 24; i++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(-0.3f, 1), grng.r(-1, 1))); spawn(c.p, dd * grng.r(2, 8), grng.r(0.4f, 0.8f), 0.22f, 0, V3(4, 1.4f, 0.4f), 1, 1, -3); }
             break;
         }
-        if (!player.dead && !me.on && !showdownOn) grabShield(-1, player);
+        fullSayT = std::max(0.0f, fullSayT - dt); stepItems(dt);   // (2.9.8.3 the ghost, its pick-ups)
+        if (!player.dead && !me.on && !showdownOn && !exploreMode) grabShield(-1, player);   // (2.9.8.3 only in a race)
         if (player.shield > 0 && !player.dead) { player.shield = std::max(0.0f, player.shield - dt); if (player.shield == 0) { say("SHIELD GONE", SAY_COOL, 1.2f); tone(600, 0.2f, 0.3f, 2, -300); } }
         if (player.shield > 0 && !player.dead) shieldSparks(player, dt, shieldFx);
         if (carDamageOn() && !player.dead && player.hp < 100) player.hp = std::min(100.0f, player.hp + CAR_MEND * dt); carFix = std::max(0.0f, carFix - dt * 1.5f);

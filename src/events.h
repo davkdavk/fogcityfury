@@ -49,11 +49,22 @@ struct Event {
     int fired = 0, lastLap = -99; float lastT = -99;   // (the race so far)
 };
 struct Pending { int ev; float at; };
-struct Pickup { int kind = 0; V3 p; };   // 2.9.6 a rocket crate (0) or a shield (1) placed by hand: if a track has any, they replace its own
+struct Pickup { int kind = 0; V3 p; };   // 2.9.6 a rocket crate (0) or a shield (1) (2.9.8.3 or a ghost, 2) placed by hand: if a track has any, they replace its own
 static std::vector<Pickup> pickups;
 
 static std::vector<Line> lines; static std::vector<Event> evs; static std::vector<Pending> pend;
 struct Pod { std::string id; float x = 0, z = 0, r = 60; int n = 3; float k = 1; }; static std::vector<Pod> pods;   // dolphins that roam (dolphin.h)
+// 2.9.8.3 a track's five races (the career, from its garage): race 1 is the track's own file (track0.fcfe), races 2-5
+// are track0-r2.fcfe ... track0-r5.fcfe, each with its own events and a "race" line: its name, mode, weather and laps
+static const int NRACES = 5;
+static int raceFile = 0;   // which race's file is loaded and edited: 0 = race 1 (the track's own file) ... 4 = race 5
+struct RaceDef { bool set = false; std::string name; int mode = -1, weather = -1, laps = 0; };   // mode: 0 race, 2 rampage, 4 MANIC (selMode's numbers)
+static RaceDef raceDef;   // the loaded file's race line (unset: the race's defaults, raceDefault)
+static RaceDef raceDefault(int r) {   // a race with no race line of its own: a clean race, a storm, a rampage, a MANIC run, the final
+    static const char* N[NRACES] = { "CLEAN START", "STORM WARNING", "RAMPAGE", "MANIC", "THE FINAL" }; static const int M[NRACES] = { 0, 0, 2, 4, 0 }, WX[NRACES] = { 0, 3, 0, 0, 2 }, L[NRACES] = { 3, 3, 2, 3, 5 };
+    RaceDef d; r = std::max(0, std::min(NRACES - 1, r)); d.name = N[r]; d.mode = M[r]; d.weather = WX[r]; d.laps = L[r]; return d;
+}
+static RaceDef raceOf() { RaceDef d = raceDefault(raceFile); if (raceDef.set) { if (!raceDef.name.empty()) d.name = raceDef.name; if (raceDef.mode >= 0) d.mode = raceDef.mode; if (raceDef.weather >= 0) d.weather = raceDef.weather; if (raceDef.laps > 0) d.laps = raceDef.laps; } return d; }
 static bool roamMinis = true;   // 2.9.7 roaming the track: groups of three mini Wardens drop in now and then (minis.h); "roamminis off" stops them
 static float drift = 0;   // seconds between turns of the weather (0: it stays as chosen)
 static std::string netBody; static int netTrack = -1;   // online: the server's event file for its track (netroam.h)
@@ -88,7 +99,7 @@ static std::string lapsText(unsigned m) {
     return s;
 }
 static void parse(const std::string& body) {
-    lines.clear(); evs.clear(); pods.clear(); pickups.clear(); drift = 0; roamMinis = true; for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
+    lines.clear(); evs.clear(); pods.clear(); pickups.clear(); drift = 0; roamMinis = true; raceDef = RaceDef(); for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
     while (i <= body.size()) {
         size_t j = body.find('\n', i); if (j == std::string::npos) j = body.size();
         std::vector<std::string> t = tokens(body.substr(i, j - i)); i = j + 1;
@@ -97,7 +108,13 @@ static void parse(const std::string& body) {
         if (t.size() >= 4 && t[0] == "pod") { Pod p; p.id = t[1]; p.x = (float)atof(t[2].c_str()); p.z = (float)atof(t[3].c_str());
             for (size_t k = 4; k + 1 < t.size(); k += 2) { if (t[k] == "r") p.r = std::max(10.0f, (float)atof(t[k + 1].c_str())); else if (t[k] == "n") p.n = std::max(1, std::min(6, atoi(t[k + 1].c_str()))); else if (t[k] == "k") p.k = (float)atof(t[k + 1].c_str()); }
             pods.push_back(p); continue; }
-        if (t.size() >= 5 && t[0] == "pickup") { Pickup p; p.kind = t[1] == "shield" ? 1 : 0; p.p = V3((float)atof(t[2].c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str())); pickups.push_back(p); continue; }
+        if (t.size() >= 5 && t[0] == "pickup") { Pickup p; p.kind = t[1] == "shield" ? 1 : t[1] == "ghost" ? 2 : 0; p.p = V3((float)atof(t[2].c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str())); pickups.push_back(p); continue; }
+        if (t.size() >= 2 && t[0] == "race") { raceDef.set = true; size_t k = 1; if (k < t.size() && t[k] != "mode" && t[k] != "weather" && t[k] != "laps") raceDef.name = t[k++];
+            for (; k + 1 < t.size(); k += 2) { const std::string& w = t[k], &v = t[k + 1];
+                if (w == "mode") raceDef.mode = v == "rampage" ? 2 : v == "manic" ? 4 : 0;
+                else if (w == "weather") { for (int q = 0; q < 4; q++) if (v == WXNAME[q]) raceDef.weather = q; }
+                else if (w == "laps") raceDef.laps = std::max(1, std::min(9, atoi(v.c_str()))); }
+            continue; }
         if (t.size() >= 2 && t[0] == "roamminis") { roamMinis = t[1] != "off"; continue; }
         if (t.size() >= 2 && t[0] == "drift") { drift = std::max(0.0f, (float)atof(t[1].c_str())); if (drift > 0) drift = std::max(drift, 20.0f); continue; }
         if (t.size() < 3 || t[0] != "event") continue;
@@ -134,9 +151,10 @@ static std::string write() {
     std::string s = "# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"; char b[512];
     for (int u = 0; u < 4; u++) if (wardenAt[u].set) { snprintf(b, sizeof b, "warden %d  %.1f %.1f\n", u + 1, wardenAt[u].x, wardenAt[u].z); s += b; }
     if (drift > 0) { snprintf(b, sizeof b, "drift %.0f\n", drift); s += b; }
+    if (raceFile > 0 || raceDef.set) { RaceDef d = raceOf(); std::string nm = d.name; for (char& c : nm) if (c == '"') c = '\''; snprintf(b, sizeof b, "race \"%s\"  mode %s  weather %s  laps %d\n", nm.c_str(), d.mode == 2 ? "rampage" : d.mode == 4 ? "manic" : "race", WXNAME[std::max(0, std::min(3, d.weather))], d.laps); s += b; }
     if (!roamMinis) s += "roamminis off\n";
     for (const Pod& p : pods) { snprintf(b, sizeof b, "pod %s  %.1f %.1f  r %.0f  n %d  k %.2g\n", p.id.c_str(), p.x, p.z, p.r, p.n, p.k); s += b; }
-    for (const Pickup& p : pickups) { snprintf(b, sizeof b, "pickup %s  %.1f %.1f %.1f\n", p.kind ? "shield" : "rocket", p.p.x, p.p.y, p.p.z); s += b; }
+    for (const Pickup& p : pickups) { snprintf(b, sizeof b, "pickup %s  %.1f %.1f %.1f\n", p.kind == 2 ? "ghost" : p.kind ? "shield" : "rocket", p.p.x, p.p.y, p.p.z); s += b; }
     for (const Line& l : lines) { snprintf(b, sizeof b, "line %s  %.1f %.1f  %.1f %.1f\n", l.id.c_str(), l.ax, l.az, l.bx, l.bz); s += b; }
     for (const Event& e : evs) {
         snprintf(b, sizeof b, "event %s %s  at %.1f %.1f %.1f", e.id.c_str(), KIND[e.kind], e.at.x, e.at.y, e.at.z); s += b;
@@ -156,7 +174,7 @@ static std::string write() {
 
 // where a track's events live: built-in tracks by number, a custom track beside its .fcft
 static std::string keyFor(int track) {
-    if (track < NTRACKS) return "track" + std::to_string(track);
+    if (track < NTRACKS) return "track" + std::to_string(track) + (raceFile > 0 ? "-r" + std::to_string(raceFile + 1) : std::string());   // (2.9.8.3 races 2-5: track0-r2 ...)
     const std::string& f = TRACKS[track].file; return f.empty() ? std::string() : f.substr(0, f.size() - (f.size() > 5 && f.compare(f.size() - 5, 5, ".fcft") == 0 ? 5 : 0));
 }
 static std::string pathFor(int track) { std::string k = keyFor(track); if (k.empty()) return k; return track < NTRACKS ? "events/" + k + ".fcfe" : k + ".fcfe"; }
@@ -275,8 +293,8 @@ static void placeWardens() {
 // 2.9.6 a race starts (setupCars, after the track's own are laid): the crates and shields placed by hand replace them
 static void placePickups() {
     if (pickups.empty() || trialMode) return;
-    crates.clear(); nShieldPU = 0;
-    for (const Pickup& q : pickups) { V3 p = q.p + V3(0, 1.0f, 0); if (q.kind == 0) crates.push_back({ p, 0 }); else if (nShieldPU < MAXSHIELDPU) shieldPU[nShieldPU++] = { p, -2, 0 }; }
+    crates.clear(); nShieldPU = 0; nGhostPU = 0;
+    for (const Pickup& q : pickups) { V3 p = q.p + V3(0, 1.0f, 0); if (q.kind == 0) crates.push_back({ p, 0 }); else if (q.kind == 2) { if (nGhostPU < MAXGHOSTPU) ghostPU[nGhostPU++] = { p, -99 }; } else if (nShieldPU < MAXSHIELDPU) shieldPU[nShieldPU++] = { p, -2, 0 }; }
 }
 // a race starts (setupCars): the track's events, all unfired
 static void reset() {

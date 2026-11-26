@@ -192,7 +192,7 @@ static Input controls(Input in) {   // update(): the step's controls, from the t
     if (seeking) in = Input();   // (past the end of the tape the car coasts)
     ins[i] = in; return in;
 }
-static void restart() { grng.s = seed0; T = T0; frameNo = fn0; int m = selMode; selMode = 0; startRace(); selMode = m; introT = 0; frame = 0; }   // (no fly-in in a preview)
+static void restart() { grng.s = seed0; T = T0; frameNo = fn0; int m = selMode, w = selWeather, l = selLaps; director::RaceDef d = director::raceOf(); selMode = 0; selWeather = d.weather; selLaps = d.laps; startRace(); selMode = m; selWeather = w; selLaps = l; introT = 0; frame = 0; }   // (no fly-in in a preview; 2.9.8.3 the race's weather and laps)
 static void seek(int to) {   // run the race again from the start to step `to` (silently, as fast as it goes)
     to = std::max(0, to); uint32_t a = adev; adev = 0; seeking = true; seeks++;
     restart(); while (frame < to && racing()) update(STEP);
@@ -307,6 +307,27 @@ static void stepRow(Event& e, int r, int dir, float lapX) {
     }
 }
 static bool onSave(float x, float y) { return y > 10 && y < 54 && x > uiW - 170 && x < uiW - 20; }   // the SAVE button, top right
+// 2.9.8.3 the race strip under the top bar: which of the track's five races (career) this file is, and its name, mode,
+// weather and laps. Race 1 is the track's own file (track0.fcfe), races 2-5 track0-r2.fcfe ...
+static bool typingRace = false;
+static const float RS_Y = 66, RS_H = 28;
+static int onRaceStrip(float x, float y) {   // 1-5 a race, 10 the name, 11 mode, 12 weather, 13 laps; 0 none
+    if (track >= NTRACKS || y < RS_Y || y > RS_Y + RS_H) return 0;
+    for (int r = 0; r < director::NRACES; r++) if (x > 84 + r * 34 && x < 84 + r * 34 + 30) return r + 1;
+    if (x > 270 && x < 600) return 10; if (x > 610 && x < 760) return 11; if (x > 770 && x < 950) return 12; if (x > 960 && x < 1080) return 13; return 0;
+}
+static void pickRace(int r) {
+    if (r == director::raceFile) return; if (dirty) { tell("SAVE THIS RACE FIRST (CTRL+S), THEN PICK ANOTHER"); return; }
+    director::raceFile = r; director::loadedKey.clear(); director::overrideText = false; director::load(track); undo.clear(); dirty = false; selLine = selEv = selPod = selW = selPick = -1;
+    char b[160]; director::RaceDef d = director::raceOf(); snprintf(b, sizeof b, "RACE %d: %s  -  %d LINES, %d EVENTS%s", r + 1, d.name.c_str(), (int)director::lines.size(), (int)director::evs.size(), director::loadedFrom.empty() || director::loadedFrom == "built in" ? (r ? "  (NEW FILE)" : "") : ""); tell(b);
+}
+static void raceSet(int what, int dir) {   // the race line: click a field to change it
+    push(); director::RaceDef d = director::raceOf(); director::raceDef = d; director::raceDef.set = true; dirty = true;
+    if (what == 11) { static const int M[3] = { 0, 2, 4 }; int i = d.mode == 2 ? 1 : d.mode == 4 ? 2 : 0; director::raceDef.mode = M[(i + 3 + dir) % 3]; }
+    if (what == 12) director::raceDef.weather = (d.weather + 4 + dir) % 4;
+    if (what == 13) director::raceDef.laps = std::max(1, std::min(9, d.laps + dir));
+    if (what == 10) { typingRace = true; plat::textInput(true); tell("TYPE THE RACE'S NAME, THEN ENTER"); }
+}
 static bool onWBtn(float x, float y) { return selW >= 0 && x > uiW - PW + 16 && x < uiW - 16 && y > 130 && y < 172; }
 static bool canSplit();
 static bool inPanel(float x, float y) { return selEv >= 0 && x > uiW - PW && y > 80 && y < rowY(NROW) + (canSplit() ? 96 : 52); }
@@ -481,6 +502,7 @@ static int podRowAt(float x, float y) { if (!podPanel() || x < uiW - PW) return 
 static void mouseDown(int button) {
     if (typing) { typing = false; plat::textInput(false); }
     if (button == SDL_BUTTON_LEFT && onSave(mx, my)) { save(); return; }
+    if (int rs = onRaceStrip(mx, my)) { if (rs <= director::NRACES) pickRace(rs - 1); else raceSet(rs, button == SDL_BUTTON_RIGHT ? -1 : 1); return; }   // (2.9.8.3 right-click: back)
     if (button == SDL_BUTTON_LEFT && (onPrev(mx, my) || onNext(mx, my))) { if (dirty) save(); wiz = WZ_OFF; open(track + (onNext(mx, my) ? 1 : -1)); return; }
     if (button == SDL_BUTTON_LEFT && onNew(mx, my)) { wizStart(""); return; }
     if (wiz == WZ_PICK) { if (button == SDL_BUTTON_LEFT) { int k = pickAt(mx, my); if (k >= 0) wizPick(k); else wiz = WZ_OFF; } return; }
@@ -519,9 +541,14 @@ static void mouseDown(int button) {
         selLine = (int)director::lines.size() - 1; selEv = -1; grab = -1; tool = SELECT; return;
     }
     if (tool == PLACE) { place(placeKind, g); return; }
+    if (tool == PICKUP) {   // (2.9.8.3 a click on something already there selects it: the tool stays on otherwise, and used to drop a crate on it)
+        bool on = false; for (const Event& e : director::evs) on |= near(spotOf(e)) || ((e.kind == director::ROCKET || e.kind == director::DOLPHIN || e.kind == director::MINIS) && near(e.to));
+        for (const director::Pickup& q : director::pickups) on |= near(q.p, 14); for (int u = 0; u < 4; u++) on |= director::wardenAt[u].set && near(wardenSpot(u), 16);
+        if (on) { tool = SELECT; mouseDown(button); return; }
+    }
     if (tool == PICKUP) {   // 2.9.6 a rocket crate or a shield where the click is (it stays the tool: click on for more)
         push(); director::Pickup p; p.kind = pickKind; p.p = g; director::pickups.push_back(p); selPick = (int)director::pickups.size() - 1; selEv = selLine = selW = -1; dirty = true;
-        int nr = 0, ns = 0; for (auto& q : director::pickups) (q.kind ? ns : nr)++; char b[120]; snprintf(b, sizeof b, "%d ROCKET CRATE%s, %d SHIELD%s PLACED (THE TRACK'S OWN ARE GONE)  -  ESC WHEN DONE", nr, nr == 1 ? "" : "S", ns, ns == 1 ? "" : "S"); tell(b);
+        int nr = 0, ns = 0, ng = 0; for (auto& q : director::pickups) (q.kind == 2 ? ng : q.kind ? ns : nr)++; char b[140]; snprintf(b, sizeof b, "%d ROCKET CRATE%s, %d SHIELD%s, %d GHOST%s PLACED (THE TRACK'S OWN ARE GONE)  -  ESC WHEN DONE", nr, nr == 1 ? "" : "S", ns, ns == 1 ? "" : "S", ng, ng == 1 ? "" : "S"); tell(b);
         if (ns > MAXSHIELDPU) tell("ONLY 8 SHIELDS COUNT ON A TRACK"); return;
     }
     if (tool == WARDEN) {   // the next Warden not yet placed (all four placed: the selected one, or Warden 1, moves)
@@ -566,6 +593,7 @@ static void mouseMove(float x, float y) {
 static void mouseUp() { pan = look = false; if (grab >= 0 && grab != 9) grab = -1; }
 static void zoom(float steps) { if (!fly) { ed::mx = mx; ed::my = my; ed::zoom(steps); } else flyPos = flyPos + V3(sinf(flyYaw) * cosf(flyPitch), sinf(flyPitch), cosf(flyYaw) * cosf(flyPitch)) * steps * 8; }
 static void text(const char* s) {
+    if (typingRace) { std::string& n = director::raceDef.name; for (; *s; s++) { char c = (char)toupper((unsigned char)*s); if (n.size() < 24 && c >= 32 && c < 96 && c != '"') n += c; } dirty = true; return; }
     if (!typing || selEv < 0) return; Event& e = director::evs[selEv];
     for (; *s; s++) { char c = (char)toupper((unsigned char)*s); if (e.text.size() < 30 && c >= 32 && c < 96 && c != '"') e.text += c; } dirty = true;
 }
@@ -576,6 +604,7 @@ static void key(SDL_Keycode k, bool down = true) {
     bool ctrl = ctrlDown; half = shiftDown;
     if (k == SDLK_w) keyW = down; if (k == SDLK_a) keyA = down; if (k == SDLK_s && !ctrl) keyS = down; if (k == SDLK_d) keyD = down; if (k == SDLK_q) keyQ = down; if (k == SDLK_e) keyE = down;
     if (!down) return;
+    if (typingRace) { std::string& n = director::raceDef.name; if (k == SDLK_BACKSPACE && !n.empty()) n.pop_back(); if (k == SDLK_RETURN || k == SDLK_ESCAPE) { typingRace = false; plat::textInput(false); } return; }
     if (typing) {
         Event& e = director::evs[selEv];
         if (k == SDLK_BACKSPACE && !e.text.empty()) e.text.pop_back();
@@ -588,6 +617,7 @@ static void key(SDL_Keycode k, bool down = true) {
         if (wiz == WZ_PICK && k >= SDLK_1 && k <= SDLK_9 && (int)(k - SDLK_1) < NM) { wizPick((int)(k - SDLK_1)); return; }
         if (wiz == WZ_LINE_A && k == SDLK_t) { wLine.clear(); wizNext(); return; }
         if (k == SDLK_RETURN || k == SDLK_KP_ENTER) { if (wiz == WZ_LEAPS) { wiz = WZ_OFF; tell("DONE. P PREVIEWS IT"); } else if (wiz == WZ_LAND) wizFinish(landFor(wRoof)); return; }
+        if (k == SDLK_DELETE || k == SDLK_BACKSPACE) { tell("FINISH THE MOMENT (ENTER) OR DROP IT (ESC) FIRST"); return; }
         if (k != SDLK_TAB) return;
     }
     if (ctrl && k == SDLK_z) { if (!undo.empty()) { director::parse(undo.back()); undo.pop_back(); selEv = selLine = selPod = -1; dirty = true; } return; }
@@ -602,16 +632,20 @@ static void key(SDL_Keycode k, bool down = true) {
     case SDLK_d: wizStart(""); wizPick(M_DOLPHINS); break;
     case SDLK_e: listOn = !listOn; break;
     case SDLK_1: case SDLK_2: case SDLK_3: case SDLK_4: case SDLK_5: tool = PLACE; placeKind = (int)(k - SDLK_1); { char b[80]; snprintf(b, sizeof b, "CLICK WHERE THE %s GOES", director::KIND[placeKind]); for (char* c = b; *c; c++) *c = (char)toupper(*c); tell(b); } break;
+    case SDLK_F1: case SDLK_F2: case SDLK_F3: case SDLK_F4: case SDLK_F5: if (track < NTRACKS) pickRace((int)(k - SDLK_F1)); break;   // 2.9.8.3 the track's races 1-5
     case SDLK_r: tool = PICKUP; pickKind = 0; tell("CLICK WHERE A ROCKET CRATE GOES (CLICK ON FOR MORE; ESC WHEN DONE)"); break;
+    case SDLK_g: tool = PICKUP; pickKind = 2; tell("CLICK WHERE A GHOST GOES (CLICK ON FOR MORE; ESC WHEN DONE)"); break;   // 2.9.8.3
     case SDLK_h: tool = PICKUP; pickKind = 1; tell("CLICK WHERE A SHIELD GOES (CLICK ON FOR MORE; ESC WHEN DONE)"); break;
     case SDLK_6: tool = WARDEN; tell("CLICK BESIDE THE ROAD WHERE A WARDEN STARTS WALKING"); break;
     case SDLK_DELETE: case SDLK_BACKSPACE:
         if (selW >= 0) { push(); director::wardenAt[selW].set = false; selW = -1; break; }
         if (selPick >= 0 && selPick < (int)director::pickups.size()) { push(); director::pickups.erase(director::pickups.begin() + selPick); selPick = -1; dirty = true; if (director::pickups.empty()) tell("NONE PLACED: THE TRACK'S OWN CRATES AND SHIELDS ARE BACK"); break; }
         if (selPod >= 0 && selEv < 0) { push(); director::pods.erase(director::pods.begin() + selPod); selPod = -1; break; }
-        if (selEv >= 0) { push(); dropEvent(selEv); selEv = -1; }
+        if (selEv >= 0) { push(); std::string id = upper(director::evs[selEv].id); int n0 = (int)director::evs.size(); dropEvent(selEv); selEv = -1; dirty = true;   // (2.9.8.3 it says what went)
+            int gone = n0 - (int)director::evs.size(); char b[120]; snprintf(b, sizeof b, gone > 1 ? "%s DELETED, AND %d CHAINED AFTER IT  -  CTRL+Z UNDOES IT" : "%s DELETED  -  CTRL+Z UNDOES IT", id.c_str(), gone - 1); tell(b); }
         else if (selLine >= 0) { push(); std::string id = director::lines[selLine].id; director::lines.erase(director::lines.begin() + selLine); selLine = -1;
             for (Event& e : director::evs) if (e.on == director::ON_LINE && e.ref == id) e.on = director::ON_LAP; }   // (its events fall back to a lap start)
+        else tell("NOTHING SELECTED: CLICK IT FIRST (ESC LEAVES A TOOL)");
         break;
     case SDLK_ESCAPE: if (tool != SELECT) { tool = SELECT; grab = -1; } else selEv = selLine = -1; break;
     case SDLK_p: preview(); break;
@@ -645,12 +679,13 @@ static void draw(float Wd) {
         snprintf(b, sizeof b, "WARDEN %d STARTS HERE%s", u + 1, u < mech::count() ? "" : " (TRACK HAS FEWER)"); label(sx, sy, CYA, b);
     }
     {   // 2.9.6 rocket crates and shields: the ones placed here, or (none placed) the track's own, faint
-        static const V3 PC[2] = { V3(1, 0.55f, 0.15f), V3(0.35f, 0.7f, 1) };
+        static const V3 PC[3] = { V3(1, 0.55f, 0.15f), V3(0.35f, 0.7f, 1), V3(0.85f, 0.85f, 1) };
         if (!director::pickups.empty()) for (int q = 0; q < (int)director::pickups.size(); q++) { const director::Pickup& p = director::pickups[q]; if (!toScreen(p.p, sx, sy)) continue;
-            bool s = q == selPick; if (p.kind) ui.disc(sx, sy, 9, PC[1], 1); else ui.rect(sx - 8, sy - 8, 16, 16, PC[0], 1); if (s) ed::ring(sx, sy, 16, WHT, 1, 2); label(sx, sy, PC[p.kind], p.kind ? "SHIELD" : "ROCKETS"); }
+            bool s = q == selPick; if (p.kind == 2) ed::ring(sx, sy, 9, PC[2], 1, 3); else if (p.kind) ui.disc(sx, sy, 9, PC[1], 1); else ui.rect(sx - 8, sy - 8, 16, 16, PC[0], 1); if (s) ed::ring(sx, sy, 16, WHT, 1, 2); label(sx, sy, PC[p.kind], p.kind == 2 ? "GHOST" : p.kind ? "SHIELD" : "ROCKETS"); }
         else {
             for (const Crate& c : crates) if (toScreen(c.p, sx, sy)) ui.rect(sx - 6, sy - 6, 12, 12, PC[0], 0.4f);
             for (int k = 0; k < nShieldPU; k++) if (toScreen(shieldPU[k].p, sx, sy)) ui.disc(sx, sy, 7, PC[1], 0.4f);
+            for (int k = 0; k < nGhostPU; k++) if (toScreen(ghostPU[k].p, sx, sy)) ed::ring(sx, sy, 7, PC[2], 0.4f, 2);
         }
     }
     for (int q = 0; q < (int)director::pods.size(); q++) {   // dolphin pods: the ring of sea they roam, its middle and the handle on its edge
@@ -778,8 +813,18 @@ static void draw(float Wd) {
       ui.rect(Wd - 340, 10, 75, 44, bg, onPrev(mx, my) ? 1 : 0.85f); ui.text(Wd - 302, 22, 2.0f, WHT, "< PREV", 1);
       ui.rect(Wd - 258, 10, 75, 44, bg, onNext(mx, my) ? 1 : 0.85f); ui.text(Wd - 220, 22, 2.0f, WHT, "NEXT >", 1); }
     { bool hov = onSave(mx, my); ui.rect(Wd - 170, 10, 150, 44, dirty ? ORG : V3(0.25f, 0.27f, 0.32f), hov ? 1 : 0.85f); ui.text(Wd - 95, 20, 2.6f, dirty ? V3(0, 0, 0) : WHT, dirty ? "SAVE *" : "SAVED", 1); }
+    if (track < NTRACKS) {   // 2.9.8.3 the race strip
+        ui.rect(0, RS_Y - 2, 1100, RS_H + 4, V3(0.02f, 0.03f, 0.06f), 0.7f); ui.text(14, RS_Y + 7, 1.8f, GREY, "RACE");
+        int h = onRaceStrip(mx, my); director::RaceDef d = director::raceOf();
+        for (int r = 0; r < director::NRACES; r++) { bool cur = r == director::raceFile; ui.rect(84 + r * 34, RS_Y + 1, 30, RS_H - 2, cur ? V3(0.85f, 0.6f, 0.1f) : V3(0.2f, 0.22f, 0.27f), h == r + 1 ? 1 : 0.85f); snprintf(b, sizeof b, "%d", r + 1); ui.text(99 + r * 34, RS_Y + 6, 2.0f, cur ? V3(0, 0, 0) : WHT, b, 1); }
+        static const char* WXN[4] = { "CLEAR", "RAIN", "FOG", "STORM" };
+        snprintf(b, sizeof b, "\"%s%s\"", d.name.c_str(), typingRace && fmodf(T, 0.8f) < 0.4f ? "_" : ""); ui.text(274, RS_Y + 6, 2.0f, h == 10 ? WHT : CYA, b);
+        snprintf(b, sizeof b, "%s", d.mode == 2 ? "RAMPAGE" : d.mode == 4 ? "MANIC" : "RACE"); ui.text(614, RS_Y + 6, 2.0f, h == 11 ? WHT : CYA, b);
+        snprintf(b, sizeof b, "%s", WXN[std::max(0, std::min(3, d.weather))]); ui.text(774, RS_Y + 6, 2.0f, h == 12 ? WHT : CYA, b);
+        snprintf(b, sizeof b, "%d LAP%s", d.laps, d.laps == 1 ? "" : "S"); ui.text(964, RS_Y + 6, 2.0f, h == 13 ? WHT : CYA, b);
+    }
     ui.rect(0, 656, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
-    ui.text(20, 666, 1.45f, WHT, "N NEW MOMENT  E LIST  D DOLPHINS  6 WARDEN  R ROCKETS  H SHIELD  L LINE  0-9 ONE EVENT  DEL  CTRL+Z  CTRL+S SAVE  P PREVIEW  TAB FLY  < > TRACK");
+    ui.text(20, 666, 1.45f, WHT, "N NEW MOMENT  E LIST  D DOLPHINS  6 WARDEN  R ROCKETS  H SHIELD  G GHOST  F1-F5 RACE  L LINE  0-9 ONE EVENT  DEL  CTRL+Z  CTRL+S SAVE  P PREVIEW  TAB FLY  < > TRACK");
     if (wiz == WZ_PICK) {
         ui.rect(Wd / 2 - 280, 110, 560, 62 + NM * 52, V3(0.02f, 0.03f, 0.06f), 0.88f); ui.text(Wd / 2, 122, 2.6f, YEL, "NEW MOMENT: WHAT HAPPENS?", 1);
         for (int k = 0; k < NM; k++) { float px = Wd / 2 - 260, py = 162 + k * 52; bool h = pickAt(mx, my) == k; ui.rect(px, py, 520, 46, h ? V3(0.3f, 0.34f, 0.45f) : V3(0.14f, 0.16f, 0.22f), 1);
@@ -829,9 +874,15 @@ static void script(const char* p) {
         else if (t[0] == "list") listOn = true;
         else if (t[0] == "lapstart") { if (wiz == WZ_LINE_A) { wLine.clear(); wizNext(); } }
         else if (t[0] == "wmisfire" && t.size() >= 2) { int u = atoi(t[1].c_str()) - 1; if (u >= 0 && u < 4 && director::wardenAt[u].set) addMisfire(u); }   // as the Warden panel's + MISFIRE
-        else if (t[0] == "pickup" && t.size() >= 4) { push(); director::Pickup p; p.kind = t[1] == "shield" ? 1 : 0; float x = (float)atof(t[2].c_str()), z = (float)atof(t[3].c_str()); p.p = V3(x, W.H(x, z), z); director::pickups.push_back(p); }
+        else if (t[0] == "pickup" && t.size() >= 4) { push(); director::Pickup p; p.kind = t[1] == "shield" ? 1 : t[1] == "ghost" ? 2 : 0; float x = (float)atof(t[2].c_str()), z = (float)atof(t[3].c_str()); p.p = V3(x, W.H(x, z), z); director::pickups.push_back(p); }
         else if (t[0] == "split") splitMinis();
         else if (t[0] == "gun" && selEv >= 0) { push(); director::evs[selEv].gun = t.size() >= 2 && t[1] == "mg" ? 1 : 0; }
+        else if (t[0] == "race" && t.size() >= 2 && isdigit((unsigned char)t[1][0])) pickRace(std::max(0, std::min(director::NRACES - 1, atoi(t[1].c_str()) - 1)));
+        else if (t[0] == "racename" && t.size() >= 2) { push(); director::raceDef = director::raceOf(); director::raceDef.set = true; std::string n; for (size_t q = 1; q < t.size(); q++) n += (q > 1 ? " " : "") + t[q]; for (char& c : n) c = (char)toupper((unsigned char)c); director::raceDef.name = n; dirty = true; }
+        else if (t[0] == "racemode" && t.size() >= 2) { push(); director::raceDef = director::raceOf(); director::raceDef.set = true; director::raceDef.mode = t[1] == "rampage" ? 2 : t[1] == "manic" ? 4 : 0; dirty = true; }
+        else if (t[0] == "raceweather" && t.size() >= 2) { push(); director::raceDef = director::raceOf(); director::raceDef.set = true; for (int q = 0; q < 4; q++) if (t[1] == director::WXNAME[q]) director::raceDef.weather = q; dirty = true; }
+        else if (t[0] == "racelaps" && t.size() >= 2) { push(); director::raceDef = director::raceOf(); director::raceDef.set = true; director::raceDef.laps = std::max(1, std::min(9, atoi(t[1].c_str()))); dirty = true; }
+        else if (t[0] == "del") key(SDLK_DELETE, true);   // (tests: DEL on what is selected)
         else if (t[0] == "save") save();
         else if (t[0] == "preview") preview();
         else if (t[0] == "view" && t.size() >= 4) { camTgt = V3((float)atof(t[1].c_str()), 0, (float)atof(t[2].c_str())); topH = (float)atof(t[3].c_str()); }

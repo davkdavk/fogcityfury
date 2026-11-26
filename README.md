@@ -94,6 +94,37 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.8.3
+
+**The career begins: five races for each track.**
+
+- **CAREER** on the track screen (MODE) opens the track's **race list**: its five races, each one's name, mode (race,
+  rampage or MANIC), weather and laps, and your best place in it.
+- **Pick one and race.** It starts like any race, the camera coming down from above, with you on the grid **where
+  you finished last time on this track** (the first time, at the back).
+- After the race, ENTER roams on and ESC goes back to the list.
+- **Each race is its own event file**, built in fcfedit: race 1 is the track's own file (`track0.fcfe`), races 2-5
+  are `track0-r2.fcfe` ... `track0-r5.fcfe`. F1-F5 in fcfedit pick the race, and the strip under the top bar sets its
+  name, mode, weather and laps. Without a file, a race has its default (a clean race, a storm, a rampage, a MANIC run,
+  the final).
+- **fcfedit: deleting a mini Warden (or anything) works with a placing tool on.** With R, H or G on, a click on
+  something already there placed a crate on it; now it selects it. DEL says what it deleted, and "NOTHING SELECTED"
+  when nothing is.
+- **Ghosts.** A new pick-up: use it for **7 seconds when you pass straight through other cars** (the racers, and
+  other players online on your screen). Two round each lap; fcfedit places them too (`G`).
+- **Shields and ghosts are held, then used.** Drive through one and it's kept (up to 3 of each); use it when you
+  choose. The panel above your rockets shows what you hold and which is selected.
+
+  | | Keyboard | Xbox 360 / pad | Touch |
+  | --- | --- | --- | --- |
+  | Use the selected one | `X` | D-pad up | the SHIELD / GHOST button |
+  | Switch shield / ghost | `Z` | D-pad left / right | SWAP |
+
+- **Levelling up: how many rockets you hold.** Every race you finish earns experience (more the higher you place);
+  each level, every 10, holds one more rocket: **5 to start, up to 10**. Each crate gives two, up to what you can
+  hold, and that crate is gone for you until your next lap (the others stay). Rockets, shields and ghosts are only
+  picked up in races, not while roaming. Your level shows on the results.
+
 ## What's new in 2.9.8.2
 
 - **Xbox 360: the events folder found where it really is.** The console has no working folder, so `events\` beside

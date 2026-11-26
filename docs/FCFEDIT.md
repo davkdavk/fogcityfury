@@ -119,9 +119,17 @@ Click a setting to step it forward, right-click to step it back, and hold `SHIFT
 | SIZE | a dolphin's size; for mini Wardens, HOW MANY (1–4) |
 | THEN THEY | mini Wardens only: JETPACK DOWN to the road, or STAY UP AND SNIPE from the roof's edge (they shoot at you on foot) |
 
-## Rocket crates and shields
+## The track's five races (the career)
 
-Press `R` and click to put a rocket crate down; `H` for a shield. The tool stays on, so click on for more; `ESC` when
+Each built-in track has five races in the career. **F1-F5** pick which one you're editing; each is its own file:
+race 1 is the track's own (`track0.fcfe`, which a quick race uses too), races 2-5 are `track0-r2.fcfe` ...
+`track0-r5.fcfe`. The strip under the top bar shows the five and the one you're on (save before you switch). Click
+its **name** to type a new one, and its **mode** (race, rampage, MANIC), **weather** and **laps** to change them
+(right-click goes back). These are saved as a `race` line in the file. A race with no file of its own plays its default.
+
+## Rocket crates, shields and ghosts
+
+Press `R` and click to put a rocket crate down; `H` for a shield; `G` for a ghost (2.9.8.3). The tool stays on, so click on for more; `ESC` when
 done. Drag one to move it, `DEL` removes it.
 
 As soon as a track has one placed, **yours replace the track's own** (all of them, crates and shields: the faint
@@ -188,7 +196,8 @@ for three minutes of racing). On foot the tape doesn't follow you: going back pu
 | Right drag, wheel | move and zoom the map |
 | `N` | new moment |
 | `6` | place a Warden (then click it for **+ MISFIRE**) |
-| `R` / `H` | place rocket crates / shields (click on for more, `ESC` when done) |
+| `R` / `H` / `G` | place rocket crates / shields / ghosts (click on for more, `ESC` when done) |
+| `F1`-`F5` | which of the track's five career races you're editing |
 | `L` | draw a line by hand (click its two ends) |
 | `1`–`5`, `7`–`9`, `0` | place a single event by hand: rocket, explosion, splash, shake, message, building falls, dolphin leap, mini Wardens, weather |
 | `D` | dolphins: a pod, then its leap spots |

@@ -86,9 +86,13 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if ((k == SDLK_DELETE || k == SDLK_BACKSPACE) && selTrack >= NTRACKS) { delAsk = true; blip(); break; }
         if (k == SDLK_F4 || k == SDLK_F6) { ok(); flushPendingTrack(); ed::open(k == SDLK_F6 ? -1 : selTrack); break; }
 #endif
+        if (k == SDLK_RETURN && selMode == 5) { flushPendingTrack(); if (selTrack >= NTRACKS) { say("THE CAREER IS ON THE BUILT-IN TRACKS", SAY_WARN, 2.5f); break; } ok(); career::enter(selTrack); break; }   // 2.9.8.3 the track's garage
         if (k == SDLK_RETURN) { ok(); flushPendingTrack(); if (selMode == 3) champBegin(); else startRace(); } if (k == SDLK_ESCAPE) { flushPendingTrack(); state = CARSEL; } break;
+    case GARAGE: career::key(k); break;
     case RACE:
-        if (k == SDLK_ESCAPE) { state = PAUSED; break; } if (introT > 0 && (k == SDLK_RETURN || k == SDLK_SPACE || bindHit(B_GAS, sc))) introT = 0;   // skip the fly-in
+        if (k == SDLK_ESCAPE) { state = PAUSED; break; }
+        if (career::toGrid && k == SDLK_RETURN) { career::snapToGrid(); break; }   // 2.9.8.3 straight to your grid spot
+        if (introT > 0 && (k == SDLK_RETURN || k == SDLK_SPACE || bindHit(B_GAS, sc))) introT = 0;   // skip the fly-in
         if (bindHit(B_CAM, sc) && shdSpectate && showdownOn) { for (int k = 1; k <= NFIGHT; k++) { int i = (shdWatch + k) % NFIGHT; if (fighters[i].alive && (fighters[i].on || !fighters[shdWatch].on)) { shdWatch = i; camInit = false; break; } } }   // watching: on to the next fighter
         else if (bindHit(B_CAM, sc) && !me.on) camMode = (camMode + 1) % 3;
         if (showdownOn && k == SDLK_RETURN) showdownSkip();
@@ -97,6 +101,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (me.on && k >= SDLK_1 && k < SDLK_1 + NGSLOT) slotGun((int)(k - SDLK_1) + 1);
         if (me.on && me.alive && bindHit(B_RELOAD, sc)) reloadMe();   // on foot R reloads; in the car it is still BACK ON TRACK
         else if (bindHit(B_RESET, sc)) doReset();
+        if (bindHit(B_ITEM, sc) && !me.on) useItem(); if (bindHit(B_ITEMSEL, sc) && !me.on) switchItem();   // 2.9.8.3 the shield or ghost you hold
         if (bindHit(B_FIRE, sc) && !me.on) fireRocket(); break;
 #ifdef FCF_EDITOR
     case EDIT: ed::key(k); break;
@@ -114,7 +119,8 @@ static void onKey(SDL_Keycode k, int sc = 0) {
                 secret::comeBack();
                 state = TITLE;
                 setupCars(false);
-            } else {
+            } else if (career::on) career::openGarage();   // 2.9.8.3 quitting a career race: back to its garage
+            else {
                 champOn = champDone = false;
                 state = TRACKSEL;
                 setupCars(false);
@@ -125,7 +131,8 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (netRace) {
             if (k == SDLK_ESCAPE) netLeave("");
         } else if ((k == SDLK_RETURN || k == SDLK_ESCAPE) && resultsT > 1) {
-            if (k == SDLK_RETURN && !champOn && roamAfterOk()) { ok(); roamAfter(); return; }   // 2.9.3 ENTER: the race's world carries on as roam; ESC: the menus
+            if (k == SDLK_RETURN && !champOn && roamAfterOk()) { ok(); roamAfter(); return; }
+            if (career::on && k == SDLK_ESCAPE) { ok(); career::openGarage(); return; }   // 2.9.8.3 back to the garage   // 2.9.3 ENTER: the race's world carries on as roam; ESC: the menus
             if (champOn) champAdvance(k == SDLK_ESCAPE);
             else if (secret::on) {
                 secret::comeBack();
@@ -239,6 +246,9 @@ static void printJSON(FILE* o) {
             [] { static std::string m; m.clear(); for (int i = 1; i < NFIGHT; i++) { char q[24]; snprintf(q, sizeof q, "%s%d/%d", i > 1 ? ";" : "", fighters[i].mag[fighters[i].gun], fighters[i].reloads); m += q; } return m.c_str(); }(), dr.c_str());
     }
     fprintf(o, "\"mgBursts\":%d,\"mgRounds\":%d,\"mgHits\":%d,\"pickupsPlaced\":%d,\"crate0\":[%.1f,%.1f],\"shield0\":[%.1f,%.1f],\"carHp\":%.1f,", jetdrop::mgBursts, jetdrop::mgRounds, jetdrop::mgHits, (int)director::pickups.size(), crates.empty() ? 0.0f : crates[0].p.x, crates.empty() ? 0.0f : crates[0].p.z, nShieldPU ? shieldPU[0].p.x : 0.0f, nShieldPU ? shieldPU[0].p.z : 0.0f, player.hp);
+    fprintf(o, "\"xp\":%d,\"level\":%d,\"rocketCap\":%d,\"xpGot\":%d,\"heldShields\":%d,\"heldGhosts\":%d,\"itemSel\":%d,\"ghostLeft\":%.2f,\"ghostsUsed\":%d,\"shieldsUsed\":%d,\"ghostPUs\":%d,\"playerShield\":%.2f,\"ghostPasses\":%d,\"carTouches\":%d,\"ghostPU0\":[%.1f,%.1f],\"shieldPU0\":[%.1f,%.1f],", xp, level(), rocketCap(), xpGot, heldShields, heldGhosts, itemSel, ghostT, ghostsUsed, shieldsUsed, nGhostPU, player.shield, ghostPasses, carTouches, nGhostPU ? ghostPU[0].p.x : 0.0f, nGhostPU ? ghostPU[0].p.z : 0.0f, nShieldPU ? shieldPU[0].p.x : 0.0f, nShieldPU ? shieldPU[0].p.z : 0.0f);
+    fprintf(o, "\"introT\":%.2f,", introT);
+    fprintf(o, "\"career\":%d,\"careerRace\":%d,\"toGrid\":%d,\"gridSlot\":%d,\"gridArrivals\":%d,\"parks\":%d,\"careerQual\":%d,\"careerBest\":[%d,%d,%d,%d,%d],\"raceName\":\"%s\",\"raceFile\":%d,\"finalPlace\":%d,", career::on, career::cur, career::toGrid, career::slot, career::gridArrivals, career::parks, career::qual[career::track], career::best[career::track][0], career::best[career::track][1], career::best[career::track][2], career::best[career::track][3], career::best[career::track][4], career::cur >= 0 ? career::defs[career::cur].name.c_str() : "", director::raceFile, finalPlace);
     fprintf(o, "\"steerSens\":%d,\"aimSens\":%d,\"touchSteer\":%d,\"touchWide\":%d,", optSteerSens, optAimSens, optTouchSteer, optTouchWide);
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
 #ifdef FCF_EDITOR
@@ -336,7 +346,7 @@ static void handleKey(SDL_Keycode k, int sc) {
 // fingers (and, with --touch, the mouse) on the on-screen buttons. x, y in HUD units
 static void touchPress(int b) {
     const TouchBtn t = tbtn[b];
-    if (t.act == TA_RESET) { if (state == PAUSED) state = RACE; doReset(); } else if (t.act == TA_FIRE) { if (!me.on) fireRocket(); } else if (t.act == TA_CAM) camMode = (camMode + 1) % 3;
+    if (t.act == TA_RESET) { if (state == PAUSED) state = RACE; doReset(); } else if (t.act == TA_FIRE) { if (!me.on) fireRocket(); } else if (t.act == TA_ITEM) useItem(); else if (t.act == TA_ITEMSEL) switchItem(); else if (t.act == TA_CAM) camMode = (camMode + 1) % 3;
     else if (t.act == TA_EXIT) footToggle(); else if (t.act == TA_RELOAD) reloadMe();
     else if (t.act == TA_GUNSEL) { if (me.on && me.alive && haveGun(me, (int)t.key)) selectGun(me, (int)t.key); touchGunMenu = false; touchLaid = -1; tone(900, 0.05f, 0.25f, 2); }   // 2.9.1 a gun picked from the menu   // (TA_WEAPON acts when the finger lifts: touchUp)
     else if (t.key) handleKey(t.key, t.key == SDLK_RETURN ? SDL_SCANCODE_RETURN : 0);

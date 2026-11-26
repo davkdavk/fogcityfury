@@ -27,6 +27,8 @@ Lines before the lines and events:
     roamminis off                           2.9.7: no groups of mini Wardens drop in while roaming this track (placed ones still come)
     pickup rocket  -480 9.7 -175            a rocket crate here (2.9.6); with any pickup lines, they replace the track's own
     pickup shield  -470 9.8 -170            a shield here (up to 8 count)
+    pickup ghost   -460 9.8 -165            a ghost here (2.9.8.3: 7 s passing through other cars)
+    race "STORM WARNING"  mode race  weather storm  laps 3   2.9.8.3: this file's career race (mode race, rampage or manic)
 
 Kinds now (the editor's name in brackets where it differs): **rocket** (flies to its target and bursts there, or on the first wall it meets), **blast** (EXPLOSION), **splash**,
 **shake**, **say** (MESSAGE: words on screen), **collapse** (BUILDING FALLS: the building there comes down),

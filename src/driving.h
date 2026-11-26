@@ -363,10 +363,15 @@ static Input readInput() {
 }
 
 static bool showdownStart(int racePlace);
+namespace career { static void save(); }
+static int xpGot = 0; static bool levelledUp = false;   // (2.9.8.3 this race's experience, for the results)
 static void finishRace(bool tu) {
     if (netRace) { nc.finished = true; nc.finishT = raceT; finalPlace = nc.myPlace; timeUp = false; state = RESULTS; resultsT = 0; tone(523, 0.3f, 0.5f, 2); tone(784, 0.6f, 0.5f, 2, 0, 0.2f); writeSave(); return; }
     timeUp = tu; int ahead = 0; for (auto& a : ai) if (a.finishT >= 0 || (tu && a.progress > player.progress)) ahead++;
     finalPlace = ahead + 1;
+    xpGot = 0; levelledUp = false;
+    if (!exploreMode) { int lv = level(); xpGot = xpFor(tu ? 0 : trialMode ? 3 : finalPlace); xp += xpGot; levelledUp = level() > lv;   // 2.9.8.3 experience: more the higher you place
+        if (levelledUp) { char b[64]; snprintf(b, sizeof b, "LEVEL %d: YOU HOLD %d ROCKETS NOW", level(), rocketCap()); say(b, SAY_GOOD, 3); } career::save(); }
     if (champOn && !tu) champRaceEnd();
     if (rampage && !tu && showdownStart(finalPlace)) return;
     if (trialMode && !tu) trialNewRecord = trialSave(W.id, raceLaps, raceT);   // rampage: the showdown takes over from here (you fight if you made the top five, and watch if not)
