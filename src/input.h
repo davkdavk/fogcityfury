@@ -84,7 +84,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
             break;
         }
         if ((k == SDLK_DELETE || k == SDLK_BACKSPACE) && selTrack >= NTRACKS) { delAsk = true; blip(); break; }
-        if (k == SDLK_F4 || k == SDLK_F6) { ok(); flushPendingTrack(); ed::open(k == SDLK_F6 ? -1 : selTrack); break; }
+        if (k == SDLK_F4 || k == SDLK_F6) { ok(); flushPendingTrack(); ed::open(k == SDLK_F6 ? -1 : selTrack, (SDL_GetModState() & KMOD_SHIFT) != 0); break; }   // (2.9.8.4 SHIFT+F4: a copy of a built-in track)
 #endif
         if (k == SDLK_RETURN && selMode == 5) { flushPendingTrack(); if (selTrack >= NTRACKS) { say("THE CAREER IS ON THE BUILT-IN TRACKS", SAY_WARN, 2.5f); break; } ok(); career::enter(selTrack); break; }   // 2.9.8.3 the track's garage
         if (k == SDLK_RETURN) { ok(); flushPendingTrack(); if (selMode == 3) champBegin(); else startRace(); } if (k == SDLK_ESCAPE) { flushPendingTrack(); state = CARSEL; } break;

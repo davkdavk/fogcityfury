@@ -5,8 +5,10 @@ The code is `src/editor.h` (the editor) and `src/trackfile.h` (the file format).
 
 ## Using it
 
-On the track screen: **F4** edits the track shown (a built-in track is copied first; the original is
-never changed) and **F6** starts a new one. Custom tracks appear in the track list after the six
+On the track screen: **F4** edits the track shown and **F6** starts a new one. On a built-in track F4 edits
+the track itself: it saves as `events/trackN.fcft` (beside its race files) and the game reads that over the built-in
+shape at start, on the 360 too; **F8** in the editor puts the original back, and **SHIFT+F4** edits a copy instead.
+Online, everyone races the originals. Custom tracks appear in the track list after the six
 built-in ones. They are offline only. Their keys are the ones you hide with the KEYS tool (which keys you have found
 on each is kept with your settings). **Del** on the track screen deletes one of your own tracks (its file goes).
 

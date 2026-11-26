@@ -94,6 +94,19 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.8.4
+
+**The track editor edits THE track, not a copy.**
+
+- **F4** on a built-in track now edits that track itself. It saves as `events/track0.fcft` ... `events/track6.fcft`,
+  in the same folder as the track's race files, and the game reads it over the built-in shape at start (PC, Android
+  and the 360: copy the events folder beside the XEX as before). The track keeps its name, hidden keys and tune.
+- **SHIFT+F4** still makes a copy of your own (the old F4).
+- **F8** in the editor puts the original back (the file goes). Deleting the file does the same.
+- Online, everyone races the original tracks (the server and the other players have those).
+- **The 360: buildings coming down no longer choke it.** Their dust is a tenth of the puffs there (a little bigger),
+  and a small mesh made mid-race (the rubble) no longer sets aside 3 MB to build.
+
 ## What's new in 2.9.8.3
 
 **The career begins: five races for each track.**
@@ -565,7 +578,7 @@ Gunplay, part 1 of 4: how a hit feels.
 ## What's new in 1.5
 
 - **Track editor (PC).** Build your own tracks in the game: on the track screen press **F4** to edit the
-  track shown (built-in tracks are copied, never changed) or **F6** to start from scratch. Drag the road,
+  track shown (a built-in track is edited in place, saved as `events/trackN.fcft`; SHIFT+F4 for a copy) or **F6** to start from scratch. Drag the road,
   raise hills and dig lagoons, lay undersea tunnels and shortcuts, pick the sky, weather and song, then
   press **Enter** to drive it and **F4** to jump back. Tracks save as small text files (`.fcft`) you can
   share. See `docs/EDITOR.md`.

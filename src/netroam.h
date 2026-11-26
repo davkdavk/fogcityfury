@@ -142,7 +142,7 @@ static bool roamOnline() { return netRace && nc.on && nc.phase == net::ROAM; }
 static void netStartRoam() {
     footReset(); miniReset(); for (auto& f : roamPeople) f = Fighter(); for (auto& r : rmini) r = RoamMini(); lastHitSeq = 0;
     for (int i = 0; i < NSLOT; i++) { killedByRemote[i] = -1; rammedRemote[i] = false; }
-    exploreMode = true; rampage = false; raceLaps = 99; if (W.id != nc.track) W.build(nc.track);
+    exploreMode = true; rampage = false; raceLaps = 99; if (stockOnline(true) || W.id != nc.track) W.build(nc.track);
     setupCars(true); int k = nc.id >= 0 ? nc.id : 0; placeOnGrid(player, gridS(k * 5), gridLat(k));   // spread out along the road, so nobody starts on top of anybody
     raceT = 0; countdown = 0.01f; timeLeft = 999; introT = 0; aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; sayClear(); state = RACE; netRace = true; nc.finished = false;
     say("ONLINE ROAM", SAY_COOL, 3.0f);

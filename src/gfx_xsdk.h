@@ -423,9 +423,12 @@ static void mesh(Buf& b,const void* v,int nv,const uint32_t* idx,int ni) {
     for(const auto& c:o.chunks){ if(c.vertices)xs::gpuFree(c.vertices); if(c.indices)xs::gpuFree(c.indices); }
     o.chunks.clear();
     const uint8_t* source=(const uint8_t*)v;
-    std::unordered_map<uint32_t,uint32_t> remap; remap.reserve(65535);
-    std::vector<uint8_t> vertices; vertices.reserve(65535u*48u);
-    std::vector<uint32_t> indices; indices.reserve(65532);
+    // (2.9.8.4 reserved for this mesh's size, not always the most a chunk takes: a small mesh, like a fallen building's
+    // rubble mid-race, no longer allocates 3 MB and a 65535-bucket table)
+    const size_t cap=(size_t)std::min(std::max(nv,ni),65535);
+    std::unordered_map<uint32_t,uint32_t> remap; remap.reserve(cap);
+    std::vector<uint8_t> vertices; vertices.reserve(cap*48u);
+    std::vector<uint32_t> indices; indices.reserve(std::min(ni,65532));
     uint32_t firstIndex=0;
     auto flush=[&] {
         if(indices.empty()) return;

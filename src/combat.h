@@ -106,7 +106,7 @@ static void setupCars(bool race) {
 }
 static void netLoadingNotice();   // (netclient.h) online: tell the server we are about to go quiet while the track builds
 static float loadStall = 0;   // --loadstall S (tests): online, each track build takes S seconds longer, as on a slow machine
-static void loadTrack(int t) { if (W.id != t) { netLoadingNotice(); W.build(t); if (loadStall > 0 && nc.on) net::sleepMs((int)(loadStall * 1000)); } setupCars(false); }
+static void loadTrack(int t) { if (stockOnline(nc.on) && W.id >= 0 && W.id < NTRACKS) W.id = -1;   /* (2.9.8.4 the list changed under a built track) */ if (W.id != t) { netLoadingNotice(); W.build(t); if (loadStall > 0 && nc.on) net::sleepMs((int)(loadStall * 1000)); } setupCars(false); }
 // Track select builds the track you stop on, not every one you scroll past: building a city takes a moment (seconds on
 // the 360), so each left/right only marks it, and it is built once the choice has rested a moment, or at once on start.
 static const int TRACK_SONG[NTRACKS] = { 1, 2, 3, 4, 6, 7, 8 };
@@ -143,13 +143,13 @@ static void startRace() {
 static void footReset(); static void netShdEnter(); static int netBotOf(int id); static void netStartRoam();
 static void netStartRace() {
     if (nc.track < 0) return;   // (a custom track still on its way)
-    footReset(); exploreMode = false; trialMode = false; raceLaps = nc.laps; if (W.id != nc.track) W.build(nc.track);
+    footReset(); exploreMode = false; trialMode = false; raceLaps = nc.laps; if (stockOnline(true) || W.id != nc.track) W.build(nc.track);
     setupCars(true); int slot = 0; for (int i = 0; i < nc.id && i < net::MAXP; i++) if (nc.r[i].present && nc.r[i].racing) slot++;
     placeOnGrid(player, gridS(slot), gridLat(slot));
     raceT = 0; countdown = nc.phase == net::COUNTDOWN ? std::max(0.05f, nc.phaseT) : 0.01f; timeLeft = 999; lapStart = 0; bestLapRace = 0; lastLap = 0; introT = clampf(countdown - 0.6f, 0, INTRO_LEN);   // online: fly in while the server counts down
     aiFinished = 0; finalPlace = 0; timeUp = false; wrongT = 0; sayClear(); state = RACE; netRace = true; nc.finished = false; nc.finishT = 0;
 }
-static void netLeave(const char* why) { footReset(); netClose(why); netRace = false; raceLaps = LAPS; state = TITLE; if (W.id != 0) W.build(0); selTrack = 0; setupCars(true); }
+static void netLeave(const char* why) { footReset(); netClose(why); netRace = false; raceLaps = LAPS; state = TITLE; if (stockOnline(false) || W.id != 0) W.build(0); selTrack = 0; setupCars(true); }
 static void netReact() {
     if (!nc.on) { if (state == NETLOBBY || (netRace && (state == RACE || state == PAUSED || state == RESULTS))) netLeave(nc.error); return; }
     if (!nc.connected) return;

@@ -71,11 +71,18 @@ static void step(float dt) {
     (void)dt;
     for (int k = 0; k < n; k++) {
         Fall& c = f[k]; const World::Lot& l = W.lots[c.lot]; float t = raceT - c.t0; if (t > DUST || g_noGL) continue;
-        if (t - c.lastDust < 0.06f) continue; c.lastDust = t;
-        float h = (l.top - l.gy) * (1 - sunk(t)); int m = (int)(10 * optMist * 0.01f + 2);   // dust boils up round the base and out of the top as it goes down
+#ifdef FCF_GFX_XSDK
+        // 2.9.8.4 the 360: a tenth of the puffs, a little bigger. The PC's ~900 big see-through puffs a building (one
+        // every 0.06 s, twelve at a time) piled up on screen and choked the console's fill rate and CPU.
+        const float every = 0.2f, big = 1.35f; const int m = 4;
+#else
+        const float every = 0.06f, big = 1.0f; const int m = (int)(10 * optMist * 0.01f + 2);
+#endif
+        if (t - c.lastDust < every) continue; c.lastDust = t;
+        float h = (l.top - l.gy) * (1 - sunk(t));   // dust boils up round the base and out of the top as it goes down
         for (int i = 0; i < m && parts.size() < 5200; i++) {
             float a = (t * 37 + i) * 2.39996f; V3 o(cosf(a), 0, sinf(a)); float e = (i % 3 == 0) ? h : 1.0f + (i % 4);
-            spawn(V3(l.x + o.x * (l.hx + 1), l.gy + e, l.z + o.z * (l.hz + 1)), o * (2.5f + (i % 5)) + V3(0, 1.5f + (i % 3), 0), 3.5f + (i % 4) * 0.6f, 2.2f + (i % 3) * 0.8f, 2.4f,
+            spawn(V3(l.x + o.x * (l.hx + 1), l.gy + e, l.z + o.z * (l.hz + 1)), o * (2.5f + (i % 5)) + V3(0, 1.5f + (i % 3), 0), 3.5f + (i % 4) * 0.6f, (2.2f + (i % 3) * 0.8f) * big, 2.4f,
                   V3(0.55f, 0.52f, 0.48f), 0.45f, 0, 0.15f);
         }
     }

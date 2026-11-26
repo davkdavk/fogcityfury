@@ -180,7 +180,7 @@ static std::string cliEvScript; static bool cliEvEdit =
 #else
     false;   // --evedit: straight into the event editor
 #endif
-static std::string cliTrackFile, cliEdScript; static bool cliEdit = false, cliEdNew = false; static int cliEdTool = 0;   // --trackfile, --edit, --edtool
+static std::string cliTrackFile, cliEdScript; static bool cliEdit = false, cliEdNew = false, cliEdCopy = false; static int cliEdTool = 0;   // --trackfile, --edit, --edtool
 static bool champOn = false, champDone = false, cliChamp = false; static int champRound = 0; static int champPts[NAI + 1];   // championship: running, all four rounds done, round 0-3, points (0: you, 1 + k: ai[k])
 static const int CHAMP_TRACK[4] = { 0, 1, 2, 3 }, CHAMP_LAPS[4] = { 1, 2, 2, 3 }, CHAMP_PTS[10] = { 25, 18, 15, 12, 10, 8, 6, 4, 2, 1 };
 static bool rampage = false, showdownOn = false;
@@ -559,6 +559,7 @@ int main(int argc, char** argv) {
             return 0;
         } else if (a == "--edit") cliEdit = true;
         else if (a == "--ednew") cliEdit = cliEdNew = true;
+        else if (a == "--edcopy") cliEdit = cliEdCopy = true;   // 2.9.8.4 a built-in track: edit a copy (SHIFT+F4), not the track
         else if (a == "--edscript") {
             cliEdit = true;
             cliEdScript = argv[++i];
@@ -613,7 +614,7 @@ int main(int argc, char** argv) {
     if (cliAA >= 0) vidAA = nearestOpt(AA_OPT, 4, cliAA); if (cliAF >= 0) vidAF = nearestOpt(AF_OPT, 5, cliAF); if (fullSet) vidFull = true; if (!sizeSet) { w = vidW; h = vidH; } windowed = !vidFull;
     auto startGame = [&] {
         if (cliXp < 0) career::loadOnce(); else xp = cliXp;   // 2.9.8.3 your level and the career's places
-        initTracks(); loadSave(); chromeUnlocked = allKeys();
+        initTracks(); stockKeep(); if (!noSave || !tracksDirOverride.empty()) stockLoadAll(); loadSave(); chromeUnlocked = allKeys();   // (2.9.8.4 built-in tracks edited in place: events/trackN.fcft)
         if ((int)TRACKS.size() == NTRACKS) {   // custom tracks: the folder's, then one named on the command line
             if (!noSave || !tracksDirOverride.empty()) { std::string dir = tracksDir(); trackMkdir(dir); tracksLoadDir(dir);
 #ifdef FCF_EDITOR
@@ -631,7 +632,7 @@ int main(int argc, char** argv) {
         if (startState == 1) { state = CARSEL; setupCars(false); } if (startState == 2) { state = TRACKSEL; setupCars(false); } if (startState == 3) { if (cliChamp) champBegin(); else startRace(); if (!fullCountdown) { countdown = 0.01f; introT = 0; } }
 #ifdef FCF_EDITOR
         if (cliEdit) {
-            ed::open(cliEdNew ? -1 : selTrack);
+            ed::open(cliEdNew ? -1 : selTrack, cliEdCopy);
             if (state == EDIT && cliEdTouch) edTouchResult = edTouchTest();
             if (state == EDIT && !cliEdScript.empty()) ed::script(cliEdScript.c_str());
             ed::tool = ((cliEdTool % ed::NTOOL) + ed::NTOOL) % ed::NTOOL;

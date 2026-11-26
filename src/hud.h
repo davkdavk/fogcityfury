@@ -314,7 +314,7 @@ static void drawHUD() {
 #ifdef FCF_EDITOR
         panel(Wd - 700, 358, 640, 30, 0.5f);
         if (delAsk) ui.text(Wd - 72, 364, 2.3f, V3(1, 0.4f, 0.3f), "DELETE THIS TRACK FOR GOOD?   ENTER = YES   ANY OTHER KEY = NO", 2);
-        else if (!touchOn) ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), padUI ? "{X} EDIT   {BACK} NEW TRACK" : W.id >= NTRACKS ? "F4 EDIT   F6 NEW TRACK   DEL DELETE" : "F4 EDIT A COPY OF THIS TRACK    F6 NEW TRACK", 2);
+        else if (!touchOn) ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), padUI ? "{X} EDIT   {BACK} NEW TRACK" : W.id >= NTRACKS ? "F4 EDIT   F6 NEW TRACK   DEL DELETE" : "F4 EDIT THIS TRACK   SHIFT+F4 A COPY   F6 NEW TRACK", 2);
 #endif
         if (!W.keys.empty()) ui.text(96, ry[0] + 120, 2.5f, yel, "HIDDEN KEYS");
         else ui.text(96, ry[0] + 120, 2.5f, V3(0.4f, 1, 0.6f), W.id >= NTRACKS ? "YOUR OWN TRACK" : "NO HIDDEN KEYS - JUST RACE");

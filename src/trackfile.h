@@ -204,3 +204,48 @@ static void trackMkdir(const std::string&) {}
 static void tracksLoadDir(const std::string&) {}
 static std::string trackNewFile(const std::string& dir, const std::string&) { return dir + "/track.fcft"; }
 #endif
+
+// 2.9.8.4 a built-in track edited in place. The editor (F4 on a built-in track) saves it as events/trackN.fcft, beside
+// its race files, so one folder carries a track's shape and its races (to the 360 too). The game reads it over the
+// built-in shape at start. Delete the file, or F8 in the editor, for the original again. The name, its hidden keys and
+// its tune stay the built-in track's. Online everyone races the originals (the server and the others have those).
+static TrackDef STOCK_KEEP[NTRACKS];   // offline: the originals; online: the edited ones, put by
+static bool stockEdited[NTRACKS] = {}, stockKept = false, stockOnlineNow = false;
+static std::string stockFile(int t) { return "events/track" + std::to_string(t) + ".fcft"; }
+static void stockNames(TrackDef& d, const TrackDef& orig) { d.nameS = orig.name; d.subS = orig.sub; trackNames(d); }
+static void stockKeep() { if (stockKept || (int)TRACKS.size() < NTRACKS) return; stockKept = true; for (int t = 0; t < NTRACKS; t++) STOCK_KEEP[t] = TRACKS[t]; }
+// over the built-in shape: what the file has, the rest (name, keys, tune if the file has none, weather) as it was
+static bool stockApply(int t, const TrackDef& in, const std::string& path) {
+    const TrackDef& o = STOCK_KEEP[t]; TrackDef d = in; if (!trackSanitize(d)) return false;
+    d.deco = o.deco; if (d.song <= 0) d.song = o.song; d.wx = o.wx; d.space = false; d.deleted = false; d.file = path;
+    TRACKS[t] = d; stockNames(TRACKS[t], o); stockEdited[t] = true; return true;
+}
+static int stockLoadAll() {
+    stockKeep(); int n = 0;
+    for (int t = 0; t < NTRACKS; t++) {
+#ifdef FCF_GFX_XSDK
+        // (as the race files: the events folder beside the XEX, by the first of these that opens; see events.h)
+        std::string k = "track" + std::to_string(t) + ".fcft";
+        const std::string tries[] = { "game:\\events\\" + k, "\\??\\game:\\events\\" + k, "GAME:\\events\\" + k, "events\\" + k, "events/" + k };
+        for (const std::string& p : tries) { TrackDef d; if (trackLoad(p.c_str(), d, STOCK_KEEP[t])) { if (stockApply(t, d, p)) { n++; xsdk_log_write("track: %s from %s", k.c_str(), p.c_str()); } break; } }
+#else
+        std::string p = stockFile(t); TrackDef d;
+        if (trackLoad(p.c_str(), d, STOCK_KEEP[t]) && stockApply(t, d, p)) { n++; fprintf(stderr, "track %d: %s\n", t, p.c_str()); }
+#endif
+    }
+    return n;
+}
+// back to the original: the file goes, the built-in shape comes back
+static void stockRestore(int t) {
+    if (t < 0 || t >= NTRACKS || stockOnlineNow || !stockKept) return;
+    remove(stockFile(t).c_str()); TRACKS[t] = STOCK_KEEP[t]; stockEdited[t] = false;
+}
+// online: the originals in the list while connected, the edited ones back after. True if the list changed.
+static bool stockOnline(bool on) {
+    if (on == stockOnlineNow || !stockKept) return false; stockOnlineNow = on; bool any = false;
+    for (int t = 0; t < NTRACKS; t++) if (stockEdited[t]) {
+        std::swap(TRACKS[t], STOCK_KEEP[t]); any = true;
+        for (TrackDef* d : { &TRACKS[t], &STOCK_KEEP[t] }) if (!d->nameS.empty()) trackNames(*d);   // (a swapped string moves its letters)
+    }
+    return any;
+}

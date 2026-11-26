@@ -60,7 +60,7 @@ static void check() {
     if (W.brs.size() < d.branches.size()) warn.push_back("A SHORTCUT COULD NOT BE BUILT");
 }
 
-static void save() { TrackDef& d = def(); if (d.file.empty()) return; if (!trackSave(d, d.file.c_str())) tell("COULD NOT SAVE THE TRACK FILE"); }
+static void save() { TrackDef& d = def(); if (d.file.empty()) return; if (!trackSave(d, d.file.c_str())) tell("COULD NOT SAVE THE TRACK FILE"); else if (slot < NTRACKS) stockEdited[slot] = true; }
 static void rebuild() {
     TrackDef& d = def();
     if (!trackSanitize(d) && !undo.empty()) { d = undo.back(); undo.pop_back(); trackNames(d); trackSanitize(d); }
@@ -74,7 +74,15 @@ static void touch(float wait = 0.25f) { dirty = true; dirtyT = wait; }
 static void setSky(int k) { const TrackDef& s = TRACKS[k]; TrackDef& d = def(); d.sun = s.sun; d.sunCol = s.sunCol; d.skyTop = s.skyTop; d.skyHor = s.skyHor; d.fogDen = s.fogDen; d.night = s.night; }
 static const int NSKY = 6; static const char* const SKY_NAME[NSKY] = { "CLEAR DAY", "SUNSET", "MISTY", "NIGHT", "MORNING", "TROPIC" };
 
-static void open(int t) {   // t < 0: a new track
+static void openStock(int t) {   // 2.9.8.4 THE track, not a copy: saved as events/trackN.fcft (trackfile.h), read over the built-in one at start
+    slot = t; TrackDef& d = def(); stockNames(d, STOCK_KEEP[t]); d.file = dir.empty() ? "" : stockFile(t); if (!d.file.empty()) trackMkdir("events");
+    for (sky = 0; sky < NSKY - 1; sky++) if (len(TRACKS[sky].skyTop - d.skyTop) < 0.01f) break;
+    selTrack = slot; pendingTrack = -1; state = EDIT; debugTop = true; testing = naming = drag = pan = false; tool = ROAD; sel = pick = -1; undo.clear(); camTgt = V3(0, 0, 0); topH = 1500;
+    W.build(slot); setupCars(true); check();   // (no save yet: the file comes with the first change)
+    std::string m = d.file.empty() ? "EDITING THE TRACK ITSELF - SAVING IS OFF" : stockEdited[t] ? "EDITING THE TRACK ITSELF - F8 PUTS THE ORIGINAL BACK" : "EDITING THE TRACK ITSELF - SAVES TO EVENTS/TRACK" + std::to_string(t) + ".FCFT"; tell(m.c_str());
+}
+static void open(int t, bool copy = false) {   // t < 0: a new track. A built-in one: itself (2.9.8.4), or with copy a new track of your own from it
+    stockOnline(false); if (t >= 0 && t < NTRACKS && !copy) { openStock(t); return; }
     TrackDef d = TRACKS[t < 0 ? 0 : t];
     if (t < 0) {
         d.ctrl = { -380,-60, -330,-270, -90,-360, 190,-330, 390,-170, 400,90, 250,300, -20,360, -280,250 }; d.hills = { {0,0,22,150}, {-330,-270,10,45}, {250,300,12,50} };
@@ -235,7 +243,8 @@ static void key(SDL_Keycode k) {
     case SDLK_RETURN: drive(false); return;
     case SDLK_t: drive(true); return;
     case SDLK_F5: if (dirty) rebuild(); save(); tell(d.file.empty() ? "NOT SAVED: SAVING IS OFF" : "SAVED"); return;
-    case SDLK_F2: naming = true; return;
+    case SDLK_F2: if (slot < NTRACKS) { tell("A BUILT-IN TRACK KEEPS ITS NAME"); return; } naming = true; return;
+    case SDLK_F8: if (slot < NTRACKS) { if (!stockEdited[slot]) { tell("THIS IS THE ORIGINAL"); return; } push(); stockRestore(slot); stockNames(d, STOCK_KEEP[slot]); d.file = dir.empty() ? "" : stockFile(slot); dirty = false; W.build(slot); setupCars(true); check(); tell("THE ORIGINAL IS BACK (Z UNDOES IT)"); } return;
     case SDLK_TAB: tool = (tool + 1) % NTOOL; sel = pick = -1; drag = false; return;
     case SDLK_1: case SDLK_2: case SDLK_3: case SDLK_4: case SDLK_5: case SDLK_6: tool = k - SDLK_1; sel = pick = -1; drag = false; return;
     case SDLK_r: if (tool == JUMP && sel >= 0 && sel < (int)d.jumps.size() / 5) { push(); d.jumps[sel * 5 + 4] = -d.jumps[sel * 5 + 4]; touch(0); } return;
@@ -278,8 +287,8 @@ static void script(const char* p) {
         if (c == "tool") { int t = 0; if (sscanf(p, "%d%n", &t, &used) == 1) p += used; key(SDLK_1 + clampi(t, 0, NTOOL - 1)); }
         else if (c == "down" || c == "move" || c == "rdown") { if (sscanf(p, "%f %f%n", &x, &z, &used) == 2) p += used; if (dirty && !drag) rebuild(); float sx, sy; screenXZ(x, z, sx, sy); mouseMove(sx, sy); if (c != "move") mouseDown(c == "down" ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT); }
         else if (c == "up") mouseUp();
-        else if (c == "key") { if (sscanf(p, " %15[a-z]%n", a, &used) == 1) p += used; std::string k = a;
-            key(k == "del" ? SDLK_DELETE : k == "plus" ? SDLK_EQUALS : k == "minus" ? SDLK_MINUS : k == "lb" ? SDLK_LEFTBRACKET : k == "rb" ? SDLK_RIGHTBRACKET : k == "esc" ? SDLK_ESCAPE : k == "enter" ? SDLK_RETURN : k == "race" ? SDLK_t : k.size() == 1 ? (SDL_Keycode)k[0] : SDLK_UNKNOWN); }
+        else if (c == "key") { if (sscanf(p, " %15[a-z0-9]%n", a, &used) == 1) p += used; std::string k = a;
+            key(k == "del" ? SDLK_DELETE : k == "plus" ? SDLK_EQUALS : k == "minus" ? SDLK_MINUS : k == "lb" ? SDLK_LEFTBRACKET : k == "rb" ? SDLK_RIGHTBRACKET : k == "esc" ? SDLK_ESCAPE : k == "enter" ? SDLK_RETURN : k == "f8" ? SDLK_F8 : k == "f2" ? SDLK_F2 : k == "race" ? SDLK_t : k.size() == 1 ? (SDL_Keycode)k[0] : SDLK_UNKNOWN); }
         else if (c == "wait") { if (dirty) rebuild(); }
         while (*p && *p != ';') p++; if (*p == ';') p++;
     }
@@ -369,7 +378,7 @@ static void draw(float Wd) {
     const bool keys = !touchOn && !padUI;   // the keyboard's letters only when there is one
     panel(12, 66, 300, 196, 0.6f); float y = 78;
     auto row = [&](const char* k, const char* name, const char* val) { if (keys) ui.text(24, y, 2.2f, YEL, k); ui.text(keys ? 64 : 24, y, 2.2f, GREY, name); ui.text(300, y, 2.2f, WHT, val, 2); y += 26; };
-    row("F2", "NAME", naming ? "TYPE, THEN ENTER" : ""); row("K", "SKY", SKY_NAME[sky]); row("X", "WEATHER", WX[d.wx % NWX].name);
+    if (slot < NTRACKS) row("F8", "ORIGINAL", stockEdited[slot] ? "EDITED" : "AS BUILT"); else row("F2", "NAME", naming ? "TYPE, THEN ENTER" : ""); row("K", "SKY", SKY_NAME[sky]); row("X", "WEATHER", WX[d.wx % NWX].name);
     snprintf(b, sizeof b, "%d", d.song > 0 ? d.song : TRACK_SONG[slot % NTRACKS]); row("M", "SONG", b);
     snprintf(b, sizeof b, "%d%%", (int)lroundf((0.8f - d.cityThr) / 0.55f * 100)); row("C", "CITY", b); row("G", "NEW CITY LAYOUT", ""); row("Z", "UNDO", undo.empty() ? "-" : "");
     // bottom: what the mouse does with this tool

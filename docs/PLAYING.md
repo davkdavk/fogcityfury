@@ -221,8 +221,8 @@ You can share one track every two minutes.
 
 ## Making your own tracks
 
-On a PC, go to the track screen and press **F4** to edit the track shown (a built-in track is copied, never
-changed) or **F6** to start a new one. Number keys pick the tool:
+On a PC, go to the track screen and press **F4** to edit the track shown (a built-in track is edited in place and
+saved as `events/trackN.fcft`; F8 in the editor brings the original back, SHIFT+F4 edits a copy) or **F6** to start a new one. Number keys pick the tool:
 
 | Tool | What it does |
 |---|---|

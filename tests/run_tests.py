@@ -2095,9 +2095,9 @@ def the_editor_makes_a_track_you_can_race():
         check(os.path.exists(f), "the track was saved as my-track.fcft")
         text = open(f).read()
         check("road" in text and "tunnel" in text and "branch" in text and text.count("hill") == 4, "the file has the road, four hills, the tunnel and the shortcut")
-        u = sim("--state", 2, "--tracksdir", tmp, "--track", 0, "--edit", "--edscript", "down -460 -240;move -300 -200;up;wait;key z;wait", seconds=1)
+        u = sim("--state", 2, "--tracksdir", tmp, "--track", 0, "--edcopy", "--edscript", "down -460 -240;move -300 -200;up;wait;key z;wait", seconds=1)
         a = sim("--track", 0, "--state", 3, "--mode", 1, seconds=0.3)
-        check(u["track"] == NTRACKS + 1 and u["trackLen"] == a["trackLen"], "editing a built-in track edits a copy; undo puts the moved point back", (u["track"], u["trackLen"], a["trackLen"]))
+        check(u["track"] == NTRACKS + 1 and u["trackLen"] == a["trackLen"], "SHIFT+F4 on a built-in track edits a copy; undo puts the moved point back", (u["track"], u["trackLen"], a["trackLen"]))
         b = sim("--track", 0, "--state", 3, "--mode", 1, seconds=0.3)
         check(b["trackLen"] == a["trackLen"], "the built-in track itself is untouched")
         r = sim("--trackfile", f, "--state", 3, "--auto", "--nobotguns", seconds=260)
@@ -2154,12 +2154,37 @@ def custom_tracks_get_a_beach_and_the_editor_works_by_touch():
 
 
 @test
+def a_built_in_track_is_edited_in_place():
+    """2.9.8.4 F4 on a built-in track edits the track itself, not a copy: it is saved as events/track0.fcft (beside the
+    race files), the game reads it over the built-in shape at start, keeping the name; F8 puts the original back."""
+    tmp = tempfile.mkdtemp()
+    try:
+        tr = os.path.join(tmp, "tracks"); os.mkdir(tr)
+        def run(*args, seconds=1):
+            p = subprocess.run([BIN, "--sim", "--seconds", str(seconds), "--tracksdir", tr] + [str(a) for a in args], cwd=tmp, capture_output=True, text=True, timeout=120)
+            return json.loads(p.stdout.strip().splitlines()[-1])
+        a = sim("--track", 0, "--state", 3, "--mode", 1, seconds=0.3)
+        u = run("--state", 2, "--track", 0, "--edit", "--edscript", "down -460 -240;move -300 -200;up;wait;key f2;wait")
+        f = os.path.join(tmp, "events", "track0.fcft")
+        check(u["track"] == 0 and os.path.exists(f) and not os.listdir(tr), "the track itself was edited and saved as events/track0.fcft (no copy)", (u["track"], os.listdir(tr)))
+        check("HILLTOP HEIGHTS" in open(f).read(), "the file keeps the track's own name")
+        b = run("--track", 0, "--state", 3, "--mode", 1, seconds=0.3)
+        check(b["trackLen"] == u["trackLen"] != a["trackLen"], "the game races the edited shape", (a["trackLen"], u["trackLen"], b["trackLen"]))
+        c = sim("--track", 0, "--state", 3, "--mode", 1, seconds=0.3)
+        check(c["trackLen"] == a["trackLen"], "elsewhere (no events/track0.fcft) the built-in track is as it was")
+        r = run("--state", 2, "--track", 0, "--edit", "--edscript", "key f8;wait")
+        check(r["trackLen"] == a["trackLen"] and not os.path.exists(f), "F8: the original is back and the file is gone", (r["trackLen"], os.path.exists(f)))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
 def a_shortcut_can_be_a_tunnel():
     """The TUNNEL tool on a shortcut makes it dive under the sea (in the editor: on Twin Isles, the causeway between the
     islands). The file keeps it; a car takes it end to end, down in the tube and out the far side; right click undoes it."""
     tmp = tempfile.mkdtemp()
     try:
-        d = sim("--state", 2, "--tracksdir", tmp, "--track", 6, "--edit", "--edscript", "tool 2;down 0 0;up;wait", seconds=1)
+        d = sim("--state", 2, "--tracksdir", tmp, "--track", 6, "--edcopy", "--edscript", "tool 2;down 0 0;up;wait", seconds=1)
         check(d["tunnels"] == 3, "the causeway is now a third tunnel", d["tunnels"])
         files = [os.path.join(tmp, f) for f in os.listdir(tmp) if f.endswith(".fcft")]
         check(len(files) == 1 and "tunnel  shortcut 1  depth 19" in open(files[0]).read(), "the file says so", files)
