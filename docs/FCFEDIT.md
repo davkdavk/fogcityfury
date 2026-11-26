@@ -130,6 +130,15 @@ back. Up to 8 shields count; crates as many as you like. A crate gives a lap's r
 
 ## Mini Wardens one by one
 
+### The groups that drop in
+
+**The groups that drop in while you roam** (free roam, or roaming on after a race) aren't events, so they aren't on
+the map: groups of three mini Wardens land near you every minute or so on any track. **ROAM MINIS** at the top of the
+event list (`E`) turns them off for this track; then only the ones you place come. Your own mini Warden events work
+while roaming too (set them off by a time, a line or a lap).
+
+### Your own, one by one
+
 A MINI WARDENS moment puts a group on a roof (HOW MANY, 1–4). Select it and click **SPLIT: ONE MINI WARDEN EACH**:
 the group becomes one event per mini Warden, each with the same trigger, a beat apart, on its own spot on the roof and
 its own landing ring. Drag each one where you want it.

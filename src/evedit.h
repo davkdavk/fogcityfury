@@ -472,7 +472,8 @@ static std::vector<LRow> listRows() {
         if (!chained) { LRow x; x.ev = i; r.push_back(x); } }
     if (r.size() > 18) r.resize(18); return r;
 }
-static bool onDrift(float x, float y) { return listOn && y > LY - 4 && y < LY + 18 && x > LX + 250 && x < LX + 460; }
+static bool onDrift(float x, float y) { return listOn && y > LY - 4 && y < LY + 14 && x > LX + 250 && x < LX + 460; }
+static bool onRoamMinis(float x, float y) { return listOn && y >= LY + 14 && y < LY + 32 && x > LX + 250 && x < LX + 420; }   // 2.9.7
 static bool podPanel() { return selPod >= 0 && selPod < (int)director::pods.size() && selEv < 0 && selW < 0 && selLine < 0; }
 static int podRowAt(float x, float y) { if (!podPanel() || x < uiW - PW) return -1; for (int r = 0; r < 4; r++) { float yy = 124 + r * 34; if (y >= yy - 6 && y < yy + 28) return r; } return -1; }
 
@@ -487,6 +488,7 @@ static void mouseDown(int button) {
     if (button == SDL_BUTTON_LEFT && onThen(mx, my)) { wizStart(director::evs[selEv].id); return; }
     if (button == SDL_BUTTON_LEFT && onSplit(mx, my)) { splitMinis(); return; }
     if (listOn && wiz == WZ_OFF && button == SDL_BUTTON_LEFT && mx > LX && mx < LX + LW && my > LY && my < LY + 34 + 18 * LH) {   // the event list: pick a row; a lap cell turns that lap on or off
+        if (onRoamMinis(mx, my)) { push(); director::roamMinis = !director::roamMinis; dirty = true; tell(director::roamMinis ? "ROAMING HERE, GROUPS OF MINI WARDENS DROP IN NOW AND THEN" : "ROAMING HERE, NO MINI WARDENS DROP IN: ONLY THE ONES YOU PLACE"); return; }
         if (onDrift(mx, my)) { push(); static const float D[5] = { 0, 60, 90, 150, 240 }; int k = 0; for (int i = 0; i < 5; i++) if (fabsf(director::drift - D[i]) < 1) k = i; director::drift = D[(k + 1) % 5]; return; }
         std::vector<LRow> rows = listRows(); int r = (int)((my - LY - 34) / LH); if (r < 0 || r >= (int)rows.size()) return;
         if (rows[r].pod >= 0) { selPod = rows[r].pod; selEv = selLine = selW = -1; const director::Pod& pd = director::pods[selPod]; camTgt.x = pd.x; camTgt.z = pd.z; return; }
@@ -751,6 +753,7 @@ static void draw(float Wd) {
         ui.rect(LX - 6, LY - 6, LW + 12, 40 + std::max(1, (int)rows.size()) * LH, V3(0.02f, 0.03f, 0.06f), 0.85f);
         ui.text(LX, LY, 2.0f, YEL, "EVENTS  (E CLOSES)"); for (int c = 0; c < 6; c++) { snprintf(b, sizeof b, "%d", c + 1); ui.text(LX + LCX + c * 28 + 12, LY + 16, 1.4f, GREY, b, 1); }
         snprintf(b, sizeof b, "WEATHER DRIFTS: %s", director::drift > 0 ? (std::to_string((int)director::drift) + " S").c_str() : "OFF"); ui.text(LX + 250, LY + 3, 1.5f, onDrift(mx, my) ? WHT : CYA, b);
+        snprintf(b, sizeof b, "ROAM MINIS: %s", director::roamMinis ? "ON" : "OFF"); ui.text(LX + 250, LY + 19, 1.5f, onRoamMinis(mx, my) ? WHT : director::roamMinis ? CYA : ORG, b);
         ui.text(LX + LCX - 8, LY + 17, 1.2f, GREY, "LAP", 2);
         if (rows.empty()) ui.text(LX + 10, LY + 34, 1.6f, GREY, "NOTHING YET: N MAKES A MOMENT");
         for (int r = 0; r < (int)rows.size(); r++) { float y = LY + 34 + r * LH;
@@ -820,6 +823,7 @@ static void script(const char* p) {
         else if (t[0] == "autoline" && t.size() >= 3 && selEv >= 0) {   // autoline ID BACK: a line BACK m before the selected event (a mini Warden drop: before where they land), and it sets it off
             push(); Event& e = director::evs[selEv]; lineBefore(e.kind == director::MINIS ? e.to : spotOf(e), (float)atof(t[2].c_str()), t[1]); e.on = director::ON_LINE; e.ref = t[1]; }
         else if (t[0] == "stay" && selEv >= 0) { push(); director::evs[selEv].stay = true; }
+        else if (t[0] == "roamminis" && t.size() >= 2) { push(); director::roamMinis = t[1] != "off"; }
         else if (t[0] == "drift" && t.size() >= 2) { push(); director::drift = (float)atof(t[1].c_str()); }
         else if (t[0] == "enter") key(SDLK_RETURN);
         else if (t[0] == "list") listOn = true;

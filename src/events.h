@@ -54,6 +54,7 @@ static std::vector<Pickup> pickups;
 
 static std::vector<Line> lines; static std::vector<Event> evs; static std::vector<Pending> pend;
 struct Pod { std::string id; float x = 0, z = 0, r = 60; int n = 3; float k = 1; }; static std::vector<Pod> pods;   // dolphins that roam (dolphin.h)
+static bool roamMinis = true;   // 2.9.7 roaming the track: groups of three mini Wardens drop in now and then (minis.h); "roamminis off" stops them
 static float drift = 0;   // seconds between turns of the weather (0: it stays as chosen)
 static std::string netBody; static int netTrack = -1;   // online: the server's event file for its track (netroam.h)
 struct WardenStart { bool set = false; float x = 0, z = 0; }; static WardenStart wardenAt[4];   // where Wardens 1-4 start walking (unset: where the track puts them)
@@ -87,7 +88,7 @@ static std::string lapsText(unsigned m) {
     return s;
 }
 static void parse(const std::string& body) {
-    lines.clear(); evs.clear(); pods.clear(); pickups.clear(); drift = 0; for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
+    lines.clear(); evs.clear(); pods.clear(); pickups.clear(); drift = 0; roamMinis = true; for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
     while (i <= body.size()) {
         size_t j = body.find('\n', i); if (j == std::string::npos) j = body.size();
         std::vector<std::string> t = tokens(body.substr(i, j - i)); i = j + 1;
@@ -97,6 +98,7 @@ static void parse(const std::string& body) {
             for (size_t k = 4; k + 1 < t.size(); k += 2) { if (t[k] == "r") p.r = std::max(10.0f, (float)atof(t[k + 1].c_str())); else if (t[k] == "n") p.n = std::max(1, std::min(6, atoi(t[k + 1].c_str()))); else if (t[k] == "k") p.k = (float)atof(t[k + 1].c_str()); }
             pods.push_back(p); continue; }
         if (t.size() >= 5 && t[0] == "pickup") { Pickup p; p.kind = t[1] == "shield" ? 1 : 0; p.p = V3((float)atof(t[2].c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str())); pickups.push_back(p); continue; }
+        if (t.size() >= 2 && t[0] == "roamminis") { roamMinis = t[1] != "off"; continue; }
         if (t.size() >= 2 && t[0] == "drift") { drift = std::max(0.0f, (float)atof(t[1].c_str())); if (drift > 0) drift = std::max(drift, 20.0f); continue; }
         if (t.size() < 3 || t[0] != "event") continue;
         Event e; e.id = t[1]; e.kind = lookup(KIND, NKIND, t[2], -1); if (e.kind < 0) continue;
@@ -132,6 +134,7 @@ static std::string write() {
     std::string s = "# Fog City Fury events 1 (made by fcfedit; see src/events.h for the format)\n"; char b[512];
     for (int u = 0; u < 4; u++) if (wardenAt[u].set) { snprintf(b, sizeof b, "warden %d  %.1f %.1f\n", u + 1, wardenAt[u].x, wardenAt[u].z); s += b; }
     if (drift > 0) { snprintf(b, sizeof b, "drift %.0f\n", drift); s += b; }
+    if (!roamMinis) s += "roamminis off\n";
     for (const Pod& p : pods) { snprintf(b, sizeof b, "pod %s  %.1f %.1f  r %.0f  n %d  k %.2g\n", p.id.c_str(), p.x, p.z, p.r, p.n, p.k); s += b; }
     for (const Pickup& p : pickups) { snprintf(b, sizeof b, "pickup %s  %.1f %.1f %.1f\n", p.kind ? "shield" : "rocket", p.p.x, p.p.y, p.p.z); s += b; }
     for (const Line& l : lines) { snprintf(b, sizeof b, "line %s  %.1f %.1f  %.1f %.1f\n", l.id.c_str(), l.ax, l.az, l.bx, l.bz); s += b; }

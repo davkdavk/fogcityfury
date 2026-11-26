@@ -24,6 +24,7 @@ Lines before the lines and events:
 
     pod p1  210 -380  r 60  n 3  k 1        dolphins roaming this ring of sea all race: middle, radius, how many, size
     drift 90                                the weather turns by itself about every 90 s (clear, rain, storm; clear, fog)
+    roamminis off                           2.9.7: no groups of mini Wardens drop in while roaming this track (placed ones still come)
     pickup rocket  -480 9.7 -175            a rocket crate here (2.9.6); with any pickup lines, they replace the track's own
     pickup shield  -470 9.8 -170            a shield here (up to 8 count)
 

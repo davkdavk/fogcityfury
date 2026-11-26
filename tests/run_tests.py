@@ -2476,6 +2476,10 @@ def fcfedit_places_pickups_and_single_minis():
     check(d["jetDrops"] == 3 and d["mgBursts"] >= 1 and d["mgRounds"] >= 6 and d["mgHits"] >= 1 and d["jetShots"] == 2, "three come down; one fires a machine gun burst that hits, the other two a rocket each", (d["jetDrops"], d["mgBursts"], d["mgRounds"], d["mgHits"], d["jetShots"]))
     n = sim("--track", 0, "--state", 3, seconds=1)
     check(n["crateCount"] == 12 and n["pickupsPlaced"] == 0, "without any placed, the track's own crates", (n["crateCount"], n["pickupsPlaced"]))
+    g = os.path.join(tmp, "roam.fcfe"); open(g, "w").write("roamminis off\nevent m1 minis  at -147 30 -93  to -170 0 -110  k 1  gun mg  on time 5\n")
+    on = sim("--track", 0, "--state", 3, "--mode", 1, "--auto", "--nobotguns", seconds=150)
+    off = sim("--track", 0, "--state", 3, "--mode", 1, "--auto", "--nobotguns", "--events", g, seconds=150)
+    check(on["miniSpawned"] >= 3 and off["miniSpawned"] == 0 and off["jetDrops"] == 1, "2.9.7 ROAM MINIS OFF: no groups drop in while roaming; the one placed still comes", (on["miniSpawned"], off["miniSpawned"], off["jetDrops"]))
 
 
 @test

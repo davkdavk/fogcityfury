@@ -94,6 +94,12 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.7
+
+- **fcfedit: ROAM MINIS on or off.** The groups of three mini Wardens that drop in while you roam a track aren't
+  placed events, which is why they never showed in the editor. **ROAM MINIS** at the top of the event list (`E`)
+  turns them off for the track; your own placed mini Wardens still come, roaming or racing.
+
 ## What's new in 2.9.6
 
 - **fcfedit: rocket crates and shields, one by one.** `R` and `H` put them where you click. Once a track has any,

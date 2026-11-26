@@ -180,6 +180,7 @@ static void step(float dt) {
     spawnT -= dt; if (now) { if (alive() == 0) land(group > 0 ? group : 1); now = false; spawnT = GAP_MAX; }
     // a group of three now and then, even with others still about, up to six at once (two groups); online, the protocol
     // carries four, so one group at a time there
+    if (spawnT <= 0 && !director::roamMinis) spawnT = GAP_MIN;   // (2.9.7 the track's event file turned them off)
     if (spawnT <= 0) { int cap = netRace ? 4 : NSLOT - 1; if (alive() + GROUP <= cap) land(GROUP); spawnT = grng.r(GAP_MIN, GAP_MAX); }
     for (int i = 1; i < NSLOT; i++) {
         Fighter& f = fighters[i]; if (!f.on || !f.mini) continue;
