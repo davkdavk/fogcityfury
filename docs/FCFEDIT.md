@@ -203,7 +203,9 @@ for three minutes of racing). On foot the tape doesn't follow you: going back pu
 
 ## Where it's saved
 
-- **Built-in tracks:** `events/trackN.fcfe` next to the game. If you're working on the game itself, run
+- **Built-in tracks:** `events/trackN.fcfe` next to the game. **On the Xbox 360** (2.9.8) copy that `events` folder
+  beside the XEX (a subfolder called `events` in the same folder as `fogcityfury.xex`): its files are used in place of the built-in ones, so your edits play
+  there without a new build. The 360's log says where each track's events came from (`events: track0 from ...`). If you're working on the game itself, run
   `python3 tools/embed_events.py` afterwards. It builds the files into the game, which is how the Xbox 360 and
   Android get them.
 - **Custom tracks:** beside the track's `.fcft` file.

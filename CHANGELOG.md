@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.8 | | The Xbox 360 reads an events folder beside the XEX |
 | 2.9.7 | | fcfedit: ROAM MINIS on/off per track |
 | **2.9.6** | Machine-gun mini Wardens | fcfedit places rocket crates, shields and single mini Wardens |
 | **2.9.5** | Android steering stick; steering and aim sensitivity for pads and touch | Options get a STICKS page |

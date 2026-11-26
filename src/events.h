@@ -173,6 +173,12 @@ static void load(int track) {
         std::string p = pathFor(track);
 #ifndef FCF_GFX_XSDK
         if (!p.empty() && readFile(p, body)) loadedFrom = p;   // (the PC reads events/ itself, so the editor's saves show at once)
+#else
+        if (track < NTRACKS && !p.empty()) {   // 2.9.8 the 360: an events folder beside the XEX, if there is one, over the built-in files
+            std::string k = keyFor(track); const std::string tries[2] = { "events\\" + k + ".fcfe", p };   // (the events subfolder beside the XEX)
+            for (const std::string& q : tries) if (readFile(q, body)) { loadedFrom = q; break; }
+            static int logged = -1; if (logged != track) { logged = track; xsdk_log_write("events: %s from %s", k.c_str(), loadedFrom.empty() ? "built in" : loadedFrom.c_str()); }
+        }
 #endif
         if (loadedFrom.empty()) for (const Builtin* b = BUILTIN; b->key; b++) if (keyFor(track) == b->key) { body = b->body; loadedFrom = "built in"; }
     }

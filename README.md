@@ -94,6 +94,12 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.8
+
+- **Your fcfedit events on the Xbox 360 without a rebuild.** Copy the `events` folder (the `track0.fcfe` ...
+  `track6.fcfe` files fcfedit saves) beside the XEX; the 360 reads it at the start of each race, over the events built
+  into the game. Without the folder nothing changes.
+
 ## What's new in 2.9.7
 
 - **fcfedit: ROAM MINIS on or off.** The groups of three mini Wardens that drop in while you roam a track aren't
