@@ -98,15 +98,15 @@ in the options.
 
 **The career begins: five races for each track.**
 
-- **CAREER** on the track screen (MODE) opens the track's **race list**: its five races, each one's name, mode (race,
-  rampage or MANIC), weather and laps, and your best place in it.
+- **CAREER** on the track screen (MODE) opens the track's **race list**: its five races, each one's name, mode (race
+  or rampage), weather and laps, and your best place in it.
 - **Pick one and race.** It starts like any race, the camera coming down from above, with you on the grid **where
   you finished last time on this track** (the first time, at the back).
 - After the race, ENTER roams on and ESC goes back to the list.
 - **Each race is its own event file**, built in fcfedit: race 1 is the track's own file (`track0.fcfe`), races 2-5
   are `track0-r2.fcfe` ... `track0-r5.fcfe`. F1-F5 in fcfedit pick the race, and the strip under the top bar sets its
-  name, mode, weather and laps. Without a file, a race has its default (a clean race, a storm, a rampage, a MANIC run,
-  the final).
+  name, mode, weather and laps. Without a file, a race has its default (a clean race, a storm, a rampage, a storm
+  rampage, the final).
 - **fcfedit: deleting a mini Warden (or anything) works with a placing tool on.** With R, H or G on, a click on
   something already there placed a crate on it; now it selects it. DEL says what it deleted, and "NOTHING SELECTED"
   when nothing is.

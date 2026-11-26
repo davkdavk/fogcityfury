@@ -61,7 +61,7 @@ static int raceFile = 0;   // which race's file is loaded and edited: 0 = race 1
 struct RaceDef { bool set = false; std::string name; int mode = -1, weather = -1, laps = 0; };   // mode: 0 race, 2 rampage, 4 MANIC (selMode's numbers)
 static RaceDef raceDef;   // the loaded file's race line (unset: the race's defaults, raceDefault)
 static RaceDef raceDefault(int r) {   // a race with no race line of its own: a clean race, a storm, a rampage, a MANIC run, the final
-    static const char* N[NRACES] = { "CLEAN START", "STORM WARNING", "RAMPAGE", "MANIC", "THE FINAL" }; static const int M[NRACES] = { 0, 0, 2, 4, 0 }, WX[NRACES] = { 0, 3, 0, 0, 2 }, L[NRACES] = { 3, 3, 2, 3, 5 };
+    static const char* N[NRACES] = { "CLEAN START", "STORM WARNING", "RAMPAGE", "STORM RAMPAGE", "THE FINAL" }; static const int M[NRACES] = { 0, 0, 2, 2, 0 }, WX[NRACES] = { 0, 3, 0, 1, 2 }, L[NRACES] = { 3, 3, 2, 3, 5 };
     RaceDef d; r = std::max(0, std::min(NRACES - 1, r)); d.name = N[r]; d.mode = M[r]; d.weather = WX[r]; d.laps = L[r]; return d;
 }
 static RaceDef raceOf() { RaceDef d = raceDefault(raceFile); if (raceDef.set) { if (!raceDef.name.empty()) d.name = raceDef.name; if (raceDef.mode >= 0) d.mode = raceDef.mode; if (raceDef.weather >= 0) d.weather = raceDef.weather; if (raceDef.laps > 0) d.laps = raceDef.laps; } return d; }
