@@ -179,12 +179,12 @@ static void load(int track) {
             // XEX was started from, wherever it is kept (HDD, USB, any folder): the kernel maps it when a title launches.
             // Depending on the C library underneath, it is reached as game:\\... or through the object manager as
             // \\??\\game:\\...; the first that opens is kept, and the first race logs every try)
-            std::string k = keyFor(track), f = "\\events\\" + k + ".fcfe";
-            static const char* roots[] = { "game:", "\\??\\game:", "GAME:", "" };
+            std::string k = keyFor(track), f = "\\events\\" + k + ".fcfe", fp = "events/" + k + ".fcfe";
+            static const char* roots[] = { "game:", "\\??\\game:", "GAME:", "", "" };   // (the last is xsdk's own form for dbgprint.txt: a bare relative POSIX name, '/' between the names)
             static int good = -1; static bool tried = false;
-            if (good >= 0) { std::string q = std::string(roots[good]) + (roots[good][0] ? f : f.substr(1)); if (readFile(q, body)) loadedFrom = q; }
+            if (good >= 0) { std::string q = std::string(roots[good]) + (roots[good][0] ? f : (good == 4 ? fp : f.substr(1))); if (readFile(q, body)) loadedFrom = q; }
             else for (int r = 0; r < (int)(sizeof roots / sizeof roots[0]); r++) {
-                std::string q = std::string(roots[r]) + (roots[r][0] ? f : f.substr(1)); FILE* h = fopen(q.c_str(), "rb");
+                std::string q = std::string(roots[r]) + (roots[r][0] ? f : (r == 4 ? fp : f.substr(1))); FILE* h = fopen(q.c_str(), "rb");
                 if (!tried) xsdk_log_write("events: try %s -> %s", q.c_str(), h ? "OPEN" : "no");
                 if (h) { fclose(h); if (readFile(q, body)) { loadedFrom = q; good = r; break; } }
             }
