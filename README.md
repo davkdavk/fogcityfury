@@ -94,6 +94,13 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.8.1
+
+- **Your car drives itself after the flag.** While the results are up, the autopilot takes your car on round the
+  track (no nitro, no rockets) until you press ENTER to roam on, or leave to the menus. It's not online or in the
+  showdown.
+- When the clock runs out the results say **RACE OVER**, not TIME UP.
+
 ## What's new in 2.9.8
 
 - **Your fcfedit events on the Xbox 360 without a rebuild.** Copy the `events` folder (the `track0.fcfe` ...

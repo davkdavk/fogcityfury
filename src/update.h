@@ -83,8 +83,10 @@ static void update(float dt) {
         in = evx::tape::controls(in);   // (fcfedit's preview: played back from its tape, or recorded onto it)
 #endif
     } else if (state == TITLE) in = autoInput(player);
-    if ((state == TITLE || (state == RACE && autoDrive && go)) && !player.dead && !me.on) { static float stuck = 0; stuck = fabsf(player.vf) < 3 ? stuck + dt : 0; if (stuck > 2) { respawn(player); stuck = 0; } }   // the autopilot cannot reverse
-    else if (state == RESULTS) { in.brake = player.vf > 1 ? 0.6f : 0; resultsT += dt; if (simMode && champOn && !champDone && resultsT > 3) champAdvance(false); }   // (sims: the rounds go on by themselves)
+    bool cruise = state == RESULTS && !player.dead && !me.on && !showdownOn && !netRace;   // 2.9.8.1 after the flag the autopilot drives your car on (a cool-down lap) until you roam on or leave
+    if (cruise) { in = autoInput(player); in.gas = std::min(in.gas, 0.75f); in.nitro = false; in.fire = false; }
+    if ((state == TITLE || cruise || (state == RACE && autoDrive && go)) && !player.dead && !me.on) { static float stuck = 0; stuck = fabsf(player.vf) < 3 ? stuck + dt : 0; if (stuck > 2) { respawn(player); stuck = 0; } }   // the autopilot cannot reverse
+    if (state == RESULTS) { if (!cruise) in.brake = player.vf > 1 ? 0.6f : 0; resultsT += dt; if (simMode && champOn && !champDone && resultsT > 3) champAdvance(false); }   // (sims: the rounds go on by themselves)
     if (autoDrive && showdownOn && shdPhase == SH_DRIVE && !me.on && !shdSpectate && state == RACE) {   // the autopilot (tests) drives the bots' way: the car map, the farthest point in plain sight
         V3 aim; float left; if (cfAim(player.pos, aim, left)) {
             V3 d = aim - player.pos; float err = wrapPi(atan2f(d.x, d.z) - player.yaw), L = flatDist(aim, player.pos);

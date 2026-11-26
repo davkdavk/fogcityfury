@@ -496,7 +496,7 @@ static void drawHUD() {
         } else if (state == RESULTS) {
             ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.45f); panel(Wd / 2 - 330, 150, 660, 400, 0.75f); if (champOn) champBar();
             static const char* suf[12] = { "", "ST", "ND", "RD", "TH", "TH", "TH", "TH", "TH", "TH", "TH", "TH" };
-            if (timeUp) ui.text(Wd / 2, 180, 9, V3(1, 0.2f, 0.1f), "TIME UP", 1, 1, 0.12f); else { snprintf(b, sizeof b, "%d%s PLACE", finalPlace, suf[finalPlace]); ui.text(Wd / 2, 180, 9, finalPlace == 1 ? yel : white, b, 1, 1, 0.12f); }
+            if (timeUp) ui.text(Wd / 2, 180, 9, V3(1, 0.2f, 0.1f), "RACE OVER", 1, 1, 0.12f); else { snprintf(b, sizeof b, "%d%s PLACE", finalPlace, suf[finalPlace]); ui.text(Wd / 2, 180, 9, finalPlace == 1 ? yel : white, b, 1, 1, 0.12f); }
             fmtTime(t, raceT); snprintf(b, sizeof b, "RACE TIME   %s", t); ui.text(Wd / 2, 300, 4, white, b, 1);
             if (bestLapRace > 0) fmtTime(t, bestLapRace); else snprintf(t, 32, "-:--.--"); snprintf(b, sizeof b, "BEST LAP    %s", t); ui.text(Wd / 2, 345, 4, white, b, 1);
             snprintf(b, sizeof b, "KEYS FOUND  %d/%d", keyCount(W.id), NKEYS); ui.text(Wd / 2, 390, 4, yel, b, 1);

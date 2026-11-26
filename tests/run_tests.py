@@ -2428,13 +2428,15 @@ def roam_on_after_the_race():
     After a rampage's showdown too."""
     r = sim("--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", "--press", "85:RETURN", seconds=130)
     check(r["state"] == 3 and r["explore"] == 1 and r["roamAfters"] == 1, "ENTER: roaming the track", (r["state"], r["explore"], r["roamAfters"]))
-    check(r["miniJets"] > 0 and r["drops"] > 10, "mini Wardens come, and the pick-ups are about the town", (r["miniJets"], r["drops"]))
+    check(r["miniSpawned"] > 0 and r["drops"] > 10, "mini Wardens come, and the pick-ups are about the town", (r["miniSpawned"], r["drops"]))   # (2.9.8.1 spawned, not yet hopping at you: the car rolls on before ENTER now)
     m = sim("--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", "--press", "85:ESCAPE", seconds=90)
     check(m["state"] != 3 and m["roamAfters"] == 0, "ESC: back to the menus", (m["state"], m["roamAfters"]))
     s = sim("--track", 0, "--state", 3, "--mode", 2, "--sdnow", "--auto", "--keys", 5, "--footai", "--press", "125:RETURN", seconds=140)
     check(s["state"] == 3 and s["explore"] == 1 and s["onFoot"] == 0, "after a rampage's showdown: roaming, back in the car", (s["state"], s["explore"], s["onFoot"]))
     t = sim("--touch", "--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", seconds=85)
     check("ROAM" in t["touchBtns"] and "MENU" in t["touchBtns"], "on a touch screen: ROAM and MENU", t["touchBtns"])
+    w = sim("--track", 1, "--state", 3, "--auto", "--laps", 1, "--nobotguns", seconds=95)
+    check(w["state"] == 5 and w["vf"] > 10 and w["wrecks"] == 0, "2.9.8.1 waiting at the results, the car drives itself on (a cool-down lap)", (w["state"], w["vf"], w["wrecks"]))
 
 
 @test
