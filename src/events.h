@@ -49,7 +49,7 @@ struct Event {
     int fired = 0, lastLap = -99; float lastT = -99;   // (the race so far)
 };
 struct Pending { int ev; float at; };
-struct Pickup { int kind = 0; V3 p; };   // 2.9.6 a rocket crate (0) or a shield (1) (2.9.8.3 or a ghost, 2) placed by hand: if a track has any, they replace its own
+struct Pickup { int kind = 0; V3 p; int lap = 1; };   // (2.9.8.4 lap: it is out from this lap on)   // 2.9.6 a rocket crate (0) or a shield (1) (2.9.8.3 or a ghost, 2) placed by hand: if a track has any, they replace its own
 static std::vector<Pickup> pickups;
 
 static std::vector<Line> lines; static std::vector<Event> evs; static std::vector<Pending> pend;
@@ -108,7 +108,9 @@ static void parse(const std::string& body) {
         if (t.size() >= 4 && t[0] == "pod") { Pod p; p.id = t[1]; p.x = (float)atof(t[2].c_str()); p.z = (float)atof(t[3].c_str());
             for (size_t k = 4; k + 1 < t.size(); k += 2) { if (t[k] == "r") p.r = std::max(10.0f, (float)atof(t[k + 1].c_str())); else if (t[k] == "n") p.n = std::max(1, std::min(6, atoi(t[k + 1].c_str()))); else if (t[k] == "k") p.k = (float)atof(t[k + 1].c_str()); }
             pods.push_back(p); continue; }
-        if (t.size() >= 5 && t[0] == "pickup") { Pickup p; p.kind = t[1] == "shield" ? 1 : t[1] == "ghost" ? 2 : 0; p.p = V3((float)atof(t[2].c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str())); pickups.push_back(p); continue; }
+        if (t.size() >= 5 && t[0] == "pickup") { Pickup p; p.kind = t[1] == "shield" ? 1 : t[1] == "ghost" ? 2 : 0; p.p = V3((float)atof(t[2].c_str()), (float)atof(t[3].c_str()), (float)atof(t[4].c_str()));
+            for (size_t k = 5; k + 1 < t.size(); k += 2) if (t[k] == "lap") p.lap = std::max(1, std::min(99, atoi(t[k + 1].c_str())));
+            pickups.push_back(p); continue; }
         if (t.size() >= 2 && t[0] == "race") { raceDef.set = true; size_t k = 1; if (k < t.size() && t[k] != "mode" && t[k] != "weather" && t[k] != "laps") raceDef.name = t[k++];
             for (; k + 1 < t.size(); k += 2) { const std::string& w = t[k], &v = t[k + 1];
                 if (w == "mode") raceDef.mode = v == "rampage" ? 2 : v == "manic" ? 4 : 0;
@@ -154,7 +156,7 @@ static std::string write() {
     if (raceFile > 0 || raceDef.set) { RaceDef d = raceOf(); std::string nm = d.name; for (char& c : nm) if (c == '"') c = '\''; snprintf(b, sizeof b, "race \"%s\"  mode %s  weather %s  laps %d\n", nm.c_str(), d.mode == 2 ? "rampage" : d.mode == 4 ? "manic" : "race", WXNAME[std::max(0, std::min(3, d.weather))], d.laps); s += b; }
     if (!roamMinis) s += "roamminis off\n";
     for (const Pod& p : pods) { snprintf(b, sizeof b, "pod %s  %.1f %.1f  r %.0f  n %d  k %.2g\n", p.id.c_str(), p.x, p.z, p.r, p.n, p.k); s += b; }
-    for (const Pickup& p : pickups) { snprintf(b, sizeof b, "pickup %s  %.1f %.1f %.1f\n", p.kind == 2 ? "ghost" : p.kind ? "shield" : "rocket", p.p.x, p.p.y, p.p.z); s += b; }
+    for (const Pickup& p : pickups) { snprintf(b, sizeof b, "pickup %s  %.1f %.1f %.1f", p.kind == 2 ? "ghost" : p.kind ? "shield" : "rocket", p.p.x, p.p.y, p.p.z); s += b; if (p.lap > 1) { snprintf(b, sizeof b, "  lap %d", p.lap); s += b; } s += "\n"; }
     for (const Line& l : lines) { snprintf(b, sizeof b, "line %s  %.1f %.1f  %.1f %.1f\n", l.id.c_str(), l.ax, l.az, l.bx, l.bz); s += b; }
     for (const Event& e : evs) {
         snprintf(b, sizeof b, "event %s %s  at %.1f %.1f %.1f", e.id.c_str(), KIND[e.kind], e.at.x, e.at.y, e.at.z); s += b;
@@ -282,22 +284,37 @@ static void happen(int ev) {
 
 // the Wardens the file places: each is at the point of its route nearest the spot as the race starts (the route on that
 // side of the road), and walks on from there
+static bool misfireFirst(int u); static bool misfireTo(int u, V3& to);
 static void placeWardens() {
+    for (int u = 0; u < mech::count(); u++) {   // 2.9.8.4 its first misfire still to come (offline): its walk at a stand, in the same spot
+        mech::Unit& m = mech::unit[u]; if (nc.on || netRace || mech::fixed || !misfireFirst(u)) continue;
+        float c0 = fmodf(6 + m.tOff, mech::CYCLE), nt = m.tOff + (mech::WALK + 1 - c0) + (c0 > mech::WALK + 1 ? mech::CYCLE : 0);
+        m.s0 += mech::walked(6 + nt) - mech::walked(6 + m.tOff); m.tOff = nt; m.hold = true;
+    }
     for (int u = 0; u < mech::NUNIT; u++) {
         if (!wardenAt[u].set || W.ts.empty()) continue; const WardenStart& w = wardenAt[u];
         int i = W.nearest(w.x, w.z); const TS& s = W.ts[i]; float lat = (w.x - s.x) * s.tz - (w.z - s.z) * s.tx;
         mech::Unit& m = mech::unit[u]; m.route = lat < 0 ? 0 : 1;
         m.s0 = mech::arcOfS(m.route, (float)i) + mech::walked(6 + m.tOff);   // (there when the race starts: in a race its clock is raceT + 6, update.h)
     }
+    for (int u = 0; u < mech::count(); u++) { mech::Unit& m = mech::unit[u]; V3 tg;   // (held: facing where its rocket goes)
+        if (m.hold && misfireTo(u, tg)) { V3 a = mech::bodyAt(m, 6); m.faceYaw = atan2f(tg.x - a.x, tg.z - a.z); } }
 }
 // 2.9.6 a race starts (setupCars, after the track's own are laid): the crates and shields placed by hand replace them
 static void placePickups() {
     if (pickups.empty() || trialMode) return;
     crates.clear(); nShieldPU = 0; nGhostPU = 0;
-    for (const Pickup& q : pickups) { V3 p = q.p + V3(0, 1.0f, 0); if (q.kind == 0) crates.push_back({ p, 0 }); else if (q.kind == 2) { if (nGhostPU < MAXGHOSTPU) ghostPU[nGhostPU++] = { p, -99 }; } else if (nShieldPU < MAXSHIELDPU) shieldPU[nShieldPU++] = { p, -2, 0 }; }
+    for (const Pickup& q : pickups) { V3 p = q.p + V3(0, 1.0f, 0); if (q.kind == 0) crates.push_back({ p, 0, -99, q.lap }); else if (q.kind == 2) { if (nGhostPU < MAXGHOSTPU) ghostPU[nGhostPU++] = { p, -99, q.lap }; } else if (nShieldPU < MAXSHIELDPU) shieldPU[nShieldPU++] = { p, -2, 0, q.lap }; }
 }
+// 2.9.8.4 the first misfire of Warden u not fired yet: where its rocket goes (wardenfx aims the cannon there)
+static bool misfireTo(int u, V3& to) {
+    for (const Event& e : evs) if (e.kind == ROCKET && e.from == u + 1 && (e.times != ONCE || !e.fired)) { to = e.to; return true; }
+    return false;
+}
+static bool misfireFirst(int u) { bool any = false; for (const Event& e : evs) if (e.kind == ROCKET && e.from == u + 1) { if (e.fired) return false; any = true; } return any; }   // (it has one, none fired yet)
 // a race starts (setupCars): the track's events, all unfired
 static void reset() {
+    wfx::nextMisfire = misfireTo; wfx::firstToCome = misfireFirst;
     if (loadedKey != keyFor(W.id) || overrideText || !overridePath.empty() || netRace || nc.on || loadedFrom == "server") load(W.id);
     for (Event& e : evs) { e.fired = 0; e.lastLap = -99; e.lastT = -99; }
     pend.clear(); firedTotal = 0; havePrev = false; driftAt = drift; turns = 0;

@@ -165,14 +165,14 @@ static void drawWreckage(Prog& p, bool lit) {
     for (auto& r : rockets) { float hl = sqrtf(r.v.x * r.v.x + r.v.z * r.v.z); p.m4("uModel", mul(translate(r.p), mul(rotY(atan2f(r.v.x, r.v.z)), mul(rotX(-atan2f(r.v.y, hl)), scale(1.7f, 1.7f, 1.7f))))); rocketMesh.draw(); }
     bool racingPU = state != TITLE && !showdownOn && !exploreMode;   // (2.9.8.3 pick-ups are for races: none while roaming)
     if (racingPU) for (size_t k = 0; k < crates.size(); k++) {
-        if (crates[k].lapTaken == player.lap) continue;   // (2.9.8.3 taken this lap: gone until your next)
+        if (crates[k].lapTaken == player.lap || std::max(player.lap, 1) < crates[k].fromLap) continue;   // (2.9.8.4 or not out yet)   // (2.9.8.3 taken this lap: gone until your next)
         V3 q = crates[k].p + V3(0, 0.18f * sinf(T * 2.4f + k), 0);
         p.m4("uModel", mul(translate(q), mul(rotY(T * 1.3f + k), scale(0.62f, 0.62f, 0.62f)))); crateMesh.draw();
         for (int e = -1; e <= 1; e += 2) { p.m4("uModel", mul(translate(q + V3(0, 1.05f, 0)), mul(rotY(T * 1.3f + k), mul(translate(V3(e * 0.32f, 0, 0)), mul(rotX(-0.5f), scale(1.5f, 1.5f, 1.5f)))))); rocketMesh.draw(); }
     }
-    if (racingPU) for (int k = 0; k < nGhostPU; k++) if (ghostPU[k].lapTaken != player.lap) {   // 2.9.8.3 a ghost: a see-through shield that turns the other way
+    if (racingPU) for (int k = 0; k < nGhostPU; k++) if (ghostPU[k].lapTaken != player.lap && std::max(player.lap, 1) >= ghostPU[k].fromLap) {   // 2.9.8.3 a ghost: a see-through shield that turns the other way
         if (lit) p.f1("uGone", 0.5f + 0.15f * sinf(T * 5 + k)); p.m4("uModel", mul(translate(ghostPU[k].p + V3(0, 0.3f * sinf(T * 2 + k), 0)), mul(rotY(-T * 3.0f + k), scale(0.9f, 0.9f, 0.9f)))); shieldMesh.draw(); if (lit) p.f1("uGone", 0); }
-    if (racingPU) for (int k = 0; k < nShieldPU; k++) if (puHere(shieldPU[k])) { p.m4("uModel", mul(translate(shieldPU[k].p + V3(0, 0.22f * sinf(T * 3 + k), 0)), mul(rotY(T * 2.2f + k), scale(0.8f, 0.8f, 0.8f)))); shieldMesh.draw(); }
+    if (racingPU) for (int k = 0; k < nShieldPU; k++) if (puHere(shieldPU[k]) && std::max(player.lap, 1) >= shieldPU[k].fromLap) { p.m4("uModel", mul(translate(shieldPU[k].p + V3(0, 0.22f * sinf(T * 3 + k), 0)), mul(rotY(T * 2.2f + k), scale(0.8f, 0.8f, 0.8f)))); shieldMesh.draw(); }
 }
 #ifdef FCF_XENOS_CULL
 struct VisibleCell { int id, lod; float dist2; };

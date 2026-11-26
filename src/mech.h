@@ -298,6 +298,9 @@ struct Unit {
     // the cannon (wfx): the barrels' turn and spin speed, the kick of the last round, and the small corrections that put
     // the barrels exactly on the target (aimYaw, aimElev are where the body is told to point; these fix the rest)
     float spinA = 0, spinV = 0, recoil = 0, aimYawC = 0, aimElevC = 0; bool spinOwn = false;
+    // 2.9.8.4 hold: it stands where it is, its own clock stopped, turned to faceYaw (its first misfire still to come);
+    // then it sets off. Its feet stay under it, not on the path, until it has turned back onto the path
+    bool hold = false; float faceYaw = 0;
 };
 static Unit unit[NUNIT];
 static int count() { return !on ? 0 : fixed ? 1 : W.def ? std::max(0, std::min(NUNIT, W.def->wardens)) : 2; }
@@ -395,7 +398,7 @@ static void setup() {
         m.s0 = arcOfS(r,
                 W.n * (0.085f + 0.5f * r +
                               0.25f * (u / 2))); /* (s0: a walking distance along its route; the third and fourth share the two routes, a quarter of a lap on) */
-        m.tOff = u * 17.0f;
+        m.tOff = u * 17.0f; m.hold = false;
         m.paint = PAINTS[u];
         m.route = r;
         m.lookYaw = m.lookPitch = 0;
@@ -424,7 +427,8 @@ static int update(Unit& m, float t, V3 target) {
         V3 a, f; frameAt(m, m.s0 - d, a, f); m.at = V3(a.x, groundAt(a.x, a.z), a.z); m.pathYaw = atan2f(f.x, f.z);
         m.gait = gaitAt(tt); m.phase = d / STRIDE * 6.2831853f;
         // turn onto the path like something heavy: eased, not snapped (a new race, a jump in the clock: straight on)
-        float dt = t - m.lastT; if (m.lastT < 0 || dt < 0 || dt > 0.5f) m.yaw = m.pathYaw; else m.yaw += wrapPi(m.pathYaw - m.yaw) * (1 - expf(-dt * 1.8f));
+        float want = m.hold ? m.faceYaw : m.pathYaw;   // (2.9.8.4 held: turned to its misfire)
+        float dt = t - m.lastT; if (m.lastT < 0 || dt < 0 || dt > 0.5f) m.yaw = want; else m.yaw += wrapPi(want - m.yaw) * (1 - expf(-dt * 1.8f));
         m.jolt *= expf(-std::max(0.0f, std::min(dt, 0.5f)) * 5.0f);
     }
     m.lastT = t;
@@ -432,7 +436,7 @@ static int update(Unit& m, float t, V3 target) {
     float gy[2]; int landed = 0;
     for (int e = 0; e < 2; e++) {
         V3 foot; float lift = 0;
-        if (fixed) { foot = m.at + rt * ((e ? 1.0f : -1.0f) * HIP_W) + fw * 1.0f; foot.y = groundAt(foot.x, foot.z); m.land[e] = foot; }
+        if (fixed || m.hold || (m.gait < 0.05f && fabsf(wrapPi(m.yaw - m.pathYaw)) > 0.25f)) { foot = m.at + rt * ((e ? 1.0f : -1.0f) * HIP_W) + fw * 1.0f; foot.y = groundAt(foot.x, foot.z); m.land[e] = foot; m.swing[e] = -1; }   // (2.9.8.4 or turned off the path, standing)
         else {
             float u = d / STRIDE + (e ? 0.5f : 0), n = floorf(u), fr = u - n, dLand = (n - (e ? 0.5f : 0)) * STRIDE;
             V3 p0 = plantAt(m, e, dLand);

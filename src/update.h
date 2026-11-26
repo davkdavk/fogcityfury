@@ -172,7 +172,7 @@ static void update(float dt) {
         for (auto& t : fireAt) if (t >= 0 && raceT >= t) { fireRocket(); t = -1; }
         for (auto& t : resetAt) if (t >= 0 && raceT >= t) { doReset(); t = -1; }
         if (!exploreMode && !player.dead && !me.on && !showdownOn) for (auto& c : crates) {   // 2.9.8.3 each crate: two more rockets, up to what your level holds; that crate is gone for you until your next lap. Only in a race
-            if (c.lapTaken == player.lap) continue; V3 d = c.p - (player.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
+            if (c.lapTaken == player.lap || std::max(player.lap, 1) < c.fromLap) continue; V3 d = c.p - (player.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
             if (ammo >= rocketCap()) { if (fullSayT <= 0) { say("ROCKETS FULL", SAY_INFO, 1.2f); fullSayT = 3; } continue; }   // (full: it stays)
             c.lapTaken = player.lap; rocketLap = player.lap; int got = std::min(CRATE_ROCKETS, rocketCap() - ammo); ammo += got; ammoFlash = 1; tm.pickups++; { char rb[48]; snprintf(rb, sizeof rb, "ROCKETS +%d  (%d/%d)", got, ammo, rocketCap()); say(rb, SAY_GOOD, 1.8f); } tone(330, 0.12f, 0.45f, 2); tone(495, 0.12f, 0.45f, 2, 0, 0.09f); tone(660, 0.22f, 0.45f, 2, 0, 0.18f); rumble(0.4f, 200);
             for (int i = 0; i < 24; i++) { V3 dd = norm(V3(grng.r(-1, 1), grng.r(-0.3f, 1), grng.r(-1, 1))); spawn(c.p, dd * grng.r(2, 8), grng.r(0.4f, 0.8f), 0.22f, 0, V3(4, 1.4f, 0.4f), 1, 1, -3); }

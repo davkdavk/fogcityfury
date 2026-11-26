@@ -136,6 +136,17 @@ As soon as a track has one placed, **yours replace the track's own** (all of the
 squares and dots are where the track puts them while you have none). Delete the last one and the track's own come
 back. Up to 8 shields count; crates as many as you like. A crate gives a lap's rockets, as before.
 
+**The track's own can be moved and deleted (2.9.8.4).** Click one of the faint ones: they all become placed ones, where
+they were, so you can drag them, `DEL` the ones you don't want, and keep the rest. (Script: `adopt`.)
+
+**The lap each comes out (2.9.8.4).** Click a crate, shield or ghost and press `+` or `-`: it is out from that lap on
+(lap 1, the start, is the default). `SHIFT` with `+` or `-` sets every one of that kind. The label shows `LAP 3` and so
+on; the file says `pickup rocket  -480.0 12.0 -175.0  lap 3`. (Script: `pickuplap INDEX LAP`.)
+
+**Wardens stand aimed (2.9.8.4).** A Warden with a misfire still to come stands at its spot facing where the rocket
+goes, cannon on it, from the start of the race; once it has fired it turns back onto its beat and walks. (Offline:
+online the Wardens walk as everyone else sees them.)
+
 ## Mini Wardens one by one
 
 ### The groups that drop in
@@ -197,6 +208,7 @@ for three minutes of racing). On foot the tape doesn't follow you: going back pu
 | `N` | new moment |
 | `6` | place a Warden (then click it for **+ MISFIRE**) |
 | `R` / `H` / `G` | place rocket crates / shields / ghosts (click on for more, `ESC` when done) |
+| `+` / `-` | the lap the selected crate, shield or ghost comes out (`SHIFT`: all of its kind) |
 | `F1`-`F5` | which of the track's five career races you're editing |
 | `L` | draw a line by hand (click its two ends) |
 | `1`–`5`, `7`–`9`, `0` | place a single event by hand: rocket, explosion, splash, shake, message, building falls, dolphin leap, mini Wardens, weather |

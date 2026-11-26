@@ -94,6 +94,16 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.8.5
+
+- **Wardens stand aimed.** A Warden with a misfire to come stands at its spot facing where the rocket goes, cannon on
+  it, from the start of the race. Once it has fired it turns back onto its beat and walks (offline; online they walk
+  as everyone sees them).
+- **fcfedit: the track's own crates, shields and ghosts are yours to edit.** Click one of the faint ones and they all
+  become placed ones where they stood: drag them, `DEL` the ones you don't want.
+- **fcfedit: the lap each comes out.** Select a crate, shield or ghost and press `+` / `-` to set the lap it appears
+  (`SHIFT` for all of its kind). Saved as `lap N` on its `pickup` line.
+
 ## What's new in 2.9.8.4
 
 **The track editor edits THE track, not a copy.**

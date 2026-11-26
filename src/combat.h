@@ -24,7 +24,7 @@ static float lobCruise(V3 a, V3 b) {
     for (int i = 0; i <= n; i++) { V3 q = a + d * ((float)i / n); top = std::max(top, W.ground(q.x, q.z, 900) + 30); }
     return top;
 }
-struct Crate { V3 p; float cd; int lapTaken = -99; };   // (2.9.8.3 each crate on its own: the lap you took it, and it's back for you on the next)
+struct Crate { V3 p; float cd; int lapTaken = -99; int fromLap = 1; };   // (2.9.8.4 fromLap: there from this lap on)   // (2.9.8.3 each crate on its own: the lap you took it, and it's back for you on the next)
 static std::vector<Wreck> wrecks; static std::vector<Debris> debris; static std::vector<Rocket> rockets; static std::vector<Crate> crates;
 static int ammo = 0, startAmmo = 0, lockTgt = -1, rocketLap = -1;
 static int keyJingles = 0;   // test metric: key jingles played
@@ -32,12 +32,12 @@ static int spaceFalls = 0; static bool cliSpace = false, cliUfoGo = false;   // 
 static bool fxaaOff = false, grassOff = false, ripAt = false; static float ripX = 0, ripZ = 0; static int grassTufts(); static bool cliEdTouch = false; static std::string edTouchResult;
 static bool touchHasAmmo() { return ammo > 0; }
 static bool selIsCustom();   // rocketLap: the lap on which we last took a crate (one set of rockets per lap)
-static bool cratesOn() { for (const Crate& c : crates) if (c.lapTaken != player.lap) return true; return false; }   // (2.9.8.3 any crate still there for you this lap)
+static bool cratesOn() { for (const Crate& c : crates) if (c.lapTaken != player.lap && std::max(player.lap, 1) >= c.fromLap) return true; return false; }   // (2.9.8.3 any crate still there for you this lap)
 // 2.9.8.3 held items: shields and ghosts you pick up are kept (up to 3 of each) and used when you choose; one is selected.
 // A ghost: 7 s when nothing hits you and you hit nothing (other racers, other players) - you pass through them
 static const int MAXHELD = 3; static const float GHOST_TIME = 7;
 static int heldShields = 0, heldGhosts = 0, itemSel = 0, ghostsUsed = 0, shieldsUsed = 0; static float ghostT = 0, itemFlash = 0;
-struct GhostPU { V3 p; int lapTaken = -99; }; static const int MAXGHOSTPU = 8; static GhostPU ghostPU[MAXGHOSTPU]; static int nGhostPU = 0;
+struct GhostPU { V3 p; int lapTaken = -99; int fromLap = 1; }; static const int MAXGHOSTPU = 8; static GhostPU ghostPU[MAXGHOSTPU]; static int nGhostPU = 0;
 static bool ghosting() { return ghostT > 0; }
 static int touchItems() { int sel = itemSel; if ((sel == 0 ? heldShields : heldGhosts) == 0) sel ^= 1; return (heldShields > 0 ? 1 : 0) | (heldGhosts > 0 ? 2 : 0) | (sel ? 4 : 0); }   // (touch: what to show; bit 4 the ghost is the one a tap uses)
 static float goneOf(float age) { return clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); }   // 0 solid .. 1 faded away
@@ -49,7 +49,7 @@ static Mesh boxMesh, rocketMesh, crateMesh, shieldMesh, jetMesh;
 static const float SHIELD_TIME = 15; static float shieldFx = 0, shieldPopT = 0;
 // two shields on the route. The first car through takes one, and it stays gone until that car has come round again
 // (a whole lap later), so on any lap one car at most gets each
-struct ShieldPU { V3 p; int holder; float at; };   // holder: -2 nobody yet, -1 us, 0.. a bot; at: the holder's race progress when it took it
+struct ShieldPU { V3 p; int holder; float at; int fromLap = 1; };   // holder: -2 nobody yet, -1 us, 0.. a bot; at: the holder's race progress when it took it
 static const int MAXSHIELDPU = 8; static ShieldPU shieldPU[MAXSHIELDPU]; static int nShieldPU = 0;
 static int carLap(int who) { return who == -1 ? player.lap : (int)floorf(ai[who].stot / W.n); }
 static float carDist(int who) { return who == -1 ? player.progress : ai[who].stot; }
@@ -96,7 +96,7 @@ static void setupCars(bool race) {
         W.brs.size() > 1 ? sb.at(sb.len * 0.5f, 0, shieldPU[k].p, yaw) : sb.at(sb.len * (k ? 0.68f : 0.32f), 0, shieldPU[k].p, yaw);
         shieldPU[k].p.y += 1.0f;
         shieldPU[k].holder = -2;
-        shieldPU[k].at = 0;
+        shieldPU[k].at = 0; shieldPU[k].fromLap = 1;
     }
     director::reset(); fall::reset(); dolphin::reset(); jetdrop::reset();   // the track's scripted events (events.h), all unfired; every building standing again
     mech::setup(); director::placeWardens(); if (mech::fixed) mech::unit[0].at.y = mech::groundAt(mech::unit[0].at.x, mech::unit[0].at.z);
@@ -358,7 +358,7 @@ static void stepItems(float dt) {   // update(): the ghost's clock, the ghost pi
     if (ghostT > 0) { ghostT = std::max(0.0f, ghostT - dt); if (ghostT == 0) { say("GHOST OFF", SAY_COOL, 1.2f); tone(500, 0.2f, 0.3f, 2, -300); } }
     if (state != RACE || player.dead || me.on || showdownOn || exploreMode || trialMode) return;
     for (int k = 0; k < nGhostPU; k++) {
-        GhostPU& g = ghostPU[k]; if (g.lapTaken == player.lap || heldGhosts >= MAXHELD) continue; V3 d = g.p - (player.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
+        GhostPU& g = ghostPU[k]; if (g.lapTaken == player.lap || heldGhosts >= MAXHELD || std::max(player.lap, 1) < g.fromLap) continue; V3 d = g.p - (player.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
         g.lapTaken = player.lap; heldGhosts++; itemSel = 1; itemFlash = 1; say(heldGhosts > 1 ? "ANOTHER GHOST HELD" : "GHOST HELD - USE IT TO PASS THROUGH THEM", SAY_COOL, 1.8f); tone(392, 0.15f, 0.4f, 2); tone(784, 0.3f, 0.35f, 1, 0, 0.1f); rumble(0.3f, 200);
         for (int i = 0; i < 20; i++) { float a = i * 2.39996f; spawn(g.p, V3(cosf(a) * 5, 2 + (i % 4), sinf(a) * 5), 0.7f, 0.25f, 0, V3(0.7f, 0.9f, 1.4f), 1, 1, -2); }
     }
@@ -384,6 +384,7 @@ static void rocketHit(int t, V3 at, int owner) {
 static void grabShield(int who, Car& c) {   // drive through a shield that is there: it is ours, and gone for everyone else until our next lap
     for (int k = 0; k < nShieldPU; k++) {
         ShieldPU& u = shieldPU[k]; if (!puHere(u)) continue; V3 d = u.p - (c.pos + V3(0, 0.8f, 0)); if (dot(d, d) > 3.3f * 3.3f) continue;
+        if ((who == -1 ? std::max(player.lap, 1) : carLap(who) + 1) < u.fromLap) continue;   // (2.9.8.4 not out yet for this car)
         if (who == -1 && heldShields >= MAXHELD) continue;   // (2.9.8.3 your hands are full: it stays for someone else)
         u.holder = who; u.at = carDist(who); if (who != -1) c.shield = SHIELD_TIME; float nk = who == -1 ? 1 : clampf(1 - len(c.pos - player.pos) / 150, 0, 1);
         if (who == -1) { tm.shields++; heldShields++; itemSel = 0; itemFlash = 1; say(heldShields > 1 ? "ANOTHER SHIELD HELD" : "SHIELD HELD - USE IT WHEN YOU NEED IT", SAY_COOL, 1.8f); rumble(0.4f, 200); } else tm.aiShields++;   // (2.9.8.3 kept, not used at once)
@@ -415,7 +416,7 @@ static void botWeapons(float dt) {
         Car& c = ai[k]; if (c.dead || c.finishT >= 0) continue;
         int lap = carLap(k);
         // a bot bothers with a crate on about two laps in five, and takes one rocket from it (ten bots with two each was a war)
-        if (c.botRLap != lap) for (auto& cr : crates) { float dx = cr.p.x - c.pos.x, dz = cr.p.z - c.pos.z; if (dx * dx + dz * dz < 3.3f * 3.3f) {
+        if (c.botRLap != lap) for (auto& cr : crates) { if (lap + 1 < cr.fromLap) continue; float dx = cr.p.x - c.pos.x, dz = cr.p.z - c.pos.z; if (dx * dx + dz * dz < 3.3f * 3.3f) {
             c.botRLap = lap; if (((unsigned)(k * 7919 + lap * 104729 + c.paint * 31) * 2654435761u >> 16) % 5 < 2) { c.botAmmo = 1; tm.aiCrates++; } break; } }
         grabShield(k, c);
         if (c.shield > 0) { c.shield = std::max(0.0f, c.shield - dt); if (len(c.pos - player.pos) < 150) shieldSparks(c, dt, sparkAcc[k]); }

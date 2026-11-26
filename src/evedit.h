@@ -17,7 +17,17 @@ namespace evx {
 using director::Line; using director::Event;
 enum Tool { SELECT, LINE, PLACE, WARDEN, PICKUP };
 static int tool = SELECT, placeKind = director::BLAST, track = 0;
-static int selPick = -1, pickKind = 0;   // 2.9.6 a placed rocket crate or shield: the selected one; which the PICKUP tool puts down (0 rockets, 1 a shield)
+static int selPick = -1, pickKind = 0;
+// 2.9.8.4 the track's own crates, shields and ghosts (none placed yet) become placed ones, where they are, so they can be
+// moved, deleted and given a lap. Returns the one at the click (-1 if none was near it), or adopts all when near < 0.
+static int adoptOwn(std::function<bool(V3)> near) {
+    if (!director::pickups.empty()) return -1; int hit = -1; std::vector<director::Pickup> v;
+    auto add = [&](int kind, V3 p, int lap) { director::Pickup q; q.kind = kind; q.p = p - V3(0, 1.0f, 0); q.lap = lap; if (hit < 0 && near && near(q.p)) hit = (int)v.size(); v.push_back(q); };
+    for (const Crate& c : crates) add(0, c.p, c.fromLap);
+    for (int k = 0; k < nShieldPU; k++) add(1, shieldPU[k].p, shieldPU[k].fromLap);
+    for (int k = 0; k < nGhostPU; k++) add(2, ghostPU[k].p, ghostPU[k].fromLap);
+    if (near && hit < 0) return -1; director::pickups = v; return hit;
+}   // 2.9.6 a placed rocket crate or shield: the selected one; which the PICKUP tool puts down (0 rockets, 1 a shield)
 static int selLine = -1, selEv = -1, selW = -1, grab = -1;   // grab: 0/1 a line's ends, 2 an event's spot, 3 a rocket's target, 4 a Warden's start
 static bool pan = false, fly = false, look = false, dirty = false, testing = false, typing = false, half = false;
 static float mx = 0, my = 0, pmx = 0, pmy = 0, flyYaw = 0, flyPitch = -0.35f, noteT = 0; static V3 flyPos, lineA;
@@ -544,6 +554,7 @@ static void mouseDown(int button) {
     if (tool == PICKUP) {   // (2.9.8.3 a click on something already there selects it: the tool stays on otherwise, and used to drop a crate on it)
         bool on = false; for (const Event& e : director::evs) on |= near(spotOf(e)) || ((e.kind == director::ROCKET || e.kind == director::DOLPHIN || e.kind == director::MINIS) && near(e.to));
         for (const director::Pickup& q : director::pickups) on |= near(q.p, 14); for (int u = 0; u < 4; u++) on |= director::wardenAt[u].set && near(wardenSpot(u), 16);
+        if (director::pickups.empty()) { for (const Crate& c : crates) on |= near(c.p, 14); for (int k = 0; k < nShieldPU; k++) on |= near(shieldPU[k].p, 14); for (int k = 0; k < nGhostPU; k++) on |= near(ghostPU[k].p, 14); }
         if (on) { tool = SELECT; mouseDown(button); return; }
     }
     if (tool == PICKUP) {   // 2.9.6 a rocket crate or a shield where the click is (it stays the tool: click on for more)
@@ -563,6 +574,8 @@ static void mouseDown(int button) {
     for (int u = 0; u < 4; u++) if (director::wardenAt[u].set && near(wardenSpot(u), 16)) { selW = u; selEv = selLine = -1; selPick = -1; grab = 4; push(); return; }
     selW = -1;
     for (int q = (int)director::pickups.size() - 1; q >= 0; q--) if (near(director::pickups[q].p, 14)) { selPick = q; selEv = selLine = -1; grab = 7; push(); return; }
+    if (director::pickups.empty()) { push(); int q = adoptOwn([&](V3 p) { return near(p, 14); });   // (2.9.8.4 one of the track's own: they all become yours to move)
+        if (q >= 0) { selPick = q; selEv = selLine = -1; grab = 7; dirty = true; tell("THE TRACK'S OWN ARE NOW YOURS: DRAG, DEL, + AND - FOR THE LAP IT COMES OUT"); return; } undo.pop_back(); }
     selPick = -1;
     for (int i = (int)director::evs.size() - 1; i >= 0; i--) {
         const Event& e = director::evs[i];
@@ -647,6 +660,12 @@ static void key(SDL_Keycode k, bool down = true) {
             for (Event& e : director::evs) if (e.on == director::ON_LINE && e.ref == id) e.on = director::ON_LAP; }   // (its events fall back to a lap start)
         else tell("NOTHING SELECTED: CLICK IT FIRST (ESC LEAVES A TOOL)");
         break;
+    case SDLK_EQUALS: case SDLK_PLUS: case SDLK_KP_PLUS: case SDLK_MINUS: case SDLK_KP_MINUS:   // 2.9.8.4 the lap a crate, shield or ghost comes out (SHIFT: every one of its kind)
+        if (selPick >= 0 && selPick < (int)director::pickups.size()) { push(); int d = (k == SDLK_MINUS || k == SDLK_KP_MINUS) ? -1 : 1, kind = director::pickups[selPick].kind, lap = ed::clampi(director::pickups[selPick].lap + d, 1, 9);
+            for (int q = 0; q < (int)director::pickups.size(); q++) if (q == selPick || (shiftDown && director::pickups[q].kind == kind)) director::pickups[q].lap = lap;
+            dirty = true; char b[96]; snprintf(b, sizeof b, "%s%s OUT FROM LAP %d%s", shiftDown ? "EVERY " : "", kind == 2 ? "GHOST" : kind ? "SHIELD" : "ROCKET CRATE", lap, lap == 1 ? " (THE START)" : ""); tell(b); }
+        else tell("CLICK A CRATE, SHIELD OR GHOST FIRST, THEN + AND - SET THE LAP IT COMES OUT");
+        break;
     case SDLK_ESCAPE: if (tool != SELECT) { tool = SELECT; grab = -1; } else selEv = selLine = -1; break;
     case SDLK_p: preview(); break;
     case SDLK_n: wizStart(""); break;
@@ -681,7 +700,7 @@ static void draw(float Wd) {
     {   // 2.9.6 rocket crates and shields: the ones placed here, or (none placed) the track's own, faint
         static const V3 PC[3] = { V3(1, 0.55f, 0.15f), V3(0.35f, 0.7f, 1), V3(0.85f, 0.85f, 1) };
         if (!director::pickups.empty()) for (int q = 0; q < (int)director::pickups.size(); q++) { const director::Pickup& p = director::pickups[q]; if (!toScreen(p.p, sx, sy)) continue;
-            bool s = q == selPick; if (p.kind == 2) ed::ring(sx, sy, 9, PC[2], 1, 3); else if (p.kind) ui.disc(sx, sy, 9, PC[1], 1); else ui.rect(sx - 8, sy - 8, 16, 16, PC[0], 1); if (s) ed::ring(sx, sy, 16, WHT, 1, 2); label(sx, sy, PC[p.kind], p.kind == 2 ? "GHOST" : p.kind ? "SHIELD" : "ROCKETS"); }
+            bool s = q == selPick; if (p.kind == 2) ed::ring(sx, sy, 9, PC[2], 1, 3); else if (p.kind) ui.disc(sx, sy, 9, PC[1], 1); else ui.rect(sx - 8, sy - 8, 16, 16, PC[0], 1); if (s) ed::ring(sx, sy, 16, WHT, 1, 2); { char lb[40]; snprintf(lb, sizeof lb, "%s%s", p.kind == 2 ? "GHOST" : p.kind ? "SHIELD" : "ROCKETS", p.lap > 1 ? ("  LAP " + std::to_string(p.lap)).c_str() : ""); label(sx, sy, PC[p.kind], lb); } }
         else {
             for (const Crate& c : crates) if (toScreen(c.p, sx, sy)) ui.rect(sx - 6, sy - 6, 12, 12, PC[0], 0.4f);
             for (int k = 0; k < nShieldPU; k++) if (toScreen(shieldPU[k].p, sx, sy)) ui.disc(sx, sy, 7, PC[1], 0.4f);
@@ -876,6 +895,8 @@ static void script(const char* p) {
         else if (t[0] == "wmisfire" && t.size() >= 2) { int u = atoi(t[1].c_str()) - 1; if (u >= 0 && u < 4 && director::wardenAt[u].set) addMisfire(u); }   // as the Warden panel's + MISFIRE
         else if (t[0] == "pickup" && t.size() >= 4) { push(); director::Pickup p; p.kind = t[1] == "shield" ? 1 : t[1] == "ghost" ? 2 : 0; float x = (float)atof(t[2].c_str()), z = (float)atof(t[3].c_str()); p.p = V3(x, W.H(x, z), z); director::pickups.push_back(p); }
         else if (t[0] == "split") splitMinis();
+        else if (t[0] == "adopt") { push(); adoptOwn(nullptr); }   // 2.9.8.4 the track's own crates, shields and ghosts, as placed ones
+        else if (t[0] == "pickuplap" && t.size() >= 3) { int q = atoi(t[1].c_str()); if (q >= 0 && q < (int)director::pickups.size()) { push(); director::pickups[q].lap = ed::clampi(atoi(t[2].c_str()), 1, 9); } }   // pickuplap INDEX LAP
         else if (t[0] == "gun" && selEv >= 0) { push(); director::evs[selEv].gun = t.size() >= 2 && t[1] == "mg" ? 1 : 0; }
         else if (t[0] == "race" && t.size() >= 2 && isdigit((unsigned char)t[1][0])) pickRace(std::max(0, std::min(director::NRACES - 1, atoi(t[1].c_str()) - 1)));
         else if (t[0] == "racename" && t.size() >= 2) { push(); director::raceDef = director::raceOf(); director::raceDef.set = true; std::string n; for (size_t q = 1; q < t.size(); q++) n += (q > 1 ? " " : "") + t[q]; for (char& c : n) c = (char)toupper((unsigned char)c); director::raceDef.name = n; dirty = true; }

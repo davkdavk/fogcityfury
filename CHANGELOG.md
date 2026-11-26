@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.8.5 | Wardens stand facing their first misfire, cannon on it, then walk | fcfedit: the track's own crates, shields and ghosts can be moved and deleted; each can come out from a set lap |
 | 2.9.8.4 | | The track editor edits a built-in track itself (saved as `events/trackN.fcft`, read on PC and 360), not a copy; buildings coming down no longer choke the 360 |
 | **2.9.8.3** | **The career: five races per track, you start where you last finished; ghosts; held shields and ghosts; rockets held by level** | fcfedit edits each track's five race files |
 | 2.9.8.2 | | The 360 finds the events folder beside the XEX on the console |

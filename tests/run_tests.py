@@ -2179,6 +2179,28 @@ def a_built_in_track_is_edited_in_place():
 
 
 @test
+def pickups_come_out_on_their_lap_and_wardens_stand_aimed():
+    """2.9.8.4 fcfedit: the track's own crates, shields and ghosts become placed ones (a click on one, or ADOPT), so they
+    can be moved and deleted; + and - set the lap each comes out. A Warden with a misfire stands with its cannon on
+    where that rocket goes from the start of the race, not swung round at the last moment."""
+    tmp = tempfile.mkdtemp()
+    try:
+        subprocess.run([BIN, "--sim", "--seconds", "0.1", "--evedit", "--track", "0", "--evscript", "adopt; pickuplap 0 3; pickuplap 1 2; warden 1 -134 -175; wmisfire 1; save"], cwd=tmp, capture_output=True, timeout=120)
+        f = os.path.join(tmp, "events", "track0.fcfe"); t = open(f).read() if os.path.exists(f) else ""
+        check(t.count("pickup rocket") == 12 and t.count("pickup shield") + t.count("pickup ghost") >= 2 and t.count("  lap 3") == 1 and t.count("  lap 2") == 1, "the track's own, as placed ones, two with a lap", t[:500])
+        d = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=2)
+        check(d["crateCount"] == 12 and d["cratesOut"] == 10 and d["cratesLate"] == 2, "at the start: ten crates out, two still to come", (d["crateCount"], d["cratesOut"], d["cratesLate"]))
+        a0, err = d["mechAim"][0]
+        check(a0 > 0.9 and 0 <= err < 0.35, "Warden 1 stands aimed at its misfire from the start", d["mechAim"])
+        n = sim("--track", 0, "--state", 3, seconds=2)
+        check(n["cratesLate"] == 0 and n["mechAim"][0][1] < 0, "without the file: every crate out, no misfire to aim at", (n["cratesLate"], n["mechAim"]))
+        r = sim("--track", 0, "--state", 3, "--auto", "--nobotguns", "--events", f, seconds=200)
+        check(r["cratesLate"] == 0, "by the end every crate is out", r["cratesLate"])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@test
 def a_shortcut_can_be_a_tunnel():
     """The TUNNEL tool on a shortcut makes it dive under the sea (in the editor: on Twin Isles, the causeway between the
     islands). The file keeps it; a car takes it end to end, down in the tube and out the far side; right click undoes it."""

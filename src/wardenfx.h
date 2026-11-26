@@ -143,18 +143,25 @@ static float camNear(V3 p) { return clampf(1 - len(p - camPos) / 320.0f, 0, 1); 
 
 static void clear() { ufos.clear(); wrecks.clear(); flowers.clear(); obs.clear(); W.discs.clear(); cases.clear(); lastT = -1; downed = 0; rounds = 0; }
 
+// 2.9.8.4 a Warden's next misfire (events.h): where it will fire, so it has its cannon on it from the start, not swung
+// round at the last moment (or not at all)
+static bool (*nextMisfire)(int u, V3& to) = nullptr; static bool (*firstToCome)(int u) = nullptr;
 static void step(float t, float dt) {
     if (cacheTrack != W.gen || t < lastT - 0.5f) {   // a new track, or the clock went back (a new race): start over
         for (auto& a : landCache) for (auto& b : a) for (auto& c : b) c.g = -1;
         for (auto& a : seedCache) for (auto& c : a) c.k = -1;
         cacheTrack = W.gen; lastT = -1;
     }
+    const bool snap = lastT < 0;   // (a new race: the Wardens stand already aimed, no swing at the start)
     float t0 = lastT < 0 ? t : lastT; lastT = t; if (t < t0) { cases.clear(); rounds = 0; }
     auto passed = [&](float e) { return e > t0 && e <= t; };
     ufos.clear(); wrecks.clear(); flowers.clear(); obs.clear(); W.discs.clear(); downed = 0; splashed = 0; stepCases(dt);
     for (int u = 0; u < mech::count(); u++) {
-        mech::Unit& m = mech::unit[u]; V3 body = mech::bodyAt(m, t);
+        mech::Unit& m = mech::unit[u];
+        if (m.hold) { if (firstToCome && firstToCome(u)) { if (t > t0) m.tOff -= t - t0; } else m.hold = false; }   // (2.9.8.4 its clock stands still till its misfire has gone)
+        V3 body = mech::bodyAt(m, t);
         float aim = 0, spinWant = 1.2f; V3 tgt = body + V3(sinf(m.yaw), 0, cosf(m.yaw)) * 60;
+        { V3 mt; if (nextMisfire && nextMisfire(u, mt)) { aim = 0.95f; tgt = mt; } }   // (a UFO burst at its full still takes the cannon a moment)
         auto lead = [&](int j, int g, float at) { V3 p = orbit(u, j, g, at), sh = body + V3(0, 30, 0); return orbit(u, j, g, at + len(p - sh) / TRACER_V); };   // (where the UFO will be when the rounds get there)
         for (int j = 0; j < NUFO; j++) {
             int gNow = genAt(u, j, t);
@@ -250,7 +257,7 @@ static void step(float t, float dt) {
         }
         // aim: the body turns the cannon onto whatever it is about to shoot, smoothly (a heavy gun on a servo), then the
         // last error is trimmed out by measuring where the barrels actually point
-        float k = 1 - expf(-std::min(dt, 0.1f) * 5.0f); m.aim += (aim - m.aim) * (1 - expf(-std::min(dt, 0.1f) * 8.0f));
+        float k = snap ? 1.0f : 1 - expf(-std::min(dt, 0.1f) * 5.0f); m.aim += (aim - m.aim) * (snap ? 1.0f : 1 - expf(-std::min(dt, 0.1f) * 8.0f));
         V3 d = tgt - (body + V3(0, 28, 0)); float hz = sqrtf(d.x * d.x + d.z * d.z);
         m.aimYaw = wrapPi(m.aimYaw + wrapPi(wrapPi(atan2f(d.x, d.z) - m.yaw) - m.aimYaw) * k); m.aimElev += (clampf(atan2f(d.y, std::max(hz, 1.0f)), -0.9f, 1.2f) - m.aimElev) * k;
         if (m.aim > 0.5f) for (int it = 0; it < 2; it++) {
