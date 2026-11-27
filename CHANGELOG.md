@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.9.6 | Internet radio in the races (music/radio.txt or --radio URL; ICY/HTTP MP3 streams, .pls/.m3u, redirects; M: RADIO / OWN / OFF) | The menus keep main.mp3; the web game plays https streams in the browser |
 | 2.9.9.5 | Your own music: music/<track>.mp3 per track (main for the menus, showdown, custom tracks by name), or a `music NAME` line in the event file; looped, cross-faded; the web game fetches them beside its page | The lobby's event files pick each track's song for everyone (minimp3, CC0) |
 | 2.9.9.4 | A race starts in the weather its event file starts it in (no snap at the green light) | The lobby waits in that sky; the server sets it before the countdown |
 | 2.9.9.3 | Bots get one rocket a lap and pick up nothing; wrecks are ghosts you drive through (flicker, gone in 5 s); no more fling at the road's edge; AI drivers Easy / Medium / Hard (Options, sticks page; Hard = as before); the web game is online only | Lobbies play the events' weather online (server-driven, blended on clients); `deploy/lobbies.conf` per-lobby flags, tracks rotate, `--events`; lobbies.sh restart loop |

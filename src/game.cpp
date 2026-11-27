@@ -270,6 +270,7 @@ static std::string tracksDir() {
 }
 #include "serverlist.h"   // the server list on the online screen: lookups, asking each server what it runs, joining
 #include "settings.h"   // settings (key bindings, video and effects options, fogcityfury.cfg), the touch-screen layout, the save file
+#include "radio.h"   // 2.9.9.6 internet radio in the races
 namespace director { static void reset(); static void placeWardens(); static void placePickups(); }
 namespace fall { static bool collapse(V3 at); static void reset(); }   // (collapse.h)
 namespace dolphin { static bool spawn(V3 at, V3 to, float k); static void reset(); static bool hitLine(V3 o, V3 d, float maxT, float& t, int& idx); static void laugh(int idx, V3 at); static void blastAt(V3 p, float r); static bool firstAt(V3& p); }   // (dolphin.h)
@@ -538,6 +539,7 @@ int main(int argc, char** argv) {
             branchScan(atoi(argv[++i]));
             return 0;
         } else if (a == "--sim") { sim = simMode = noSave = true; if (!aiSet) optAI = 2; }   // (the tests: the AI as it always drove, unless --ai)
+        else if (a == "--radio" && i + 1 < argc) radio::url = argv[++i];   // 2.9.9.6 a station for this run (else music/radio.txt)
         else if (a == "--ai" && i + 1 < argc) { optAI = std::max(0, std::min(2, atoi(argv[++i]))); aiSet = true; }   // 2.9.9.3 0 easy, 1 medium, 2 hard
         else if (a == "--seconds") skip = (int)(F(1) * 60), i++;
         else if (a == "--flat") W.flat = true;
@@ -625,9 +627,16 @@ int main(int argc, char** argv) {
         else if (a == "--script") { const char* p = argv[++i]; while (*p) { ScriptKey k = {}; int hb = 0, nos = 0, used = 0, u2 = 0; if (sscanf(p, "%f:%f,%f,%f,%d%n", &k.t, &k.steer, &k.gas, &k.brake, &hb, &used) < 5) break; k.hb = hb;
             if (p[used] == ',' && sscanf(p + used + 1, "%d%n", &nos, &u2) == 1) { k.nitro = nos; used += 1 + u2; }
             script.push_back(k); p += used; if (*p == ';') p++; } }
-        else if (a == "--wav") { renderWav(argv[i + 1], F(2)); return 0; }
+        else if (a == "--wav") {
+#if !defined(__EMSCRIPTEN__) && !defined(FCF_GFX_XSDK)
+            if (!radio::url.empty()) {   // (2.9.9.6 the tests: --radio URL --wav FILE S records the station over the song)
+                radio::want = true; radio::start(); for (int w = 0; w < 100 && !(radio::state == 2 && radio::avail() >= 48 * 1024); w++) net::sleepMs(100);
+            }
+#endif
+            renderWav(argv[i + 1], F(2)); return 0; }
         else if (a == "--help") { printf("fogcityfury [--fullscreen] [--size W H]\n"); return 0; }
     }
+    radio::init();   // (music/radio.txt: a station, unless --radio gave one)
     loadCfg();   // key bindings and video settings; command-line flags win for this run without being saved
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: loadCfg complete");

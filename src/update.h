@@ -40,7 +40,7 @@ static void update(float dt) {
         int t = state == TRACKSEL ? selTrack : W.id; std::string m;
         if (mus::want == 0) m = "main"; else if (showdownOn) m = "showdown";
         else { m = director::keyFor(t); if (state != TRACKSEL && !director::music.empty() && director::loadedKey == director::keyFor(W.id)) m = director::music; }
-        if (!simMode || getenv("FCF_MP3")) mp3::frame(m);
+        if (!simMode || getenv("FCF_MP3")) { mp3::frame(m); radio::frame(mus::want != 0 && !showdownOn && state != TRACKSEL); }   // (2.9.9.6 and the radio, in the races)
     }
     if ((state == PAUSED && !netRace) || (state == OPTS && optReturn == PAUSED)) return;   // an online race cannot be paused: the car coasts while the menu is up
 #ifdef FCF_EDITOR

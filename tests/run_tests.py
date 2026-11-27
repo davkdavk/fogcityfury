@@ -1155,6 +1155,33 @@ def mp3_music_for_each_track():
 
 
 @test
+def radio_streams_in_the_races():
+    """2.9.9.6: an internet radio station (ICY MP3 stream, a .pls, a redirect) plays in the races; the menus keep main.mp3."""
+    mp3 = os.path.join(ROOT, "tests", "data", "sine440.mp3"); port = 27990
+    srv = subprocess.Popen([sys.executable, os.path.join(ROOT, "tests", "fake_radio.py"), str(port), mp3], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        time.sleep(0.8)
+        with tempfile.TemporaryDirectory() as d:
+            for path in ("stream", "list.pls", "moved"):
+                w = os.path.join(d, "r.wav")
+                subprocess.run([BIN, "--radio", "http://127.0.0.1:%d/%s" % (port, path), "--wav", w, "5"], check=True, timeout=60)
+                f = wave.open(w); n = f.getnframes(); x = struct.unpack("<%dh" % (n * 2), f.readframes(n))
+                seg = [x[i * 2] / 32768.0 for i in range(int(3.5 * 44100), int(3.5 * 44100) + 4410)]
+                mag = lambda hz: math.hypot(sum(v * math.cos(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg)), sum(v * math.sin(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg))) / len(seg)
+                check(mag(440) > 5 * mag(523), "/%s: the station's 440 Hz plays over the song" % path, (mag(440), mag(523)))
+            shutil.copytree(os.path.join(ROOT, "events"), os.path.join(d, "events"))
+            def run(*a):
+                p = subprocess.run([BIN, "--radio", "http://127.0.0.1:%d/stream" % port, "--sim"] + [str(v) for v in a], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
+                return json.loads(p.stdout.strip().splitlines()[-1])
+            r = run("--seconds", 4, "--track", 1, "--state", 3, "--auto"); check(r["radio"] == "PLAYING", "in a race the radio plays", r["radio"])
+            r = run("--seconds", 2, "--state", 0); check(r["radio"] == "" and r["mp3Want"] == "main", "the title keeps its own music (main.mp3)", (r["radio"], r["mp3Want"]))
+            p = subprocess.run([BIN, "--radio", "https://127.0.0.1:1/x", "--sim", "--seconds", "2", "--track", "1", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
+            r = json.loads(p.stdout.strip().splitlines()[-1]); check(r["radio"].startswith("HTTPS"), "an https station: said so (web game only)", r["radio"])
+    finally:
+        srv.kill()
+
+
+@test
 def race_starts_in_the_files_weather():
     """2.9.9.4: a lap-1 weather event is the sky from the grid on (no snap at the green light); the lobby waits in it."""
     import tempfile, os

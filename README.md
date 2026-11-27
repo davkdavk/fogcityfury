@@ -94,6 +94,15 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.6
+
+- **Internet radio in the races.** Put a station's stream address on the first line of `music/radio.txt` (a
+  Shoutcast / Icecast MP3 stream such as `http://host:port/stream`, or its `.pls` / `.m3u`) and the races play it,
+  cross-faded over the game's music; the menus keep `main.mp3` and the showdown its own. **M** cycles RADIO → YOUR OWN
+  → OFF (saved). Lost stream: your own music comes back and it retries every few seconds. PC, Windows and Android read
+  `http` streams; the web game plays it in the browser and needs an `https` stream (its page is https); not on the 360.
+  `--radio URL` for one run. Check a station's terms before you ship it in a game.
+
 ## What's new in 2.9.9.5
 
 - **Your own music.** Put mp3s in a `music` folder beside the game and each track plays its own:

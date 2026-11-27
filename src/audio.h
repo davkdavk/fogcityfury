@@ -268,6 +268,7 @@ static void audioCB(void*, uint8_t* stream, int bytes) {
             float aL, aR; mp3::render(aL, aR, SR);
             if (mp3::gSynth > 0.001f) { mus::render(mL, mR); mL *= mp3::gSynth; mR *= mp3::gSynth; }
             mL += aL; mR += aR;
+            float rL, rR; radio::render(rL, rR, SR); mL = mL * (1 - radio::g) + rL; mR = mR * (1 - radio::g) + rR;   // (2.9.9.6 the radio over it)
         }
         o[i * 2] = tanhf((out + mL * mv) * snd.master * 1.6f); o[i * 2 + 1] = tanhf((out + mR * mv) * snd.master * 1.6f);
     }
