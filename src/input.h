@@ -44,6 +44,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
             if (optRow == 0) optSteerSens = std::max(50, std::min(200, optSteerSens + d * 10)); if (optRow == 1) optAimSens = std::max(25, std::min(300, optAimSens + d * 25));
             if (optRow == 2) { optTouchSteer ^= 1; touchLaid = -1; } if (optRow == 3) optTouchWide = std::max(0, std::min(2, optTouchWide + d));
+            if (optRow == 4) optAI = std::max(0, std::min(2, optAI + d));
             saveCfg();
         } else if (k == SDLK_LEFT || k == SDLK_RIGHT) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
@@ -67,7 +68,9 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         if (k == SDLK_LEFT || k == SDLK_RIGHT) { int d = k == SDLK_LEFT ? NCARS - 1 : 1; do selCar = (selCar + d) % NCARS; while (!carOpen(selCar)); blip(); }   // (only the cars you have)
         if (k == SDLK_UP) { selPaint = (selPaint + np - 1) % np; blip(); } if (k == SDLK_DOWN) { selPaint = (selPaint + 1) % np; blip(); }
         player.type = selCar; player.paint = selPaint;
-        if (k == SDLK_RETURN) { ok(); if (nc.on) { state = NETLOBBY; if (nc.track >= 0) loadTrack(nc.track); } else { state = TRACKSEL; selWeather = weatherOf[selTrack]; } } if (k == SDLK_ESCAPE) { if (nc.on) netLeave(""); else { state = TITLE; setupCars(true); } } break;
+        if (k == SDLK_RETURN) { ok(); if (nc.on) { state = NETLOBBY; if (nc.track >= 0) loadTrack(nc.track); }
+            else if (WEBGAME) { nc.error[0] = 0; nc.skipMenus = false; nc.autoReady = false; state = NETJOIN; srvOpen(); }   // (2.9.9.3 the web game is online only: the car, then the lobbies)
+            else { state = TRACKSEL; selWeather = weatherOf[selTrack]; } } if (k == SDLK_ESCAPE) { if (nc.on) netLeave(""); else { state = TITLE; setupCars(true); } } break;
     case TRACKSEL:
         if (k == SDLK_UP) { selRow = (selRow + 3) % 4; blip(); } if (k == SDLK_DOWN) { selRow = (selRow + 1) % 4; blip(); }
         if (k == SDLK_LEFT || k == SDLK_RIGHT) {
@@ -290,7 +293,7 @@ static void printJSON(FILE* o) {
     fprintf(o,
             "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
             "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"mechT\":%.2f,\"navOk\":%d,\"navPolys\":%d,\"navMs\":%.0f,\"navQueries\":%d,\"navFails\":%d,\"strafeOnly\":%d,\"footYaw\":%.3f,\"meYaw\":%.3f,\"roamAfters\":%d,\"explore\":%d,\"aiDmgTaken\":%.0f,\"aiDmgWrecks\":%d,\"aiCrashes\":%d,\"aiOffT\":%.1f,\"aiPasses\":%d,\"aiHeadErr\":%.4f,\"aiLatMax\":%.2f,\"botWallT\":%.1f,\"botCarT\":%.1f,\"botStuck\":%d,\"driveRoadT\":%.1f,\"driveOffT\":%.1f,\"driveTook\":%.2f,\"driveLate\":%d,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
-            "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
+            "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wrecksMade\":%d,\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
             "\"bright\":%d,\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
             shdRingDeaths, mech::unit[0].at.x, mech::unit[0].at.y, mech::unit[0].at.z, mech::unit[0].yaw, mech::tris, mech::unit[0].gait,
             W.RD(mech::unit[0].at.x, mech::unit[0].at.z), mech::unit[1].at.x, mech::unit[1].at.y, mech::unit[1].at.z,
@@ -308,7 +311,7 @@ static void printJSON(FILE* o) {
             me.pos.y, me.pos.z, me.yaw, footYaw, me.run, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir,
             tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis, tm.maxBeta, tm.maxSlipF, tm.maxSlipR, tm.maxSpeed,
             tm.maxYawRate, player.nitro, tm.minNitro, tm.boostT, tm.boosts, ammo, tm.rocketsFired, tm.rocketHits, tm.pickups, tm.resets,
-            (int)wrecks.size(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y,
+            (int)wrecks.size(), wrecksMade, wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y,
             wrecks.empty() ? 0.0f : wrecks.back().pos.z, (int)debris.size(), W.RD(player.pos.x, player.pos.z), tm.maxDeck, tm.maxGap, introT,
             tm.gridDrift, std::max(countdown, 0.0f), tm.offroadT, (int)W.cross.size(), tm.dist, tm.heading, tm.simT, vidBright, vidAA, vidAF,
             (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(),

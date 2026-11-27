@@ -45,8 +45,10 @@ static const float MIST_GAIN = 1.5f;
 #else
 static const float MIST_GAIN = 3.0f;
 #endif
+static int optAI = 1;   // 2.9.9.3 the AI drivers: 0 easy, 1 medium, 2 hard (how they drove before); their speed x AI_PACE
+static const float AI_PACE[3] = { 0.84f, 0.92f, 1.0f }; static const char* AI_NAME[3] = { "EASY", "MEDIUM", "HARD" };
 static int optSteerSens = 100, optAimSens = 100, optTouchSteer = 0, optTouchWide = 1;   // 2.9.5 the STICKS page: steering sensitivity (50-200 %: the curve of the stick, pad and touch), aim stick speed on foot (25-300 %), touch steering (0 a thumb-stick, 1 the < > buttons) and how wide the touch stick is (0-2)
-static const int NSTICKROWS = 4;
+static const int NSTICKROWS = 5;   // (2.9.9.3: and the AI drivers' speed)
 static float touchSteerR() { static const float R[3] = { 100, 140, 190 }; return R[optTouchWide < 0 ? 0 : optTouchWide > 2 ? 2 : optTouchWide]; }   // half the touch stick's travel, in UI pixels (720 high)
 static float steerCurve(float a) { return powf(std::max(0.0f, std::min(1.0f, a)), 100.0f / std::max(50, std::min(200, optSteerSens))); }   // a: 0..1 past the dead zone; 100 %: straight, more: quicker off the centre, less: finer
 static struct TouchSteer { bool on = false; SDL_FingerID id = 0; float ox = 0, x = 0, y = 0; } tsteer;   // 2.9.5 the car's touch steering stick: where the thumb went down (it follows past full lock) and where it is
@@ -265,7 +267,8 @@ static void loadCfg() {
         int br = 0; if (fscanf(f, " bright %d", &br) == 1) vidBright = std::max(50, std::min(150, br));
         { int a = 0, b = 0, c = 0; if (fscanf(f, " fx %d %d %d", &a, &b, &c) == 3) { optRings = std::max(0, std::min(300, a)); optMist = std::max(0, std::min(200, b)); optGrass = std::max(0, std::min(150, c)); } }   // free roam: flowers picked up, the levels they make (minis.h)
         { char ln[400]; if (fscanf(f, " unlocked%399[^\n]", ln) == 1) carUnlocked = std::string(ln) + " "; }
-        { int lv = 0; if (fscanf(f, " lobbies %d", &lv) != 1 || lv < LOBBY_LIST) lobbiesAdd = true; }   // (an older list: add the lobbies it lacks)   // (" CUBANO ...": the codes typed)
+        { int lv = 0; if (fscanf(f, " lobbies %d", &lv) != 1 || lv < LOBBY_LIST) lobbiesAdd = true; }   // (an older list: add the lobbies it lacks)
+        { int a = 1; if (fscanf(f, " ai %d", &a) == 1) optAI = std::max(0, std::min(2, a)); }   // (" CUBANO ...": the codes typed)
     }
     fclose(f);
     if (lobbiesAdd) {   // the lobbies a list saved before them lacks, after what is there (the list holds MAX_SERVERS)
@@ -314,7 +317,8 @@ static void saveCfg() {
         } // keys found on your own tracks
     fprintf(f, "sticks %d %d %d %d\n", optSteerSens, optAimSens, optTouchSteer, optTouchWide); fprintf(f, "bright %d\n", vidBright); fprintf(f, "fx %d %d %d\n", optRings, optMist, optGrass);
     if (carUnlocked.size() > 1) fprintf(f, "unlocked%s\n", carUnlocked.substr(0, carUnlocked.size() - 1).c_str());
-    fprintf(f, "lobbies %d\n", LOBBY_LIST);   // the added cars' codes typed (last: fscanf reads in order)
+    fprintf(f, "lobbies %d\n", LOBBY_LIST);
+    fprintf(f, "ai %d\n", optAI);   // (2.9.9.3, after the lobbies line: fscanf reads in order)   // the added cars' codes typed (last: fscanf reads in order)
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the

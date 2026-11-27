@@ -462,6 +462,7 @@ int main(int argc, char** argv) {
     bool posSet = false;
     float px = 0, pz = 0, pyaw = 0;
     bool windowed = true;
+    bool aiSet = false;   // (--ai given: --sim leaves it)
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i]; auto F = [&](int k) { return (float)atof(argv[i + k]); };
         if (a == "--shot" && i + 1 < argc) shot = argv[++i]; else if (a == "--shotevery") shotEvery = atoi(argv[++i]); else if (a == "--frames") frames = atoi(argv[++i]); else if (a == "--skip") skip = atoi(argv[++i]);
@@ -536,7 +537,8 @@ int main(int argc, char** argv) {
             initTracks();
             branchScan(atoi(argv[++i]));
             return 0;
-        } else if (a == "--sim") sim = simMode = noSave = true;
+        } else if (a == "--sim") { sim = simMode = noSave = true; if (!aiSet) optAI = 2; }   // (the tests: the AI as it always drove, unless --ai)
+        else if (a == "--ai" && i + 1 < argc) { optAI = std::max(0, std::min(2, atoi(argv[++i]))); aiSet = true; }   // 2.9.9.3 0 easy, 1 medium, 2 hard
         else if (a == "--seconds") skip = (int)(F(1) * 60), i++;
         else if (a == "--flat") W.flat = true;
         else if (a == "--dump") dump = true;

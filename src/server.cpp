@@ -48,6 +48,7 @@ static int nTracks() { return TRACKS + (int)CT.size(); }
 // track's file). The current track's goes out in pieces (S_EVENTS); a track with none sends nothing, and the games use
 // what they have built in.
 struct EvFile { std::string text; uint32_t crc = 0; }; static std::unordered_map<int, EvFile> EV;
+
 static bool readText(const std::string& p, std::string& out) { FILE* f = fopen(p.c_str(), "rb"); if (!f) return false; char b[1024]; size_t k; out.clear(); while ((k = fread(b, 1, sizeof b, f)) > 0 && out.size() <= (size_t)TRACKFILE_MAX) out.append(b, k); fclose(f); return true; }
 static void loadEvents(const char* dir, const char* tracksDir) {
     for (int t = 0; t < nTracks(); t++) {
@@ -103,13 +104,74 @@ static void addBots() {   // fill the grid with up to cfgBots computer-driven ca
     for (int k = 0, i = 0; k < cfgBots && k < MAXP - people; k++) { while (i < MAXP && P[i].used) i++; if (i >= MAXP) break;
         Player& p = P[i]; p = Player(); p.used = true; p.bot = true; memset(&p.addr, 0, sizeof p.addr); snprintf(p.name, sizeof p.name, "%s", NAME[k]); memset(&p.s, 0, sizeof p.s); p.s.car = (uint8_t)((k + 1) % CARS); p.s.paint = (uint8_t)((k * 2 + 3) % PAINTS); }
 }
+
+// 2.9.9.3 the weather in a track's event file, played here, so everyone in the lobby gets the same sky at the same
+// moment (the games play every other event themselves). A weather event ("wx storm  over 30") set off by a lap
+// starting, a race time, or a line across the road goes off when the leading car gets there; the snapshot carries
+// the weather in its low two bits and the turn's length (in 2 s steps) in the six above, which older games ignore.
+struct WxLine { std::string id; float ax, az, bx, bz; };
+struct WxEv { int wx = 0; float over = 12, delay = 0, time = 0; uint32_t laps = 0; int on = 0; std::string line; bool fired = false; double at = -1; };   // on: 0 lap, 1 time, 2 a line
+static std::vector<WxLine> wxLines; static std::vector<WxEv> wxEvs; static int wxTrack = -1, cfgWeather = 0; static float wxOver = 0; static bool wxScripted = false;
+static float wxPX[MAXP], wxPZ[MAXP]; static bool wxPOk[MAXP];
+static void wxLoad(int t) {
+    wxLines.clear(); wxEvs.clear(); wxTrack = t;
+    auto it = EV.find(t); if (it == EV.end()) return;
+    const std::string& txt = it->second.text; size_t a = 0;
+    while (a < txt.size()) {
+        size_t e = txt.find('\n', a); if (e == std::string::npos) e = txt.size(); std::string ln = txt.substr(a, e - a); a = e + 1;
+        std::vector<std::string> w; size_t i = 0;
+        while (i < ln.size()) { while (i < ln.size() && isspace((unsigned char)ln[i])) i++; if (i >= ln.size() || ln[i] == '#') break; size_t j = i; while (j < ln.size() && !isspace((unsigned char)ln[j])) j++; w.push_back(ln.substr(i, j - i)); i = j; }
+        if (w.size() >= 6 && w[0] == "line") { wxLines.push_back({ w[1], (float)atof(w[2].c_str()), (float)atof(w[3].c_str()), (float)atof(w[4].c_str()), (float)atof(w[5].c_str()) }); continue; }
+        if (w.size() < 3 || w[0] != "event" || w[2] != "weather") continue;
+        WxEv v; bool ok = true;
+        for (size_t k = 3; k < w.size(); k++) {
+            const std::string& x = w[k]; bool more = k + 1 < w.size();
+            if (x == "wx" && more) { const std::string& n = w[++k]; v.wx = n == "rain" ? 1 : n == "fog" ? 2 : n == "storm" ? 3 : 0; }
+            else if (x == "over" && more) v.over = std::max(0.5f, (float)atof(w[++k].c_str()));
+            else if (x == "delay" && more) v.delay = std::max(0.0f, (float)atof(w[++k].c_str()));
+            else if (x == "laps" && more) { std::string m = w[++k]; if (m != "all") for (size_t q = 0; q < m.size();) { int l = atoi(m.c_str() + q); if (l >= 1 && l <= 32) v.laps |= 1u << (l - 1); size_t c = m.find(',', q); if (c == std::string::npos) break; q = c + 1; } }
+            else if (x == "on" && more) { const std::string& o = w[++k]; if (o == "lap") v.on = 0; else if (o == "time" && k + 1 < w.size()) { v.on = 1; v.time = (float)atof(w[++k].c_str()); } else if (o == "after") ok = false; else { v.on = 2; v.line = o; } }
+        }
+        if (ok) wxEvs.push_back(v);
+    }
+    if (!wxEvs.empty()) say("track %d: %d weather events from its file", t, (int)wxEvs.size());
+}
+static bool wxCross(float px, float pz, float cx, float cz, const WxLine& l) {   // the move p->c crosses the line a-b
+    auto side = [](float ax, float az, float bx, float bz, float x, float z) { return (bx - ax) * (z - az) - (bz - az) * (x - ax); };
+    float d1 = side(l.ax, l.az, l.bx, l.bz, px, pz), d2 = side(l.ax, l.az, l.bx, l.bz, cx, cz), d3 = side(px, pz, cx, cz, l.ax, l.az), d4 = side(px, pz, cx, cz, l.bx, l.bz);
+    return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0));
+}
+static void wxStart() {   // a race starts: every weather event unfired
+    if (wxTrack != track) wxLoad(track);
+    for (auto& e : wxEvs) { e.fired = false; e.at = -1; }
+    for (int i = 0; i < MAXP; i++) wxPOk[i] = false;
+    wxOver = 0;
+}
+static void wxStep() {   // in the race
+    if (wxTrack != track) wxLoad(track);
+    if (wxEvs.empty()) return;
+    int lead = -1; float best = -1e30f; for (int i = 0; i < MAXP; i++) if (P[i].used && P[i].racing && !P[i].bot && P[i].s.progress > best) { best = P[i].s.progress; lead = i; }
+    int lap = lead >= 0 ? std::max(1, (int)P[lead].s.lap) : 1;
+    auto onLap = [](const WxEv& e, int l) { return !e.laps || (l >= 1 && l <= 32 && (e.laps >> (l - 1) & 1)); };
+    for (auto& e : wxEvs) {
+        if (e.fired) continue;
+        bool go = false;
+        if (e.on == 0) go = onLap(e, lap);
+        else if (e.on == 1) go = raceT >= e.time && onLap(e, lap);
+        else for (auto& l : wxLines) if (l.id == e.line) for (int i = 0; i < MAXP && !go; i++) if (P[i].used && P[i].racing && !P[i].bot && wxPOk[i] && onLap(e, std::max(1, (int)P[i].s.lap)) && wxCross(wxPX[i], wxPZ[i], P[i].s.x, P[i].s.z, l)) go = true;
+        if (go) { e.fired = true; e.at = raceT + e.delay; }
+    }
+    for (auto& e : wxEvs) if (e.at >= 0 && raceT >= e.at) { e.at = -1; weather = e.wx; wxOver = e.over; wxScripted = true; say("weather %d over %.0f s (lap %d)", weather, (double)e.over, lap); }
+    for (int i = 0; i < MAXP; i++) { wxPOk[i] = P[i].used && P[i].racing; wxPX[i] = P[i].s.x; wxPZ[i] = P[i].s.z; }
+}
 static const char* phaseName(Phase p) { static const char* n[6] = { "LOBBY", "COUNTDOWN", "RACE", "RESULTS", "SHOWDOWN", "ROAM" }; return n[p]; }
 
 static void setPhase(Phase p, double t) {
+    if (p == LOBBY) { if (wxScripted && !wxMode) weather = cfgWeather; wxScripted = false; wxOver = 0; }   // (2.9.9.3 after a scripted sky, however the race ended: the lobby's own)
     phase = p; phaseT = t; say("phase %s  track %d (%s)  weather %d  players %d", phaseName(p), track, trackName(track), weather, count());
     if (p == ROAM) { removeBots(); roamT = 0; nMinis = 0; for (auto& q : P) { q.racing = q.used; q.footOn = false; } }
     if (p == LOBBY) { removeBots(); readySince = -1; for (auto& q : P) { q.ready = false; q.racing = false; q.finished = false; } }
-    if (p == COUNTDOWN) { addBots(); sdFighters = 0; finishCount = 0; firstFinish = -1; raceT = 0; for (auto& q : P) { q.racing = q.used; q.finished = false; q.suspect = false; q.finishT = 0; q.finishOrder = 0; } }
+    if (p == COUNTDOWN) { wxStart(); addBots(); sdFighters = 0; finishCount = 0; firstFinish = -1; raceT = 0; for (auto& q : P) { q.racing = q.used; q.finished = false; q.suspect = false; q.finishT = 0; q.finishOrder = 0; } }
     if (p == RESULTS) {
         say("results:"); int order[MAXP], n = 0; for (int i = 0; i < MAXP; i++) if (P[i].used && P[i].racing) order[n++] = i;
         sortIdx(order, n, [](int a, int b) { if (P[a].finished != P[b].finished) return P[a].finished; return P[a].finished ? P[a].finishOrder < P[b].finishOrder : P[a].s.progress > P[b].s.progress; });
@@ -368,7 +430,7 @@ static void sendRoam(uint32_t tick) {
     for (int i = 0; i < MAXP; i++) if (P[i].used && !P[i].bot) sendTo(sock, P[i].addr, &m, sizeof m);
 }
 static void sendSnapshots(uint32_t tick) {
-    Snapshot sn; memset(&sn, 0, sizeof sn); sn.h = header(S_SNAPSHOT, 0xFF); sn.tick = tick; sn.phase = phase; sn.track = (uint8_t)track; sn.laps = (uint8_t)laps; sn.weather = (uint8_t)weather;
+    Snapshot sn; memset(&sn, 0, sizeof sn); sn.h = header(S_SNAPSHOT, 0xFF); sn.tick = tick; sn.phase = phase; sn.track = (uint8_t)track; sn.laps = (uint8_t)laps; sn.weather = (uint8_t)(weather | (wxOver > 0 ? std::min(63, std::max(1, (int)lroundf(wxOver / 2))) : 0) << 2);   // (2.9.9.3: and the turn's length)
     sn.phaseT = (float)(phase == RACE ? raceT : phase == SHOWDOWN ? sdT : phaseT);
     int idx[MAXP], n = 0; for (int i = 0; i < MAXP; i++) if (P[i].used) idx[n++] = i;
     // places: finishers in order, then everyone still racing by distance covered, then spectators
@@ -401,7 +463,7 @@ int main(int argc, char** argv) {
         else if (a == "--shared-max") cfgSharedMax = std::max(1, atoi(next()));
         else if (a == "--min-lap") cfgMinLap = std::max(0.0, atof(next()));
         else if (a == "--roam-minutes") cfgRoamMinutes = atof(next());
-        else if (a == "--weather") { const char* v = next(); if (!strcmp(v, "random")) { wxMode = 1; weather = 1; } else weather = ((atoi(v) % 4) + 4) % 4; }
+        else if (a == "--weather") { const char* v = next(); if (!strcmp(v, "random")) { wxMode = 1; weather = 1; } else weather = ((atoi(v) % 4) + 4) % 4; cfgWeather = weather; }
         else if (a == "--name") { snprintf(serverName, sizeof serverName, "%s", next()); for (char* c = serverName; *c; c++) *c = (char)toupper((unsigned char)*c); }
         else if (a == "--fixed-track") fixedTrack = true; else if (a == "--countdown") cfgCountdown = atof(next()); else if (a == "--results") cfgResults = atof(next());
         else if (a == "--lobby") cfgLobby = atof(next());
@@ -469,7 +531,7 @@ int main(int argc, char** argv) {
             break;
         case COUNTDOWN: phaseT -= dt; if (people == 0) backToRest(); else if (phaseT <= 0) setPhase(RACE, 0); break;
         case RACE:
-            raceT += dt;
+            raceT += dt; wxStep();
             if (people == 0) backToRest();
             else if (done == racing || (cfgShowdown && !spaceRace && done >= SD_FIGHT) || (firstFinish >= 0 && raceT - firstFinish > cfgFinish) || raceT > 1200) { if (spaceRace || !startShowdown()) setPhase(RESULTS, cfgResults); }   // (with a showdown, the podium ends the race)
             break;

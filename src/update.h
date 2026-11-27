@@ -22,7 +22,8 @@ static void update(float dt) {
     netPump(dt, state == NETLOBBY); netTrackPieces(); netEventPieces(); netShareFrame(dt); netVoteFrame(dt); netReact(); netRoamFrame(dt);
     if (state == NETJOIN && !nc.on) srvPump(dt);
     if (wxMixK < 1) { wxMixK = std::min(1.0f, wxMixK + dt / wxTurn); if (wxMixK >= 1) wxFrom = weather; }   // (weather turning mid-race)
-    if (nc.on && (netRace || state == NETLOBBY)) { if (weather != nc.weather % NWX) settleWeather(); weather = nc.weather % NWX; }   // online: the server picks
+    if (nc.on && (netRace || state == NETLOBBY)) {   // online: the server picks; 2.9.9.3: in a race it can turn it (the track's file), over wxOver s
+        int w = nc.weather % NWX; if (weather != w) { if (netRace && nc.wxOver > 0) turnWeather(w, nc.wxOver); else { weather = w; settleWeather(); } } }   // online: the server picks
     else if (state == TRACKSEL || state == CARSEL) { weather = selWeather; settleWeather(); }
     else if (state == TITLE || state == EDIT || state == EVEDIT) { weather = W_CLEAR; settleWeather(); }
 #ifdef FCF_EDITOR
@@ -185,7 +186,7 @@ static void update(float dt) {
         if (carDamageOn() && !player.dead && player.hp < 100) player.hp = std::min(100.0f, player.hp + CAR_MEND * dt); carFix = std::max(0.0f, carFix - dt * 1.5f);
         if (cliCarHp >= 0 && carDamageOn()) { player.hp = cliCarHp; cliCarHp = -1; }   // (--carhp N, tests: the race starts with the car that hurt)
         carDamageFx(dt); incomingStep(dt);
-        if (go && !showdownOn && !netRace && botGuns) botWeapons(dt);
+        if (go && !showdownOn && !netRace && botGuns && !trialMode) botWeapons(dt);   // (2.9.9.3 manic: no rockets for bots either, now they are given one a lap)
         bool stuck = go && !me.on && !showdownOn && !player.dead && fabsf(player.vf) < 2.5f && (in.gas > 0.3f || in.brake > 0.3f), lost = go && !me.on && !showdownOn && !player.dead && !exploreMode && !rampage && (W.RD(player.pos.x, player.pos.z) > ROADW + 28 || wrongT > 3);
         resetHint = stuck || lost ? resetHint + dt : std::max(0.0f, resetHint - dt * 3);
     }

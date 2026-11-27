@@ -162,6 +162,7 @@ static float distSeg(float x, float z, float x0, float z0, float x1, float z1) {
 struct World {
     int id = -1, gen = 0; const TrackDef* def = nullptr;   // gen: counts builds (the editor rebuilds the same track: anything cached per track goes by this)
     std::vector<float> h, hr, rd; std::vector<TS> ts; int n = 0;
+    std::vector<int> rdi;   // 2.9.9.3 each ground node's nearest road sample (route * 1000000 + index; route 0 the loop, b + 1 branch b; -1 none)
     // Custom tracks: metres from each point of the ground to the nearest water (up to 30), so the ground types agree
     // with the land as it was shaped: a beach of sand along every shore and lagoon, however high the bank, with no
     // paving, buildings or grass tufts on it. Empty on the built-in tracks (their sand goes by height alone)
@@ -389,6 +390,31 @@ struct World {
     }
 #endif
 
+    // 2.9.9.3 on the ribbon: the road exactly as it is drawn (flat across, from its centre line), not the 3 m height field
+    // under it, which near the edges on a grade or a bend is up to half a metre off and bumpy: those bumps were what flung
+    // cars up at the road's edge. Where that is not the road under you (a bridge, a tunnel, a crossing), the height field
+    float ribbonH(float x, float z, float curY) const {
+        float g = H(x, z); if (rdi.empty()) return g;
+        int ci = (int)floorf((x + HALF) / CELL), cj = (int)floorf((z + HALF) / CELL); bool any = false; float out = g; int seen[16], ns = 0;
+        for (int e = 0; e < 16; e++) {   // the ground nodes round you (4 x 4): their nearest roads (two stretches can share the spot)
+            int ii = ci - 1 + (e & 3), jj = cj - 1 + (e >> 2); if (ii < 0 || jj < 0 || ii >= GN || jj >= GN) continue;
+            int code = rdi[jj * GN + ii]; if (code < 0) continue; bool dup = false; for (int q = 0; q < ns; q++) dup |= seen[q] == code; if (dup) continue; seen[ns++] = code;
+            int route = code / 1000000, idx = code % 1000000; const std::vector<TS>& R = route ? brs[route - 1].ts : ts; int m = (int)R.size(); bool loop = !route;
+            if (m < 2) continue;
+            int b = idx; float bd = 1e18f;
+            for (int k = -8; k <= 8; k++) { int q = idx + k; if (loop) q = (q % m + m) % m; else if (q < 0 || q >= m) continue;
+                float dx = R[q].x - x, dz = R[q].z - z, d = dx * dx + dz * dz; if (d < bd) { bd = d; b = q; } }
+            const TS& a = R[b]; if (a.tun || a.br) continue;
+            float u = (x - a.x) * a.tx + (z - a.z) * a.tz, lat = fabsf((x - a.x) * a.tz - (z - a.z) * a.tx);
+            int o = u >= 0 ? b + 1 : b - 1; if (loop) o = (o % m + m) % m; else if (o < 0 || o >= m) o = b;
+            const TS& c = R[o]; if (c.tun || c.br) continue;
+            float seg = sqrtf((c.x - a.x) * (c.x - a.x) + (c.z - a.z) * (c.z - a.z)), y = a.y + (seg > 1e-3f ? (c.y - a.y) * clampf(fabsf(u) / seg, 0, 1) : 0);
+            // on its ribbon, and not far off the height field (else not this road under you after all). Where two stretches
+            // overlap (a fork, a bend doubling back) you stay on the one you are on: the one nearest your height
+            if (lat <= ROADW + 0.75f && fabsf(y - g) < 0.9f && (!any || fabsf(y - curY) < fabsf(out - curY))) { any = true; out = y; }
+        }
+        return out;
+    }
     static float rampH(const Ramp& r, float x, float z, bool& inside) {
         float dx = x - r.x, dz = z - r.z, u = dx * r.sa + dz * r.ca, v = dx * r.ca - dz * r.sa;
         inside = u >= 0 && u <= r.len && fabsf(v) <= r.hw; return r.base + r.rise * clampf(u / r.len, 0, 1);
@@ -397,7 +423,7 @@ struct World {
     float ground(float x, float z, float curY) {
         if (flat) return H(x, z);
         if (space && RD(x, z) > SPACE_EDGE + 0.5f) return SPACE_DEEP;   // off the edge of the space track: nothing under you
-        float g = RD(x, z) > ROADW + 0.7f ? drawnH(x, z) : H(x, z);   // off the ribbon, stand on the terrain exactly as it is drawn (it dips a little beside the road)
+        float g = RD(x, z) > ROADW + 0.7f ? drawnH(x, z) : ribbonH(x, z, curY);   // off the ribbon, stand on the terrain exactly as it is drawn (it dips a little beside the road)
         for (int bi : cell(x, z)) {
             const Box& b = boxes[bi]; if (curY < b.top - 0.9f || b.top < g) continue;
             float dx = x - b.cx, dz = z - b.cz, lx = dx * b.ca - dz * b.sa, lz = dx * b.sa + dz * b.ca;
@@ -1501,7 +1527,7 @@ struct World {
         for (auto& c : worldCells) c = WorldCell();
 #endif
         smallMb = MB();
-        h.assign(GN * GN, 0); hr.assign(GN * GN, 0); rd.assign(GN * GN, 999);
+        h.assign(GN * GN, 0); hr.assign(GN * GN, 0); rd.assign(GN * GN, 999); rdi.assign(GN * GN, -1);
         for (int j = 0; j < GN; j++) for (int i = 0; i < GN; i++) h[j * GN + i] = baseHeight(-HALF + i * CELL, -HALF + j * CELL);
         // --- centre line: closed Catmull-Rom, resampled at 1 m ---
         std::vector<V3> dense; int m = (int)def->ctrl.size() / 2;
@@ -1560,6 +1586,7 @@ struct World {
         // --- stamp the road into the height field (bridge decks are not ground: they only count for "how far is the road") ---
         std::vector<float> by(GN * GN, 0), rdh(GN * GN, 999); const int R = (int)(76 / CELL);
         std::vector<const TS*> all; for (const TS& t : ts) all.push_back(&t); for (const Branch& br : brs) for (const TS& t : br.ts) all.push_back(&t);
+        std::vector<int> allCode; for (int i = 0; i < n; i++) allCode.push_back(i); for (int b = 0; b < (int)brs.size(); b++) for (int i = 0; i < (int)brs[b].ts.size(); i++) allCode.push_back((b + 1) * 1000000 + i);
         std::vector<float> tubeY(GN * GN, 0), tubeD(GN * GN, 999);   // the tunnel: its floor is dug (and under the sea, banked up) to the road, nothing more
         for (size_t k = 0; k < all.size(); k++) {   // the loop, then the alternate routes
             const TS& sk = *all[k];
@@ -1568,7 +1595,7 @@ struct World {
                 float dx = -HALF + i * CELL - sk.x, dz = -HALF + j * CELL - sk.z, d = sqrtf(dx * dx + dz * dz);
                 if (d < rd[j * GN + i]) rd[j * GN + i] = d;
                 if (sk.tun) { if (d < tubeD[j * GN + i]) { tubeD[j * GN + i] = d; tubeY[j * GN + i] = sk.y; } }
-                else if (!sk.br && d < rdh[j * GN + i]) { rdh[j * GN + i] = d; by[j * GN + i] = sk.y; }
+                else if (!sk.br && d < rdh[j * GN + i]) { rdh[j * GN + i] = d; by[j * GN + i] = sk.y; rdi[j * GN + i] = allCode[k]; }
             }
         }
         for (int q = 0; q < GN * GN; q++) {

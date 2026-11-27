@@ -123,7 +123,13 @@ static void stepPlayer(Car& c, const Input& in, float dt) {
             for (int i = 0; i < 8; i++) spawn(np + V3(grng.r(-1, 1), 0.2f, grng.r(-1, 1)), V3(grng.r(-3, 3), 1, grng.r(-3, 3)), 0.7f, 0.7f, 2.2f, V3(0.6f, 0.58f, 0.55f), 0.45f); }
         float hs = sqrtf(c.vel.x * c.vel.x + c.vel.z * c.vel.z);
         float rise = hgt - c.pos.y;   // follow slopes, but a kerb-like step must not launch the car
-        c.vel.y = rise > hs * dt * 0.75f + 0.02f ? clampf(c.vel.y, 0, hs * 0.3f) : clampf(rise / dt, -60, hs * 0.75f); np.y = hgt; c.grounded = true; c.airT = 0;
+        c.vel.y = rise > hs * dt * 0.75f + 0.02f ? clampf(c.vel.y, 0, hs * 0.3f) : clampf(rise / dt, -60, hs * 0.75f);
+        // 2.9.9.3 and no lip launches it either: the climb it carries on with is the ground's over the last tenth of a second
+        // (at least 2 m) of travel, not one frame's. A steep hill still throws it off the crest; a short lip (the road's
+        // edge, coming back on from the dip beside it, a seam where two stretches of road overlap) no longer flings it up
+        if (c.vel.y > 0 && hs > 3) { float back = std::max(2.0f, hs * 0.1f); V3 b = np - V3(c.vel.x, 0, c.vel.z) * (back / hs);
+            float slopeV = (hgt - W.ground(b.x, b.z, cy)) / back * hs; c.vel.y = std::min(c.vel.y, std::max(0.0f, slopeV)); }
+        np.y = hgt; c.grounded = true; c.airT = 0;
     } else c.grounded = np.y - hgt < 0.15f;
     if (W.dry(np.x, np.z)) {   // in the undersea tunnel: its roof is solid (a car thrown up hits it and drops back)
         float roof = W.H(np.x, np.z) + TUBE_TOP - 1.9f; if (np.y > roof) { np.y = roof; if (c.vel.y > 0) { c.vel.y *= -0.3f; c.airT = std::min(c.airT, 0.3f); } }
@@ -184,7 +190,7 @@ static void stepAI(Car& c, float dt, bool go, float playerProg) {
                 for (int q = 0; q < (int)br.ts.size() && q < 80 - ahead; q += 6) mc = std::max(mc, br.ts[q].curv); } }
     }
     float tgt = std::min(c.aiTop * (0.55f + 0.45f * wx().grip), sqrtf(21.0f * wx().grip / std::max(mc, 1e-4f)));
-    tgt *= clampf(1 + (playerProg - c.stot) * 0.0007f, 0.90f, 1.10f);
+    tgt *= clampf(1 + (playerProg - c.stot) * 0.0007f, 0.90f, 1.10f) * AI_PACE[std::max(0, std::min(2, optAI))];   // (2.9.9.3 easy, medium or hard)
     if (!go || c.finishT >= 0) tgt = go ? 22 : 0;
     c.speed += clampf(tgt - c.speed, -26 * dt, 12 * dt);
     if (c.brOn) {   // on the alternate route: metres along it, counted as the matching stretch of the loop

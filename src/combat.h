@@ -3,7 +3,8 @@
 // above its #include there, and what follows the #include can use what is declared here.
 #pragma once
 // ---- wreckage: every car that blows up leaves its burnt shell and some parts on the road ----
-static const int NCRATES = 6, CRATE_ROCKETS = 2; static const float ROCKET_RANGE = 170, WRECK_R = 2.2f, WRECK_LIFE = 10, WRECK_FADE = 2.5f;   // a wreck lasts WRECK_LIFE seconds and fades over the last WRECK_FADE
+static int wrecksMade = 0;   // (2.9.9.3 tests: every shell left, now they are gone in 5 s)
+static const int NCRATES = 6, CRATE_ROCKETS = 2; static const float ROCKET_RANGE = 170, WRECK_R = 2.2f, WRECK_LIFE = 5.0f, WRECK_FADE = 2.0f;   // (2.9.9.3: a ghost, gone in 5 s)   // a wreck lasts WRECK_LIFE seconds and fades over the last WRECK_FADE
 struct Wreck { V3 pos; float yaw, pitch, roll, age; int type; unsigned wheels; int si; float lat; };   // si, lat: where it lies along and across the road
 struct Debris { V3 p, v, rot, spin, sc; int kind; bool rest; float age = 0; };   // kind 0: a wheel, 1: a body panel, 2: a slab of a fallen building
 struct Rocket {
@@ -40,7 +41,8 @@ static int heldShields = 0, heldGhosts = 0, itemSel = 0, ghostsUsed = 0, shields
 struct GhostPU { V3 p; int lapTaken = -99; int fromLap = 1; }; static const int MAXGHOSTPU = 8; static GhostPU ghostPU[MAXGHOSTPU]; static int nGhostPU = 0;
 static bool ghosting() { return ghostT > 0; }
 static int touchItems() { int sel = itemSel; if ((sel == 0 ? heldShields : heldGhosts) == 0) sel ^= 1; return (heldShields > 0 ? 1 : 0) | (heldGhosts > 0 ? 2 : 0) | (sel ? 4 : 0); }   // (touch: what to show; bit 4 the ghost is the one a tap uses)
-static float goneOf(float age) { return clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); }   // 0 solid .. 1 faded away
+// 0 solid .. 1 faded away. 2.9.9.3 a wreck is a ghost from the start: it flickers (cars drive through it), then fades out
+static float goneOf(float age) { float f = clampf((age - (WRECK_LIFE - WRECK_FADE)) / WRECK_FADE, 0, 1); float flick = fmodf(age * 9.0f, 1.0f) < 0.5f ? 0.3f : 0.62f; return std::max(f, flick * (1 - f) + f); }
 static float fireCD = 0, resetCD = 0, resetHint = 0, ammoFlash = 0; static V3 boltDir(0, 0.5f, 1), rainRel;
 static std::vector<float> fireAt, resetAt;                                   // --fire T / --reset T (tests)
 static Mesh boxMesh, rocketMesh, crateMesh, shieldMesh, jetMesh;
@@ -213,7 +215,7 @@ static void leaveWreck(const Car& c) {
         V3 d = norm(V3(grng.r(-1, 1), grng.r(0.3f, 1.2f), grng.r(-1, 1)));
         debris.push_back({ c.pos + V3(0, 0.7f, 0) + d * 0.8f, c.vel * 0.5f + d * grng.r(4, 13), V3(grng.r(0, 6), grng.r(0, 6), grng.r(0, 6)), V3(grng.r(-8, 8), grng.r(-8, 8), grng.r(-8, 8)), V3(grng.r(0.35f, 0.95f), grng.r(0.025f, 0.05f), grng.r(0.25f, 0.6f)), 1, false });
     }
-    wrecks.push_back(w);
+    wrecks.push_back(w); wrecksMade++;
 }
 // is there a wreck in our lane within `ahead` metres of sample i? If so, `lat` is the offset that clears it
 #include "wardenfx.h"
@@ -221,7 +223,7 @@ static bool dodge(int i, float myLat, float ahead, float& lat) {
     // everything in the way within `ahead` samples: wrecked cars, Warden feet, wrecked UFOs. If the line we're on is clear
     // of all of them, nothing to do; if not, the nearest line across the road that is (so dodging one never steers into another)
     struct Ob { float lat, r; }; Ob ob[24]; int no = 0;
-    for (auto& w : wrecks) { float d = (float)((w.si - i + W.n) % W.n); if (w.age < WRECK_LIFE - 1.5f && d < ahead && fabsf(w.lat) < ROADW + 3 && no < 24) ob[no++] = { w.lat, 2.2f }; }
+    // (2.9.9.3 wrecks are ghosts now: nothing to steer round)
     for (auto& o : wfx::obs) { float d = (float)((o.si - i + W.n) % W.n); if (d < ahead && no < 24) ob[no++] = { o.lat, o.r + 0.6f }; }
     for (auto& o : W.jumpObs) { float d = (float)((o.si - i + W.n) % W.n); if (d < ahead && no < 24) ob[no++] = { o.lat, o.r }; }   // (a custom track's jumps: the bots go round)
     auto clear = [&](float l) { for (int k = 0; k < no; k++) if (fabsf(ob[k].lat - l) < ob[k].r + 1.4f) return false; return true; };
@@ -305,7 +307,7 @@ static void stepWreckage(float dt, bool driving) {
         if (w.age < 6 && grng.f() < dt * 30 * (1 - w.age / 6)) spawn(at, V3(grng.r(-0.4f, 0.4f), grng.r(1.5f, 3.5f), grng.r(-0.4f, 0.4f)), grng.r(0.35f, 0.7f), grng.r(0.35f, 0.7f), 0.8f, V3(2.6f, grng.r(0.7f, 1.4f), 0.15f), 0.55f, 1, 2.5f);
         if (w.age < 8.5f && grng.f() < dt * (w.age < 6 ? 9.0f : 4.0f)) spawn(at + V3(0, 0.5f, 0), V3(grng.r(-0.5f, 0.5f) + wx().wind * 4, grng.r(1.5f, 3.0f), grng.r(-0.5f, 0.5f)), grng.r(1.6f, 3.0f), grng.r(0.8f, 1.4f), 1.6f, V3(0.04f, 0.04f, 0.045f), 0.5f, 0, 1.6f);
         float dx = player.pos.x - w.pos.x, dz = player.pos.z - w.pos.z, d = sqrtf(dx * dx + dz * dz);
-        if (driving && !player.dead && w.age < WRECK_LIFE - 1 && d < WRECK_R && d > 0.01f && fabsf(player.pos.y - w.pos.y) < 2) {   // the shell is solid: slide round it
+        if (false && driving && !player.dead && w.age < WRECK_LIFE - 1 && d < WRECK_R && d > 0.01f && fabsf(player.pos.y - w.pos.y) < 2) {   // (2.9.9.3 no longer solid: a ghost to drive through)
             float nx = dx / d, nz = dz / d, rv = player.vel.x * nx + player.vel.z * nz; player.pos.x += nx * (WRECK_R - d); player.pos.z += nz * (WRECK_R - d);
             if (rv < 0) { player.vel.x -= nx * rv * 1.2f; player.vel.z -= nz * rv * 1.2f; player.vel = player.vel * 0.9f; if (rv < -4) { tone(120, 0.25f, 0.5f, 1, 250); shake = std::max(shake, 0.4f); rumble(0.6f, 180); } }
         }
@@ -409,16 +411,14 @@ static int incomingSaid = 0, incomingMax = 0; static float incomingT = 0, incomi
 static void incoming() { incomingT = 1.6f; incomingSaid++; tone(1180, 0.09f, 0.45f, 2); tone(1180, 0.09f, 0.45f, 2, 0, 0.14f); tone(1580, 0.16f, 0.45f, 2, 0, 0.28f); rumble(0.3f, 120); }
 static int incomingNow() { int n = 0; for (const Rocket& r : rockets) if (r.target == TGT_ME) n++; return n; }
 static void incomingStep(float dt) { incomingT = std::max(0.0f, incomingT - dt); int n = state == RACE && !player.dead ? incomingNow() : 0; incomingMax = std::max(incomingMax, n); if (n) incomingFlight += dt; }
-// bots: they pick up rocket crates (once a lap each, like us) and shields, and fire at a car close ahead of them, us included
+// bots: one rocket each lap (2.9.9.3: given, not picked up; they take no crates, shields or ghosts), fired at a car
+// close ahead of them, us included
 static void botWeapons(float dt) {
     static float sparkAcc[NAI] = {};
     for (int k = 0; k < NAI; k++) {
         Car& c = ai[k]; if (c.dead || c.finishT >= 0) continue;
         int lap = carLap(k);
-        // a bot bothers with a crate on about two laps in five, and takes one rocket from it (ten bots with two each was a war)
-        if (c.botRLap != lap) for (auto& cr : crates) { if (lap + 1 < cr.fromLap) continue; float dx = cr.p.x - c.pos.x, dz = cr.p.z - c.pos.z; if (dx * dx + dz * dz < 3.3f * 3.3f) {
-            c.botRLap = lap; if (((unsigned)(k * 7919 + lap * 104729 + c.paint * 31) * 2654435761u >> 16) % 5 < 2) { c.botAmmo = 1; tm.aiCrates++; } break; } }
-        grabShield(k, c);
+        if (c.botRLap != lap) { c.botRLap = lap; c.botAmmo = 1; tm.aiCrates++; }   // a new lap: its one rocket (one unfired is not kept for later)
         if (c.shield > 0) { c.shield = std::max(0.0f, c.shield - dt); if (len(c.pos - player.pos) < 150) shieldSparks(c, dt, sparkAcc[k]); }
         c.botFireCD = std::max(0.0f, c.botFireCD - dt);
         if (c.botAmmo <= 0 || c.botFireCD > 0) continue;

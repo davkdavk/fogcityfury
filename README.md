@@ -94,6 +94,21 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.3
+
+- **Bots fight fair.** Each AI car gets one rocket a lap and fires it at a car close ahead; they no longer take crates,
+  shields or ghosts.
+- **Wrecks are ghosts.** A wrecked car flickers, you drive straight through it, and it is gone in five seconds.
+- **No edge fling, on every track.** The car now drives on the road exactly as it is drawn (flat across, from its centre
+  line) instead of the 3 m height grid under it, which near the edges was up to half a metre out and bumpy. And the climb
+  a car carries off the ground is the road's over the last couple of metres, not one frame's lip. Steep crests still
+  launch you; the city's gentle bridges lift the quicker cars only.
+- **AI drivers: Easy, Medium, Hard.** On the Options sticks page (TAB to it). Hard is how they drove before; Medium
+  is 8 % slower, Easy 16 %. `--ai 0|1|2` on the command line.
+- **Lobbies.** The events' weather now plays online too (the server runs it, clients blend it). `deploy/lobbies.conf`
+  gives each lobby its own flags; tracks rotate; lobbies read the `events` folder.
+- **The web game is online only**: Enter on the title goes straight to the lobbies.
+
 ## What's new in 2.9.9.2
 
 - **Race online in the browser.** The web game now joins the lobbies: it talks WebSocket through the site, and

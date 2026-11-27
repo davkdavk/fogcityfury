@@ -146,15 +146,16 @@ static void drawHUD() {
             if (optCapture) ui.text(Wd / 2, 646, 2.2f, white, "PRESS THE KEY TO USE     ESC: CANCEL", 1);
             else { if (!touchOn && !padUI) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, P("TAB: VIDEO AND STICKS     ESC: BACK", "{LB} {RB} VIDEO AND STICKS     {B} BACK"), 1); }
         } else if (optPage == 2) {   // 2.9.5 the sticks: a pad's, and the touch screen's steering
-            static const char* nm[NSTICKROWS] = { "STEERING SENSITIVITY", "AIM STICK (ON FOOT)", "TOUCH STEERING", "TOUCH STICK WIDTH" };
+            static const char* nm[NSTICKROWS] = { "STEERING SENSITIVITY", "AIM STICK (ON FOOT)", "TOUCH STEERING", "TOUCH STICK WIDTH", "AI DRIVERS" };
             static const char* help[NSTICKROWS] = { "HIGHER: MORE TURN FOR A SMALL PUSH. LOWER: FINER IN THE MIDDLE. FULL PUSH: FULL LOCK",
-                    "HOW FAST THE RIGHT STICK TURNS YOU ON FOOT", "STICK: SLIDE YOUR LEFT THUMB WHERE IT LANDS. BUTTONS: THE OLD < AND >", "HOW FAR YOUR THUMB SLIDES FOR FULL LOCK" };
+                    "HOW FAST THE RIGHT STICK TURNS YOU ON FOOT", "STICK: SLIDE YOUR LEFT THUMB WHERE IT LANDS. BUTTONS: THE OLD < AND >", "HOW FAR YOUR THUMB SLIDES FOR FULL LOCK",
+                    "HOW FAST THE COMPUTER CARS DRIVE: EASY, MEDIUM OR HARD" };
             char v[NSTICKROWS][48]; static const char* wide[3] = { "NARROW", "MEDIUM", "WIDE" };
-            snprintf(v[0], 48, "%d%%", optSteerSens); snprintf(v[1], 48, "%d%%", optAimSens); snprintf(v[2], 48, "%s", optTouchSteer ? "BUTTONS" : "STICK"); snprintf(v[3], 48, "%s", wide[std::max(0, std::min(2, optTouchWide))]);
+            snprintf(v[0], 48, "%d%%", optSteerSens); snprintf(v[1], 48, "%d%%", optAimSens); snprintf(v[2], 48, "%s", optTouchSteer ? "BUTTONS" : "STICK"); snprintf(v[3], 48, "%s", wide[std::max(0, std::min(2, optTouchWide))]); snprintf(v[4], 48, "%s", AI_NAME[std::max(0, std::min(2, optAI))]);
             for (int i = 0; i < NSTICKROWS; i++) {
                 float y = 170 + i * 52.0f; bool sel = i == optRow; ui.rect(Wd / 2 - 500, y - 6, 1000, 40, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.9f : 0.5f);
                 ui.text(Wd / 2 - 470, y + 5, 3, sel ? white : V3(0.8f, 0.82f, 0.86f), nm[i]); snprintf(b, sizeof b, "%s %.47s %s", sel ? "<" : " ", v[i], sel ? ">" : " "); ui.text(Wd / 2 + 300, y + 5, 3, sel ? yel : V3(0.75f, 0.85f, 1), b, 1);
-                if (sel) ui.text(Wd / 2, 420, 2.0f, dim, help[i], 1);
+                if (sel) ui.text(Wd / 2, 438, 2.0f, dim, help[i], 1);
             }
             {   // the curve: how much the car turns for each push of the stick
                 float gx = Wd / 2 - 160, gy = 560, gw = 320, gh = 100; ui.rect(gx, gy - gh, gw, gh, V3(0.06f, 0.07f, 0.10f), 0.6f); ui.rect(gx, gy, gw, 2, dim, 0.8f); ui.rect(gx, gy - gh, 2, gh, dim, 0.8f);
@@ -287,7 +288,7 @@ static void drawHUD() {
         ui.text(Wd / 2, 110, 14, yel, "FOG CITY", 1, 1, 0.12f); ui.text(Wd / 2, 225, 22, org, "FURY", 1, 1, 0.12f);
         ui.text(Wd / 2, 420, 3, white, "ARCADE HILL-JUMP STREET RACING", 1);
         if (T - codeT < 4) ui.text(Wd / 2, 470, 5, org, codeMsg, 1, clampf((4 - (T - codeT)) * 2, 0, 1), 0.15f);   // (a car's code typed)
-        if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 530, 5, white, P("PRESS ENTER", "PRESS {A}"), 1);
+        if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 530, 5, white, WEBGAME ? P("PRESS ENTER TO RACE ONLINE", "PRESS {A} TO RACE ONLINE") : P("PRESS ENTER", "PRESS {A}"), 1);
         if (!touchOn) ui.text(Wd / 2, 590, 3, V3(0.5f, 0.9f, 1), P("O: ONLINE RACE        F1: OPTIONS", "{Y} ONLINE RACE        {X} OPTIONS"), 1); if (nc.error[0]) ui.text(Wd / 2, 625, 2.5f, V3(1, 0.4f, 0.3f), nc.error, 1);
         if (!touchOn) ui.text(Wd / 2, 660, 2, V3(0.8f, 0.8f, 0.8f), P(WEBGAME ? "F1: CONTROLS AND VIDEO SETTINGS      M: MUSIC      F11: FULL SCREEN" : "F1: CONTROLS AND VIDEO SETTINGS      M: MUSIC      F11: FULL SCREEN      ESC: QUIT", WEBGAME ? "{X} CONTROLS AND VIDEO SETTINGS" : "{X} CONTROLS AND VIDEO SETTINGS      {B} QUIT"), 1);
     } else if (state == CARSEL) {

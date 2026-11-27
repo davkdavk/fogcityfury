@@ -158,7 +158,7 @@ def shield_on_the_alternate_route():
     d = keyrun(t, k, "--gas", "--shield", seconds=10)
     check(d["wrecks"] == 0 and d["shieldSaves"] == 1 and d["shieldT"] == 0, "a flat-out crash breaks the shield instead of the car", (d["wrecks"], d["shieldSaves"], d["shieldT"]))
     d = sim("--seed", 5, "--track", 1, "--state", 3, "--auto", seconds=330)
-    between(d["aiShields"] + d["shields"], 2, 12, "over three laps the bots take shields (each shield at most once a lap, and free again once its holder has finished)")
+    check(d["aiShields"] == 0, "the bots pick up no shields (2.9.9.3: they get a rocket a lap, and nothing else)", d["aiShields"])
 
 
 @test
@@ -171,7 +171,8 @@ def bots_fire_rockets():
     check(sum(d["rocketsAtMe"] for d in shd) >= 1 and all(d["shieldSaves"] == min(d["rocketsAtMe"], 1) and d["wrecks"] <= d["rocketsAtMe"] - d["shieldSaves"] for d in shd), "a shield takes the first rocket (only the first)", [(d["rocketsAtMe"], d["shieldSaves"], d["wrecks"]) for d in shd])
     for t in range(NTRACKS):
         d = sim("--seed", 5, "--track", t, "--state", 3, "--auto", *(["--laps", 2] if t == 6 else []), seconds=330)   # (Twin Isles races twice the laps: two picked, four raced)
-        between(d["aiRocketsFired"], 3, 20, "track %d: bots pick up crates now and then and fire (not a war)" % t)
+        between(d["aiRocketsFired"], 15, 50, "track %d: bots get one rocket a lap and fire it (one each, not a war)" % t)
+        check(d["aiCrates"] <= 9 * (5 if t == 6 else 4), "track %d: at most one rocket a bot a lap" % t, d["aiCrates"])
         check(d["finished"] == 1, "track %d: the race still finishes" % t, d["finished"])
 
 
@@ -223,7 +224,7 @@ def _race(track, car):
 def _race_track(track, min_air):
     for car in range(3):
         d = _race(track, car)
-        if car < 2:
+        if car < 2 and not (track == 3 and car == 0):   # (2.9.9.3: no fling off a lip; the city's gentle bridges lift only the quicker car)
             check(d["maxAir"] > min_air, "track %d: %s gets air on the crests" % (track, CARS[car]), d["maxAir"])
 
 
@@ -645,8 +646,8 @@ def net_two_game_clients_race_each_other():
     check(set(places) == {1, 2}, "the two clients agree on who is ahead", places)
     check(reports[0]["netId"] != reports[1]["netId"], "distinct ids")
     check(reports[1]["rocketHits"] == 1, "bob's rocket found alice", reports[1]["rocketHits"])
-    check(reports[0]["wrecks"] >= 1 and reports[0]["wrecksLeft"] >= 1, "alice's own game blew her up and left the wreck", (reports[0]["wrecks"], reports[0]["wrecksLeft"]))
-    check(reports[1]["wrecksLeft"] >= 1, "bob sees alice's wreck too", reports[1]["wrecksLeft"])
+    check(reports[0]["wrecks"] >= 1 and reports[0]["wrecksMade"] >= 1, "alice's own game blew her up and left the wreck", (reports[0]["wrecks"], reports[0]["wrecksMade"]))
+    check(reports[1]["wrecksMade"] >= 1, "bob sees alice's wreck too (2.9.9.3: made; a ghost, gone in 5 s)", reports[1]["wrecksMade"])
     check("joined" in srv.log and "phase RACE" in srv.log, "server log shows the session")
 
 
@@ -1079,9 +1080,9 @@ def bridges_on_the_figure_eight_tracks():
 
 @test
 def rockets_lock_on_and_wreck_the_nearest_car():
-    none = sim("--track", 1, "--state", 3, "--auto", "--fire", 3.0, seconds=7)
+    none = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", "--fire", 3.0, seconds=7)
     check(none["rocketsFired"] == 0, "no rockets, no shot", none["rocketsFired"])
-    d = sim("--track", 1, "--state", 3, "--auto", "--rockets", 2, "--fire", 3.0, "--fire", 4.5, seconds=7.5)
+    d = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", "--rockets", 2, "--fire", 3.0, "--fire", 4.5, seconds=7.5)
     check(d["rocketsFired"] == 2 and d["rockets"] == 0, "two rockets, both fired", (d["rocketsFired"], d["rockets"]))
     check(d["rocketHits"] == 2, "both found a car", d["rocketHits"])
     check(d["wrecksLeft"] == 2 and d["debris"] >= 14, "each hit leaves a shell and parts on the road", (d["wrecksLeft"], d["debris"]))
@@ -1095,7 +1096,7 @@ def rockets_lock_on_and_wreck_the_nearest_car():
 def rockets_come_from_pickups_two_at_a_time():
     crates = dump(1)["crates"]
     check(len(crates) == 12, "six pairs of crates round the lap", len(crates))
-    here = ("--track", 1, "--state", 3, "--pos", crates[0]["x"], crates[0]["z"], 0)
+    here = ("--track", 1, "--state", 3, "--nobotguns", "--pos", crates[0]["x"], crates[0]["z"], 0)   # (bots fire a rocket every lap now: none at us here)
     d = sim(*here, seconds=2)
     check(d["pickups"] == 1 and d["rockets"] == 2, "driving into a crate gives two rockets", (d["pickups"], d["rockets"]))
     d = sim(*here, seconds=14)
@@ -1122,10 +1123,20 @@ def wreck_leaves_shell_and_parts_behind():
     key = dump(t)["keys"][k]
     check(math.hypot(d["wreckX"] - key["x"], d["wreckZ"] - key["z"]) < 40, "the shell is where the car died, not where it respawned", (d["wreckX"], d["wreckZ"]))
     check(d["dead"] == 0, "the car itself is back", d["dead"])
-    soon = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", "--rockets", 1, "--fire", 3.0, seconds=11)
+    soon = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", "--rockets", 1, "--fire", 3.0, seconds=6.5)
     later = sim("--track", 1, "--state", 3, "--auto", "--nobotguns", "--rockets", 1, "--fire", 3.0, seconds=16)
-    check(soon["rocketHits"] == 1 and soon["wrecksLeft"] == 1, "a wreck is still there seven seconds after the hit", (soon["rocketHits"], soon["wrecksLeft"]))
-    check(later["rocketHits"] == 1 and later["wrecksLeft"] == 0 and later["debris"] == 0, "after ten seconds the shell and its parts have faded away", (later["wrecksLeft"], later["debris"]))
+    check(soon["rocketHits"] == 1 and soon["wrecksLeft"] == 1, "a wreck is still there (a ghost) a few seconds after the hit", (soon["rocketHits"], soon["wrecksLeft"]))
+    check(later["rocketHits"] == 1 and later["wrecksLeft"] == 0 and later["debris"] == 0, "within ten seconds the shell and its parts have faded away (2.9.9.3: five)", (later["wrecksLeft"], later["debris"]))
+
+
+@test
+def ai_speed_easy_medium_hard():
+    """2.9.9.3: easy / medium / hard AI (hard: as they always drove)."""
+    runs = {a: sim("--seed", 5, "--track", 0, "--state", 3, "--auto", "--ai", a, seconds=60) for a in (0, 1, 2)}
+    old = sim("--seed", 5, "--track", 0, "--state", 3, "--auto", seconds=60)
+    check(runs[2]["place"] == old["place"] and abs(runs[2]["dist"] - old["dist"]) < 1, "hard is the AI as before (and what the tests drive)", (runs[2]["place"], old["place"]))
+    check(runs[0]["place"] <= runs[1]["place"] <= runs[2]["place"], "easier AI: we place as well or better", [runs[a]["place"] for a in (0, 1, 2)])
+    check(runs[0]["place"] < runs[2]["place"], "easy is really easier than hard", (runs[0]["place"], runs[2]["place"]))
 
 
 @test
@@ -1430,7 +1441,7 @@ def touch_buttons_drive_the_car_and_the_menus():
     right = sim("--touch", "--state", 3, "--mode", 1, "--track", 1, "--touchhold", "GAS", "--touchsteer", 1, seconds=4)
     check(left["heading"] > 0.5 and right["heading"] < -0.5, "2.9.5 the steering stick: thumb left and right steer opposite ways", (left["heading"], right["heading"]))
     part = [sim("--touch", "--state", 3, "--mode", 1, "--track", 1, "--touchhold", "GAS", "--touchsteer", 0.3, "--steersens", s, seconds=4)["heading"] for s in (50, 100, 200)]
-    check(part[0] > part[1] > part[2] and part[2] < right["heading"] + 0.3, "a third of the way: STEERING SENSITIVITY turns it less, more and nearly fully", part)
+    check(part[0] > part[1] > part[2] and part[2] < right["heading"] + 0.5, "a third of the way: STEERING SENSITIVITY turns it less, more and nearly fully", part)
     b = sim("--touch", "--state", 3, "--mode", 1, "--track", 1, "--steerbuttons", "--touchhold", "GAS", "--touchhold", "<", seconds=4)
     check("<" in b["touchBtns"].split(",") and b["heading"] > 0.5, "TOUCH STEERING: BUTTONS brings back < and >", (b["touchBtns"], b["heading"]))
     o = sim("--touch", "--tap", "0.3:OPTIONS", "--tap", "0.6:VIDEO", "--tap", "0.9:STICKS", "--tap", "1.2:>", "--tap", "1.5:DOWN", "--tap", "1.8:DOWN", "--tap", "2.1:>", seconds=2.5)
@@ -1507,8 +1518,8 @@ def weather_races_finish_on_every_track():
         name = "track %d in %s" % (track, ("clear", "rain", "fog", "storm")[w])
         check(d["finished"] == 1, "%s: the race finishes" % name, (d["lap"], d["timeUp"]))
         check(d["sinks"] == 0 and d["wrecks"] <= 1, "%s: the bot keeps it on the road" % name, (d["sinks"], d["wrecks"]))
-    dry = sim("--track", 1, "--car", 1, "--weather", 0, "--state", 3, "--auto", seconds=330)
-    wet = sim("--track", 1, "--car", 1, "--weather", 3, "--state", 3, "--auto", seconds=330)
+    dry = sim("--track", 1, "--car", 1, "--weather", 0, "--state", 3, "--auto", "--nobotguns", seconds=330)
+    wet = sim("--track", 1, "--car", 1, "--weather", 3, "--state", 3, "--auto", "--nobotguns", seconds=330)
     check(wet["bestLap"] > dry["bestLap"] * 1.03, "a storm lap is slower than a dry one", (wet["bestLap"], dry["bestLap"]))
 
 

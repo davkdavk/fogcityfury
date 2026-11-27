@@ -15,7 +15,7 @@ static struct NetClient {
     bool on = false, connected = false, ready = false, racing = false, finished = false, autoReady = false, skipMenus = false;
     int sock = -1, id = -1, field = 0; sockaddr_in addr;
     int track = 0;                          // the server's track, as our own track number (-1: a custom track still on its way: see trackId)
-    uint8_t trackId = 0, phase = 0, prevPhase = 255, laps = 3, weather = 0, myPlace = 1, count = 0; float phaseT = 0, finishT = 0;
+    float wxOver = 0; uint8_t trackId = 0, phase = 0, prevPhase = 255, laps = 3, weather = 0, myPlace = 1, count = 0; float phaseT = 0, finishT = 0;
     uint8_t hitId = 0, hitSeq = 0;          // our last rocket hit (see CarState)
     uint8_t placeFull = 0;                  // test metric: our place the last time at least two players were present
     float maxMoved = 0; int maxCount = 0;   // test metrics: furthest any remote car was seen to travel, most players seen at once
@@ -73,7 +73,7 @@ static void netPump(float dt, bool inLobby) {
             if (sn.count > net::MAXP || n < 20 + sn.count * (int)sizeof(net::PlayerSnap) || (nc.gotSnap && sn.tick < nc.lastTick && nc.lastTick - sn.tick < 100000)) continue;
             { bool ok = net::saneF(sn.phaseT, 1e7f); for (int k = 0; k < sn.count && ok; k++) ok = net::sane(sn.p[k].s);
               if (!ok) { static int bad = 0; if (bad++ < 5) { char m[96]; snprintf(m, sizeof m, "net: dropped a snapshot with bad numbers (tick %u, %d cars)", sn.tick, sn.count); plat::logLine(m); } continue; } }
-            nc.lastTick = sn.tick; nc.gotSnap = true; nc.snap = sn; nc.phase = sn.phase; nc.trackId = sn.track; nc.track = netLocalTrack(sn.track); nc.laps = sn.laps; nc.weather = sn.weather % 4; nc.phaseT = sn.phaseT; nc.count = sn.count; nc.maxCount = std::max(nc.maxCount, (int)sn.count);
+            nc.lastTick = sn.tick; nc.gotSnap = true; nc.snap = sn; nc.phase = sn.phase; nc.trackId = sn.track; nc.track = netLocalTrack(sn.track); nc.laps = sn.laps; nc.weather = sn.weather % 4; nc.wxOver = (float)(sn.weather >> 2) * 2.0f;   /* (2.9.9.3: how long a scripted turn of the sky takes) */ nc.phaseT = sn.phaseT; nc.count = sn.count; nc.maxCount = std::max(nc.maxCount, (int)sn.count);
             bool seen[net::MAXP] = {};
             for (int k = 0; k < sn.count; k++) {
                 const net::PlayerSnap& p = sn.p[k]; if (p.id >= net::MAXP) continue;
