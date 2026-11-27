@@ -94,6 +94,12 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.2
+
+- **Race online in the browser.** The web game now joins the lobbies: it talks WebSocket through the site, and
+  `fogcityfury-wsbridge`, run with the lobbies, passes it on to them. Browser, desktop, Android and 360 players race
+  together. Setting it up: `docs/WEB.md` (one Apache line, and the bridge beside the lobbies).
+
 ## What's new in 2.9.9.1
 
 - **Eight online lobbies.** `deploy/fcf-lobbies.sh` sets up eight dedicated servers on one Linux machine, 10 players

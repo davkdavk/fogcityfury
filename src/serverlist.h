@@ -38,7 +38,12 @@ static void srvPump(float dt) {
     if (qsock < 0) return; srvSkipText = false;
     for (auto& e : servers) {
         if (e.st == 0 && e.job) { int d = plat::atomicGet(e.job->done); if (d == 1) { e.addr = e.job->addr; srvAsk(e); } else if (d == 2) e.st = 4; }
-        if (e.waiting && plat::nowSec() - e.sent > 1.5) {
+#ifdef __EMSCRIPTEN__
+        const double wait = 4.0;   // (the browser: the first ask waits for its WebSocket to the site to open)
+#else
+        const double wait = 1.5;
+#endif
+        if (e.waiting && plat::nowSec() - e.sent > wait) {
 #ifdef FCF_GFX_XSDK
             xsdk_log_write("net: server info timeout host=%s after 1500 ms", e.host.c_str());
 #endif
@@ -47,7 +52,8 @@ static void srvPump(float dt) {
     }
     uint8_t buf[256]; sockaddr_in from;
     for (int guard = 0; guard < 64; guard++) {
-        int n = net::recvFrom(qsock, buf, sizeof buf, from); if (n <= 0) break; if (!net::valid(buf, n, sizeof(net::Info))) continue;
+        int n = net::recvFrom(qsock, buf, sizeof buf, from); if (n <= 0) break;
+        if (!net::valid(buf, n, sizeof(net::Info))) continue;
         net::Info in; memcpy(&in, buf, sizeof in); if (in.h.type != net::S_INFO) continue;
         for (auto& e : servers) if (e.waiting && e.nonce == in.nonce && net::sameAddr(e.addr, from)) { e.waiting = false; e.st = 2; e.ping = (float)((plat::nowSec() - e.sent) * 1000); e.info = in; e.info.name[sizeof e.info.name - 1] = 0; e.proto = in.h.proto; }
     }

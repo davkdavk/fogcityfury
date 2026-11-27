@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.9.2 | | Browser players in the lobbies: `fogcityfury-wsbridge` (WebSocket to the lobbies' UDP), the web game online over WebSockets, Apache `ProxyPass /fcf/lobby/`; lobbies.sh starts the bridge |
 | 2.9.9.1 | | `deploy/fcf-lobbies.sh`: eight 10-player lobbies as systemd services (UDP 27015-27022); the game lists all eight |
 | 2.9.9 | | The game in a web page (3.0, step 1): `make web`, WebAssembly + WebGL2, saves in the browser; docs/WEB.md |
 | 2.9.8.6 | | `tools/blender/fcf_car.py`: any car model (any format, a zip) into the game in one command; added cars can be hidden behind a code typed on the main menu |

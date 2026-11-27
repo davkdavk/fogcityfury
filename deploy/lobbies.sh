@@ -9,11 +9,13 @@
 #   ./lobbies.sh boot        start them when the machine starts (adds a line to your crontab)
 #
 # Each lobby keeps its own uploaded tracks and its log in lobbyN/ here. Event files in events/ here (trackN.fcfe)
-# go to every lobby. Settings: FCF_BIN (the server, default ./FogCityFury-Server-ARM64), FCF_LOBBIES (8),
+# go to every lobby. Browser players: if FogCityFury-WSBridge-ARM64 is here too, it is started with the lobbies
+# (TCP 27080, for the web server to pass wss://SITE/fcf/lobby/PORT to; see docs/WEB.md), its log in bridge/. Settings: FCF_BIN (the server, default ./FogCityFury-Server-ARM64), FCF_LOBBIES (8),
 # FCF_NAME (THADAV.COM: lobbies are "THADAV.COM 1" ...), FCF_EXTRA (more server flags, e.g. "--laps 4").
 cd "$(dirname "$0")" || exit 1
 HERE=$(pwd)
 BIN=${FCF_BIN:-./FogCityFury-Server-ARM64}
+BRIDGE=${FCF_BRIDGE:-./FogCityFury-WSBridge-ARM64}
 N=${FCF_LOBBIES:-8}
 BASE=27015
 NAME=${FCF_NAME:-THADAV.COM}
@@ -35,9 +37,19 @@ start() {
         fi
         i=$((i + 1))
     done
+    if [ -f "$BRIDGE" ]; then   # the bridge for browser players
+        [ -x "$BRIDGE" ] || chmod +x "$BRIDGE"
+        if [ -f bridge/pid ] && kill -0 "$(cat bridge/pid)" 2>/dev/null; then echo "bridge: already running"; else
+            mkdir -p bridge
+            setsid sh -c 'while :; do "$0" --ports "$1" $2; echo "bridge stopped; starting again in 3 s"; sleep 3; done' \
+                "$BRIDGE" "$BASE-$((BASE + N - 1))" "${FCF_BRIDGE_EXTRA:-}" >> bridge/log.txt 2>&1 < /dev/null &
+            echo $! > bridge/pid; echo "bridge: started on TCP 27080 (browser players, through the web server)"
+        fi
+    fi
 }
 
 stop() {
+    if [ -f bridge/pid ]; then kill -- "-$(cat bridge/pid)" 2>/dev/null || kill "$(cat bridge/pid)" 2>/dev/null; rm -f bridge/pid; echo "bridge: stopped"; fi
     for d in lobby*/; do
         i=${d#lobby}; i=${i%/}
         if running "$i"; then kill -- "-$(cat "lobby$i/pid")" 2>/dev/null || kill "$(cat "lobby$i/pid")"; echo "lobby $i: stopped"; fi
@@ -56,9 +68,11 @@ status)
         j=$(grep -c "joined" "lobby$i/log.txt" 2>/dev/null); [ -n "$j" ] || j=0
         printf 'lobby %s  UDP %s  %-8s  %s joins so far\n' "$i" "$((BASE + i - 1))" "$s" "$j"
         i=$((i + 1))
-    done ;;
+    done
+    if [ -f "$BRIDGE" ]; then s=stopped; [ -f bridge/pid ] && kill -0 "$(cat bridge/pid)" 2>/dev/null && s=running
+        j=$(grep -c "connected to lobby" bridge/log.txt 2>/dev/null); [ -n "$j" ] || j=0; printf 'bridge   TCP 27080  %-8s  %s browser connections so far\n' "$s" "$j"; fi ;;
 boot)
     line="@reboot $HERE/lobbies.sh start"
     ( crontab -l 2>/dev/null | grep -v "lobbies.sh start"; echo "$line" ) | crontab - && echo "they will start when the machine starts ($line)" ;;
-*) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+*) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

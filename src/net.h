@@ -161,7 +161,57 @@ inline Header header(Type t, uint8_t id) { Header h; h.magic = MAGIC; h.proto = 
 inline bool valid(const void* data, int len, int minLen) { if (len < minLen || len < (int)sizeof(Header)) return false; Header h; memcpy(&h, data, sizeof h); return h.magic == MAGIC; }
 
 // ---- the few places where Winsock and BSD sockets differ ----
-#ifdef _WIN32
+#if defined(__EMSCRIPTEN__)
+// 3.0 the browser: no UDP in a web page. Each server is reached over a WebSocket instead,
+// wss://HOST/fcf/lobby/PORT (the page can set Module.fcfLobbyUrl), which the site's web server passes to
+// fogcityfury-wsbridge beside the lobbies, and that to the lobby's UDP port. A "socket" here is a handle to a set of
+// WebSockets, one per server it has sent to; an address is a host number (net::resolve's table) and a port. The same
+// packets go both ways, one per WebSocket message.
+}
+#include <emscripten.h>
+EM_JS(int, fcfWsOpen, (), {
+    var n = Module.fcfNet || (Module.fcfNet = { socks: {}, next: 1, hosts: [] }); var id = n.next++; n.socks[id] = { ws: {}, q: [] }; return id;
+});
+EM_JS(int, fcfWsHost, (const char* h), {
+    var n = Module.fcfNet || (Module.fcfNet = { socks: {}, next: 1, hosts: [] }); var s = UTF8ToString(h);
+    var i = n.hosts.indexOf(s); if (i < 0) { n.hosts.push(s); i = n.hosts.length - 1; } return i + 1;
+});
+EM_JS(void, fcfWsSend, (int id, int host, int port, const void* data, int len), {
+    var n = Module.fcfNet; var s = n && n.socks[id]; if (!s || host < 1 || host > n.hosts.length) return;
+    var key = host + ':' + port; var w = s.ws[key];
+    if (!w || w.readyState > 1) {
+        if (w && Date.now() - w.fcfT < 2000) return;   // (a lobby that did not answer: try again every 2 s, not every packet)
+        var tpl = Module.fcfLobbyUrl || ((location.protocol == 'https:' ? 'wss' : 'ws') + '://{host}/fcf/lobby/{port}');
+        try { w = new WebSocket(tpl.replace('{host}', n.hosts[host - 1]).replace('{port}', port)); } catch (e) { return; }
+        w.binaryType = 'arraybuffer'; w.fcfT = Date.now(); w.fcfOut = []; s.ws[key] = w;
+        w.onopen = function () { for (var i = 0; i < w.fcfOut.length; i++) w.send(w.fcfOut[i]); w.fcfOut = []; };
+        w.onmessage = function (e) { if (s.q.length < 1024 && e.data instanceof ArrayBuffer) s.q.push([host, port, new Uint8Array(e.data)]); };
+        w.onerror = function () {};
+    }
+    var b = HEAPU8.slice(data, data + len);
+    if (w.readyState == 1) w.send(b); else if (w.fcfOut.length < 32) w.fcfOut.push(b);
+});
+EM_JS(int, fcfWsRecv, (int id, void* buf, int cap, int* host, int* port), {
+    var n = Module.fcfNet; var s = n && n.socks[id]; if (!s || !s.q.length) return -1;
+    var m = s.q.shift(); var len = Math.min(cap, m[2].length); HEAPU8.set(m[2].subarray(0, len), buf);
+    HEAP32[host >> 2] = m[0]; HEAP32[port >> 2] = m[1]; return len;
+});
+EM_JS(void, fcfWsClose, (int id), {
+    var n = Module.fcfNet; var s = n && n.socks[id]; if (!s) return;
+    for (var k in s.ws) { try { s.ws[k].close(); } catch (e) {} } delete n.socks[id];
+});
+namespace net {
+inline void init() {}
+inline void closeSock(int s) { fcfWsClose(s); }
+inline void sleepMs(int ms) { emscripten_sleep((unsigned)ms); }
+inline int openUdp(int) { return fcfWsOpen(); }
+inline bool resolve(const char* hostport, sockaddr_in& out) {
+    char host[128]; snprintf(host, sizeof host, "%s", hostport); int port = DEFPORT;
+    char* c = strrchr(host, ':'); if (c) { *c = 0; port = atoi(c + 1); if (port <= 0 || port > 65535) return false; }
+    memset(&out, 0, sizeof out); out.sin_family = AF_INET; out.sin_addr.s_addr = (uint32_t)fcfWsHost(host[0] ? host : "127.0.0.1"); out.sin_port = htons((uint16_t)port);
+    return true;
+}
+#elif defined(_WIN32)
 inline void init() { static bool done = false; if (!done) { WSADATA w; WSAStartup(MAKEWORD(2, 2), &w); done = true; } }
 inline void closeSock(int s) { closesocket((SOCKET)s); }
 inline void sleepMs(int ms) { Sleep((DWORD)ms); }
@@ -203,6 +253,7 @@ inline void sleepMs(int ms) { usleep((useconds_t)ms * 1000); }
 inline void prepare(int s) { int one = 1; setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one); fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) | O_NONBLOCK); }
 #endif
 
+#ifndef __EMSCRIPTEN__
 inline int openUdp(int port) {   // port 0 = any (client). Non-blocking. Returns -1 on failure.
     init(); int s = (int)socket(AF_INET, SOCK_DGRAM, 0); if (s < 0) return -1;
     prepare(s);
@@ -229,6 +280,7 @@ inline bool resolve(const char* hostport, sockaddr_in& out) {
 #endif
     return true;
 }
+#endif
 // ---- byte order: on the wire every integer and float is little-endian, as the PC and Android keep them ----
 // A big-endian machine (the Xbox 360) turns each packet round as it goes out and as it comes in, here and nowhere
 // else: every packet passes through sendTo and recvFrom. Turning round is its own inverse, so one walker does both.
@@ -302,6 +354,13 @@ inline void turnPacket(uint8_t* p, int len) {
     }
 }
 #undef FCF_AT
+#ifdef __EMSCRIPTEN__
+inline void sendTo(int s, const sockaddr_in& to, const void* data, int len) { fcfWsSend(s, (int)to.sin_addr.s_addr, ntohs(to.sin_port), data, len); }
+inline int recvFrom(int s, void* buf, int cap, sockaddr_in& from) {
+    int h = 0, p = 0, n = fcfWsRecv(s, buf, cap, &h, &p); if (n < 0) return -1;
+    memset(&from, 0, sizeof from); from.sin_family = AF_INET; from.sin_addr.s_addr = (uint32_t)h; from.sin_port = htons((uint16_t)p); return n;
+}
+#else
 inline void sendTo(int s, const sockaddr_in& to, const void* data, int len) {
 #ifdef FCF_GFX_XSDK
     uint8_t type = len > (int)offsetof(Header, type) ? ((const uint8_t*)data)[offsetof(Header, type)] : 0;
@@ -334,5 +393,6 @@ inline int recvFrom(int s, void* buf, int cap, sockaddr_in& from) {
     if (BIG_ENDIAN_HOST && n > 0) turnPacket((uint8_t*)buf, n);
     return n;
 }
+#endif
 inline bool sameAddr(const sockaddr_in& a, const sockaddr_in& b) { return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port; }
 }

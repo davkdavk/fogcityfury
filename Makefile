@@ -30,7 +30,11 @@ fogcityfury-server: src/server.cpp src/net.h
 fcfedit: src/game.cpp $(wildcard src/*.h)
 	$(CXX) $(CXXFLAGS) -DFCF_EVEDIT_APP $(SDL_CFLAGS) -o $@ src/game.cpp $(SDL_LIBS) -lGL -lm
 
-all: fogcityfury fogcityfury-server fcfedit
+all: fogcityfury fogcityfury-server fcfedit fogcityfury-wsbridge
+
+# browser players into the lobbies: WebSocket <-> the lobbies' UDP (3.0; see docs/WEB.md)
+fogcityfury-wsbridge: src/wsbridge.cpp
+	$(CXX) -O2 -std=c++17 -Wall -o $@ src/wsbridge.cpp
 
 run: fogcityfury
 	./fogcityfury
@@ -66,13 +70,16 @@ test-render: fogcityfury fogcityfury-server
 	python3 tests/run_tests.py --render
 
 clean:
-	rm -f web/fcf.js web/fcf.wasm fogcityfury fogcityfury-server fogcityfury.exe fogcityfury-server.exe fogcityfury-server-arm64 fogcityfury-server-armhf fogcityfury-gles
+	rm -f web/fcf.js web/fcf.wasm fogcityfury-wsbridge fogcityfury-wsbridge-arm64 fogcityfury fogcityfury-server fogcityfury.exe fogcityfury-server.exe fogcityfury-server-arm64 fogcityfury-server-armhf fogcityfury-gles
 
 .PHONY: all windows run test test-render clean web
 
 # ARM Linux builds of the dedicated server (Raspberry Pi and other ARM boards), statically linked.
 #   sudo apt install g++-aarch64-linux-gnu g++-arm-linux-gnueabihf      (qemu-user-static to test them here)
-arm: fogcityfury-server-arm64 fogcityfury-server-armhf fogcityfury-gles
+arm: fogcityfury-server-arm64 fogcityfury-server-armhf fogcityfury-wsbridge-arm64 fogcityfury-gles
+fogcityfury-wsbridge-arm64: src/wsbridge.cpp
+	aarch64-linux-gnu-g++ -O2 -std=c++17 -Wall -static -o $@ src/wsbridge.cpp
+	aarch64-linux-gnu-strip $@
 fogcityfury-server-arm64: src/server.cpp src/net.h
 	aarch64-linux-gnu-g++ -O2 -std=c++17 -Wall -static -o $@ src/server.cpp
 	aarch64-linux-gnu-strip $@

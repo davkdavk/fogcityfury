@@ -1021,6 +1021,40 @@ def net_server_list_shows_what_each_server_is_running():
 
 
 @test
+def browser_players_reach_a_lobby_through_the_bridge():
+    """2.9.9.2 fogcityfury-wsbridge: a WebSocket to /lobby/PORT is passed to that lobby's UDP port and back, so the
+    web game's status query gets the lobby's answer; a port outside the lobbies is refused."""
+    import base64
+    bridge = os.path.join(ROOT, "fogcityfury-wsbridge")
+    if not os.path.exists(bridge): subprocess.run(["make", "fogcityfury-wsbridge"], cwd=ROOT, capture_output=True)
+    with Server("--name", "BRIDGE TEST") as srv:
+        bp = free_port(); b = subprocess.Popen([bridge, "--listen", "127.0.0.1:%d" % bp, "--ports", "%d-%d" % (srv.port, srv.port)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        try:
+            time.sleep(0.4)
+            def ws(path):
+                s = socket.create_connection(("127.0.0.1", bp), timeout=3); key = base64.b64encode(os.urandom(16)).decode()
+                s.sendall(("GET %s HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n" % (path, key)).encode())
+                head = b""
+                while b"\r\n\r\n" not in head:
+                    c = s.recv(1)
+                    if not c: break
+                    head += c
+                return s, head.decode(errors="replace")
+            s, head = ws("/lobby/%d" % srv.port)
+            check(head.startswith("HTTP/1.1 101"), "the bridge takes the WebSocket for the lobby's port", head[:40])
+            q = struct.pack("<IHBBI", 0x59464346, 11, 4, 0xFF, 4321) + bytes(36); mk = os.urandom(4)
+            s.sendall(bytes([0x82, 0x80 | len(q)]) + mk + bytes(x ^ mk[i % 4] for i, x in enumerate(q)))
+            d = s.recv(1024)
+            check(len(d) >= 2 + 8 and d[0] == 0x82 and d[2 + 6] == 19 and struct.unpack("<I", d[2 + 8:2 + 12])[0] == 4321, "the lobby's answer comes back as a WebSocket message", d[:16].hex())
+            check(b"BRIDGE TEST" in d, "with the lobby's name in it")
+            s.close()
+            s2, head2 = ws("/lobby/%d" % (srv.port + 1)); s2.close()
+            check(head2.startswith("HTTP/1.1 404"), "a port that is not a lobby is refused", head2[:40])
+        finally:
+            b.terminate(); b.wait(timeout=5)
+
+
+@test
 def net_client_gives_up_when_there_is_no_server():
     d = sim("--connect", "127.0.0.1:%d" % free_port(), "--name", "lonely", seconds=7.2)
     check(d["net"] == 0 and d["netError"] == "NO RESPONSE FROM SERVER", "client reports that nothing answered", d["netError"])
