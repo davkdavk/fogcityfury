@@ -32,7 +32,7 @@
 namespace net {
 const uint32_t MAGIC = 0x59464346;   // bytes "FCFY"
 const uint16_t PROTO = 11;           // bump when any struct below changes, or a flag bit gains a meaning
-const int MAXP = 10, DEFPORT = 27015, NAMELEN = 16, TRACKS = 7, CARS = 5, PAINTS = 8;   // (CARS: an older game shows car 4 as car 0)
+const int MAXP = 10, DEFPORT = 27015, NAMELEN = 16, TRACKS = 7, CARS = 32, PAINTS = 8;   // (CARS: the most car ids on the wire; a car this game does not have is shown as car 0. 2.9.8.6: 32, for cars added with fcf_car.py)
 // SPACE: the track id of the secret space track (every game builds it itself). A player who parks under the golden UFO
 // on a roam server sends C_SPACE (a bare Header): ten seconds later everyone races in space, then it is back to roaming
 const uint8_t SPACE = 255;

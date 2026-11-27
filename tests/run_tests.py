@@ -2201,6 +2201,21 @@ def pickups_come_out_on_their_lap_and_wardens_stand_aimed():
 
 
 @test
+def added_cars_list_matches_and_codes_unlock():
+    """2.9.8.6 tools/blender/fcf_car.py: the list of added cars (src/cars_extra.h, cars_extra_spec.inc) is what
+    models/*/car.json says (the tool writes it again the same, no Blender needed for that), and the game counts them.
+    Typing on the main menu that is not a code does nothing to the cars."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    before = [open(os.path.join(root, "src", f)).read() for f in ("cars_extra.h", "cars_extra_spec.inc")]
+    r = subprocess.run([sys.executable, os.path.join(root, "tools", "blender", "fcf_car.py"), "--", "--registry"], capture_output=True, text=True, timeout=60)
+    after = [open(os.path.join(root, "src", f)).read() for f in ("cars_extra.h", "cars_extra_spec.inc")]
+    check(r.returncode == 0 and before == after, "the list of added cars is up to date with models/*/car.json", r.stdout + r.stderr)
+    n = len([d for d in os.listdir(os.path.join(root, "models")) if os.path.isfile(os.path.join(root, "models", d, "car.json"))])
+    d = sim("--state", 0, "--press", "1:x", "--press", "1.1:y", "--press", "1.2:z", seconds=1.5)
+    check(len(d["carsOpen"]) == 5 + n and all(d["carsOpen"][:5]), "five built-in cars and the added ones", d["carsOpen"])
+
+
+@test
 def a_shortcut_can_be_a_tunnel():
     """The TUNNEL tool on a shortcut makes it dive under the sea (in the editor: on Twin Isles, the causeway between the
     islands). The file keeps it; a car takes it end to end, down in the tube and out the far side; right click undoes it."""

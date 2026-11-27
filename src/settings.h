@@ -263,6 +263,7 @@ static void loadCfg() {
         { int a = 0, b = 0, c = 0, d = 0; if (fscanf(f, " sticks %d %d %d %d", &a, &b, &c, &d) == 4) { optSteerSens = std::max(50, std::min(200, a)); optAimSens = std::max(25, std::min(300, b)); optTouchSteer = c ? 1 : 0; optTouchWide = std::max(0, std::min(2, d)); } }
         int br = 0; if (fscanf(f, " bright %d", &br) == 1) vidBright = std::max(50, std::min(150, br));
         { int a = 0, b = 0, c = 0; if (fscanf(f, " fx %d %d %d", &a, &b, &c) == 3) { optRings = std::max(0, std::min(300, a)); optMist = std::max(0, std::min(200, b)); optGrass = std::max(0, std::min(150, c)); } }   // free roam: flowers picked up, the levels they make (minis.h)
+        { char ln[400]; if (fscanf(f, " unlocked%399[^\n]", ln) == 1) carUnlocked = std::string(ln) + " "; }   // (" CUBANO ...": the codes typed)
     }
     fclose(f);
 }
@@ -306,6 +307,7 @@ static void saveCfg() {
             if (n.find(' ') == std::string::npos) fprintf(f, "ckey %s %u\n", n.c_str(), keysGot[t]);
         } // keys found on your own tracks
     fprintf(f, "sticks %d %d %d %d\n", optSteerSens, optAimSens, optTouchSteer, optTouchWide); fprintf(f, "bright %d\n", vidBright); fprintf(f, "fx %d %d %d\n", optRings, optMist, optGrass);
+    if (carUnlocked.size() > 1) fprintf(f, "unlocked%s\n", carUnlocked.substr(0, carUnlocked.size() - 1).c_str());   // the added cars' codes typed (last: fscanf reads in order)
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the

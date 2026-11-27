@@ -59,10 +59,11 @@ static float seaY(float x, float z, float t, float amp) {   // amp: how much swe
     return a * (0.55f * sinf(p1) + 0.30f * sinf(p2) + 0.15f * sinf(p3)) + tideNow(t);
 }
 static float boltT = 4, boltFlash = 0;
-static const int LAPS = 3, NAI = 9, NPAINT = 8, NCARS = 5;   // nine opponents: ten cars on the grid
+static const int LAPS = 3, NAI = 9, NPAINT = 8;   // nine opponents: ten cars on the grid
 
 // ------------------------------------------------------------------ cars
 #include "carspec.h"
+static const int NCARS = NALLCARS;   // (every car: the five built in and any added with tools/blender/fcf_car.py)
 static const V3 PAINTS[NPAINT] = { {0.75f,0.03f,0.03f},{0.03f,0.16f,0.75f},{0.95f,0.62f,0.02f},{0.03f,0.42f,0.14f},{0.85f,0.85f,0.88f},{0.02f,0.02f,0.025f},{0.42f,0.05f,0.60f},{1.0f,0.80f,0.35f} };
 static const char* PAINT_NAMES[NPAINT] = { "RED", "BLUE", "YELLOW", "GREEN", "WHITE", "BLACK", "PURPLE", "GOLD CHROME" };
 

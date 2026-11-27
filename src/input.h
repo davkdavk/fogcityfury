@@ -60,7 +60,7 @@ static void onKey(SDL_Keycode k, int sc = 0) {
     case TITLE: if (k == SDLK_RETURN || k == SDLK_SPACE) { ok(); selMode = 0; exploreMode = false; state = CARSEL; setupCars(false); } if (k == SDLK_ESCAPE) quit = true;
         if (k == SDLK_o) { blip(); nc.error[0] = 0; nc.skipMenus = false; nc.autoReady = false; state = NETJOIN; srvOpen(); } break;
     case CARSEL:
-        if (k == SDLK_LEFT) { selCar = (selCar + NCARS - 1) % NCARS; blip(); } if (k == SDLK_RIGHT) { selCar = (selCar + 1) % NCARS; blip(); }
+        if (k == SDLK_LEFT || k == SDLK_RIGHT) { int d = k == SDLK_LEFT ? NCARS - 1 : 1; do selCar = (selCar + d) % NCARS; while (!carOpen(selCar)); blip(); }   // (only the cars you have)
         if (k == SDLK_UP) { selPaint = (selPaint + np - 1) % np; blip(); } if (k == SDLK_DOWN) { selPaint = (selPaint + 1) % np; blip(); }
         player.type = selCar; player.paint = selPaint;
         if (k == SDLK_RETURN) { ok(); if (nc.on) { state = NETLOBBY; if (nc.track >= 0) loadTrack(nc.track); } else { state = TRACKSEL; selWeather = weatherOf[selTrack]; } } if (k == SDLK_ESCAPE) { if (nc.on) netLeave(""); else { state = TITLE; setupCars(true); } } break;
@@ -254,6 +254,7 @@ static void printJSON(FILE* o) {
           if (director::misfireTo(u, tg)) { V3 mz, md; mech::muzzle(m, mechT, mz, md); V3 w = norm(tg - mz); err = acosf(clampf(dot(w, md), -1, 1)); }
           fprintf(o, "%s[%.2f,%.2f]", u ? "," : "", m.aim, err); }
       fprintf(o, "],"); }
+    { fprintf(o, "\"selCar\":%d,\"playerCar\":%d,\"carsOpen\":[", selCar, player.type); for (int t = 0; t < NCARS; t++) fprintf(o, "%s%d", t ? "," : "", (int)carOpen(t)); fprintf(o, "],"); }   // 2.9.8.6 the added cars: which you have
     fprintf(o, "\"career\":%d,\"careerRace\":%d,\"toGrid\":%d,\"gridSlot\":%d,\"gridArrivals\":%d,\"parks\":%d,\"careerQual\":%d,\"careerBest\":[%d,%d,%d,%d,%d],\"raceName\":\"%s\",\"raceFile\":%d,\"finalPlace\":%d,", career::on, career::cur, career::toGrid, career::slot, career::gridArrivals, career::parks, career::qual[career::track], career::best[career::track][0], career::best[career::track][1], career::best[career::track][2], career::best[career::track][3], career::best[career::track][4], career::cur >= 0 ? career::defs[career::cur].name.c_str() : "", director::raceFile, finalPlace);
     fprintf(o, "\"steerSens\":%d,\"aimSens\":%d,\"touchSteer\":%d,\"touchWide\":%d,", optSteerSens, optAimSens, optTouchSteer, optTouchWide);
     fprintf(o, "\"events\":%d,\"eventsLoaded\":%d,\"eventLines\":%d,", director::firedTotal, (int)director::evs.size(), (int)director::lines.size());
@@ -338,8 +339,22 @@ static void printDump(FILE* o) {
     fprintf(o, "],\"boxes\":%d}\n", (int)W.boxes.size());
 }
 // every key press comes through here: the window's events and --press (tests)
+// an added car's unlock code, typed on the main menu (model.h carOpen; the codes in cars_extra.h)
+static std::string codeTyped;
+static bool typeCode(SDL_Keycode k) {   // true: the key was part of a code (two letters of one in a row, on), not a menu key
+    if (!((k >= 'a' && k <= 'z') || (k >= '0' && k <= '9'))) { codeTyped.clear(); return false; }
+    codeTyped += (char)toupper((int)k); if (codeTyped.size() > 16) codeTyped.erase(0, codeTyped.size() - 16);
+    for (int t = NBASECARS; t < NALLCARS; t++) { const char* c = EXTRA_CODES[t - NBASECARS]; size_t n = strlen(c);
+        if (!n || carOpen(t) || codeTyped.size() < n || codeTyped.compare(codeTyped.size() - n, n, c)) continue;
+        carUnlocked += std::string(c) + " "; codeTyped.clear(); saveCfg(); selCar = t;
+        snprintf(codeMsg, sizeof codeMsg, "%s UNLOCKED", SPECS[t].name); codeT = T; tone(660, 0.12f, 0.5f, 2); tone(990, 0.25f, 0.5f, 2); return true; }
+    for (int t = NBASECARS; t < NALLCARS; t++) { const char* c = EXTRA_CODES[t - NBASECARS]; size_t n = strlen(c);   // part way through one
+        for (size_t m = std::min(n - (n > 0), codeTyped.size()); m >= 2; m--) if (!codeTyped.compare(codeTyped.size() - m, m, c, m)) return true; }
+    return false;
+}
 static void handleKey(SDL_Keycode k, int sc) {
     if (k == SDLK_AC_BACK) k = SDLK_ESCAPE;   // Android's back button
+    if (state == TITLE && typeCode(k)) return;
     if (k == SDLK_F11) { vidFull = !vidFull; applyVideo(); saveCfg(); return; }
     if (state == OPTS && optCapture) {   // waiting for the key to bind; Esc backs out
         if (k != SDLK_ESCAPE && k != SDLK_F1 && sc > 0) { setBind(optRow, optCol, sc); saveCfg(); tone(520, 0.12f, 0.4f, 2); } optCapture = false; return;

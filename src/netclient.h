@@ -151,7 +151,7 @@ static void netPump(float dt, bool inLobby) {
         V3 tgt(s.x + s.vx * a, s.y + s.vy * a, s.z + s.vz * a);
         if (r.fresh || len(tgt - c.pos) > 40) { c.pos = tgt; c.yaw = s.yaw; c.pitch = s.pitch; c.roll = s.roll; r.fresh = false; }
         else { V3 old = c.pos; c.pos = c.pos + (tgt - c.pos) * k; c.yaw = wrapPi(c.yaw + wrapPi(s.yaw - c.yaw) * k); c.pitch += (s.pitch - c.pitch) * k; c.roll += (s.roll - c.roll) * k; r.moved += len(c.pos - old); nc.maxMoved = std::max(nc.maxMoved, r.moved); }
-        c.vel = V3(s.vx, s.vy, s.vz); c.steer = s.steer; c.type = s.car % net::CARS; c.paint = s.paint % NPAINT; c.braking = s.flags & net::F_BRAKING; bool wasDead = c.dead; c.dead = s.flags & net::F_DEAD; c.lean = 0;
+        c.vel = V3(s.vx, s.vy, s.vz); c.steer = s.steer; c.type = s.car % net::CARS < NCARS ? s.car % net::CARS : 0; c.paint = s.paint % NPAINT; c.braking = s.flags & net::F_BRAKING; bool wasDead = c.dead; c.dead = s.flags & net::F_DEAD; c.lean = 0;
         if (r.seen && r.racing && c.dead && !wasDead) remoteWreck(c);                                 // they blew up: leave their wreck on our road too
         if (r.seen && s.hitSeq != r.hitSeq && s.hitId == nc.id) netHitMe();                           // their rocket found us
         else if (r.seen && s.hitSeq != r.hitSeq) netHitBot(s.hitId);                                  // ...or one of the bots we drive

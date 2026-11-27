@@ -94,6 +94,15 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.8.6
+
+- **Bring in any car.** `tools/blender/fcf_car.py` takes a car model as it comes (`.blend`, `.glb`, `.fbx`, `.obj`,
+  `.dae`... or the `.zip` it was downloaded in) and puts it in the game: it finds the wheels, the front, the paint, the
+  glass and the lights itself, cuts it to a size the 360 is happy with, and adds it to the car screen. See
+  `models/README.md`.
+- **Secret cars.** An added car can be hidden behind a code (`--code`): type it on the main menu and it is unlocked
+  (saved with your settings).
+
 ## What's new in 2.9.8.5
 
 - **Wardens stand aimed.** A Warden with a misfire to come stands at its spot facing where the rocket goes, cannon on

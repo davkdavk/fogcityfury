@@ -82,7 +82,7 @@ static void placeOnGrid(Car& c, float s, float lat) {
 static void footReset();
 static void setupCars(bool race) {
     footReset();
-    for (int k = 0; k < NAI; k++) { ai[k].type = (selCar + 1 + k) % NCARS; ai[k].paint = (selPaint + 1 + k) % 7; placeOnGrid(ai[k], gridS(k), gridLat(k)); aiGrid[k] = ai[k].pos; ai[k].aiTop = SPECS[selCar].top * (0.995f - 0.014f * k); }
+    for (int k = 0; k < NAI; k++) { ai[k].type = (selCar + 1 + k) % NBASECARS; ai[k].paint = (selPaint + 1 + k) % 7; placeOnGrid(ai[k], gridS(k), gridLat(k)); aiGrid[k] = ai[k].pos; ai[k].aiTop = SPECS[selCar].top * (0.995f - 0.014f * k); }
     player.type = selCar; player.paint = selPaint; placeOnGrid(player, race ? (trialMode ? -3.0f : gridS(NAI)) : -6.0f, race && !trialMode ? gridLat(NAI) : 0);   // (manic: alone, the middle of the start line)
     camInit = false; parts.clear(); marks.clear(); marksDirty = true; markOn[0] = markOn[1] = false;
     heldShields = heldGhosts = cliHeld > 0 ? std::min(MAXHELD, cliHeld) : 0; itemSel = 0; ghostT = 0; ghostsUsed = shieldsUsed = 0;   // (2.9.8.3 nothing held at the start)

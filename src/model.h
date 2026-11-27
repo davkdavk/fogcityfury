@@ -14,7 +14,16 @@ struct CarModel {
 static const CarModel RONIN = { model_ronin::BODY_V, model_ronin::BODY_NV, model_ronin::BODY_I, model_ronin::BODY_NI,
     model_ronin::WHEEL_V, model_ronin::WHEEL_NV, model_ronin::WHEEL_I, model_ronin::WHEEL_NI,
     model_ronin::WHEEL_R, model_ronin::AO, model_ronin::AO_N, 1.12f };
-static const CarModel* carModel(int type) { return type == 4 ? &RONIN : nullptr; }   // (SPECS[4]: the Ronin 120)
+#include "cars_extra.h"   // the cars added with tools/blender/fcf_car.py
+static_assert(NBASECARS + NEXTRA == NALLCARS, "cars_extra.h and cars_extra_spec.inc disagree: run tools/blender/fcf_car.py -- --registry");
+static const CarModel* carModel(int type) { return type == 4 ? &RONIN : type >= NBASECARS && type < NALLCARS ? EXTRA_MODELS[type - NBASECARS] : nullptr; }   // (SPECS[4]: the Ronin 120)
+// an added car with an unlock code is on the car screen once its code has been typed on the main menu (carUnlocked: the
+// codes typed, saved with the settings)
+static std::string carUnlocked = " "; static float codeT = -10; static char codeMsg[64] = "";   // (and the banner when one is typed: hud.h)
+static bool carOpen(int t) {
+    if (t < NBASECARS) return true; if (t >= NALLCARS) return false; const char* c = EXTRA_CODES[t - NBASECARS];
+    return !c[0] || carUnlocked.find(std::string(" ") + c + " ") != std::string::npos;
+}
 
 // Vertex: position, normal, uv, colour, material (12 floats). mirror: the -X copy (x negated, windings reversed so the
 // outside still faces out)

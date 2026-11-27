@@ -12,4 +12,8 @@ static const CarSpec SPECS[] = {
     { "RIPDOG", "WIDE, LOUD AND HAPPY IN THE DIRT", 70, 15.5f, 2.35f, 8.0f, 0.65f, 0.40f, 1.52f, 1.42f, 0.93f, 0.85f, { 8, 9, 6, 7 }, 14.8f, 17.2f, 2.5f, 1.0f, 1.12f },
     // Ronin 120: an early-70s Japanese sedan, made in Blender (models/ronin, src/model_ronin.h). Light, rear-driven and
     // eager to turn: little grip at the back, little inertia, a small engine that revs
-    { "RONIN 120", "LIGHT, LIVELY, OLD SCHOOL", 63, 14.5f, 2.55f, 8.2f, 0.85f, 0.325f, 1.344f, 1.277f, 0.711f, 1.25f, { 6, 8, 9, 5 }, 14.6f, 15.9f, 1.75f, 1.0f, 1.0f } };
+    { "RONIN 120", "LIGHT, LIVELY, OLD SCHOOL", 63, 14.5f, 2.55f, 8.2f, 0.85f, 0.325f, 1.344f, 1.277f, 0.711f, 1.25f, { 6, 8, 9, 5 }, 14.6f, 15.9f, 1.75f, 1.0f, 1.0f },
+    // cars added with tools/blender/fcf_car.py (models/*/car.json): written by the tool, none by hand
+#include "cars_extra_spec.inc"
+};
+static const int NBASECARS = 5, NALLCARS = (int)(sizeof SPECS / sizeof SPECS[0]);   // (the five built in; with the added ones)

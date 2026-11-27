@@ -33,7 +33,7 @@ static void netBotsFrame(float dt) {
         if (!same) {   // they are ours from now: on the grid if the race has not started, else from where the last host had them
             netHosting = true; netBots = n; netBotsMost = std::max(netBotsMost, n);
             for (int k = 0; k < n; k++) {
-                int id = netBot[k] = ids[k]; const Remote& r = nc.r[id]; Car& a = ai[k]; a.type = r.s.car % net::CARS; a.paint = r.s.paint % NPAINT; a.aiTop = SPECS[player.type].top * (0.985f - 0.014f * k);
+                int id = netBot[k] = ids[k]; const Remote& r = nc.r[id]; Car& a = ai[k]; a.type = r.s.car % net::CARS < NCARS ? r.s.car % net::CARS : 0; a.paint = r.s.paint % NPAINT; a.aiTop = SPECS[player.type].top * (0.985f - 0.014f * k);
                 if (nc.phase == net::COUNTDOWN) { int slot = nc.id < id ? 1 : 0; for (int i = 0; i < id; i++) if (nc.r[i].present && nc.r[i].racing) slot++; placeOnGrid(a, gridS(slot), gridLat(slot)); }
                 else { placeOnGrid(a, r.s.progress, gridLat(k)); if (r.s.flags & net::F_FINISHED) a.finishT = raceT; }
             }
