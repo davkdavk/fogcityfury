@@ -11,6 +11,7 @@
 //   warden 2  -310 140                                 Warden 2 starts its walk here (the nearest point of its route)
 //   pod p1  210 -380  r 60  n 3  k 1                   dolphins that roam this patch of sea all race: its middle, radius, how many, their size
 //   drift 90                                           the weather drifts: about every 90 s it turns (clear, rain, storm; clear, fog)
+//   music funky                                        2.9.9.5 the track plays music/funky.mp3 (else music/<track>.mp3, else its own song)
 //
 // Every event has the same settings (any can be left out; the defaults are in brackets):
 //   laps   which laps it may fire on: "all" or a list like 1,3                         [all]
@@ -65,6 +66,7 @@ static RaceDef raceDefault(int r) {   // a race with no race line of its own: a 
     RaceDef d; r = std::max(0, std::min(NRACES - 1, r)); d.name = N[r]; d.mode = M[r]; d.weather = WX[r]; d.laps = L[r]; return d;
 }
 static RaceDef raceOf() { RaceDef d = raceDefault(raceFile); if (raceDef.set) { if (!raceDef.name.empty()) d.name = raceDef.name; if (raceDef.mode >= 0) d.mode = raceDef.mode; if (raceDef.weather >= 0) d.weather = raceDef.weather; if (raceDef.laps > 0) d.laps = raceDef.laps; } return d; }
+static std::string music;   // 2.9.9.5 "music NAME": the mp3 this track plays (music/NAME.mp3); "" its own (music/trackN.mp3)
 static bool roamMinis = true;   // 2.9.7 roaming the track: groups of three mini Wardens drop in now and then (minis.h); "roamminis off" stops them
 static float drift = 0;   // seconds between turns of the weather (0: it stays as chosen)
 static std::string netBody; static int netTrack = -1;   // online: the server's event file for its track (netroam.h)
@@ -99,7 +101,7 @@ static std::string lapsText(unsigned m) {
     return s;
 }
 static void parse(const std::string& body) {
-    lines.clear(); evs.clear(); pods.clear(); pickups.clear(); drift = 0; roamMinis = true; raceDef = RaceDef(); for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
+    lines.clear(); evs.clear(); pods.clear(); pickups.clear(); drift = 0; roamMinis = true; music.clear(); raceDef = RaceDef(); for (WardenStart& w : wardenAt) w = WardenStart(); size_t i = 0;
     while (i <= body.size()) {
         size_t j = body.find('\n', i); if (j == std::string::npos) j = body.size();
         std::vector<std::string> t = tokens(body.substr(i, j - i)); i = j + 1;
@@ -118,6 +120,7 @@ static void parse(const std::string& body) {
                 else if (w == "laps") raceDef.laps = std::max(1, std::min(9, atoi(v.c_str()))); }
             continue; }
         if (t.size() >= 2 && t[0] == "roamminis") { roamMinis = t[1] != "off"; continue; }
+        if (t.size() >= 2 && t[0] == "music") { music = t[1]; for (char& c : music) if (c == '/' || c == '\\' || c == ':') c = '_'; continue; }   // (a name in music/, nowhere else)
         if (t.size() >= 2 && t[0] == "drift") { drift = std::max(0.0f, (float)atof(t[1].c_str())); if (drift > 0) drift = std::max(drift, 20.0f); continue; }
         if (t.size() < 3 || t[0] != "event") continue;
         Event e; e.id = t[1]; e.kind = lookup(KIND, NKIND, t[2], -1); if (e.kind < 0) continue;
@@ -155,6 +158,7 @@ static std::string write() {
     if (drift > 0) { snprintf(b, sizeof b, "drift %.0f\n", drift); s += b; }
     if (raceFile > 0 || raceDef.set) { RaceDef d = raceOf(); std::string nm = d.name; for (char& c : nm) if (c == '"') c = '\''; snprintf(b, sizeof b, "race \"%s\"  mode %s  weather %s  laps %d\n", nm.c_str(), d.mode == 2 ? "rampage" : d.mode == 4 ? "manic" : "race", WXNAME[std::max(0, std::min(3, d.weather))], d.laps); s += b; }
     if (!roamMinis) s += "roamminis off\n";
+    if (!music.empty()) s += "music " + music + "\n";
     for (const Pod& p : pods) { snprintf(b, sizeof b, "pod %s  %.1f %.1f  r %.0f  n %d  k %.2g\n", p.id.c_str(), p.x, p.z, p.r, p.n, p.k); s += b; }
     for (const Pickup& p : pickups) { snprintf(b, sizeof b, "pickup %s  %.1f %.1f %.1f", p.kind == 2 ? "ghost" : p.kind ? "shield" : "rocket", p.p.x, p.p.y, p.p.z); s += b; if (p.lap > 1) { snprintf(b, sizeof b, "  lap %d", p.lap); s += b; } s += "\n"; }
     for (const Line& l : lines) { snprintf(b, sizeof b, "line %s  %.1f %.1f  %.1f %.1f\n", l.id.c_str(), l.ax, l.az, l.bx, l.bz); s += b; }

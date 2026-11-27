@@ -888,6 +888,7 @@ static void script(const char* p) {
             push(); Event& e = director::evs[selEv]; lineBefore(e.kind == director::MINIS ? e.to : spotOf(e), (float)atof(t[2].c_str()), t[1]); e.on = director::ON_LINE; e.ref = t[1]; }
         else if (t[0] == "stay" && selEv >= 0) { push(); director::evs[selEv].stay = true; }
         else if (t[0] == "roamminis" && t.size() >= 2) { push(); director::roamMinis = t[1] != "off"; }
+        else if (t[0] == "music" && t.size() >= 2) { push(); director::music = t[1] == "none" ? "" : t[1]; }   // 2.9.9.5 music NAME: this track plays music/NAME.mp3
         else if (t[0] == "drift" && t.size() >= 2) { push(); director::drift = (float)atof(t[1].c_str()); }
         else if (t[0] == "enter") key(SDLK_RETURN);
         else if (t[0] == "list") listOn = true;

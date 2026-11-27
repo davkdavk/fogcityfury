@@ -35,6 +35,13 @@ static void update(float dt) {
     bool driving = state == RACE || state == RESULTS || state == TITLE || (netRace && state == PAUSED);
     snd.musicDuck = state == PAUSED ? 0.35f : (state == RACE || state == RESULTS ? 0.85f : 1.0f);
     mus::want = (state == TITLE || state == CARSEL || state == OPTS || state == NETJOIN || state == NETLOBBY) ? 0 : showdownOn ? 5 : trackSong(state == TRACKSEL ? selTrack : W.id);   // each track has its own song, the showdown too; the menus keep the title song
+    {   // 2.9.9.5 and the mp3 for it, if there is one: music/main.mp3 (the menus), showdown.mp3, track0.mp3.. (a custom track: its name),
+        // or what the track's event file names on a "music" line (online: the server's file, so the server's choice)
+        int t = state == TRACKSEL ? selTrack : W.id; std::string m;
+        if (mus::want == 0) m = "main"; else if (showdownOn) m = "showdown";
+        else { m = director::keyFor(t); if (state != TRACKSEL && !director::music.empty() && director::loadedKey == director::keyFor(W.id)) m = director::music; }
+        if (!simMode || getenv("FCF_MP3")) mp3::frame(m);
+    }
     if ((state == PAUSED && !netRace) || (state == OPTS && optReturn == PAUSED)) return;   // an online race cannot be paused: the car coasts while the menu is up
 #ifdef FCF_EDITOR
     evx::tape::stepBegins();   // (fcfedit's preview: a step on its tape)

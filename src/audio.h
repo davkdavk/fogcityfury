@@ -8,6 +8,7 @@ static const int SR = 48000;
 static const int SR = 44100;
 #endif
 struct Tone { float f, slide, dur, t, vol; int type; };
+#include "mp3music.h"
 static struct Snd { float engF = 60, engV = 0, skid = 0, wind = 0, nitro = 0, rain = 0, master = 0.5f, music = 0.6f, musicDuck = 1; bool musicOn = true; Tone tones[12] = {}; } snd;
 static uint32_t adev = 0;   // the platform's audio device (0: none)
 // type 0 sine, 1 filtered noise (f = cutoff), 2 square
@@ -262,7 +263,12 @@ static void audioCB(void*, uint8_t* stream, int bytes) {
             float env = expf(-t.t / t.dur * 4); float fr = std::max(20.0f, t.f + t.slide * t.t);
             if (t.type == 1) { nl += (nz - nl) * clampf(fr / 8000, 0.01f, 1); out += nl * env * t.vol * 3; }
             else { tp[k] += fr / SR; if (tp[k] > 1) tp[k] -= 1; out += (t.type == 2 ? (tp[k] < 0.5 ? 0.5f : -0.5f) : sinf((float)tp[k] * 6.2832f)) * env * t.vol; } }
-        float mL = 0, mR = 0; if (mv > 0.001f) mus::render(mL, mR);
+        float mL = 0, mR = 0;
+        if (mv > 0.001f) {   // 2.9.9.5 the track's mp3 if it has one, cross-faded with the built-in song
+            float aL, aR; mp3::render(aL, aR, SR);
+            if (mp3::gSynth > 0.001f) { mus::render(mL, mR); mL *= mp3::gSynth; mR *= mp3::gSynth; }
+            mL += aL; mR += aR;
+        }
         o[i * 2] = tanhf((out + mL * mv) * snd.master * 1.6f); o[i * 2 + 1] = tanhf((out + mR * mv) * snd.master * 1.6f);
     }
 }
@@ -271,6 +277,7 @@ static void audioCB(void*, uint8_t* stream, int bytes) {
 static void renderWav(const char* path, float secs) {
     if (getenv("FCF_SOLO")) mus::solo = atoi(getenv("FCF_SOLO"));
     if (getenv("FCF_SONG")) mus::want = atoi(getenv("FCF_SONG"));
+    if (const char* p = getenv("FCF_MP3")) { std::vector<uint8_t> b; if (mp3::readAll(p, b)) if (mp3::Song* s = mp3::make(p, std::move(b))) mp3::pending.store(s); }   // (2.9.9.5 the tests: an mp3 over the song)
     int n = (int)(secs * SR); std::vector<float> buf(n * 2); snd.engV = 0; snd.master = 0.5f;
     for (int i = 0; i < n; i += 1024) { int c = std::min(1024, n - i); audioCB(nullptr, (Uint8*)&buf[i * 2], c * 8); }
     FILE* f = fopen(path, "wb"); if (!f) return; int data = n * 4, riff = 36 + data, sr = SR, br = SR * 4, fmt = 16; short pcm = 1, ch = 2, ba = 4, bits = 16;

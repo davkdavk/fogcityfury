@@ -94,6 +94,17 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.5
+
+- **Your own music.** Put mp3s in a `music` folder beside the game and each track plays its own:
+  `main.mp3` for the menus, `track0.mp3` … `track6.mp3` (numbered like the event files: `track1.mp3` goes with
+  `track1.fcfe`), `showdown.mp3`, and a custom track's name (`MYTRACK.mp3`).
+  A track's event file can name another with a line `music funky` (plays `music/funky.mp3`). Online the event file is
+  the server's (the lobby's `events` folder), so **the server picks each track's song**; every player hears it if they
+  have that mp3, and the web game fetches it from `music/` beside its page. No file: the built-in song, as before.
+  Songs loop and cross-fade (1.5 s). Any bitrate and sample rate; 320 kbps is fine. The file is read off the game
+  thread and decoded a frame at a time on the audio thread, so nothing stutters. fcfedit: `music NAME` / `music none`.
+
 ## What's new in 2.9.9.4
 
 - **Weather starts where the file says.** A track's lap-1 weather event is now the sky from the grid on (and online, in
@@ -978,5 +989,5 @@ Fog City Fury is free software under the **GNU General Public License, version 3
 You may copy, change and share it, as long as what you share stays under the same licence with its source.
 
 - "Dolphin" by **Tarnyloo** (Blend Swap #83681), CC-BY 3.0: the dolphins. See [models/dolphin/README.md](models/dolphin/README.md).
-- SDL 2 (zlib) and xsdk (MIT) carry the PC, Android and Xbox 360 builds. Recast & Detour (zlib) finds the way on foot; the showdown bots' fighting is adapted from Quake III Arena's bots (Id Software, GPL).
+- SDL 2 (zlib) and xsdk (MIT) carry the PC, Android and Xbox 360 builds. Recast & Detour (zlib) finds the way on foot; minimp3 (CC0) plays your mp3s; the showdown bots' fighting is adapted from Quake III Arena's bots (Id Software, GPL).
 - Everything the game is built on, and the rules for bringing in other projects' code, are in [CREDITS.md](CREDITS.md).

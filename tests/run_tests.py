@@ -1130,6 +1130,31 @@ def wreck_leaves_shell_and_parts_behind():
 
 
 @test
+def mp3_music_for_each_track():
+    """2.9.9.5: music/<track>.mp3 plays over the built-in song (resampled, looped); a "music" line in the event file picks another."""
+    import tempfile, shutil, wave, struct, math
+    mp3 = os.path.join(ROOT, "tests", "data", "sine440.mp3")
+    with tempfile.TemporaryDirectory() as d:
+        w = os.path.join(d, "o.wav")
+        subprocess.run([BIN, "--wav", w, "6"], check=True, timeout=60, env=dict(os.environ, FCF_MP3=mp3))
+        f = wave.open(w); n = f.getnframes(); x = struct.unpack("<%dh" % (n * 2), f.readframes(n))
+        def mag(at, hz):   # how much of hz in the left channel, 0.1 s from at
+            seg = [x[i * 2] / 32768.0 for i in range(int(at * 44100), int(at * 44100) + 4410)]
+            return math.hypot(sum(v * math.cos(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg)), sum(v * math.sin(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg))) / len(seg)
+        check(mag(1.5, 440) > 5 * mag(1.5, 523), "the mp3's 440 Hz plays (48 kHz file, mixed at 44.1)", (mag(1.5, 440), mag(1.5, 523)))
+        check(mag(4.5, 440) > 5 * mag(4.5, 523), "and loops past its 2 s end", (mag(4.5, 440), mag(4.5, 523)))
+        os.mkdir(os.path.join(d, "music")); shutil.copy(mp3, os.path.join(d, "music", "track1.mp3")); shutil.copy(mp3, os.path.join(d, "music", "funky.mp3"))
+        def run(*a):
+            p = subprocess.run([BIN, "--sim", "--seconds", "3", "--track", "1", "--state", "3", "--auto"] + list(a), capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
+            return json.loads(p.stdout.strip().splitlines()[-1])
+        r = run(); check(r["mp3"] == "track1", "track 1 plays music/track1.mp3", (r["mp3"], r["mp3Want"]))
+        open(os.path.join(d, "ev.fcfe"), "w").write("music funky\n")
+        r = run("--events", os.path.join(d, "ev.fcfe")); check(r["mp3"] == "funky", "a music line picks music/funky.mp3", (r["mp3"], r["mp3Want"]))
+        r = subprocess.run([BIN, "--sim", "--seconds", "3", "--track", "2", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
+        r = json.loads(r.stdout.strip().splitlines()[-1]); check(r["mp3"] == "" and r["mp3Want"] == "track2", "no track2.mp3: the built-in song", (r["mp3"], r["mp3Want"]))
+
+
+@test
 def race_starts_in_the_files_weather():
     """2.9.9.4: a lap-1 weather event is the sky from the grid on (no snap at the green light); the lobby waits in it."""
     import tempfile, os
