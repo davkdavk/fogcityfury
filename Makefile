@@ -8,6 +8,15 @@ default: all
 fogcityfury: src/game.cpp $(wildcard src/*.h)
 	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) -o $@ src/game.cpp $(SDL_LIBS) -lGL -lm
 
+# the game in a web page (3.0): WebAssembly + WebGL2, built with Emscripten (emsdk). Puts web/fcf.js and web/fcf.wasm
+# beside web/index.html; copy those three to the site. See docs/WEB.md
+EMXX ?= em++
+web: web/fcf.js
+web/fcf.js: src/game.cpp $(wildcard src/*.h)
+	$(EMXX) -O2 -std=c++17 -Wno-unused-function -Wno-switch -DFCF_GLES src/game.cpp -o web/fcf.js \
+	  -sUSE_SDL=2 -sUSE_WEBGL2=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 \
+	  -sASYNCIFY -sASYNCIFY_STACK_SIZE=65536 -sTOTAL_STACK=5242880 -lidbfs.js -sEXPORTED_RUNTIME_METHODS=FS
+
 # the same game on OpenGL ES 3.0 (what the Android build uses), for testing that code path on Linux with Mesa
 gles: fogcityfury-gles
 fogcityfury-gles: src/game.cpp $(wildcard src/*.h)
@@ -57,9 +66,9 @@ test-render: fogcityfury fogcityfury-server
 	python3 tests/run_tests.py --render
 
 clean:
-	rm -f fogcityfury fogcityfury-server fogcityfury.exe fogcityfury-server.exe fogcityfury-server-arm64 fogcityfury-server-armhf fogcityfury-gles
+	rm -f web/fcf.js web/fcf.wasm fogcityfury fogcityfury-server fogcityfury.exe fogcityfury-server.exe fogcityfury-server-arm64 fogcityfury-server-armhf fogcityfury-gles
 
-.PHONY: all windows run test test-render clean
+.PHONY: all windows run test test-render clean web
 
 # ARM Linux builds of the dedicated server (Raspberry Pi and other ARM boards), statically linked.
 #   sudo apt install g++-aarch64-linux-gnu g++-arm-linux-gnueabihf      (qemu-user-static to test them here)

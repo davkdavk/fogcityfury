@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.9 | | The game in a web page (3.0, step 1): `make web`, WebAssembly + WebGL2, saves in the browser; docs/WEB.md |
 | 2.9.8.6 | | `tools/blender/fcf_car.py`: any car model (any format, a zip) into the game in one command; added cars can be hidden behind a code typed on the main menu |
 | 2.9.8.5 | Wardens stand facing their first misfire, cannon on it, then walk | fcfedit: the track's own crates, shields and ghosts can be moved and deleted; each can come out from a set lap |
 | 2.9.8.4 | | The track editor edits a built-in track itself (saved as `events/trackN.fcft`, read on PC and 360), not a copy; buildings coming down no longer choke the 360 |

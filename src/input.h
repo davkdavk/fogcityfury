@@ -57,7 +57,11 @@ static void onKey(SDL_Keycode k, int sc = 0) {
             applyVideo(); saveCfg();
         }
         break; }
-    case TITLE: if (k == SDLK_RETURN || k == SDLK_SPACE) { ok(); selMode = 0; exploreMode = false; state = CARSEL; setupCars(false); } if (k == SDLK_ESCAPE) quit = true;
+    case TITLE: if (k == SDLK_RETURN || k == SDLK_SPACE) { ok(); selMode = 0; exploreMode = false; state = CARSEL; setupCars(false); } if (k == SDLK_ESCAPE) {
+#ifndef __EMSCRIPTEN__
+            quit = true;   // (in the browser there is nothing to quit to: the page stays)
+#endif
+        }
         if (k == SDLK_o) { blip(); nc.error[0] = 0; nc.skipMenus = false; nc.autoReady = false; state = NETJOIN; srvOpen(); } break;
     case CARSEL:
         if (k == SDLK_LEFT || k == SDLK_RIGHT) { int d = k == SDLK_LEFT ? NCARS - 1 : 1; do selCar = (selCar + d) % NCARS; while (!carOpen(selCar)); blip(); }   // (only the cars you have)

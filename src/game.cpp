@@ -63,7 +63,12 @@ static const int LAPS = 3, NAI = 9, NPAINT = 8;   // nine opponents: ten cars on
 
 // ------------------------------------------------------------------ cars
 #include "carspec.h"
-static const int NCARS = NALLCARS;   // (every car: the five built in and any added with tools/blender/fcf_car.py)
+static const int NCARS = NALLCARS;
+#ifdef __EMSCRIPTEN__
+static const bool WEBGAME = true;    // 3.0 the game in a web page (see docs/WEB.md)
+#else
+static const bool WEBGAME = false;
+#endif   // (every car: the five built in and any added with tools/blender/fcf_car.py)
 static const V3 PAINTS[NPAINT] = { {0.75f,0.03f,0.03f},{0.03f,0.16f,0.75f},{0.95f,0.62f,0.02f},{0.03f,0.42f,0.14f},{0.85f,0.85f,0.88f},{0.02f,0.02f,0.025f},{0.42f,0.05f,0.60f},{1.0f,0.80f,0.35f} };
 static const char* PAINT_NAMES[NPAINT] = { "RED", "BLUE", "YELLOW", "GREEN", "WHITE", "BLACK", "PURPLE", "GOLD CHROME" };
 
@@ -427,7 +432,24 @@ static int edToolNow() { return -1; }
 #include "scene.h"   // drawing the 3D scene: cars, wreckage, fish, the world cells, grass, drawScene()
 #include "hud.h"   // the 2D layer and the frame: map, logo, HUD and menus drawn, render()
 #include "input.h"   // menus and input: keys, touch, the --sim JSON report and dump, scripted test input, boot colours, branch scans
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <unistd.h>
+// 3.0 the browser: this Emscripten keeps only a main() with no arguments, so that one starts the game
+static int fcfMain(int argc, char** argv);
+int main() {
+    // saves, settings, your tracks and events live in the page's own storage (IndexedDB), in the game's home folder:
+    // read back before anything starts, written out every few seconds and when the tab is hidden (see the loop)
+    EM_ASM({ try { FS.mkdir('/home/web_user'); } catch (e) {} FS.mount(IDBFS, {}, '/home/web_user'); Module.fcfSynced = 0;
+             FS.syncfs(true, function (e) { if (e) console.warn('saves: ' + e); Module.fcfSynced = 1; }); });
+    while (!EM_ASM_INT({ return Module.fcfSynced; })) emscripten_sleep(10);
+    if (chdir("/home/web_user") != 0) {}   // (the events folder, and built-in tracks edited in place, go here too)
+    static char a0[] = "fogcityfury"; static char* v[] = { a0, nullptr }; return fcfMain(1, v);
+}
+static int fcfMain(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
     std::vector<const char*> cliServers;
     bool netWanted = false, wxSet = false;
     int keyrun = -1;
@@ -855,6 +877,14 @@ int main(int argc, char** argv) {
     bool runtimeLogging = false;
 #endif
     while (!quit) {
+#ifdef __EMSCRIPTEN__
+        // 3.0 the browser: hand the frame back to the page (ASYNCIFY keeps this loop as it is), paced to 60 a second
+        { static double next = 0; double t = emscripten_get_now(), w = next - t; emscripten_sleep(w > 1 ? (unsigned)w : 0); next = std::max(t, next) + 1000.0 / 60.0; }
+        { static double lastSync = 0; double t = emscripten_get_now(); if (t - lastSync > 5000) { lastSync = t;   // saves out to the page's storage
+            EM_ASM({ if (!Module.fcfSyncing) { Module.fcfSyncing = 1; FS.syncfs(false, function () { Module.fcfSyncing = 0; }); } }); } }
+        { static int bw = 0, bh = 0; int w = EM_ASM_INT({ return window.innerWidth; }), h = EM_ASM_INT({ return window.innerHeight; });   // the game fills the browser window
+          if ((w != bw || h != bh) && w > 0 && h > 0) { bw = w; bh = h; SDL_SetWindowSize((SDL_Window*)plat::window(display), w, h); } }
+#endif
         static std::vector<plat::Event> evs;
         { static bool rel = false; bool want = me.on && me.alive && state == RACE && !touchOn && !touchMouse; if (want != rel) { rel = want; plat::relativeMouse(rel); } }   // on foot the mouse is captured: it aims
         plat::pollEvents(evs);

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Fog City Fury: play in your browser</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0d12; color: #e8e2d0; font: 15px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; background: #000; touch-action: none; }
+  #load { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #0b0d12; }
+  #load h1 { margin: 0; font-size: 44px; letter-spacing: 2px; color: #f2c14e; }
+  #load h1 span { color: #e8602c; }
+  #bar { width: min(420px, 80vw); height: 10px; background: #222733; border-radius: 5px; overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 0; background: #e8602c; transition: width .2s; }
+  #msg { opacity: .8; }
+  #err { color: #ff7a6b; max-width: 560px; text-align: center; display: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+<div id="load">
+  <h1>FOG CITY <span>FURY</span></h1>
+  <div id="bar"><i></i></div>
+  <div id="msg">Loading the game&hellip;</div>
+  <div id="err"></div>
+</div>
+<script>
+  // Fog City Fury in the browser (3.0, step 1: single player). The game is the same C++ as every other build, compiled
+  // to WebAssembly; it draws with WebGL2. Nothing else is downloaded: tracks, sound and music are made in the game.
+  var load = document.getElementById('load'), bar = document.querySelector('#bar i'), msg = document.getElementById('msg'), err = document.getElementById('err');
+  function fail(t) { msg.style.display = 'none'; err.style.display = 'block'; err.textContent = t; }
+  var probe = document.createElement('canvas').getContext('webgl2');
+  if (!probe) fail('This browser has no WebGL2. Try a current Chrome, Firefox, Edge or Safari (15 or later).');
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    print: function (t) { console.log(t); }, printErr: function (t) { console.warn(t); },
+    setStatus: function (t) {
+      var m = t.match(/\((\d+(\.\d+)?)\/(\d+)\)/);
+      if (m) bar.style.width = (100 * m[1] / m[3]) + '%';
+      if (!t) { load.style.display = 'none'; Module.canvas.focus(); }
+    },
+    monitorRunDependencies: function (n) { if (!n) Module.setStatus(''); },
+    onAbort: function (w) { fail('The game stopped: ' + w + '. Reload the page to try again.'); load.style.display = 'flex'; }
+  };
+  window.addEventListener('error', function (e) { console.error(e.message); });
+  // keep keys for the game while it has focus (arrows, space and F1 would scroll or open help)
+  window.addEventListener('keydown', function (e) { if ([32, 37, 38, 39, 40, 112, 9].indexOf(e.keyCode) >= 0) e.preventDefault(); }, { passive: false });
+  document.addEventListener('click', function () { Module.canvas.focus(); });
+  // saves out to the page's storage when the tab is hidden or closed (the game also does it every few seconds)
+  function saveOut() { try { if (window.FS && !Module.fcfSyncing) FS.syncfs(false, function () {}); } catch (e) {} }
+  document.addEventListener('visibilitychange', function () { if (document.hidden) saveOut(); });
+  window.addEventListener('pagehide', saveOut);
+</script>
+<script async src="fcf.js"></script>
+</body>
+</html>

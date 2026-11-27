@@ -13,6 +13,15 @@ static std::vector<TexObj> tex(1);
 static std::vector<BufObj> buf(1);
 static std::vector<GLuint> fbo(1, 0);                   // fbo[0]: the screen
 static GLuint emptyVAO = 0;
+#ifdef __EMSCRIPTEN__
+// 3.0 the browser: WebGL refuses a draw that reads a texture the framebuffer is writing into (desktop GL lets it
+// through, undefined). So the web build remembers each framebuffer's attachments and the texture on each unit, and
+// never leaves one of them bound for reading while that framebuffer is drawn into
+static std::vector<std::pair<GLuint, GLuint>> fboAtt(1);   // per framebuffer: its colour and depth texture names
+static GLuint unitTex[16] = {}; static int curFbo = 0;
+static bool writing(GLuint name) { return name && curFbo > 0 && curFbo < (int)fboAtt.size() && (fboAtt[curFbo].first == name || fboAtt[curFbo].second == name); }
+static void dropWritten() { for (int u = 0; u < 16; u++) if (writing(unitTex[u])) { glActiveTexture(GL_TEXTURE0 + u); glBindTexture(GL_TEXTURE_2D, 0); glBindTexture(GL_TEXTURE_CUBE_MAP, 0); unitTex[u] = 0; } }
+#endif
 static const GLenum SCRATCH = GL_TEXTURE7;              // textures are made here, so the units the game uses keep what is bound to them
 struct FmtGL { GLint internal; GLenum format, type; };
 static FmtGL fmtGL(Fmt f) {
@@ -73,7 +82,13 @@ static void renderbuffer(Tex& t, Fmt f, int w, int h, int samples) {
 }
 static void aniso(Tex t, int n) { if (!t) return; glActiveTexture(gl::SCRATCH); glBindTexture(gl::tex[t].kind, gl::tex[t].name); glTexParameterf(gl::tex[t].kind, GL_TEXTURE_MAX_ANISOTROPY_EXT, (float)n); glBindTexture(gl::tex[t].kind, 0); }
 static void mips(Tex t) { glActiveTexture(gl::SCRATCH); glBindTexture(gl::tex[t].kind, gl::tex[t].name); glGenerateMipmap(gl::tex[t].kind); glBindTexture(gl::tex[t].kind, 0); }
-static void bind(int unit, Tex t) { glActiveTexture(GL_TEXTURE0 + unit); glBindTexture(t ? gl::tex[t].kind : GL_TEXTURE_2D, t ? gl::tex[t].name : 0); }
+static void bind(int unit, Tex t) {
+#ifdef __EMSCRIPTEN__
+    if (t && gl::writing(gl::tex[t].name)) t = 0;   // (being drawn into: nothing to read this pass)
+    if (unit >= 0 && unit < 16) gl::unitTex[unit] = t ? gl::tex[t].name : 0;
+#endif
+    glActiveTexture(GL_TEXTURE0 + unit); glBindTexture(t ? gl::tex[t].kind : GL_TEXTURE_2D, t ? gl::tex[t].name : 0);
+}
 
 // ---- targets ----
 static void target(Target& t, Tex color, int face, Tex depth) {
@@ -86,8 +101,17 @@ static void target(Target& t, Tex color, int face, Tex depth) {
     };
     attach(GL_COLOR_ATTACHMENT0, color, face < 0 ? 0 : face); attach(GL_DEPTH_ATTACHMENT, depth, 0);
     if (!color) { GLenum none = GL_NONE; glDrawBuffers(1, &none); glReadBuffer(GL_NONE); }
+#ifdef __EMSCRIPTEN__
+    if ((int)gl::fboAtt.size() <= (int)t) gl::fboAtt.resize(t + 1);
+    gl::fboAtt[t] = { color ? gl::tex[color].name : 0, depth ? gl::tex[depth].name : 0 }; gl::curFbo = (int)t; gl::dropWritten();
+#endif
 }
-static void use(Target t, int w, int h) { glBindFramebuffer(GL_FRAMEBUFFER, gl::fbo[t]); glViewport(0, 0, w, h); }
+static void use(Target t, int w, int h) {
+    glBindFramebuffer(GL_FRAMEBUFFER, gl::fbo[t]); glViewport(0, 0, w, h);
+#ifdef __EMSCRIPTEN__
+    gl::curFbo = (int)t; gl::dropWritten();
+#endif
+}
 static void clear(bool color, bool depth) { glClear((color ? GL_COLOR_BUFFER_BIT : 0) | (depth ? GL_DEPTH_BUFFER_BIT : 0)); }
 static void resolve(Target from, Target to, int w, int h) {
     glBindFramebuffer(GL_READ_FRAMEBUFFER, gl::fbo[from]); glBindFramebuffer(GL_DRAW_FRAMEBUFFER, gl::fbo[to]);

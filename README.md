@@ -94,6 +94,12 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9
+
+- **Play it in your browser** (the first step of 3.0). `make web` builds the game for a web page: the same game,
+  compiled to WebAssembly, drawn with WebGL2, about 4 MB with nothing else to download. Saves and your tracks are
+  kept in the browser. Single player for now; online lobbies come next. Putting it on a site: `docs/WEB.md`.
+
 ## What's new in 2.9.8.6
 
 - **Bring in any car.** `tools/blender/fcf_car.py` takes a car model as it comes (`.blend`, `.glb`, `.fbx`, `.obj`,

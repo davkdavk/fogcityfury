@@ -289,7 +289,7 @@ static void drawHUD() {
         if (T - codeT < 4) ui.text(Wd / 2, 470, 5, org, codeMsg, 1, clampf((4 - (T - codeT)) * 2, 0, 1), 0.15f);   // (a car's code typed)
         if (fmodf(T, 1.0f) < 0.65f) if (!touchOn) ui.text(Wd / 2, 530, 5, white, P("PRESS ENTER", "PRESS {A}"), 1);
         if (!touchOn) ui.text(Wd / 2, 590, 3, V3(0.5f, 0.9f, 1), P("O: ONLINE RACE        F1: OPTIONS", "{Y} ONLINE RACE        {X} OPTIONS"), 1); if (nc.error[0]) ui.text(Wd / 2, 625, 2.5f, V3(1, 0.4f, 0.3f), nc.error, 1);
-        if (!touchOn) ui.text(Wd / 2, 660, 2, V3(0.8f, 0.8f, 0.8f), P("F1: CONTROLS AND VIDEO SETTINGS      M: MUSIC      F11: FULL SCREEN      ESC: QUIT", "{X} CONTROLS AND VIDEO SETTINGS      {B} QUIT"), 1);
+        if (!touchOn) ui.text(Wd / 2, 660, 2, V3(0.8f, 0.8f, 0.8f), P(WEBGAME ? "F1: CONTROLS AND VIDEO SETTINGS      M: MUSIC      F11: FULL SCREEN" : "F1: CONTROLS AND VIDEO SETTINGS      M: MUSIC      F11: FULL SCREEN      ESC: QUIT", WEBGAME ? "{X} CONTROLS AND VIDEO SETTINGS" : "{X} CONTROLS AND VIDEO SETTINGS      {B} QUIT"), 1);
     } else if (state == CARSEL) {
         const CarSpec& S = SPECS[selCar]; ui.text(Wd / 2, 40, 6, yel, "CHOOSE YOUR CAR", 1, 1, 0.12f);
         panel(60, 440, 470, 230); ui.text(84, 462, 5, white, S.name); ui.text(84, 506, 2.5f, V3(0.75f, 0.8f, 0.9f), S.blurb);
