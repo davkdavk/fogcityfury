@@ -257,6 +257,7 @@ static void trigger(int ev, int lap) {
     if ((int)roll >= e.chance) return;
     pend.push_back({ ev, raceT + e.delay });
 }
+static bool startSky(const Event& e) { return e.kind == WEATHER && e.on == ON_LAP && e.delay <= 0 && e.chance >= 100 && e.by != BYAI && (e.laps & 1u) && e.times == ONCE; }
 static void (*onHappen)(int ev) = nullptr;   // (fcfedit's preview tape: marks when each event went off)
 static void happen(int ev) {
     Event& e = evs[ev]; firedTotal++; if (onHappen) onHappen(ev);
@@ -318,6 +319,10 @@ static void reset() {
     if (loadedKey != keyFor(W.id) || overrideText || !overridePath.empty() || netRace || nc.on || loadedFrom == "server") load(W.id);
     for (Event& e : evs) { e.fired = 0; e.lastLap = -99; e.lastT = -99; }
     pend.clear(); firedTotal = 0; havePrev = false; driftAt = drift; turns = 0;
+    // 2.9.9.3 the race begins in the weather its file starts it in: a weather event set off by lap 1 starting (no
+    // delay, sure to fire) is the sky from the grid on, settled now rather than turned to as the race starts. The
+    // later ones turn smoothly from there. (Online the server does the same for everyone.)
+    if (!netRace && !W.space) for (Event& e : evs) if (startSky(e)) { weather = e.wx & 3; settleWeather(); e.fired = 1; e.lastLap = 1; break; }
 }
 static void step(float dt) {
     (void)dt; if (evs.empty() && drift <= 0) return;

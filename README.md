@@ -94,6 +94,11 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.4
+
+- **Weather starts where the file says.** A track's lap-1 weather event is now the sky from the grid on (and online, in
+  the lobby before it), so nothing snaps when the lights go green; the later events turn smoothly from there.
+
 ## What's new in 2.9.9.3
 
 - **Bots fight fair.** Each AI car gets one rocket a lap and fires it at a car close ahead; they no longer take crates,

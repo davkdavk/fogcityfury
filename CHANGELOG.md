@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.9.4 | A race starts in the weather its event file starts it in (no snap at the green light) | The lobby waits in that sky; the server sets it before the countdown |
 | 2.9.9.3 | Bots get one rocket a lap and pick up nothing; wrecks are ghosts you drive through (flicker, gone in 5 s); no more fling at the road's edge; AI drivers Easy / Medium / Hard (Options, sticks page; Hard = as before); the web game is online only | Lobbies play the events' weather online (server-driven, blended on clients); `deploy/lobbies.conf` per-lobby flags, tracks rotate, `--events`; lobbies.sh restart loop |
 | 2.9.9.2 | | Browser players in the lobbies: `fogcityfury-wsbridge` (WebSocket to the lobbies' UDP), the web game online over WebSockets, Apache `ProxyPass /fcf/lobby/`; lobbies.sh starts the bridge |
 | 2.9.9.1 | | `deploy/fcf-lobbies.sh`: eight 10-player lobbies as systemd services (UDP 27015-27022); the game lists all eight |

@@ -1130,6 +1130,21 @@ def wreck_leaves_shell_and_parts_behind():
 
 
 @test
+def race_starts_in_the_files_weather():
+    """2.9.9.4: a lap-1 weather event is the sky from the grid on (no snap at the green light); the lobby waits in it."""
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as d:
+        f = os.path.join(d, "track3.fcfe")
+        open(f, "w").write("event sky weather  wx storm  over 0.5  laps 1  delay 0  times once  chance 100  by player  on lap\n"
+                           "event later weather  wx clear  over 20  laps 2  delay 0  times once  chance 100  by player  on lap\n")
+        for secs in (0.2, 6):
+            r = sim("--track", 3, "--weather", 0, "--state", 3, "--auto", "--events", f, seconds=secs)
+            check(r["weather"] == 3 and r["wxMix"] >= 1, "%.1f s in: in the storm the file starts in, not turning to it" % secs, (r["weather"], r["wxMix"]))
+        out = subprocess.run(["timeout", "3", SERVER, "--port", "27993", "--track", "3", "--weather", "0", "--events", d], capture_output=True, text=True).stdout
+        check("phase LOBBY  track 3 (MIDNIGHT MILE)  weather 3" in out, "the lobby waits in the file's starting sky", out[-300:])
+
+
+@test
 def ai_speed_easy_medium_hard():
     """2.9.9.3: easy / medium / hard AI (hard: as they always drove)."""
     runs = {a: sim("--seed", 5, "--track", 0, "--state", 3, "--auto", "--ai", a, seconds=60) for a in (0, 1, 2)}

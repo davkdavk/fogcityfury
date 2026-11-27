@@ -141,11 +141,14 @@ static bool wxCross(float px, float pz, float cx, float cz, const WxLine& l) {  
     float d1 = side(l.ax, l.az, l.bx, l.bz, px, pz), d2 = side(l.ax, l.az, l.bx, l.bz, cx, cz), d3 = side(px, pz, cx, cz, l.ax, l.az), d4 = side(px, pz, cx, cz, l.bx, l.bz);
     return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0));
 }
-static void wxStart() {   // a race starts: every weather event unfired
+// the sky the track's file starts its race in: its weather event set off by lap 1 starting, with no delay (-1 none)
+static int wxFirst() { if (wxTrack != track) wxLoad(track); for (auto& e : wxEvs) if (e.on == 0 && e.delay <= 0 && (e.laps & 1u)) return e.wx; return -1; }
+static void wxStart() {   // a race starts: every weather event unfired, and the sky the file starts in, there already (no turn to it)
     if (wxTrack != track) wxLoad(track);
     for (auto& e : wxEvs) { e.fired = false; e.at = -1; }
     for (int i = 0; i < MAXP; i++) wxPOk[i] = false;
     wxOver = 0;
+    for (auto& e : wxEvs) if (e.on == 0 && e.delay <= 0 && (e.laps & 1u)) { e.fired = true; weather = e.wx; wxScripted = true; break; }
 }
 static void wxStep() {   // in the race
     if (wxTrack != track) wxLoad(track);
@@ -167,7 +170,8 @@ static void wxStep() {   // in the race
 static const char* phaseName(Phase p) { static const char* n[6] = { "LOBBY", "COUNTDOWN", "RACE", "RESULTS", "SHOWDOWN", "ROAM" }; return n[p]; }
 
 static void setPhase(Phase p, double t) {
-    if (p == LOBBY) { if (wxScripted && !wxMode) weather = cfgWeather; wxScripted = false; wxOver = 0; }   // (2.9.9.3 after a scripted sky, however the race ended: the lobby's own)
+    if (p == LOBBY) { if (wxScripted && !wxMode) weather = cfgWeather; wxScripted = false; wxOver = 0;   // (2.9.9.3 after a scripted sky, however the race ended: the lobby's own)
+        int f = wxFirst(); if (f >= 0) { weather = f; wxScripted = true; } }   // (but a track whose file starts its race in a sky waits in it)
     phase = p; phaseT = t; say("phase %s  track %d (%s)  weather %d  players %d", phaseName(p), track, trackName(track), weather, count());
     if (p == ROAM) { removeBots(); roamT = 0; nMinis = 0; for (auto& q : P) { q.racing = q.used; q.footOn = false; } }
     if (p == LOBBY) { removeBots(); readySince = -1; for (auto& q : P) { q.ready = false; q.racing = false; q.finished = false; } }
