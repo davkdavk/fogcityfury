@@ -94,6 +94,12 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.1
+
+- **Eight online lobbies.** `deploy/fcf-lobbies.sh` sets up eight dedicated servers on one Linux machine, 10 players
+  each, on UDP 27015-27022, as services that start with the machine. The online screen lists all eight at thadav.com
+  (an existing list gets the new ones added once). See `docs/NETWORK.md`.
+
 ## What's new in 2.9.9
 
 - **Play it in your browser** (the first step of 3.0). `make web` builds the game for a web page: the same game,

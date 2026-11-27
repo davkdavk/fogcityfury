@@ -246,6 +246,7 @@ static const char* keyName(int sc) {
     int i = 0; for (; nm[i] && i < 27; i++) o[i] = (char)toupper((unsigned char)nm[i]); o[i] = 0; return o;
 }
 static int nearestOpt(const int* o, int n, int v) { int b = 0; for (int i = 0; i < n; i++) if (abs(o[i] - v) < abs(o[b] - v)) b = i; return o[b]; }
+static bool lobbiesAdd = false;
 static void loadCfg() {
     bindDefaults(); servers.clear(); for (auto h : DEFAULT_SERVERS) srvAdd(h);
 #ifdef FCF_GFX_XSDK
@@ -263,9 +264,14 @@ static void loadCfg() {
         { int a = 0, b = 0, c = 0, d = 0; if (fscanf(f, " sticks %d %d %d %d", &a, &b, &c, &d) == 4) { optSteerSens = std::max(50, std::min(200, a)); optAimSens = std::max(25, std::min(300, b)); optTouchSteer = c ? 1 : 0; optTouchWide = std::max(0, std::min(2, d)); } }
         int br = 0; if (fscanf(f, " bright %d", &br) == 1) vidBright = std::max(50, std::min(150, br));
         { int a = 0, b = 0, c = 0; if (fscanf(f, " fx %d %d %d", &a, &b, &c) == 3) { optRings = std::max(0, std::min(300, a)); optMist = std::max(0, std::min(200, b)); optGrass = std::max(0, std::min(150, c)); } }   // free roam: flowers picked up, the levels they make (minis.h)
-        { char ln[400]; if (fscanf(f, " unlocked%399[^\n]", ln) == 1) carUnlocked = std::string(ln) + " "; }   // (" CUBANO ...": the codes typed)
+        { char ln[400]; if (fscanf(f, " unlocked%399[^\n]", ln) == 1) carUnlocked = std::string(ln) + " "; }
+        { int lv = 0; if (fscanf(f, " lobbies %d", &lv) != 1 || lv < LOBBY_LIST) lobbiesAdd = true; }   // (an older list: add the lobbies it lacks)   // (" CUBANO ...": the codes typed)
     }
     fclose(f);
+    if (lobbiesAdd) {   // the lobbies a list saved before them lacks, after what is there (the list holds MAX_SERVERS)
+        for (auto h : DEFAULT_SERVERS) { bool have = false; for (auto& e : servers) have |= e.host == h; if (!have && servers.size() < MAX_SERVERS) srvAdd(h); }
+        lobbiesAdd = false;
+    }
 }
 // time trial records: the best total for each track and lap count (beside the save: <save>.trial, "track laps seconds" lines)
 static std::vector<std::pair<int, float>> trialBest;   // key track*16 + laps
@@ -307,7 +313,8 @@ static void saveCfg() {
             if (n.find(' ') == std::string::npos) fprintf(f, "ckey %s %u\n", n.c_str(), keysGot[t]);
         } // keys found on your own tracks
     fprintf(f, "sticks %d %d %d %d\n", optSteerSens, optAimSens, optTouchSteer, optTouchWide); fprintf(f, "bright %d\n", vidBright); fprintf(f, "fx %d %d %d\n", optRings, optMist, optGrass);
-    if (carUnlocked.size() > 1) fprintf(f, "unlocked%s\n", carUnlocked.substr(0, carUnlocked.size() - 1).c_str());   // the added cars' codes typed (last: fscanf reads in order)
+    if (carUnlocked.size() > 1) fprintf(f, "unlocked%s\n", carUnlocked.substr(0, carUnlocked.size() - 1).c_str());
+    fprintf(f, "lobbies %d\n", LOBBY_LIST);   // the added cars' codes typed (last: fscanf reads in order)
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the

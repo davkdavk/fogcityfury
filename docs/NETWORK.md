@@ -49,6 +49,26 @@ Server options:
 For a public server, `deploy/fogcityfury-server.service` runs it under systemd as its own unprivileged user,
 sandboxed, restarted if it stops; the file says how to install it.
 
+**Eight lobbies, the simple way (2.9.9.1).** Put `deploy/lobbies.sh` in the folder with the server
+(`FogCityFury-Server-ARM64`, or any name with `FCF_BIN=`) and run `./lobbies.sh start`: lobbies 1-8 on UDP 27015-27022,
+each restarting itself if it stops, with its tracks and log in `lobbyN/` there. `./lobbies.sh status`, `stop`,
+`restart`, and `boot` (start them when the machine starts). Stop the old single server first: lobby 1 uses its port.
+
+**Eight lobbies as system services (2.9.9.1).** `deploy/fcf-lobbies.sh` runs several servers on one Linux machine, 10 players each:
+lobby 1 on UDP 27015, lobby 2 on 27016, up to lobby 8 on 27022 (the game's built-in server list has all eight at
+thadav.com). Each is a sandboxed systemd service (`deploy/fogcityfury-lobby@.service`) with its own track uploads in
+`/opt/fogcityfury/lobbyN/tracks`; they share the event files in `/opt/fogcityfury/events`.
+
+    sudo deploy/fcf-lobbies.sh install 8 ./fogcityfury-server     # set up and start them (replaces the single server)
+    deploy/fcf-lobbies.sh status                                   # each lobby: running, its port, joins in the last hour
+    sudo deploy/fcf-lobbies.sh update ./fogcityfury-server         # a new release: every lobby on the new server
+    deploy/fcf-lobbies.sh logs 3                                   # lobby 3's log
+    sudo deploy/fcf-lobbies.sh stop | start | restart | remove
+
+`FCF_NAME` sets the lobbies' name (THADAV.COM: "THADAV.COM 1" to "THADAV.COM 8"), `FCF_EXTRA` adds server flags to
+every lobby (`FCF_EXTRA="--laps 4 --weather random"`). Forward UDP 27015-27022 on the router to the machine; the
+script opens them in ufw or firewalld if either is running. Eight full lobbies send about 10 Mbit/s.
+
 The server needs one UDP port reachable by the players. It has no dependencies beyond libstdc++, so
 it runs on a machine with no graphics. It prints joins, leaves, phase changes and each result table.
 

@@ -13,7 +13,7 @@ The simulation is deterministic, so thresholds here can be tight. If you change 
 on purpose, re-measure and update the numbers in the same commit, and say why in the commit message.
 """
 import json, sys
-import math, os, shutil, socket, struct, subprocess, sys, tempfile, time, wave
+import math, os, re, shutil, socket, struct, subprocess, sys, tempfile, time, wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(ROOT, "fogcityfury")
@@ -1008,10 +1008,16 @@ def net_server_list_shows_what_each_server_is_running():
     env = dict(os.environ, HOME=home, APPDATA=home)
     run = lambda *a: json.loads(subprocess.run([BIN, "--sim", "--save", "--seconds", "1.5"] + [str(x) for x in a], capture_output=True, text=True, timeout=60, env=env).stdout.strip().splitlines()[-1])
     d = run()
-    check([r.split("|")[0] for r in d["servers"].split(";")] == ["thadav.com:27015", "127.0.0.1:27015"], "a fresh install lists the home server and this computer", d["servers"])
+    LOBBIES = ["thadav.com:%d" % p for p in range(27015, 27023)]
+    check([r.split("|")[0] for r in d["servers"].split(";")] == LOBBIES + ["127.0.0.1:27015"], "a fresh install lists the eight lobbies and this computer", d["servers"])
     run("--press", "0.2:O", "--press", "0.4:DOWN", "--press", "0.6:DELETE", "--press", "0.8:ESCAPE")
     d = run()
-    check([r.split("|")[0] for r in d["servers"].split(";")] == ["thadav.com:27015"], "removing a server is remembered", d["servers"])
+    check([r.split("|")[0] for r in d["servers"].split(";")] == [LOBBIES[0]] + LOBBIES[2:] + ["127.0.0.1:27015"], "removing a server is remembered", d["servers"])
+    # 2.9.9.1 a list saved before the eight lobbies (no "lobbies" line) gets the ones it lacks, once
+    cfg = os.path.join(home, ".fogcityfury.cfg"); t = open(cfg).read()
+    t = re.sub(r"servers \d+\n(server .*\n)+", "servers 2\nserver thadav.com:27015\nserver 10.0.0.5:27015\n", t); t = re.sub(r"lobbies \d+\n", "", t); open(cfg, "w").write(t)
+    d = run()
+    check([r.split("|")[0] for r in d["servers"].split(";")] == ["thadav.com:27015", "10.0.0.5:27015"] + LOBBIES[1:], "an older list keeps its own and gains the other lobbies", d["servers"])
 
 
 @test

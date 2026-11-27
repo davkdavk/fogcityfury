@@ -1,0 +1,35 @@
+# systemd template for one Fog City Fury lobby (a dedicated server, 10 players). fcf-lobbies.sh sets them up:
+# lobby N listens on UDP 27014+N, keeps its own shared tracks in /opt/fogcityfury/lobbyN/tracks, and reads the
+# event files every lobby shares from /opt/fogcityfury/events. Its port and name are in /opt/fogcityfury/lobbyN.env.
+#   systemctl status fogcityfury-lobby@3        journalctl -u fogcityfury-lobby@3 -f
+[Unit]
+Description=Fog City Fury lobby %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=fcf
+Group=fcf
+EnvironmentFile=/opt/fogcityfury/lobby%i.env
+WorkingDirectory=/opt/fogcityfury/lobby%i
+ExecStart=/opt/fogcityfury/fogcityfury-server --port ${PORT} --name ${NAME} --tracks /opt/fogcityfury/lobby%i/tracks --events /opt/fogcityfury/events $EXTRA
+Restart=always
+RestartSec=3
+# keep it in a box: no privileges, a read-only system except its own folder, its own /tmp, no other users' files
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/fogcityfury/lobby%i
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryMax=256M
+TasksMax=16
+
+[Install]
+WantedBy=multi-user.target

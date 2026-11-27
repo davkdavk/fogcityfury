@@ -8,7 +8,10 @@ struct ServerEntry {
     std::string host; std::shared_ptr<DnsJob> job; sockaddr_in addr; int st = 0;   // st: 0 looking up the address, 1 asked, 2 answered, 3 no reply, 4 unknown address
     bool waiting = false; uint32_t nonce = 0; double sent = 0; float ping = 0; net::Info info; uint16_t proto = 0;
 };
-static const char* DEFAULT_SERVERS[] = { "thadav.com:27015", "127.0.0.1:27015" }; static const size_t MAX_SERVERS = 9;
+// the built-in list: the eight lobbies at thadav.com (deploy/fcf-lobbies.sh: 27015-27022), and a server on this computer
+static const char* DEFAULT_SERVERS[] = { "thadav.com:27015", "thadav.com:27016", "thadav.com:27017", "thadav.com:27018", "thadav.com:27019",
+    "thadav.com:27020", "thadav.com:27021", "thadav.com:27022", "127.0.0.1:27015" }; static const size_t MAX_SERVERS = 9;
+static const int LOBBY_LIST = 1;   // (2.9.9.1: a saved list from before the eight lobbies gets the ones it lacks, once)
 static std::vector<ServerEntry> servers; static int srvSel = 0, srvMode = 0, qsock = -1;   // srvMode: 0 picking, 1 typing a new address, 2 typing our name
 static char srvNew[96] = ""; static float srvRefresh = 0; static bool srvSkipText = false;
 // Typing an address or a name with only a controller (the Xbox 360): a grid of letters picked with the d-pad, A types the
