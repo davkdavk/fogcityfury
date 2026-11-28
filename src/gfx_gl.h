@@ -19,8 +19,18 @@ static GLuint emptyVAO = 0;
 // never leaves one of them bound for reading while that framebuffer is drawn into
 static std::vector<std::pair<GLuint, GLuint>> fboAtt(1);   // per framebuffer: its colour and depth texture names
 static GLuint unitTex[16] = {}; static int curFbo = 0;
+// 2.9.9.10 and what each unit is meant to hold (wantTex / wantKind): a texture taken off a unit while its framebuffer was
+// drawn into goes back on as soon as another one is. (Before, it stayed off: the shadow map and the reflection cube are
+// bound once a frame, before the shadow and cube passes, so the main pass had neither: no shadows round the car, no
+// reflections on it, in the browser only)
+static GLuint wantTex[16] = {}; static GLenum wantKind[16] = {};
 static bool writing(GLuint name) { return name && curFbo > 0 && curFbo < (int)fboAtt.size() && (fboAtt[curFbo].first == name || fboAtt[curFbo].second == name); }
-static void dropWritten() { for (int u = 0; u < 16; u++) if (writing(unitTex[u])) { glActiveTexture(GL_TEXTURE0 + u); glBindTexture(GL_TEXTURE_2D, 0); glBindTexture(GL_TEXTURE_CUBE_MAP, 0); unitTex[u] = 0; } }
+static void dropWritten() {
+    for (int u = 0; u < 16; u++) {
+        GLuint w = wantTex[u] && !writing(wantTex[u]) ? wantTex[u] : 0; if (w == unitTex[u]) continue;
+        glActiveTexture(GL_TEXTURE0 + u); if (w) glBindTexture(wantKind[u], w); else { glBindTexture(GL_TEXTURE_2D, 0); glBindTexture(GL_TEXTURE_CUBE_MAP, 0); } unitTex[u] = w;
+    }
+}
 #endif
 static const GLenum SCRATCH = GL_TEXTURE7;              // textures are made here, so the units the game uses keep what is bound to them
 struct FmtGL { GLint internal; GLenum format, type; };
@@ -84,6 +94,7 @@ static void aniso(Tex t, int n) { if (!t) return; glActiveTexture(gl::SCRATCH); 
 static void mips(Tex t) { glActiveTexture(gl::SCRATCH); glBindTexture(gl::tex[t].kind, gl::tex[t].name); glGenerateMipmap(gl::tex[t].kind); glBindTexture(gl::tex[t].kind, 0); }
 static void bind(int unit, Tex t) {
 #ifdef __EMSCRIPTEN__
+    if (unit >= 0 && unit < 16) { gl::wantTex[unit] = t ? gl::tex[t].name : 0; gl::wantKind[unit] = t ? gl::tex[t].kind : GL_TEXTURE_2D; }   // (2.9.9.10 kept, to put back)
     if (t && gl::writing(gl::tex[t].name)) t = 0;   // (being drawn into: nothing to read this pass)
     if (unit >= 0 && unit < 16) gl::unitTex[unit] = t ? gl::tex[t].name : 0;
 #endif

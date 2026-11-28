@@ -45,15 +45,17 @@ EM_JS(void, fcfRadioVol, (float v), { var a = Module.fcfRadio; if (a) a.volume =
 EM_JS(int, fcfRadioLive, (), { var a = Module.fcfRadio; return a && !a.paused && a.readyState >= 3 ? 1 : 0; });
 // 2.9.9.8 a playlist address (.pls / .m3u): the browser cannot play one, so it is read first and its first stream played.
 // A station's server may not let another site read it (CORS): then it says so (fcfRadioErr), and radio.txt needs the stream
+// (no backslashes in here: an EM_JS body is a C string and then JSON, and every \ is taken twice)
 EM_JS(void, fcfRadioPlayList, (const char* u), { var s = UTF8ToString(u); Module.fcfRadioErr = 0;
     fetch(s).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (t) {
-        var ls = t.split(/\r?\n/), best = null, br = -2, sec = location.protocol === 'https:';   // (2.9.9.9 best first: the highest kbps in the titles, not AAC; an https page needs an https stream)
-        for (var i = 0; i < ls.length; i++) { var mm = ls[i].match(/^File(\d+)=(https?:\/\/\S+)/i) || ls[i].match(/^(https?:\/\/\S+)/); if (!mm) continue;
-            var u = mm.length > 2 ? mm[2] : mm[1], n = mm.length > 2 ? mm[1] : '', ti = ''; if (n) { var tm = t.match(new RegExp('Title' + n + '=(.*)', 'i')); if (tm) ti = tm[1].toLowerCase(); }
-            var r = 0, km = ti.match(/(\d+)\s*k/); if (km) r = parseInt(km[1]); if (/aac|ogg|opus/.test(ti)) r = -1; if (sec && u.indexOf('https:') !== 0) continue; if (r > br) { br = r; best = u; } }
-        var m = best ? [best] : null; if (!m) { Module.fcfRadioErr = 2; return; }
+        var ls = t.split(String.fromCharCode(10)), best = null, br = -2, sec = location.protocol === 'https:';   // (2.9.9.9 best first: the highest kbps in the titles, not AAC; an https page needs an https stream)
+        for (var i = 0; i < ls.length; i++) { var l = ls[i].trim(), u = '', n = '';
+            if (/^file[0-9]+=/i.test(l)) { n = l.slice(4, l.indexOf('=')); u = l.slice(l.indexOf('=') + 1); } else if (/^https?:/i.test(l)) u = l; else continue;
+            var ti = ''; for (var q = 0; q < ls.length; q++) { var lq = ls[q].trim(); if (n && lq.toLowerCase().indexOf('title' + n + '=') === 0) ti = lq.toLowerCase(); }
+            var r = 0, km = ti.match(/([0-9]+) *k/); if (km) r = parseInt(km[1]); if (/aac|ogg|opus/.test(ti)) r = -1; if (sec && u.indexOf('https:') !== 0) continue; if (r > br) { br = r; best = u; } }
+        if (!best) { Module.fcfRadioErr = 2; return; }
         if (!Module.fcfRadio) Module.fcfRadio = new Audio(); var a = Module.fcfRadio; a.onerror = function () { Module.fcfRadioErr = 4; };
-        a.src = m[0]; var p = a.play(); if (p && p.catch) p.catch(function (e) { Module.fcfRadioErr = 3; }); }).catch(function (e) { Module.fcfRadioErr = 1; }); });
+        a.src = best; var p = a.play(); if (p && p.catch) p.catch(function (e) { Module.fcfRadioErr = 3; }); }).catch(function (e) { Module.fcfRadioErr = 1; }); });
 EM_JS(int, fcfRadioErr, (), { return Module.fcfRadioErr | 0; });
 static int tryNo = 0; static const char* TRY[3] = { "music/radio.txt", "music/radio.pls", "music/radio.m3u" };
 static void urlErr(const char*);

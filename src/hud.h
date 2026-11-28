@@ -354,7 +354,7 @@ static void drawHUD() {
         if (!touchOn) ui.text(Wd - 60, 692, 2.5f, white, P("UP / DOWN: PICK ROW   LEFT / RIGHT: CHANGE   ENTER: START   ESC: BACK", "{DPAD} PICK ROW AND CHANGE   {A} START   {B} BACK"), 2);
     } else {
         // --- in-race HUD ---
-        float Hb = Hd - (touchOn ? 190.0f : 0.0f);   // with on-screen buttons along the bottom, the speedometer and the map move up out of their way
+        float Hb = Hd - (touchOn ? 212.0f : 0.0f);   // (2.9.9.10 the speedometer just above GAS)   // with on-screen buttons along the bottom, the speedometer and the map move up out of their way
         float kmh = fabsf(player.vf) * 3.6f; char t[32]; bool arena = showdownOn && (me.on || shdSpectate);   // in the showdown the car's dials give way to the fighter's
         if (!footView() && !(shdSpectate && showdownOn)) {   // (on foot the dials are no use: the fighter's own panels take their place)
         if (player.shield > 0 || shieldPopT > 0) {   // shield: time left, above the rockets

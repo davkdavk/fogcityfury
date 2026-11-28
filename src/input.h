@@ -400,6 +400,8 @@ static int touchHit(float x, float y) { for (size_t i = 0; i < tbtn.size(); i++)
 static void touchDown(SDL_FingerID id, float x, float y) {
     if (!touchOn) { touchOn = true; touchLaid = -1; touchLayout(); return; }           // the first touch only brings the buttons up
     touchLayout(); int b = touchHit(x, y);
+    if (b < 0 && state == RACE && !me.on) for (size_t i = 0; i < tbtn.size(); i++) if (tbtn[i].hold == B_GAS) {   // 2.9.9.10 a thumb just off GAS's edge is on GAS
+        float cx = tbtn[i].x + tbtn[i].w / 2, cy = tbtn[i].y + tbtn[i].h / 2, r = tbtn[i].w / 2 * 1.35f; if ((x - cx) * (x - cx) + (y - cy) * (y - cy) < r * r) b = (int)i; }
     if (b < 0) {
 #ifdef FCF_EDITOR
         if (state == EDIT) { edTouchDown(id, x, y); return; }
@@ -427,7 +429,10 @@ static void touchMove(SDL_FingerID id, float x, float y) {   // sliding a thumb 
     if (tsteer.on && tsteer.id == id) { float R = touchSteerR(); tsteer.x = x; if (x - tsteer.ox > R) tsteer.ox = x - R; if (tsteer.ox - x > R) tsteer.ox = x + R; return; }   // (past full lock the middle follows, so the way back is short)
     if (tstick.on && tstick.id == id) { tstick.x = x; tstick.y = y; return; }
     if (taim.on && taim.id == id) { taim.x = x; taim.y = y; return; }
-    for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold >= 0) { int b = touchHit(x, y); if (b >= 0 && tbtn[b].hold >= 0) f.btn = b; }
+    // 2.9.9.10 a thumb on GAS stays on GAS (it slid onto DRIFT or BRAKE and let go of the throttle: the flaky GAS); from GAS it
+    // can still slide onto NITRO, which accelerates too
+    for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold >= 0) { int b = touchHit(x, y);
+        if (b >= 0 && tbtn[b].hold >= 0 && (tbtn[f.btn].hold != B_GAS || tbtn[b].hold == B_NITRO)) f.btn = b; }
     for (auto& f : fingers) if (f.id == id && f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].act == TA_WEAPON && fabsf(x - f.sx) > 45) { cycleGunDir(x > f.sx ? 1 : -1); f.sx = x; f.swiped = true; }   // 2.7 a swipe across GUN: next / previous, a step per 45
 }
 static void touchUp(SDL_FingerID id) {

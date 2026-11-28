@@ -94,6 +94,15 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.10
+
+- **The web game's close-up shading.** Shadows round your car and the reflections on it were missing in the browser
+  (the shadow map and the reflection cube were left unbound after their own passes); now it looks as it does on PC.
+- **The web build works again.** 2.9.9.8 and 2.9.9.9's radio code broke the browser build (backslashes in its
+  JavaScript); fixed, and the page takes a command line for checking a scene (`?arg=--state&arg=3`).
+- **Android:** NITRO accelerates too (one thumb for both); a thumb on GAS stays on GAS (sliding onto DRIFT or BRAKE
+  no longer lets go of the throttle), and a touch just off its edge counts; the speedometer sits just above GAS.
+
 ## What's new in 2.9.9.9
 
 - **Sound settings.** Options has an **AUDIO** page (TAB to it; LB/RB on a pad): MASTER, MUSIC, ENGINES, EFFECTS and

@@ -1197,6 +1197,13 @@ def radio_streams_in_the_races():
 
 
 @test
+def touch_nitro_accelerates_too():
+    """2.9.9.10 Android: the NITRO button drives the car on its own (it holds the throttle too)."""
+    d = sim("--touch", "--state", 3, "--track", 1, "--touchhold", "NITRO", seconds=6)
+    check(d["dist"] > 60 and d["boosts"] >= 1, "holding only NITRO: the car goes, boosting", (d["dist"], d["boosts"]))
+
+
+@test
 def fcfedit_is_the_whole_editor():
     """2.9.9.9: fcfedit opens on the track screen (F4 track editor, F6 new, F7 events); F7 goes from either editor to the
     other; ESC leaves the event editor for the track screen; M in the track editor picks the track's mp3 from music/."""

@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.9.10 | Web: shadows and reflections round the car (textures put back after each pass); the web build fixed (no backslashes in EM_JS); Android: NITRO accelerates too, GAS sticky and forgiving, speedometer above GAS | Page ?arg= command line |
 | 2.9.9.9 | Options AUDIO page: master, music, engines, effects, weather volumes; music source; race song from the mp3s in music/ (`--song`). fcfedit opens on the track screen as the hub: F4/F6 track editor, F7 events; F7 between the editors; M in the track editor picks the track's mp3 | |
 | 2.9.9.8 | The radio on the 360 (http; game:\\music\\radio.txt); RB paused or on the title cycles the music; the radio's status on screen and in the log; the web game reads a .pls address; a non-MP3 stream is named | |
 | 2.9.9.7 | https stations through curl (hidden on Windows); music/radio.pls or .m3u (or the playlist pasted in radio.txt), each entry tried in turn; the built-in G-funk songs off (cfg `gfunk 1`) | Web: the playlist's first entry |

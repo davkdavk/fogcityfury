@@ -34,7 +34,8 @@ static void logoSounds(float t0, float t1) {
 }
 static bool touchOn = false; static float uiW = 1280; static std::vector<TouchBtn> tbtn; static std::vector<Finger> fingers; static int touchLaid = -1;
 static const int H_ROLL = 100, H_DUCK = 101;   // 2.8 touch buttons held for something with no key binding of its own
-static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && tbtn[f.btn].hold == b) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
+// (2.9.9.10 the touch NITRO button accelerates too: one thumb for both)
+static bool touchHolds(int b) { for (auto& f : fingers) if (f.btn >= 0 && f.btn < (int)tbtn.size() && (tbtn[f.btn].hold == b || (b == B_GAS && tbtn[f.btn].hold == B_NITRO && tbtn[f.btn].style == TS_NITRO && strcmp(tbtn[f.btn].label, "RUN") != 0))) return true; return false; }                                                   // two keys per action (SDL scancodes, 0 = none)
 static const int RES[][2] = { { 854, 480 }, { 1024, 576 }, { 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } }; static const int NRES = 8;
 static const int AA_OPT[4] = { 0, 2, 4, 8 }, AF_OPT[5] = { 1, 2, 4, 8, 16 }, NVIDROWS = 9;
 // (2.29.1) the water sliders do three times what they did: the rings' waves stand 3x higher, a splash throws 3x the spray;

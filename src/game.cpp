@@ -448,7 +448,11 @@ int main() {
              FS.syncfs(true, function (e) { if (e) console.warn('saves: ' + e); Module.fcfSynced = 1; }); });
     while (!EM_ASM_INT({ return Module.fcfSynced; })) emscripten_sleep(10);
     if (chdir("/home/web_user") != 0) {}   // (the events folder, and built-in tracks edited in place, go here too)
-    static char a0[] = "fogcityfury"; static char* v[] = { a0, nullptr }; return fcfMain(1, v);
+    // (2.9.9.10 Module.fcfArgs, if the page sets it: the command line, for the tests and for checking a scene)
+    static std::vector<std::string> args{ "fogcityfury" };
+    { char* j = (char*)(intptr_t)EM_ASM_INT({ var a = Module.fcfArgs || []; var s = a.join(String.fromCharCode(10)); var n = lengthBytesUTF8(s) + 1; var p = _malloc(n); stringToUTF8(s, p, n); return p; });
+      std::string all = j ? j : ""; free(j); size_t i = 0; while (i < all.size()) { size_t e = all.find('\n', i); if (e == std::string::npos) e = all.size(); if (e > i) args.push_back(all.substr(i, e - i)); i = e + 1; } }
+    static std::vector<char*> v; for (auto& x : args) v.push_back(&x[0]); v.push_back(nullptr); return fcfMain((int)args.size(), v.data());
 }
 static int fcfMain(int argc, char** argv) {
 #else
@@ -722,6 +726,10 @@ int main(int argc, char** argv) {
     hdrOK = false;   // 720p RGBA16F plus depth exceeds Xenos's EDRAM budget
 #endif
     if (forceLDR) hdrOK = false;
+#ifdef __EMSCRIPTEN__
+    { int fb = EM_ASM_INT({ var g = Module.ctx || (GL.currentContext && GL.currentContext.GLctx); if (!g) return -1; return (g.getExtension('EXT_color_buffer_float') ? 1 : 0) + (g.getExtension('EXT_color_buffer_half_float') ? 2 : 0) + (g.getExtension('OES_texture_float_linear') ? 4 : 0); });
+      printf("gfx: hdr %d, float targets %d\n", hdrOK ? 1 : 0, fb); }   // (2.9.9.10 what the browser gave: enabled here, as WebGL needs them asked for)
+#endif
     {   // what this driver and display can do, for the video settings
         int ms = gfx::maxSamples(); maxAA = ms >= 8 ? 8 : ms >= 4 ? 4 : ms >= 2 ? 2 : 0;
         int fa = gfx::maxAniso();

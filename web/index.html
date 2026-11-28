@@ -40,7 +40,8 @@
       if (!t) { load.style.display = 'none'; Module.canvas.focus(); }
     },
     monitorRunDependencies: function (n) { if (!n) Module.setStatus(''); },
-    onAbort: function (w) { fail('The game stopped: ' + w + '. Reload the page to try again.'); load.style.display = 'flex'; }
+    onAbort: function (w) { fail('The game stopped: ' + w + '. Reload the page to try again.'); load.style.display = 'flex'; },
+    fcfArgs: new URLSearchParams(location.search).getAll('arg')   // (?arg=--state&arg=3: a command line, for checking a scene)
   };
   window.addEventListener('error', function (e) { console.error(e.message); });
   // keep keys for the game while it has focus (arrows, space and F1 would scroll or open help)
