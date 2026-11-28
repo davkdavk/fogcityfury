@@ -94,6 +94,15 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.7
+
+- **https stations, and the station's playlist file.** Save a station's `.pls` (or `.m3u`) as `music/radio.pls`
+  (or paste its text into `radio.txt`) and the game plays it, trying each entry in turn. https addresses now work on
+  PC and Windows too (through `curl`, which Windows 10+, macOS and Linux have; on Windows it runs hidden). The web game
+  plays the playlist's first entry in the browser (it needs to be https).
+- **The built-in G-funk songs are off.** You hear your mp3s and the radio; where a track has neither, it is quiet.
+  `gfunk 1` in `fogcityfury.cfg` brings them back.
+
 ## What's new in 2.9.9.6
 
 - **Internet radio in the races.** Put a station's stream address on the first line of `music/radio.txt` (a

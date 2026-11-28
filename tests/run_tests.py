@@ -1169,7 +1169,18 @@ def radio_streams_in_the_races():
                 seg = [x[i * 2] / 32768.0 for i in range(int(3.5 * 44100), int(3.5 * 44100) + 4410)]
                 mag = lambda hz: math.hypot(sum(v * math.cos(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg)), sum(v * math.sin(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg))) / len(seg)
                 check(mag(440) > 5 * mag(523), "/%s: the station's 440 Hz plays over the song" % path, (mag(440), mag(523)))
+            for path in ("hstream", "hlist.pls"):   # 2.9.9.7 through curl, as an https station is read
+                w = os.path.join(d, "c.wav")
+                subprocess.run([BIN, "--radio", "http://127.0.0.1:%d/%s" % (port, path), "--wav", w, "5"], check=True, timeout=60, env=dict(os.environ, FCF_CURL="1"))
+                f = wave.open(w); n = f.getnframes(); x = struct.unpack("<%dh" % (n * 2), f.readframes(n))
+                seg = [x[i * 2] / 32768.0 for i in range(int(3.5 * 44100), int(3.5 * 44100) + 4410)]
+                mag = lambda hz: math.hypot(sum(v * math.cos(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg)), sum(v * math.sin(2 * math.pi * hz * i / 44100) for i, v in enumerate(seg))) / len(seg)
+                check(mag(440) > 5 * mag(523), "curl /%s: the station plays" % path, (mag(440), mag(523)))
             shutil.copytree(os.path.join(ROOT, "events"), os.path.join(d, "events"))
+            os.mkdir(os.path.join(d, "music"))   # 2.9.9.7 the station's own playlist file in music/: a dead entry first, then the station
+            open(os.path.join(d, "music", "radio.pls"), "w").write("[playlist]\nNumberOfEntries=2\nFile1=http://127.0.0.1:1/dead\nFile2=http://127.0.0.1:%d/stream\n" % port)
+            p = subprocess.run([BIN, "--sim", "--seconds", "8", "--track", "1", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
+            r = json.loads(p.stdout.strip().splitlines()[-1]); check(r["radio"] == "PLAYING", "music/radio.pls: its second entry plays when the first is dead", r["radio"])
             def run(*a):
                 p = subprocess.run([BIN, "--radio", "http://127.0.0.1:%d/stream" % port, "--sim"] + [str(v) for v in a], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
                 return json.loads(p.stdout.strip().splitlines()[-1])

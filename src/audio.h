@@ -23,6 +23,7 @@ static void tone(float f, float dur, float vol, int type = 0, float slide = 0, f
 // gliding synth bass, electric-piano ninth chords that drift across the stereo field, and the high sine lead that
 // slides from note to note with a slow vibrato and an echo.
 namespace mus {
+static bool songsOn = false;   // 2.9.9.7 the built-in G-funk songs: off (your mp3s and the radio only); cfg "gfunk 1" brings them back
 static uint32_t rs = 777;
 static inline float nz() { rs = rs * 1664525u + 1013904223u; return ((rs >> 9) / 4194304.f) - 1; }
 
@@ -266,7 +267,7 @@ static void audioCB(void*, uint8_t* stream, int bytes) {
         float mL = 0, mR = 0;
         if (mv > 0.001f) {   // 2.9.9.5 the track's mp3 if it has one, cross-faded with the built-in song
             float aL, aR; mp3::render(aL, aR, SR);
-            if (mp3::gSynth > 0.001f) { mus::render(mL, mR); mL *= mp3::gSynth; mR *= mp3::gSynth; }
+            if (mp3::gSynth > 0.001f && mus::songsOn) { mus::render(mL, mR); mL *= mp3::gSynth; mR *= mp3::gSynth; }   // (2.9.9.7 the G-funk songs: off unless the cfg says "gfunk 1")
             mL += aL; mR += aR;
             float rL, rR; radio::render(rL, rR, SR); mL = mL * (1 - radio::g) + rL; mR = mR * (1 - radio::g) + rR;   // (2.9.9.6 the radio over it)
         }
@@ -277,6 +278,7 @@ static void audioCB(void*, uint8_t* stream, int bytes) {
 // offline render of the soundtrack, for checking it without a sound card
 static void renderWav(const char* path, float secs) {
     if (getenv("FCF_SOLO")) mus::solo = atoi(getenv("FCF_SOLO"));
+    mus::songsOn = true;   // (the tests record the songs)
     if (getenv("FCF_SONG")) mus::want = atoi(getenv("FCF_SONG"));
     if (const char* p = getenv("FCF_MP3")) { std::vector<uint8_t> b; if (mp3::readAll(p, b)) if (mp3::Song* s = mp3::make(p, std::move(b))) mp3::pending.store(s); }   // (2.9.9.5 the tests: an mp3 over the song)
     int n = (int)(secs * SR); std::vector<float> buf(n * 2); snd.engV = 0; snd.master = 0.5f;

@@ -270,7 +270,8 @@ static void loadCfg() {
         { char ln[400]; if (fscanf(f, " unlocked%399[^\n]", ln) == 1) carUnlocked = std::string(ln) + " "; }
         { int lv = 0; if (fscanf(f, " lobbies %d", &lv) != 1 || lv < LOBBY_LIST) lobbiesAdd = true; }   // (an older list: add the lobbies it lacks)
         { int a = 1; if (fscanf(f, " ai %d", &a) == 1) optAI = std::max(0, std::min(2, a)); }
-        { int a = 1; if (fscanf(f, " radio %d", &a) == 1) optRadio = a ? 1 : 0; }   // (" CUBANO ...": the codes typed)
+        { int a = 1; if (fscanf(f, " radio %d", &a) == 1) optRadio = a ? 1 : 0; }
+        { int a = 0; if (fscanf(f, " gfunk %d", &a) == 1) mus::songsOn = a != 0; }   // (" CUBANO ...": the codes typed)
     }
     fclose(f);
     if (lobbiesAdd) {   // the lobbies a list saved before them lacks, after what is there (the list holds MAX_SERVERS)
@@ -321,7 +322,8 @@ static void saveCfg() {
     if (carUnlocked.size() > 1) fprintf(f, "unlocked%s\n", carUnlocked.substr(0, carUnlocked.size() - 1).c_str());
     fprintf(f, "lobbies %d\n", LOBBY_LIST);
     fprintf(f, "ai %d\n", optAI);
-    fprintf(f, "radio %d\n", optRadio);   // (2.9.9.6, after the ai line)   // (2.9.9.3, after the lobbies line: fscanf reads in order)   // the added cars' codes typed (last: fscanf reads in order)
+    fprintf(f, "radio %d\n", optRadio);   // (2.9.9.6, after the ai line)
+    fprintf(f, "gfunk %d\n", mus::songsOn ? 1 : 0);   // (2.9.9.7 the built-in songs: 0 off)   // (2.9.9.3, after the lobbies line: fscanf reads in order)   // the added cars' codes typed (last: fscanf reads in order)
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the

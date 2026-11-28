@@ -6,8 +6,10 @@ def serve(c):
         req = c.recv(4096).decode('latin1'); path = req.split(' ')[1] if ' ' in req else '/'
         if path == '/list.pls': body = ('[playlist]\nNumberOfEntries=1\nFile1=http://127.0.0.1:%d/stream\n' % port).encode(); c.sendall(b'HTTP/1.0 200 OK\r\nContent-Type: audio/x-scpls\r\n\r\n' + body); return
         if path == '/moved': c.sendall(('HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:%d/stream\r\n\r\n' % port).encode()); return
-        if path != '/stream': c.sendall(b'HTTP/1.0 404 Not Found\r\n\r\n'); return
-        c.sendall(b'ICY 200 OK\r\nicy-name: test\r\nContent-Type: audio/mpeg\r\n\r\n')
+        if path == '/hlist.pls': body = ('[playlist]\nNumberOfEntries=1\nFile1=http://127.0.0.1:%d/hstream\n' % port).encode(); c.sendall(b'HTTP/1.0 200 OK\r\nContent-Type: audio/x-scpls\r\n\r\n' + body); return
+        if path not in ('/stream', '/hstream'): c.sendall(b'HTTP/1.0 404 Not Found\r\n\r\n'); return
+        # (/stream answers as Shoutcast does, ICY; /hstream as Icecast and https stations do, HTTP/1.0)
+        c.sendall((b'ICY 200 OK' if path == '/stream' else b'HTTP/1.0 200 OK') + b'\r\nicy-name: test\r\nContent-Type: audio/mpeg\r\n\r\n')
         while True: c.sendall(mp3)
     except Exception: pass
     finally: c.close()
