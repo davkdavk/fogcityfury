@@ -1186,8 +1186,8 @@ def radio_streams_in_the_races():
                 return json.loads(p.stdout.strip().splitlines()[-1])
             r = run("--seconds", 4, "--track", 1, "--state", 3, "--auto"); check(r["radio"] == "PLAYING", "in a race the radio plays", r["radio"])
             r = run("--seconds", 2, "--state", 0); check(r["radio"] == "" and r["mp3Want"] == "main", "the title keeps its own music (main.mp3)", (r["radio"], r["mp3Want"]))
-            p = subprocess.run([BIN, "--radio", "https://127.0.0.1:1/x", "--sim", "--seconds", "2", "--track", "1", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
-            r = json.loads(p.stdout.strip().splitlines()[-1]); check(r["radio"].startswith("HTTPS"), "an https station: said so (web game only)", r["radio"])
+            p = subprocess.run([BIN, "--radio", "http://127.0.0.1:1/x", "--sim", "--seconds", "2", "--track", "1", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
+            r = json.loads(p.stdout.strip().splitlines()[-1]); check(r["radio"].startswith("LOST"), "a dead station: said so (the https notice is web game only)", r["radio"])
     finally:
         srv.kill()
 
