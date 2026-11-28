@@ -47,7 +47,7 @@ EM_JS(int, fcfRadioLive, (), { var a = Module.fcfRadio; return a && !a.paused &&
 // A station's server may not let another site read it (CORS): then it says so (fcfRadioErr), and radio.txt needs the stream
 EM_JS(void, fcfRadioPlayList, (const char* u), { var s = UTF8ToString(u); Module.fcfRadioErr = 0;
     fetch(s).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (t) {
-        var m = t.match(/https?:\/\/[^\s\x22\x27<>]+/); if (!m) { Module.fcfRadioErr = 2; return; }
+        var m = t.match(/https?:\/\/[^\s\x22'<>]+/); if (!m) { Module.fcfRadioErr = 2; return; }
         if (!Module.fcfRadio) Module.fcfRadio = new Audio(); var a = Module.fcfRadio; a.onerror = function () { Module.fcfRadioErr = 4; };
         a.src = m[0]; var p = a.play(); if (p && p.catch) p.catch(function (e) { Module.fcfRadioErr = 3; }); }).catch(function (e) { Module.fcfRadioErr = 1; }); });
 EM_JS(int, fcfRadioErr, (), { return Module.fcfRadioErr | 0; });
