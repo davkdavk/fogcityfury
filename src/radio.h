@@ -47,7 +47,11 @@ EM_JS(int, fcfRadioLive, (), { var a = Module.fcfRadio; return a && !a.paused &&
 // A station's server may not let another site read it (CORS): then it says so (fcfRadioErr), and radio.txt needs the stream
 EM_JS(void, fcfRadioPlayList, (const char* u), { var s = UTF8ToString(u); Module.fcfRadioErr = 0;
     fetch(s).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (t) {
-        var m = t.match(/https?:\/\/[^\s"'<>]+/); if (!m) { Module.fcfRadioErr = 2; return; }
+        var ls = t.split(/\r?\n/), best = null, br = -2, sec = location.protocol === 'https:';   // (2.9.9.9 best first: the highest kbps in the titles, not AAC; an https page needs an https stream)
+        for (var i = 0; i < ls.length; i++) { var mm = ls[i].match(/^File(\d+)=(https?:\/\/\S+)/i) || ls[i].match(/^(https?:\/\/\S+)/); if (!mm) continue;
+            var u = mm.length > 2 ? mm[2] : mm[1], n = mm.length > 2 ? mm[1] : '', ti = ''; if (n) { var tm = t.match(new RegExp('Title' + n + '=(.*)', 'i')); if (tm) ti = tm[1].toLowerCase(); }
+            var r = 0, km = ti.match(/(\d+)\s*k/); if (km) r = parseInt(km[1]); if (/aac|ogg|opus/.test(ti)) r = -1; if (sec && u.indexOf('https:') !== 0) continue; if (r > br) { br = r; best = u; } }
+        var m = best ? [best] : null; if (!m) { Module.fcfRadioErr = 2; return; }
         if (!Module.fcfRadio) Module.fcfRadio = new Audio(); var a = Module.fcfRadio; a.onerror = function () { Module.fcfRadioErr = 4; };
         a.src = m[0]; var p = a.play(); if (p && p.catch) p.catch(function (e) { Module.fcfRadioErr = 3; }); }).catch(function (e) { Module.fcfRadioErr = 1; }); });
 EM_JS(int, fcfRadioErr, (), { return Module.fcfRadioErr | 0; });
@@ -99,10 +103,26 @@ static std::vector<std::string> urlsIn(const std::string& body) {   // (the play
         while (!l.empty() && (l.back() == '\r' || l.back() == ' ')) l.pop_back(); size_t h = l.find("http"); if (h != std::string::npos && (h == 0 || l.compare(0, 4, "File") == 0)) out.push_back(l.substr(h)); }
     return out;
 }
+static std::string nowUrl; static std::atomic<bool> nowSet{ false };   // (the entry playing, for the tests; written before nowSet)
 static bool played = false;   // (the stream got as far as playing: a playlist's other entries are not needed)
 static void stream(const std::string& u, int me, int depth);
-static void playList(const std::string& body, int me, int depth) {   // each entry in turn, until one plays
-    std::vector<std::string> us = urlsIn(body); if (us.empty()) { state = 3; return; }
+// 2.9.9.9 a playlist's entries, best first: the highest bitrate its titles name ("256kbps"), an AAC / Ogg one last
+// (the game plays MP3). Same rank: the playlist's order
+static std::vector<std::string> bestFirst(const std::string& body) {
+    std::vector<std::string> us = urlsIn(body); std::vector<int> rank(us.size(), 0);
+    for (size_t q = 0; q < us.size(); q++) {
+        std::string key = "Title" + std::to_string(q + 1) + "="; size_t t = body.find(key); if (t == std::string::npos) continue;
+        std::string ti = body.substr(t + key.size(), body.find('\n', t) - t - key.size()); for (char& c : ti) c = (char)tolower((unsigned char)c);
+        size_t k = ti.find("kbps"); if (k == std::string::npos) k = ti.find("kbit"); if (k == std::string::npos) k = ti.find("k ");
+        if (k != std::string::npos) { size_t b = k; while (b > 0 && (isdigit((unsigned char)ti[b - 1]) || ti[b - 1] == ' ')) b--; rank[q] = atoi(ti.c_str() + b); }
+        if (ti.find("aac") != std::string::npos || ti.find("ogg") != std::string::npos || ti.find("opus") != std::string::npos) rank[q] = -1;
+    }
+    std::vector<size_t> o(us.size()); for (size_t q = 0; q < o.size(); q++) o[q] = q;
+    std::stable_sort(o.begin(), o.end(), [&](size_t a, size_t b) { return rank[a] > rank[b]; });
+    std::vector<std::string> out; for (size_t q : o) out.push_back(us[q]); return out;
+}
+static void playList(const std::string& body, int me, int depth) {   // each entry in turn (best first), until one plays
+    std::vector<std::string> us = bestFirst(body); if (us.empty()) { state = 3; return; }
     for (auto& v : us) { if (gen != me) return; played = false; stream(v, me, depth + 1); if (played) return; }
 }
 #ifdef FCF_GFX_XSDK
@@ -168,7 +188,7 @@ static void stream(const std::string& u, int me, int depth) {   // until the sta
         for (int k; gen == me && (k = recvT(s, b, sizeof b, 2000)) > 0 && body.size() < 65536;) body.append(b, k);
         net::closeSock(s); playList(body, me, depth); return;
     }
-    reset = true; state = 2; played = true; put((const uint8_t*)body.data(), body.size());
+    if (!nowSet) { nowUrl = u; nowSet = true; } reset = true; state = 2; played = true; put((const uint8_t*)body.data(), body.size());
     for (int quiet = 0; gen == me && quiet < 10000;) { int k = recvT(s, b, sizeof b, 500); if (k < 0) break; if (k == 0) { quiet += 500; continue; } quiet = 0; put((const uint8_t*)b, (size_t)k); }
     net::closeSock(s); if (gen == me) state = 3;
 }
@@ -194,14 +214,22 @@ static void frame(bool race) {
     bool w = race && optRadio == 1 && !url.empty() && snd.musicOn;
     if (w != on) { on = w; want = w; if (w) start(); else stop(); }
 #if defined(__EMSCRIPTEN__)
-    if (on) { webLive = fcfRadioLive() != 0; fcfRadioVol(g * snd.music * snd.musicDuck * snd.master * 1.6f);   // (g: the cross-fade, from the mixer)
+    if (on) { webLive = fcfRadioLive() != 0; fcfRadioVol(g * snd.musicDuck * optVol[0] / 100.0f * optVol[1] / 100.0f);   // (2.9.9.9 full: the stream as loud as the browser plays it)   // (g: the cross-fade, from the mixer)
         static const char* WE[5] = { "", "THE STATION WON'T LET THE WEB GAME READ ITS PLAYLIST: PUT ITS STREAM ADDRESS IN RADIO.TXT", "NO STREAM IN THE PLAYLIST",
             "THE BROWSER WON'T START IT (CLICK THE GAME FIRST)", "THE BROWSER CAN'T PLAY THAT STREAM (IT MUST BE HTTPS)" };
         int e = fcfRadioErr(); status = e ? WE[std::max(0, std::min(4, e))] : webLive ? "PLAYING" : "CONNECTING"; }
     else { webLive = false; status = ""; }
 #else
     static const char* ST[6] = { "", "CONNECTING", "PLAYING", "LOST: TRYING AGAIN", "HTTPS: CURL COULD NOT REACH IT", "THE 360 NEEDS AN HTTP ADDRESS (NOT HTTPS)" }; status = on ? ST[std::max(0, std::min(5, state.load()))] : "";
+    if (on && state == 2 && kbps > 0) { char b[48]; snprintf(b, sizeof b, "PLAYING %d KBPS", kbps.load()); status = b; }   // (2.9.9.9 which stream it got)
     if (on && state == 2 && junk > 96 * 1024 && frames == 0) status = "THAT STREAM ISN'T MP3 (AAC OR OGG): PICK THE STATION'S MP3 STREAM";   // (2.9.9.8)
 #endif
 }
 }  // namespace radio
+static std::string radioUrlNow() {
+#if !defined(__EMSCRIPTEN__)
+    return radio::nowSet ? radio::nowUrl : std::string();
+#else
+    return "";
+#endif
+}

@@ -39,7 +39,8 @@ static void update(float dt) {
         // or what the track's event file names on a "music" line (online: the server's file, so the server's choice)
         int t = state == TRACKSEL ? selTrack : W.id; std::string m;
         if (mus::want == 0) m = "main"; else if (showdownOn) m = "showdown";
-        else { m = director::keyFor(t); if (state != TRACKSEL && !director::music.empty() && director::loadedKey == director::keyFor(W.id)) m = director::music; }
+        else { m = director::keyFor(t); if (state != TRACKSEL && !director::music.empty() && director::loadedKey == director::keyFor(W.id)) m = director::music;
+            if (!optSong.empty() && state != TRACKSEL) m = optSong; }   // (2.9.9.9 the race song picked on the AUDIO page: every race)
         if (!simMode || getenv("FCF_MP3")) { mp3::frame(m); radio::frame(mus::want != 0 && !showdownOn && state != TRACKSEL); }   // (2.9.9.6 and the radio, in the races)
         static std::string said; if (radio::status != said) { said = radio::status;   // 2.9.9.8 what the radio is doing, on screen and in the log
             if (!said.empty()) { if (!simMode) say(("RADIO: " + said).c_str(), SAY_INFO, said == "PLAYING" || said == "CONNECTING" ? 2.5f : 6); fprintf(stderr, "radio: %s (%s)\n", said.c_str(), radio::isList(radio::url) ? "a playlist" : radio::url.c_str()); } }
@@ -354,7 +355,7 @@ static void update(float dt) {
         if (boltT <= 0) {   // a bolt somewhere ahead: it lights the clouds and the ground, and the thunder follows
             boltT = grng.r(5, 15); boltFlash = 1; flashT = std::max(flashT, 0.16f); flashCol = V3(0.80f, 0.86f, 1.0f);
             float a = player.yaw + grng.r(-1.0f, 1.0f); boltDir = V3(sinf(a), grng.r(0.05f, 0.95f), cosf(a));
-            float d = grng.r(0.5f, 2.6f); tone(55, 1.7f, 0.55f, 1, 45, d); tone(85, 1.2f, 0.40f, 0, -35, d + 0.1f);
+            float d = grng.r(0.5f, 2.6f); tone(55, 1.7f, 0.55f, 1, 45, d, 1); tone(85, 1.2f, 0.40f, 0, -35, d + 0.1f, 1);   // (the weather's volume)
         }
     }
     boltFlash = std::max(0.0f, boltFlash - dt * 3.0f);

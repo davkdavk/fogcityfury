@@ -7,14 +7,17 @@ static const int SR = 48000;
 #else
 static const int SR = 44100;
 #endif
-struct Tone { float f, slide, dur, t, vol; int type; };
+struct Tone { float f, slide, dur, t, vol; int type; int grp; };   // (grp: 0 an effect, 1 the weather: thunder)
 #include "mp3music.h"
-static struct Snd { float engF = 60, engV = 0, skid = 0, wind = 0, nitro = 0, rain = 0, master = 0.5f, music = 0.6f, musicDuck = 1; bool musicOn = true; Tone tones[12] = {}; } snd;
+// 2.9.9.9 the sound's own volumes (Options, AUDIO): vEng the engines (and nitro), vFx the effects (tyres, hits, rockets,
+// the menus), vWx the weather (rain, wind, thunder); master over all, music over the music
+static struct Snd { float engF = 60, engV = 0, skid = 0, wind = 0, nitro = 0, rain = 0, master = 0.5f, music = 0.6f, musicDuck = 1; bool musicOn = true; Tone tones[12] = {};
+    float vEng = 1, vFx = 1, vWx = 1; } snd;
 static uint32_t adev = 0;   // the platform's audio device (0: none)
 // type 0 sine, 1 filtered noise (f = cutoff), 2 square
-static void tone(float f, float dur, float vol, int type = 0, float slide = 0, float delay = 0) {
+static void tone(float f, float dur, float vol, int type = 0, float slide = 0, float delay = 0, int grp = 0) {
     if (!adev) return; plat::audioLock(adev);
-    for (auto& t : snd.tones) if (t.t >= t.dur) { t = { f, slide, dur, -delay, vol, type }; break; }
+    for (auto& t : snd.tones) if (t.t >= t.dur) { t = { f, slide, dur, -delay, vol, type, grp }; break; }
     plat::audioUnlock(adev);
 }
 
@@ -254,14 +257,14 @@ static void audioCB(void*, uint8_t* stream, int bytes) {
         lp += (e - lp) * (0.05f + 0.22f * v);
         rs = rs * 1664525u + 1013904223u; float nz = ((rs >> 9) / 4194304.f) - 1;
         s1 += (nz - s1) * 0.42f; s2 += (s1 - s2) * 0.12f; wl += (nz - wl) * 0.015f;
-        float out = lp * (0.10f + 0.22f * v) + (s1 - s2) * sk * 0.45f + wl * wn * 1.4f;
-        if (rn > 0.001f) { r1 += (nz - r1) * 0.55f; r2 += (r1 - r2) * 0.20f; out += (r1 - r2) * rn * 1.1f; }   // rain hiss
+        float out = lp * (0.10f + 0.22f * v) * snd.vEng + (s1 - s2) * sk * 0.45f * snd.vFx + wl * wn * 1.4f * snd.vWx;
+        if (rn > 0.001f) { r1 += (nz - r1) * 0.55f; r2 += (r1 - r2) * 0.20f; out += (r1 - r2) * rn * 1.1f * snd.vWx; }   // rain hiss
         if (nt > 0.001f) {   // nitro: a band-passed hiss over a low roar
             j1 += (nz - j1) * 0.30f; j2 += (j1 - j2) * 0.06f; ph3 += (38 + 26 * nt) / SR; if (ph3 > 1) ph3 -= 1;
-            out += ((j1 - j2) * 1.5f + sinf((float)ph3 * 6.2832f) * 0.35f) * nt;
+            out += ((j1 - j2) * 1.5f + sinf((float)ph3 * 6.2832f) * 0.35f) * nt * snd.vEng;
         }
         for (int k = 0; k < 12; k++) { Tone& t = snd.tones[k]; if (t.t >= t.dur) continue; t.t += 1.0f / SR; if (t.t < 0) continue;
-            float env = expf(-t.t / t.dur * 4); float fr = std::max(20.0f, t.f + t.slide * t.t);
+            float env = expf(-t.t / t.dur * 4) * (t.grp ? snd.vWx : snd.vFx); float fr = std::max(20.0f, t.f + t.slide * t.t);
             if (t.type == 1) { nl += (nz - nl) * clampf(fr / 8000, 0.01f, 1); out += nl * env * t.vol * 3; }
             else { tp[k] += fr / SR; if (tp[k] > 1) tp[k] -= 1; out += (t.type == 2 ? (tp[k] < 0.5 ? 0.5f : -0.5f) : sinf((float)tp[k] * 6.2832f)) * env * t.vol; } }
         float mL = 0, mR = 0;

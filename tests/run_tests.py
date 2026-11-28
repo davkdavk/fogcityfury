@@ -1148,6 +1148,7 @@ def mp3_music_for_each_track():
             p = subprocess.run([BIN, "--sim", "--seconds", "3", "--track", "1", "--state", "3", "--auto"] + list(a), capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
             return json.loads(p.stdout.strip().splitlines()[-1])
         r = run(); check(r["mp3"] == "track1", "track 1 plays music/track1.mp3", (r["mp3"], r["mp3Want"]))
+        r = run("--song", "funky"); check(r["mp3"] == "funky", "2.9.9.9 the AUDIO page's race song: music/funky.mp3 in every race", (r["mp3"], r["mp3Want"]))
         open(os.path.join(d, "ev.fcfe"), "w").write("music funky\n")
         r = run("--events", os.path.join(d, "ev.fcfe")); check(r["mp3"] == "funky", "a music line picks music/funky.mp3", (r["mp3"], r["mp3Want"]))
         r = subprocess.run([BIN, "--sim", "--seconds", "3", "--track", "2", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
@@ -1181,6 +1182,9 @@ def radio_streams_in_the_races():
             open(os.path.join(d, "music", "radio.pls"), "w").write("[playlist]\nNumberOfEntries=2\nFile1=http://127.0.0.1:1/dead\nFile2=http://127.0.0.1:%d/stream\n" % port)
             p = subprocess.run([BIN, "--sim", "--seconds", "8", "--track", "1", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
             r = json.loads(p.stdout.strip().splitlines()[-1]); check(r["radio"] == "PLAYING", "music/radio.pls: its second entry plays when the first is dead", r["radio"])
+            open(os.path.join(d, "music", "radio.pls"), "w").write("[playlist]\nFile1=http://127.0.0.1:%d/stream\nTitle1=Low (64kbps)\nFile2=http://127.0.0.1:%d/hstream\nTitle2=High 256kbps\nFile3=http://127.0.0.1:%d/stream\nTitle3=x 320kbps AAC\n" % (port, port, port))
+            p = subprocess.run([BIN, "--sim", "--seconds", "5", "--track", "1", "--state", "3", "--auto"], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
+            r = json.loads(p.stdout.strip().splitlines()[-1]); check(r["radioUrl"].endswith("/hstream"), "2.9.9.9 a playlist: the highest bitrate first (not the AAC one)", r["radioUrl"])
             def run(*a):
                 p = subprocess.run([BIN, "--radio", "http://127.0.0.1:%d/stream" % port, "--sim"] + [str(v) for v in a], capture_output=True, text=True, timeout=120, cwd=d, env=dict(os.environ, FCF_MP3="1"))
                 return json.loads(p.stdout.strip().splitlines()[-1])
@@ -1190,6 +1194,24 @@ def radio_streams_in_the_races():
             r = json.loads(p.stdout.strip().splitlines()[-1]); check(r["radio"].startswith("LOST"), "a dead station: said so (the https notice is web game only)", r["radio"])
     finally:
         srv.kill()
+
+
+@test
+def fcfedit_is_the_whole_editor():
+    """2.9.9.9: fcfedit opens on the track screen (F4 track editor, F6 new, F7 events); F7 goes from either editor to the
+    other; ESC leaves the event editor for the track screen; M in the track editor picks the track's mp3 from music/."""
+    import tempfile, shutil
+    with tempfile.TemporaryDirectory() as d:
+        shutil.copytree(os.path.join(ROOT, "events"), os.path.join(d, "events")); os.mkdir(os.path.join(d, "music"))
+        for n in ("aaa", "bbb"): shutil.copy(os.path.join(ROOT, "tests", "data", "sine440.mp3"), os.path.join(d, "music", n + ".mp3"))
+        def run(binary, *a):
+            p = subprocess.run([binary, "--sim", "--seconds", "1"] + [str(v) for v in a], capture_output=True, text=True, timeout=120, cwd=d)
+            return json.loads(p.stdout.strip().splitlines()[-1])
+        r = run(os.path.join(ROOT, "fcfedit")); check(r["state"] == 2, "fcfedit opens on the track screen, its hub", r["state"])
+        r = run(BIN, "--track", 1, "--edit", "--edscript", "key m; key f7"); check(r["state"] == 10, "track editor: F7 opens this track's events", r["state"])
+        t = open(os.path.join(d, "events", "track1.fcfe")).read(); check("music aaa" in t, "track editor: M sets the track's music to the first mp3 in music/", t[-200:])
+        r = run(BIN, "--track", 1, "--evedit", "--evscript", "trackeditor"); check(r["state"] == 9, "event editor: F7 opens the track editor", r["state"])
+        r = run(BIN, "--track", 1, "--evedit", "--evscript", "back"); check(r["state"] == 2, "event editor: ESC goes back to the track screen", r["state"])
 
 
 @test

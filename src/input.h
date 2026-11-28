@@ -37,10 +37,10 @@ static void onKey(SDL_Keycode k, int sc = 0) {
         saveCfg(); return; }
     switch (state) {
     case OPTS: {
-        int rows = optPage == 0 ? NBIND : optPage == 1 ? NVIDROWS : NSTICKROWS;
+        int rows = optPage == 0 ? NBIND : optPage == 1 ? NVIDROWS : optPage == 2 ? NSTICKROWS : NAUDROWS;
         if (k == SDLK_ESCAPE) { saveCfg(); state = optReturn; ok(); break; }
-        if (k == SDLK_TAB || k == SDLK_F1) { optPage = (optPage + 1) % 3; optRow = 0; blip(); break; }   // (2.9.5 three pages: keys, video, sticks)
-        if (k == SDLK_PAGEUP) { optPage = (optPage + 2) % 3; optRow = 0; blip(); break; }
+        if (k == SDLK_TAB || k == SDLK_F1) { optPage = (optPage + 1) % 4; optRow = 0; if (optPage == 3) findSongs(); blip(); break; }   // (2.9.5 pages: keys, video, sticks; 2.9.9.9 audio)
+        if (k == SDLK_PAGEUP) { optPage = (optPage + 3) % 4; optRow = 0; if (optPage == 3) findSongs(); blip(); break; }
         if (k == SDLK_UP) { optRow = (optRow + rows - 1) % rows; blip(); } if (k == SDLK_DOWN) { optRow = (optRow + 1) % rows; blip(); }
         if (optPage == 0) {
             if (k == SDLK_LEFT || k == SDLK_RIGHT) { optCol ^= 1; blip(); } if (k == SDLK_RETURN) { optCapture = true; blip(); }
@@ -51,6 +51,17 @@ static void onKey(SDL_Keycode k, int sc = 0) {
             if (optRow == 2) { optTouchSteer ^= 1; touchLaid = -1; } if (optRow == 3) optTouchWide = std::max(0, std::min(2, optTouchWide + d));
             if (optRow == 4) optAI = std::max(0, std::min(2, optAI + d));
             saveCfg();
+        } else if (optPage == 3 && (k == SDLK_LEFT || k == SDLK_RIGHT)) {   // 2.9.9.9 the sound
+            int d = k == SDLK_RIGHT ? 1 : -1; blip();
+            if (optRow < 5) optVol[optRow] = std::max(0, std::min(150, optVol[optRow] + d * 10));
+            if (optRow == 5) {   // RADIO (if there is a station) -> YOUR OWN -> OFF
+                int m = !snd.musicOn ? 2 : (optRadio && !radio::url.empty()) ? 0 : 1; int n = radio::url.empty() ? 2 : 3;
+                int i = (radio::url.empty() ? m - 1 : m); i = (i + d + n) % n; m = radio::url.empty() ? i + 1 : i;
+                snd.musicOn = m != 2; if (m == 0) optRadio = 1; if (m == 1) optRadio = 0;
+            }
+            if (optRow == 6) { int n = (int)songList.size() + 1, i = 0; for (int q = 0; q < (int)songList.size(); q++) if (songList[q] == optSong) i = q + 1;
+                i = (i + d + n) % n; optSong = i ? songList[i - 1] : ""; }
+            applyAudio(); saveCfg();
         } else if (k == SDLK_LEFT || k == SDLK_RIGHT) {
             int d = k == SDLK_RIGHT ? 1 : -1; blip();
             auto cycle = [&](const int* o, int n, int cur, int lim) { int i = 0; for (int q = 0; q < n; q++) if (o[q] == cur) i = q; for (int t = 0; t < n; t++) { i = (i + d + n) % n; if (o[i] <= lim) break; } return o[i]; };
@@ -96,7 +107,8 @@ static void onKey(SDL_Keycode k, int sc = 0) {
             break;
         }
         if ((k == SDLK_DELETE || k == SDLK_BACKSPACE) && selTrack >= NTRACKS) { delAsk = true; blip(); break; }
-        if (k == SDLK_F4 || k == SDLK_F6) { ok(); flushPendingTrack(); ed::open(k == SDLK_F6 ? -1 : selTrack, (SDL_GetModState() & KMOD_SHIFT) != 0); break; }   // (2.9.8.4 SHIFT+F4: a copy of a built-in track)
+        if (k == SDLK_F4 || k == SDLK_F6) { ok(); flushPendingTrack(); ed::open(k == SDLK_F6 ? -1 : selTrack, (SDL_GetModState() & KMOD_SHIFT) != 0); break; }
+        if (k == SDLK_F7) { ok(); flushPendingTrack(); evx::open(selTrack); break; }   // 2.9.9.9 the track's events (the event editor)   // (2.9.8.4 SHIFT+F4: a copy of a built-in track)
 #endif
         if (k == SDLK_RETURN && selMode == 5) { flushPendingTrack(); if (selTrack >= NTRACKS) { say("THE CAREER IS ON THE BUILT-IN TRACKS", SAY_WARN, 2.5f); break; } ok(); career::enter(selTrack); break; }   // 2.9.8.3 the track's garage
         if (k == SDLK_RETURN) { ok(); flushPendingTrack(); if (selMode == 3) champBegin(); else startRace(); } if (k == SDLK_ESCAPE) { flushPendingTrack(); state = CARSEL; } break;
@@ -298,7 +310,7 @@ static void printJSON(FILE* o) {
     fprintf(o,
             "\"ringDeaths\":%d,\"mech\":[%.1f,%.1f,%.1f,%.3f,%d,%.2f],\"mechRoad\":%.1f,\"mech2\":[%.1f,%.1f,%.1f],\"mech2Road\":%.1f,\"mechs\":%d,\"mechFootErr\":%.3f,\"routeClear\":[%.1f,%.1f],\"stomps\":%d,\"branchLen\":%.1f,\"branchA\":%d,\"branchB\":%d,\"branchBlocked\":%d,\"aiBranch\":%d,\"shieldX\":%.1f,\"shieldZ\":%.1f,\"shieldT\":%.2f,\"shields\":%d,\"shieldSaves\":%d,\"shieldsUp\":%d,\"aiShields\":%d,\"aiShieldSaves\":%d,\"aiCrates\":%d,\"aiRocketsFired\":%d,\"aiRocketHits\":%d,\"rocketsAtMe\":%d,\"bumps\":%d,\"maxShove\":%.2f,\"maxWob\":%.2f,\"onBranch\":%d,\"loopPos\":%.1f,\"maxWrongT\":%.2f,\"track\":%d,\"car\":%d,\"weather\":%d,\"x\":%.2f,\"y\":%.2f,\"z\":%.2f,\"yaw\":%.3f,\"vf\":%.2f,\"yawRate\":%.3f,\"lap\":%d,\"cp\":%d,\"trackLen\":%d,\"keys\":%u,\"dead\":%d,\"place\":%d,\"timeLeft\":%.1f,"
             "\"gibs\":%d,\"splats\":%d,\"shdOffRoad\":%d,\"siteDist\":%.1f,\"mechT\":%.2f,\"navOk\":%d,\"navPolys\":%d,\"navMs\":%.0f,\"navQueries\":%d,\"navFails\":%d,\"strafeOnly\":%d,\"footYaw\":%.3f,\"meYaw\":%.3f,\"roamAfters\":%d,\"explore\":%d,\"aiDmgTaken\":%.0f,\"aiDmgWrecks\":%d,\"aiCrashes\":%d,\"aiOffT\":%.1f,\"aiPasses\":%d,\"aiHeadErr\":%.4f,\"aiLatMax\":%.2f,\"botWallT\":%.1f,\"botCarT\":%.1f,\"botStuck\":%d,\"driveRoadT\":%.1f,\"driveOffT\":%.1f,\"driveTook\":%.2f,\"driveLate\":%d,\"prepAt\":%.2f,\"dropsBack\":%d,\"selLaps\":%d,\"raceLaps\":%d,\"netShd\":%d,\"netShdCount\":%d,\"netSlot\":%d,\"netHost\":%d,\"netBots\":%d,\"shdSpectate\":%d,\"shdWatch\":%d,\"shdPhase\":%d,\"shdAlive\":%d,\"shdRing\":%.1f,\"shdPlace\":%d,\"shdWinner\":%d,\"shdResult\":%d,\"drops\":%d,\"fighters\":\"%s\",\"gun\":%d,\"ammo\":%d,\"walkHp\":%.1f,\"armour\":%.1f,\"stamina\":%.2f,\"rolling\":%d,\"lock\":%d,\"footShots\":%d,\"footHits\":%d,\"footPickups\":%d,\"shells\":%d,\"aiDead\":%d,\"aiMinHp\":%.1f,\"onFoot\":%d,\"walkX\":%.2f,\"walkY\":%.2f,\"walkZ\":%.2f,\"walkYaw\":%.3f,\"footYaw\":%.3f,\"walkSpeed\":%.2f,\"state\":%d,\"finished\":%d,\"timeUp\":%d,\"raceT\":%.2f,\"bestLap\":%.2f,\"maxAir\":%.2f,\"bigAirs\":%d,\"marks\":%d,\"wrecks\":%d,\"sinks\":%d,\"camOffAxis\":%d,"
-            "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wrecksMade\":%d,\"mp3\":\"%s\",\"mp3Want\":\"%s\",\"radio\":\"%s\",\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
+            "\"maxBeta\":%.3f,\"maxSlipF\":%.3f,\"maxSlipR\":%.3f,\"maxSpeed\":%.2f,\"maxYawRate\":%.3f,\"nitro\":%.3f,\"minNitro\":%.3f,\"boostT\":%.2f,\"boosts\":%d,\"rockets\":%d,\"rocketsFired\":%d,\"rocketHits\":%d,\"pickups\":%d,\"resets\":%d,\"wrecksLeft\":%d,\"wrecksMade\":%d,\"mp3\":\"%s\",\"mp3Want\":\"%s\",\"radio\":\"%s\",\"radioUrl\":\"%s\",\"wreckX\":%.1f,\"wreckY\":%.1f,\"wreckZ\":%.1f,\"debris\":%d,\"roadDist\":%.1f,\"maxDeck\":%.2f,\"maxGap\":%.3f,\"intro\":%.2f,\"gridDrift\":%.3f,\"countdown\":%.2f,\"offroadT\":%.1f,\"bridges\":%d,\"dist\":%.1f,\"heading\":%.3f,\"simT\":%.2f,"
             "\"bright\":%d,\"aa\":%d,\"af\":%d,\"full\":%d,\"resW\":%d,\"resH\":%d,\"vsync\":%d,\"renderW\":%d,\"renderH\":%d,\"maxAF\":%d,\"optPage\":%d,\"binds\":\"%s\",\"servers\":\"%s\",\"touch\":%d,\"touchBtns\":\"%s\",\"hdr\":%d,\"deskW\":%d,\"deskH\":%d,\"net\":%d,\"netId\":%d,\"netPhase\":%d,\"netPlayers\":%d,\"netMaxPlayers\":%d,\"netPlace\":%d,\"netPlaceFull\":%d,\"netRace\":%d,\"netRemoteMoved\":%.1f,\"netError\":\"%s\",\"champOn\":%d,\"champRound\":%d,\"champDone\":%d,\"champTotal\":%d,\"champYou\":%d,\"shdSiteX\":%.1f,\"shdSiteZ\":%.1f,\"shdPath\":%d,\"seeded\":%d}\n",
             shdRingDeaths, mech::unit[0].at.x, mech::unit[0].at.y, mech::unit[0].at.z, mech::unit[0].yaw, mech::tris, mech::unit[0].gait,
             W.RD(mech::unit[0].at.x, mech::unit[0].at.z), mech::unit[1].at.x, mech::unit[1].at.y, mech::unit[1].at.z,
@@ -316,7 +328,7 @@ static void printJSON(FILE* o) {
             me.pos.y, me.pos.z, me.yaw, footYaw, me.run, (int)state, (int)(state == RESULTS && !timeUp), (int)timeUp, raceT, bestLapRace, maxAir,
             tm.bigAirs, (int)(marks.size() / 66), tm.wrecks, tm.sinks, tm.camOffAxis, tm.maxBeta, tm.maxSlipF, tm.maxSlipR, tm.maxSpeed,
             tm.maxYawRate, player.nitro, tm.minNitro, tm.boostT, tm.boosts, ammo, tm.rocketsFired, tm.rocketHits, tm.pickups, tm.resets,
-            (int)wrecks.size(), wrecksMade, mp3::playing.c_str(), mp3::wanted.c_str(), radio::status.c_str(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y,
+            (int)wrecks.size(), wrecksMade, mp3::playing.c_str(), mp3::wanted.c_str(), radio::status.c_str(), radioUrlNow().c_str(), wrecks.empty() ? 0.0f : wrecks.back().pos.x, wrecks.empty() ? 0.0f : wrecks.back().pos.y,
             wrecks.empty() ? 0.0f : wrecks.back().pos.z, (int)debris.size(), W.RD(player.pos.x, player.pos.z), tm.maxDeck, tm.maxGap, introT,
             tm.gridDrift, std::max(countdown, 0.0f), tm.offroadT, (int)W.cross.size(), tm.dist, tm.heading, tm.simT, vidBright, vidAA, vidAF,
             (int)vidFull, vidW, vidH, (int)vidVsync, lastRW, lastRH, maxAF, optPage, bindStr.c_str(), srvStr.c_str(), (int)touchOn, tbStr.c_str(),
@@ -371,7 +383,7 @@ static void handleKey(SDL_Keycode k, int sc) {
     if (state == OPTS && optCapture) {   // waiting for the key to bind; Esc backs out
         if (k != SDLK_ESCAPE && k != SDLK_F1 && sc > 0) { setBind(optRow, optCol, sc); saveCfg(); tone(520, 0.12f, 0.4f, 2); } optCapture = false; return;
     }
-    if (k == SDLK_F1 && (state == TITLE || (state == PAUSED && !netRace))) { optReturn = state; state = OPTS; optRow = 0; optCapture = false; tone(700, 0.08f, 0.3f, 2); return; }
+    if (k == SDLK_F1 && (state == TITLE || (state == PAUSED && !netRace))) { optReturn = state; state = OPTS; findSongs(); optRow = 0; optCapture = false; tone(700, 0.08f, 0.3f, 2); return; }
     if (state != RACE && state != NETJOIN && state != EVEDIT) { if (k == SDLK_a) k = SDLK_LEFT;   // (menus take WASD as arrows; the event editor wants its letters: CTRL+S, flying)
         if (k == SDLK_d) k = SDLK_RIGHT; if (k == SDLK_w) k = SDLK_UP; if (k == SDLK_s) k = SDLK_DOWN; }
     onKey(k, sc);

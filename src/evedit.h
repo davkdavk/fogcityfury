@@ -8,7 +8,8 @@
 //   L  a trigger line (click its two ends)        1-5  an event: rocket, blast, splash, shake, say (click where)
 //   6  where a Warden starts walking (Wardens 1-4, beside the road)   7  a building that comes down (click it)
 //   DEL removes the selection    CTRL+Z undo    CTRL+S save    P preview a race with the events (F4 comes back)
-//   PGUP / PGDN the previous / next track (saves first)    ESC drops the tool or the selection
+//   PGUP / PGDN the previous / next track (saves first)    ESC drops the tool or the selection (2.9.9.9 then: the track screen)
+//   F7 (2.9.9.9) this track in the track editor
 //   the panel on the right: click a setting to step it on, right-click to step it back
 //   fly view: W A S D move, Q E down and up, right mouse drag looks round
 static void update(float dt);   // (update.h: the tape runs the race a step at a time)
@@ -666,7 +667,12 @@ static void key(SDL_Keycode k, bool down = true) {
             dirty = true; char b[96]; snprintf(b, sizeof b, "%s%s OUT FROM LAP %d%s", shiftDown ? "EVERY " : "", kind == 2 ? "GHOST" : kind ? "SHIELD" : "ROCKET CRATE", lap, lap == 1 ? " (THE START)" : ""); tell(b); }
         else tell("CLICK A CRATE, SHIELD OR GHOST FIRST, THEN + AND - SET THE LAP IT COMES OUT");
         break;
-    case SDLK_ESCAPE: if (tool != SELECT) { tool = SELECT; grab = -1; } else selEv = selLine = -1; break;
+    case SDLK_ESCAPE:
+        if (tool != SELECT) { tool = SELECT; grab = -1; }
+        else if (selEv >= 0 || selLine >= 0 || selPick >= 0) selEv = selLine = selPick = -1;
+        else { if (dirty) save(); fly = false; fixedCam = false; debugTop = false; state = TRACKSEL; selTrack = track; setupCars(false); }   // 2.9.9.9 back to the track screen
+        break;
+    case SDLK_F7: if (dirty) save(); fly = false; fixedCam = false; ed::open(track, false); break;   // 2.9.9.9 this track in the track editor
     case SDLK_p: preview(); break;
     case SDLK_n: wizStart(""); break;
     case SDLK_LEFTBRACKET: case SDLK_RIGHTBRACKET: case SDLK_COMMA: case SDLK_PERIOD: if (dirty) save(); open(track + (k == SDLK_RIGHTBRACKET || k == SDLK_PERIOD ? 1 : -1)); break;
@@ -843,7 +849,7 @@ static void draw(float Wd) {
         snprintf(b, sizeof b, "%d LAP%s", d.laps, d.laps == 1 ? "" : "S"); ui.text(964, RS_Y + 6, 2.0f, h == 13 ? WHT : CYA, b);
     }
     ui.rect(0, 656, Wd, 64, V3(0.02f, 0.03f, 0.06f), 0.75f);
-    ui.text(20, 666, 1.45f, WHT, "N NEW MOMENT  E LIST  D DOLPHINS  6 WARDEN  R ROCKETS  H SHIELD  G GHOST  F1-F5 RACE  L LINE  0-9 ONE EVENT  DEL  CTRL+Z  CTRL+S SAVE  P PREVIEW  TAB FLY  < > TRACK");
+    ui.text(20, 666, 1.45f, WHT, "N NEW MOMENT  E LIST  D DOLPHINS  6 WARDEN  R ROCKETS  H SHIELD  G GHOST  F1-F5 RACE  L LINE  0-9 ONE EVENT  DEL  CTRL+Z  CTRL+S SAVE  P PREVIEW  TAB FLY  < > TRACK  F7 TRACK EDITOR  ESC BACK");
     if (wiz == WZ_PICK) {
         ui.rect(Wd / 2 - 280, 110, 560, 62 + NM * 52, V3(0.02f, 0.03f, 0.06f), 0.88f); ui.text(Wd / 2, 122, 2.6f, YEL, "NEW MOMENT: WHAT HAPPENS?", 1);
         for (int k = 0; k < NM; k++) { float px = Wd / 2 - 260, py = 162 + k * 52; bool h = pickAt(mx, my) == k; ui.rect(px, py, 520, 46, h ? V3(0.3f, 0.34f, 0.45f) : V3(0.14f, 0.16f, 0.22f), 1);
@@ -910,6 +916,7 @@ static void script(const char* p) {
         else if (t[0] == "view" && t.size() >= 4) { camTgt = V3((float)atof(t[1].c_str()), 0, (float)atof(t[2].c_str())); topH = (float)atof(t[3].c_str()); }
         else if (t[0] == "flyat" && t.size() >= 6) { if (!fly) key(SDLK_TAB); flyPos = V3((float)atof(t[1].c_str()), (float)atof(t[2].c_str()), (float)atof(t[3].c_str())); flyYaw = (float)atof(t[4].c_str()); flyPitch = (float)atof(t[5].c_str()); update(0); }
         else if (t[0] == "fly") key(SDLK_TAB);
+        else if (t[0] == "trackeditor") key(SDLK_F7); else if (t[0] == "back") { tool = SELECT; selEv = selLine = selPick = -1; key(SDLK_ESCAPE); }   // (2.9.9.9)
         else if (t[0] == "select" && t.size() >= 2) { selEv = selLine = -1; for (int k = 0; k < (int)director::evs.size(); k++) if (director::evs[k].id == t[1]) selEv = k; for (int k = 0; k < (int)director::lines.size(); k++) if (director::lines[k].id == t[1]) selLine = k; }
     }
 }

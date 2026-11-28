@@ -49,7 +49,19 @@ static int optRadio = 1;   // 2.9.9.6 the races' music: 0 your own (songs, mp3s)
 static int optAI = 1;   // 2.9.9.3 the AI drivers: 0 easy, 1 medium, 2 hard (how they drove before); their speed x AI_PACE
 static const float AI_PACE[3] = { 0.84f, 0.92f, 1.0f }; static const char* AI_NAME[3] = { "EASY", "MEDIUM", "HARD" };
 static int optSteerSens = 100, optAimSens = 100, optTouchSteer = 0, optTouchWide = 1;   // 2.9.5 the STICKS page: steering sensitivity (50-200 %: the curve of the stick, pad and touch), aim stick speed on foot (25-300 %), touch steering (0 a thumb-stick, 1 the < > buttons) and how wide the touch stick is (0-2)
-static const int NSTICKROWS = 5;   // (2.9.9.3: and the AI drivers' speed)
+static const int NSTICKROWS = 5;
+// 2.9.9.9 the AUDIO page: master, music, engines, effects, weather (0-150 %), where the races' music comes from, and the
+// races' song picked from the mp3s in music/ ("" each track's own)
+static const int NAUDROWS = 7; static int optVol[5] = { 100, 100, 100, 100, 100 }; static std::string optSong;
+static std::vector<std::string> songList;   // (the mp3s in music/, found when the page opens)
+static void applyAudio() { snd.master = 0.5f * optVol[0] / 100; snd.music = 0.6f * optVol[1] / 100; snd.vEng = optVol[2] / 100.0f; snd.vFx = optVol[3] / 100.0f; snd.vWx = optVol[4] / 100.0f; }
+static void findSongs() {
+    songList.clear();
+#if !defined(FCF_GFX_XSDK) && !defined(__EMSCRIPTEN__)
+    if (DIR* dp = opendir("music")) { while (dirent* e = readdir(dp)) { std::string n = e->d_name; if (n.size() > 4) { std::string x = n.substr(n.size() - 4); for (char& c : x) c = (char)tolower((unsigned char)c); if (x == ".mp3") songList.push_back(n.substr(0, n.size() - 4)); } } closedir(dp); }
+    std::sort(songList.begin(), songList.end());
+#endif
+}   // (2.9.9.3: and the AI drivers' speed)
 static float touchSteerR() { static const float R[3] = { 100, 140, 190 }; return R[optTouchWide < 0 ? 0 : optTouchWide > 2 ? 2 : optTouchWide]; }   // half the touch stick's travel, in UI pixels (720 high)
 static float steerCurve(float a) { return powf(std::max(0.0f, std::min(1.0f, a)), 100.0f / std::max(50, std::min(200, optSteerSens))); }   // a: 0..1 past the dead zone; 100 %: straight, more: quicker off the centre, less: finer
 static struct TouchSteer { bool on = false; SDL_FingerID id = 0; float ox = 0, x = 0, y = 0; } tsteer;   // 2.9.5 the car's touch steering stick: where the thumb went down (it follows past full lock) and where it is
@@ -178,7 +190,7 @@ static void touchLayout() {
         break;
     case OPTS:   // the settings table is wide: slim columns at the very edges
         cKey("UP", 52, 200, 40, SDLK_UP, IC_UP); cKey("DOWN", 52, 295, 40, SDLK_DOWN, IC_DOWN); cKey("<", 52, 410, 40, SDLK_LEFT, IC_LEFT); cKey(">", 52, 505, 40, SDLK_RIGHT, IC_RIGHT);
-        cKey(optPage == 0 ? "VIDEO" : optPage == 1 ? "STICKS" : "KEYS", W - 56, 220, 46, SDLK_TAB, IC_NONE, TS_GO); cKey("BACK", W - 56, 330, 44, SDLK_ESCAPE); break;
+        cKey(optPage == 0 ? "VIDEO" : optPage == 1 ? "STICKS" : optPage == 2 ? "AUDIO" : "KEYS", W - 56, 220, 46, SDLK_TAB, IC_NONE, TS_GO); cKey("BACK", W - 56, 330, 44, SDLK_ESCAPE); break;
     default: break;
     }
 }
@@ -271,7 +283,9 @@ static void loadCfg() {
         { int lv = 0; if (fscanf(f, " lobbies %d", &lv) != 1 || lv < LOBBY_LIST) lobbiesAdd = true; }   // (an older list: add the lobbies it lacks)
         { int a = 1; if (fscanf(f, " ai %d", &a) == 1) optAI = std::max(0, std::min(2, a)); }
         { int a = 1; if (fscanf(f, " radio %d", &a) == 1) optRadio = a ? 1 : 0; }
-        { int a = 0; if (fscanf(f, " gfunk %d", &a) == 1) mus::songsOn = a != 0; }   // (" CUBANO ...": the codes typed)
+        { int a = 0; if (fscanf(f, " gfunk %d", &a) == 1) mus::songsOn = a != 0; }
+        { int v[6]; if (fscanf(f, " audio %d %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6) { for (int q = 0; q < 5; q++) optVol[q] = std::max(0, std::min(150, v[q])); snd.musicOn = v[5] != 0; } }
+        { char nm[200]; if (fscanf(f, " song %199s", nm) == 1) optSong = strcmp(nm, "-") ? nm : ""; }   // (" CUBANO ...": the codes typed)
     }
     fclose(f);
     if (lobbiesAdd) {   // the lobbies a list saved before them lacks, after what is there (the list holds MAX_SERVERS)
@@ -323,7 +337,9 @@ static void saveCfg() {
     fprintf(f, "lobbies %d\n", LOBBY_LIST);
     fprintf(f, "ai %d\n", optAI);
     fprintf(f, "radio %d\n", optRadio);   // (2.9.9.6, after the ai line)
-    fprintf(f, "gfunk %d\n", mus::songsOn ? 1 : 0);   // (2.9.9.7 the built-in songs: 0 off)   // (2.9.9.3, after the lobbies line: fscanf reads in order)   // the added cars' codes typed (last: fscanf reads in order)
+    fprintf(f, "gfunk %d\n", mus::songsOn ? 1 : 0);
+    fprintf(f, "audio %d %d %d %d %d %d\n", optVol[0], optVol[1], optVol[2], optVol[3], optVol[4], snd.musicOn ? 1 : 0);   // (2.9.9.9)
+    fprintf(f, "song %s\n", optSong.empty() ? "-" : optSong.c_str());   // (2.9.9.7 the built-in songs: 0 off)   // (2.9.9.3, after the lobbies line: fscanf reads in order)   // the added cars' codes typed (last: fscanf reads in order)
     fclose(f);
 }
 // make the window, the swap interval and the texture filter match the settings. Anti-aliasing and the

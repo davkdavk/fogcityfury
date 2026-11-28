@@ -127,7 +127,7 @@ static void drawHUD() {
     if (state == GARAGE) { career::drawGarage(Wd, Hd); return; }   // 2.9.8.3
     if (state == OPTS) {
         ui.rect(0, 0, Wd, Hd, V3(0, 0, 0), 0.62f); ui.text(Wd / 2, 30, 6, yel, "OPTIONS", 1, 1, 0.12f); V3 dim(0.55f, 0.58f, 0.65f), hi(0.10f, 0.32f, 0.55f);
-        { static const char* tabs[3] = { "CONTROLS", "VIDEO", "STICKS" }; for (int q = 0; q < 3; q++) ui.text(Wd / 2 + (q - 1) * 300.0f, 100, 3.5f, optPage == q ? yel : dim, tabs[q], 1); ui.rect(Wd / 2 + (optPage - 1) * 300.0f - 90, 130, 180, 3, org, 1); }
+        { static const char* tabs[4] = { "CONTROLS", "VIDEO", "STICKS", "AUDIO" }; for (int q = 0; q < 4; q++) ui.text(Wd / 2 + (q - 1.5f) * 260.0f, 100, 3.5f, optPage == q ? yel : dim, tabs[q], 1); ui.rect(Wd / 2 + (optPage - 1.5f) * 260.0f - 90, 130, 180, 3, org, 1); }
         panel(Wd / 2 - 520, 150, 1040, 470, 0.72f);
         if (optPage == 0) {
             ui.text(Wd / 2 - 490, 166, 2, dim, "ACTION"); ui.text(Wd / 2 - 20, 166, 2, dim, "KEY", 1); ui.text(Wd / 2 + 270, 166, 2, dim, "SECOND KEY", 1);
@@ -145,6 +145,27 @@ static void drawHUD() {
             if (!padOnly) ui.text(Wd / 2 + 490, 528, 2, dim, "KEYBOARD, ALWAYS: ESC PAUSE  M MUSIC  F1 OPTIONS  F11 FULL SCREEN", 2);
             if (optCapture) ui.text(Wd / 2, 646, 2.2f, white, "PRESS THE KEY TO USE     ESC: CANCEL", 1);
             else { if (!touchOn && !padUI) ui.text(Wd / 2, 634, 2.2f, white, "UP/DOWN: ACTION   LEFT/RIGHT: SLOT   ENTER: CHANGE   DEL: CLEAR   F5: DEFAULTS", 1); if (!touchOn) ui.text(Wd / 2, 664, 2.2f, white, P("TAB: VIDEO AND STICKS     ESC: BACK", "{LB} {RB} VIDEO AND STICKS     {B} BACK"), 1); }
+        } else if (optPage == 3) {   // 2.9.9.9 the sound
+            static const char* nm[NAUDROWS] = { "MASTER", "MUSIC", "ENGINES", "EFFECTS", "WEATHER", "MUSIC IN THE RACES", "RACE SONG" };
+            static const char* help[NAUDROWS] = { "EVERYTHING", "THE SONGS, YOUR MP3S AND THE RADIO", "YOUR CAR'S AND EVERYONE ELSE'S, AND THE NITRO",
+                "TYRES, HITS, ROCKETS, PICK-UPS AND THE MENUS", "RAIN, WIND AND THUNDER",
+                "RADIO: THE STATION IN MUSIC/RADIO.TXT. YOUR OWN: EACH TRACK'S MP3 (M OR {RB} PAUSED CHANGES THIS TOO)",
+                "ONE OF THE MP3S IN YOUR MUSIC FOLDER FOR EVERY RACE, OR EACH TRACK'S OWN" };
+            char v[NAUDROWS][64];
+            for (int q = 0; q < 5; q++) snprintf(v[q], 64, "%d%%", optVol[q]);
+            snprintf(v[5], 64, "%s", !snd.musicOn ? "OFF" : (optRadio && !radio::url.empty()) ? "RADIO" : radio::url.empty() ? "YOUR OWN (NO STATION SET)" : "YOUR OWN");
+            snprintf(v[6], 64, "%s", optSong.empty() ? "EACH TRACK'S OWN" : optSong.c_str());
+            for (int i = 0; i < NAUDROWS; i++) {
+                float y = 170 + i * 46.0f; bool sel = i == optRow; ui.rect(Wd / 2 - 500, y - 6, 1000, 40, sel ? hi : V3(0.06f, 0.07f, 0.10f), sel ? 0.9f : 0.5f);
+                ui.text(Wd / 2 - 470, y + 5, 3, sel ? white : V3(0.8f, 0.82f, 0.86f), nm[i]); snprintf(b, sizeof b, "%s %.63s %s", sel ? "<" : " ", v[i], sel ? ">" : " "); ui.text(Wd / 2 + 250, y + 5, 3, sel ? yel : V3(0.75f, 0.85f, 1), b, 1);
+                if (i < 5) {   // a bar: 0 to 150 %, a tick at 100
+                    float bx = Wd / 2 - 60, bw = 240, k = optVol[i] / 150.0f; ui.rect(bx, y + 10, bw, 12, V3(0.02f, 0.03f, 0.05f), 0.8f);
+                    ui.rect(bx, y + 10, bw * k, 12, sel ? yel : V3(0.45f, 0.6f, 0.85f), 0.95f); ui.rect(bx + bw * (100.0f / 150) - 1, y + 6, 2, 20, white, 0.7f);
+                }
+                if (sel) ui.text(Wd / 2, 512, 2.2f, dim, i == 6 && songList.empty() ? (WEBGAME ? "THE WEB GAME PLAYS EACH TRACK'S MP3 FROM THE SITE" : "NO MP3S IN THE MUSIC FOLDER YET") : help[i], 1);
+            }
+            if (!radio::status.empty()) { snprintf(b, sizeof b, "RADIO: %s", radio::status.c_str()); ui.text(Wd / 2, 560, 2, dim, b, 1); }
+            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, P("UP / DOWN: SETTING    LEFT / RIGHT: CHANGE    TAB: CONTROLS    ESC: BACK", "{DPAD} PICK AND CHANGE    {LB} {RB} OTHER PAGES    {B} BACK"), 1);
         } else if (optPage == 2) {   // 2.9.5 the sticks: a pad's, and the touch screen's steering
             static const char* nm[NSTICKROWS] = { "STEERING SENSITIVITY", "AIM STICK (ON FOOT)", "TOUCH STEERING", "TOUCH STICK WIDTH", "AI DRIVERS" };
             static const char* help[NSTICKROWS] = { "HIGHER: MORE TURN FOR A SMALL PUSH. LOWER: FINER IN THE MIDDLE. FULL PUSH: FULL LOCK",
@@ -162,7 +183,7 @@ static void drawHUD() {
                 for (int q = 0; q < 32; q++) { float a = q / 31.0f; ui.rect(gx + a * gw - 2, gy - steerCurve(a) * gh - 2, 5, 5, yel, 1); }
                 ui.text(gx + gw / 2, gy + 10, 1.6f, dim, "STICK PUSH", 1); ui.text(gx - 12, gy - gh, 1.6f, dim, "TURN", 2);
             }
-            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, P("UP / DOWN: SETTING    LEFT / RIGHT: CHANGE    TAB: CONTROLS    ESC: BACK", "{DPAD} PICK AND CHANGE    {LB} {RB} OTHER PAGES    {B} BACK"), 1);
+            if (!touchOn) ui.text(Wd / 2, 640, 2.2f, white, P("UP / DOWN: SETTING    LEFT / RIGHT: CHANGE    TAB: AUDIO    ESC: BACK", "{DPAD} PICK AND CHANGE    {LB} {RB} OTHER PAGES    {B} BACK"), 1);
         } else {
             char v[NVIDROWS][48]; static const char* nm[NVIDROWS] = { "DISPLAY", "RESOLUTION", "ANTI-ALIASING", "ANISOTROPIC FILTERING", "VSYNC", "BRIGHTNESS", "WATER RINGS", "SPLASH MIST", "GRASS" };
             static const char* help[NVIDROWS] = {"F11 SWITCHES THIS AT ANY TIME", "", "MSAA: SMOOTHS THE EDGES OF CARS AND BUILDINGS",
@@ -305,7 +326,7 @@ static void drawHUD() {
         evx::draw(Wd);
 #endif
     } else if (state == TRACKSEL) {
-        ui.text(Wd / 2, 36, 6, yel, "CHOOSE YOUR TRACK", 1, 1, 0.12f);
+        ui.text(Wd / 2, 36, 6, yel, edApp ? "FCFEDIT: PICK A TRACK" : "CHOOSE YOUR TRACK", 1, 1, 0.12f);
         panel(60, 396, 620, 280);
         const float ry[4] = { 418, 566, 602, 638 };
         for (int r = 0; r < 4; r++) if (r == selRow) { ui.text(66, ry[r] + (r == 0 ? 10 : 0), r == 0 ? 4.0f : 2.8f, yel, ">"); }
@@ -316,7 +337,7 @@ static void drawHUD() {
 #ifdef FCF_EDITOR
         panel(Wd - 700, 358, 640, 30, 0.5f);
         if (delAsk) ui.text(Wd - 72, 364, 2.3f, V3(1, 0.4f, 0.3f), "DELETE THIS TRACK FOR GOOD?   ENTER = YES   ANY OTHER KEY = NO", 2);
-        else if (!touchOn) ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), padUI ? "{X} EDIT   {BACK} NEW TRACK" : W.id >= NTRACKS ? "F4 EDIT   F6 NEW TRACK   DEL DELETE" : "F4 EDIT THIS TRACK   SHIFT+F4 A COPY   F6 NEW TRACK", 2);
+        else if (!touchOn) ui.text(Wd - 72, 364, 2.3f, V3(0.75f, 0.8f, 0.9f), padUI ? "{X} EDIT   {BACK} NEW TRACK" : W.id >= NTRACKS ? "F4 EDIT   F7 EVENTS   F6 NEW TRACK   DEL DELETE" : "F4 EDIT THIS TRACK   SHIFT+F4 A COPY   F7 EVENTS   F6 NEW TRACK", 2);
 #endif
         if (!W.keys.empty()) ui.text(96, ry[0] + 120, 2.5f, yel, "HIDDEN KEYS");
         else ui.text(96, ry[0] + 120, 2.5f, V3(0.4f, 1, 0.6f), W.id >= NTRACKS ? "YOUR OWN TRACK" : "NO HIDDEN KEYS - JUST RACE");

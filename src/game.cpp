@@ -180,11 +180,14 @@ static void miniReset();   // minis.h
 static bool delAsk = false;   // the track screen is asking whether to delete the custom track shown
 static std::vector<std::pair<std::string, unsigned>> customKeysSaved;   // from the config: keys found on custom tracks, by file name (applied once they are loaded)
 static bool cliSurvey = false;   // --survey: print where a track has open sea and tall buildings by the road (making event files), and quit
-static std::string cliEvScript; static bool cliEvEdit =
+static std::string cliEvScript; static bool cliEvEdit = false;   // --evedit: straight into the event editor
+// 2.9.9.9 fcfedit: the whole editor. It opens on the track screen, the hub: F4 the track editor (a built-in track in
+// place, SHIFT+F4 a copy), F6 a new track, F7 the track's events, ENTER a test drive; F7 in either editor opens the other
+static const bool edApp =
 #ifdef FCF_EVEDIT_APP
-    true;   // fcfedit: the event editor is the whole program
+    true;
 #else
-    false;   // --evedit: straight into the event editor
+    false;
 #endif
 static std::string cliTrackFile, cliEdScript; static bool cliEdit = false, cliEdNew = false, cliEdCopy = false; static int cliEdTool = 0;   // --trackfile, --edit, --edtool
 static bool champOn = false, champDone = false, cliChamp = false; static int champRound = 0; static int champPts[NAI + 1];   // championship: running, all four rounds done, round 0-3, points (0: you, 1 + k: ai[k])
@@ -524,7 +527,7 @@ int main(int argc, char** argv) {
             i += 2;
             sizeSet = true;
         } else if (a == "--fullscreen") fullSet = true;
-        else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = atoi(argv[++i]) & 1;
+        else if (a == "--aa") cliAA = atoi(argv[++i]); else if (a == "--af") cliAF = atoi(argv[++i]); else if (a == "--renderh") renderH = atoi(argv[++i]); else if (a == "--optpage") optPage = std::max(0, std::min(3, atoi(argv[++i])));
         else if (a == "--mouselook") footLookMouse = true;   // (tests, 2.8: as if the mouse had been used to look)
         else if (a == "--pedal") { cliPedal = (float)atof(argv[++i]); }   // (tests, 2.7.1: the throttle held part way, as a trigger would)
         else if (a == "--hold") { const char* q = argv[++i]; const char* c = strchr(q, ':'); if (c) holdsAt.push_back({ (float)atof(q), std::string(c + 1) }); else { int sc = SDL_GetScancodeFromName(q); if (sc) heldKeys.push_back(sc); } }   // (T:KEY: from T seconds on)
@@ -539,7 +542,8 @@ int main(int argc, char** argv) {
             branchScan(atoi(argv[++i]));
             return 0;
         } else if (a == "--sim") { sim = simMode = noSave = true; if (!aiSet) optAI = 2; }   // (the tests: the AI as it always drove, unless --ai)
-        else if (a == "--radio" && i + 1 < argc) radio::url = argv[++i];   // 2.9.9.6 a station for this run (else music/radio.txt)
+        else if (a == "--radio" && i + 1 < argc) radio::url = argv[++i];
+        else if (a == "--song" && i + 1 < argc) optSong = argv[++i];   // 2.9.9.9 every race plays music/NAME.mp3 (the AUDIO page's RACE SONG)   // 2.9.9.6 a station for this run (else music/radio.txt)
         else if (a == "--ai" && i + 1 < argc) { optAI = std::max(0, std::min(2, atoi(argv[++i]))); aiSet = true; }   // 2.9.9.3 0 easy, 1 medium, 2 hard
         else if (a == "--seconds") skip = (int)(F(1) * 60), i++;
         else if (a == "--flat") W.flat = true;
@@ -637,7 +641,7 @@ int main(int argc, char** argv) {
         else if (a == "--help") { printf("fogcityfury [--fullscreen] [--size W H]\n"); return 0; }
     }
     radio::init();   // (music/radio.txt: a station, unless --radio gave one)
-    loadCfg();   // key bindings and video settings; command-line flags win for this run without being saved
+    loadCfg(); applyAudio();   // key bindings and video settings; command-line flags win for this run without being saved
 #ifdef FCF_GFX_XSDK
     xsdk_log_write("boot: loadCfg complete");
 #endif
@@ -662,7 +666,7 @@ int main(int argc, char** argv) {
         if (cliSpace) { selTrack = spaceTrack(); selMode = 0; }
         W.build(selTrack); setupCars(true);
         if (cliSurvey) { survey(); fflush(stdout); exit(0); }
-        if (startState == 8) { state = OPTS; optReturn = TITLE; }
+        if (startState == 8) { state = OPTS; findSongs(); optReturn = TITLE; }
         if (startState == 1) { state = CARSEL; setupCars(false); } if (startState == 2) { state = TRACKSEL; setupCars(false); } if (startState == 3) { if (cliChamp) champBegin(); else startRace(); if (!fullCountdown) { countdown = 0.01f; introT = 0; } }
 #ifdef FCF_EDITOR
         if (cliEdit) {
@@ -672,6 +676,7 @@ int main(int argc, char** argv) {
             ed::tool = ((cliEdTool % ed::NTOOL) + ed::NTOOL) % ed::NTOOL;
             ed::noteT = 0;
         } // --edit: straight into the editor (for screenshots)
+        if (edApp && !cliEvEdit && !cliEdit && state == TITLE) { state = TRACKSEL; selMode = 0; setupCars(false); }   // (fcfedit: the hub)
         if (cliEvEdit) { evx::open(selTrack); if (!cliEvScript.empty()) evx::script(cliEvScript.c_str()); evx::noteT = cliEvScript.empty() ? evx::noteT : 0; }
 #endif
         if (keyrun >= 0 && keyrun < (int)W.recipes.size()) {   // drive the scripted route to hidden key number `keyrun`

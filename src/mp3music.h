@@ -142,7 +142,8 @@ static const size_t RING = 1 << 20; static uint8_t ring[RING]; static std::atomi
 static std::atomic<bool> want{ false }, webLive{ false }, reset{ false };
 static mp3dec_t dec; static uint8_t win[16384]; static size_t wn = 0; static short pcm[MINIMP3_MAX_SAMPLES_PER_FRAME];
 static int n = 0, i = 0, ch = 2, hz = 44100; static double frac = 0; static float aL = 0, aR = 0, bL = 0, bR = 0;
-static std::atomic<int> junk{ 0 }, frames{ 0 };   // 2.9.9.8 bytes thrown away with no frame found, frames decoded: an AAC or Ogg stream is all junk
+static std::atomic<int> junk{ 0 }, frames{ 0 }, kbps{ 0 };   // (kbps: the stream's bitrate, as its frames say; 2.9.9.9 shown with PLAYING)
+static float loud = 2.4f;   // (2.9.9.9 a station is mastered quieter than the mp3s here: this brings it up to them)   // 2.9.9.8 bytes thrown away with no frame found, frames decoded: an AAC or Ogg stream is all junk
 static bool primed = false; static float g = 0;   // g: how much of the radio (1 - g of the game's music)
 static size_t avail() { return wr.load(std::memory_order_acquire) - rd.load(std::memory_order_relaxed); }
 static void put(const uint8_t* b, size_t k) {   // the fetch thread (drops what does not fit: the player has stalled)
@@ -156,7 +157,7 @@ static bool src(float& L, float& R) {   // the next source sample, or false: run
         if (wn < 2048) return false;
         mp3dec_frame_info_t fi; n = mp3dec_decode_frame(&dec, win, (int)wn, pcm, &fi); i = 0;
         if (fi.frame_bytes <= 0) { if (wn == sizeof win) { junk += (int)wn; wn = 0; } n = 0; return false; }   // (all junk: drop it)
-        frames++;
+        frames++; if (fi.bitrate_kbps > 0) kbps = fi.bitrate_kbps;
         memmove(win, win + fi.frame_bytes, wn - fi.frame_bytes); wn -= fi.frame_bytes; if (n > 0) { ch = std::max(1, fi.channels); hz = std::max(8000, fi.hz); }
     }
     L = pcm[i * ch] / 32768.0f; R = ch > 1 ? pcm[i * ch + 1] / 32768.0f : L; i++; return true;
@@ -164,7 +165,7 @@ static bool src(float& L, float& R) {   // the next source sample, or false: run
 // audio thread, each sample: the radio's sample, and how much of it to play (g)
 static void render(float& L, float& R, int rate) {
     L = R = 0;
-    if (reset.exchange(false)) { mp3dec_init(&dec); wn = 0; n = i = 0; primed = false; frac = 0; junk = 0; frames = 0; }
+    if (reset.exchange(false)) { mp3dec_init(&dec); wn = 0; n = i = 0; primed = false; frac = 0; junk = 0; frames = 0; kbps = 0; }
 #ifdef __EMSCRIPTEN__
     bool live = want.load() && webLive.load();
 #else
@@ -174,7 +175,7 @@ static void render(float& L, float& R, int rate) {
         frac += (double)hz / rate; bool ok = true;
         while (frac >= 1 && ok) { frac -= 1; aL = bL; aR = bR; ok = src(bL, bR); }
         if (!ok) { primed = false; frac = 0; live = false; }   // (ran dry: the game's music back while it fills again)
-        else { float f = (float)frac; L = (aL + (bL - aL) * f) * mp3::level; R = (aR + (bR - aR) * f) * mp3::level; }
+        else { float f = (float)frac; L = (aL + (bL - aL) * f) * loud; R = (aR + (bR - aR) * f) * loud; }
     }
 #endif
     float fade = 1.0f / (1.5f * rate); g = live ? std::min(1.0f, g + fade) : std::max(0.0f, g - fade);

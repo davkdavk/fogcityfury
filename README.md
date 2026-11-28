@@ -94,6 +94,21 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.9
+
+- **Sound settings.** Options has an **AUDIO** page (TAB to it; LB/RB on a pad): MASTER, MUSIC, ENGINES, EFFECTS and
+  WEATHER volumes (0-150 %), where the races' music comes from (RADIO / YOUR OWN / OFF), and **RACE SONG**: one of
+  the mp3s in your `music` folder for every race, or each track's own. Saved; on every version, the web game too
+  (whose race song is each track's own, from the site).
+- **fcfedit is the whole editor.** It opens on the track screen, the hub: **F4** the track editor (a built-in track
+  in place, SHIFT+F4 a copy), **F6** a new track, **F7** the track's events, ENTER a test drive. **F7** in either
+  editor opens the other on the same track; ESC in the event editor goes back to the track screen. In the track
+  editor **M** picks the track's music from the mp3s in `music/` (it writes the event file's `music` line). The game
+  itself has all of this too (F7 on its track screen).
+- **The radio takes the best stream.** From a playlist it plays the highest bitrate its titles name (AAC / Ogg
+  entries last, since the game plays MP3), and shows it: `RADIO: PLAYING 256 KBPS`. The station is louder (as loud as
+  your mp3s); the web game plays it at the browser's full volume under your MASTER and MUSIC settings.
+
 ## What's new in 2.9.9.8
 
 - **The radio on the Xbox 360.** The XEX streams the station itself: put `radio.txt` (or `radio.pls`) in the `music`

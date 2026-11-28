@@ -6,6 +6,7 @@
 // F4 comes back. Tracks are saved as .fcft files (trackfile.h) on every rebuild.
 #pragma once
 
+namespace evx { static void open(int t); }   // (2.9.9.9 F7: from one editor to the other)
 namespace ed {
 enum { ROAD, HILL, TUNNEL, CUT, JUMP, KEY, NTOOL };
 static const char* const TOOL_NAME[NTOOL] = { "ROAD", "HILLS", "TUNNEL", "CUTS", "JUMPS", "KEYS" };
@@ -254,7 +255,15 @@ static void key(SDL_Keycode k) {
     case SDLK_z: if (!undo.empty()) { std::string f = d.file; d = undo.back(); undo.pop_back(); d.file = f; trackNames(d); sel = pick = -1; drag = false; touch(0); tell("UNDONE"); } return;
     case SDLK_k: push(); sky = (sky + 1) % NSKY; setSky(sky); touch(0); return;
     case SDLK_x: d.wx = (d.wx + 1) % NWX; weatherOf[slot] = selWeather = d.wx; save(); return;
-    case SDLK_m: { static const int ORDER[7] = { 1, 2, 3, 4, 6, 7, 8 }; int cur = d.song > 0 ? d.song : TRACK_SONG[slot % NTRACKS], i = 0; for (int q = 0; q < 7; q++) if (ORDER[q] == cur) i = q; d.song = ORDER[(i + 1) % 7]; save(); return; }
+    case SDLK_m: {   // 2.9.9.9 the track's music: its own mp3 (music/<track>.mp3), or one of the mp3s in music/ (the event file's music line)
+        findSongs(); std::string cur; director::load(slot); cur = director::music; int n = (int)songList.size() + 1, i = 0;
+        for (int q = 0; q < (int)songList.size(); q++) if (songList[q] == cur) i = q + 1;
+        i = (i + 1) % n; director::music = i ? songList[i - 1] : "";
+        std::string p = director::pathFor(slot); if (p.empty()) { tell("SAVE THE TRACK FIRST (F2 NAMES IT)"); return; }
+        if (slot < NTRACKS) trackMkdir("events");
+        if (FILE* f = fopen(p.c_str(), "wb")) { std::string w = director::write(); fwrite(w.data(), 1, w.size(), f); fclose(f); }
+        char b[160]; snprintf(b, sizeof b, "MUSIC: %s", director::music.empty() ? "ITS OWN MP3 (MUSIC/<TRACK>.MP3)" : (director::music + ".MP3").c_str()); tell(b); return; }
+    case SDLK_F7: if (dirty) rebuild(); save(); naming = false; evx::open(slot); return;   // 2.9.9.9 this track's events
     case SDLK_c: push(); d.cityThr = d.cityThr >= 0.74f ? 0.25f : d.cityThr + 0.1f; touch(0); return;
     case SDLK_g: push(); d.seed = (d.seed * 31 + 7) % 9973; touch(0); return;
     case SDLK_DELETE: case SDLK_BACKSPACE:
@@ -288,7 +297,7 @@ static void script(const char* p) {
         else if (c == "down" || c == "move" || c == "rdown") { if (sscanf(p, "%f %f%n", &x, &z, &used) == 2) p += used; if (dirty && !drag) rebuild(); float sx, sy; screenXZ(x, z, sx, sy); mouseMove(sx, sy); if (c != "move") mouseDown(c == "down" ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT); }
         else if (c == "up") mouseUp();
         else if (c == "key") { if (sscanf(p, " %15[a-z0-9]%n", a, &used) == 1) p += used; std::string k = a;
-            key(k == "del" ? SDLK_DELETE : k == "plus" ? SDLK_EQUALS : k == "minus" ? SDLK_MINUS : k == "lb" ? SDLK_LEFTBRACKET : k == "rb" ? SDLK_RIGHTBRACKET : k == "esc" ? SDLK_ESCAPE : k == "enter" ? SDLK_RETURN : k == "f8" ? SDLK_F8 : k == "f2" ? SDLK_F2 : k == "race" ? SDLK_t : k.size() == 1 ? (SDL_Keycode)k[0] : SDLK_UNKNOWN); }
+            key(k == "del" ? SDLK_DELETE : k == "plus" ? SDLK_EQUALS : k == "minus" ? SDLK_MINUS : k == "lb" ? SDLK_LEFTBRACKET : k == "rb" ? SDLK_RIGHTBRACKET : k == "esc" ? SDLK_ESCAPE : k == "enter" ? SDLK_RETURN : k == "f8" ? SDLK_F8 : k == "f7" ? SDLK_F7 : k == "f2" ? SDLK_F2 : k == "race" ? SDLK_t : k.size() == 1 ? (SDL_Keycode)k[0] : SDLK_UNKNOWN); }
         else if (c == "wait") { if (dirty) rebuild(); }
         while (*p && *p != ';') p++; if (*p == ';') p++;
     }
@@ -379,7 +388,8 @@ static void draw(float Wd) {
     panel(12, 66, 300, 196, 0.6f); float y = 78;
     auto row = [&](const char* k, const char* name, const char* val) { if (keys) ui.text(24, y, 2.2f, YEL, k); ui.text(keys ? 64 : 24, y, 2.2f, GREY, name); ui.text(300, y, 2.2f, WHT, val, 2); y += 26; };
     if (slot < NTRACKS) row("F8", "ORIGINAL", stockEdited[slot] ? "EDITED" : "AS BUILT"); else row("F2", "NAME", naming ? "TYPE, THEN ENTER" : ""); row("K", "SKY", SKY_NAME[sky]); row("X", "WEATHER", WX[d.wx % NWX].name);
-    snprintf(b, sizeof b, "%d", d.song > 0 ? d.song : TRACK_SONG[slot % NTRACKS]); row("M", "SONG", b);
+    { static int seenFor = -1; static std::string mus; if (seenFor != slot) { seenFor = slot; director::load(slot); mus = director::music; }   // (2.9.9.9 the event file's music line)
+      if (director::loadedKey == director::keyFor(slot)) mus = director::music; row("M", "MUSIC", mus.empty() ? "ITS OWN MP3" : mus.c_str()); row("F7", "EVENTS", ""); }
     snprintf(b, sizeof b, "%d%%", (int)lroundf((0.8f - d.cityThr) / 0.55f * 100)); row("C", "CITY", b); row("G", "NEW CITY LAYOUT", ""); row("Z", "UNDO", undo.empty() ? "-" : "");
     // bottom: what the mouse does with this tool
     static const char* const HELP[NTOOL] = {
