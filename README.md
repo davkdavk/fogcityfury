@@ -94,6 +94,17 @@ in the options.
 
 > **Game or engine?** [CHANGELOG.md](CHANGELOG.md) sorts every version into what you play and what it is built on.
 
+## What's new in 2.9.9.8
+
+- **The radio on the Xbox 360.** The XEX streams the station itself: put `radio.txt` (or `radio.pls`) in the `music`
+  folder beside the XEX. The 360 has no https, so it needs the station's **http** address (or an http relay).
+- **A music button on the pad:** RB on the pause screen or the title cycles RADIO / YOUR OWN / OFF (M on a keyboard).
+  The pause screen shows which is on.
+- **The radio says what it is doing** (on screen and in the log): connecting, playing, lost, an https address the
+  360 cannot use, or a stream that isn't MP3 (an AAC or Ogg one).
+- **Web game:** a `.pls` / `.m3u` address in `radio.txt` is read and its first stream played (if the station allows
+  another site to read it; if not, it says so: then put the stream's own https address there).
+
 ## What's new in 2.9.9.7
 
 - **https stations, and the station's playlist file.** Save a station's `.pls` (or `.m3u`) as `music/radio.pls`

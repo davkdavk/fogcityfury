@@ -941,7 +941,7 @@ int main(int argc, char** argv) {
                     doReset();
                     break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: if (state == OPTS) onKey(SDLK_PAGEUP); else if (!me.on) fireRocket(); break;   // (2.7.1 on foot LB is held to aim down the sights: foot.h; RB and Y change guns)
-                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(1); break;
+                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (state == OPTS) onKey(SDLK_TAB); else if (state == RACE && me.on) cycleGunDir(1); else if (state == PAUSED || state == TITLE) onKey(SDLK_m); break;   // (2.9.9.8 RB paused or on the title: the music, as M)
                 case SDL_CONTROLLER_BUTTON_X: if (state == TITLE || state == PAUSED) handleKey(SDLK_F1, SDL_SCANCODE_F1); else if (state == NETJOIN) onKey(SDLK_r); else if (state == RACE && me.on) reloadMe(); break;   // (on foot X reloads)
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT: if (state == RACE && !me.on) switchItem(); else onKey(SDLK_LEFT); break;   // (2.9.8.3 in the car the D-pad: left / right switch shield and ghost, up uses it)
                 case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: if (state == RACE && !me.on) switchItem(); else onKey(SDLK_RIGHT); break;

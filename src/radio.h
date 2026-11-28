@@ -8,7 +8,7 @@
 // PC, Windows, Android: a thread of its own reads the stream (http itself; https through curl, 2.9.9.7) into
 // radio::ring (mp3music.h), where the audio thread decodes it. Lost: it tries again every few seconds, and the game's
 // music comes back while it does. Web: the browser plays it (an <audio> element; an https stream, since the page is).
-// Not on the 360.
+// The 360 (2.9.9.8): http itself, from game:\\music\\radio.txt (no https there: a station's http address, or a relay).
 #pragma once
 #ifdef _WIN32
 #include <io.h>
@@ -38,21 +38,37 @@ static void takeStation(std::string b) {
 static bool isList(const std::string& u) { return u.compare(0, 4, "http") != 0; }
 
 #if defined(__EMSCRIPTEN__)
-EM_JS(void, fcfRadioPlay, (const char* u), { var s = UTF8ToString(u); if (!Module.fcfRadio) { Module.fcfRadio = new Audio(); Module.fcfRadio.preload = 'none'; }
-    var a = Module.fcfRadio; if (a.getAttribute('src') !== s) a.src = s; if (a.paused) { var p = a.play(); if (p && p.catch) p.catch(function (e) { }); } });
+EM_JS(void, fcfRadioPlay, (const char* u), { var s = UTF8ToString(u); Module.fcfRadioErr = 0; if (!Module.fcfRadio) { Module.fcfRadio = new Audio(); Module.fcfRadio.preload = 'none'; }
+    var a = Module.fcfRadio; a.onerror = function () { Module.fcfRadioErr = 4; }; if (a.getAttribute('src') !== s) a.src = s; if (a.paused) { var p = a.play(); if (p && p.catch) p.catch(function (e) { Module.fcfRadioErr = 3; }); } });
 EM_JS(void, fcfRadioStop, (), { var a = Module.fcfRadio; if (a) { a.pause(); a.removeAttribute('src'); a.load(); } });
 EM_JS(void, fcfRadioVol, (float v), { var a = Module.fcfRadio; if (a) a.volume = Math.max(0, Math.min(1, v)); });
 EM_JS(int, fcfRadioLive, (), { var a = Module.fcfRadio; return a && !a.paused && a.readyState >= 3 ? 1 : 0; });
+// 2.9.9.8 a playlist address (.pls / .m3u): the browser cannot play one, so it is read first and its first stream played.
+// A station's server may not let another site read it (CORS): then it says so (fcfRadioErr), and radio.txt needs the stream
+EM_JS(void, fcfRadioPlayList, (const char* u), { var s = UTF8ToString(u); Module.fcfRadioErr = 0;
+    fetch(s).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (t) {
+        var m = t.match(/https?:\/\/[^\s"'<>]+/); if (!m) { Module.fcfRadioErr = 2; return; }
+        if (!Module.fcfRadio) Module.fcfRadio = new Audio(); var a = Module.fcfRadio; a.onerror = function () { Module.fcfRadioErr = 4; };
+        a.src = m[0]; var p = a.play(); if (p && p.catch) p.catch(function (e) { Module.fcfRadioErr = 3; }); }).catch(function (e) { Module.fcfRadioErr = 1; }); });
+EM_JS(int, fcfRadioErr, (), { return Module.fcfRadioErr | 0; });
 static int tryNo = 0; static const char* TRY[3] = { "music/radio.txt", "music/radio.pls", "music/radio.m3u" };
 static void urlErr(const char*);
 static void urlOk(const char* file) { std::string b; FILE* f = fopen(file, "rb"); if (f) { char c[4096]; size_t k = fread(c, 1, sizeof c - 1, f); c[k] = 0; b = c; fclose(f); }
     takeStation(b); if (url.empty()) urlErr(file); }
 static void urlErr(const char*) { if (++tryNo < 3) emscripten_async_wget(TRY[tryNo], "/radio.txt", urlOk, urlErr); }
 static void init() { tryNo = 0; emscripten_async_wget(TRY[0], "/radio.txt", urlOk, urlErr); }
-static void start() { std::string u = isList(url) ? firstHttp(url) : url; status = "PLAYING"; fcfRadioPlay(u.c_str()); }   // (the browser plays a stream, not a playlist: its first entry)
+static bool listAddr(const std::string& u) {   // an address ending .pls / .m3u / .m3u8 (before any ?query)
+    std::string p = u.substr(0, u.find('?')); for (char& c : p) c = (char)tolower((unsigned char)c);
+    for (const char* e : { ".pls", ".m3u", ".m3u8" }) { size_t n = strlen(e); if (p.size() > n && p.compare(p.size() - n, n, e) == 0) return true; }
+    return false;
+}
+static void start() {   // (the browser plays a stream, not a playlist: a playlist's first entry)
+    status = "CONNECTING";
+    if (isList(url)) fcfRadioPlay(firstHttp(url).c_str()); else if (listAddr(url)) fcfRadioPlayList(url.c_str()); else fcfRadioPlay(url.c_str());
+}
 static void stop() { fcfRadioStop(); status = ""; }
-#elif !defined(FCF_GFX_XSDK)
-static std::atomic<int> gen{ 0 }; static std::atomic<int> state{ 0 };   // state: 0 idle, 1 connecting, 2 playing, 3 lost, 4 https and curl failed
+#else   // (PC, Windows, Android, and 2.9.9.8 the 360: http itself)
+static std::atomic<int> gen{ 0 }; static std::atomic<int> state{ 0 };   // state: 0 idle, 1 connecting, 2 playing, 3 lost, 4 https and curl failed, 5 https on the 360
 struct Job { std::string url; int gen; };
 static bool split(const std::string& u, std::string& host, int& port, std::string& path) {
     std::string r = u; if (r.compare(0, 7, "http://") != 0) return false; r = r.substr(7);
@@ -67,6 +83,12 @@ static int dial(const std::string& host, int port) {
     bool ok = connect(s, res->ai_addr, (int)res->ai_addrlen) == 0; freeaddrinfo(res); if (!ok) { net::closeSock(s); return -1; } return s;
 }
 static int recvT(int s, char* b, int k, int ms) {   // -1 closed or broken, 0 nothing yet
+#ifdef FCF_GFX_XSDK
+    // (the 360: a non-blocking socket, asked every 10 ms)
+    { int fl = fcntl(s, F_GETFL, 0); if (fl >= 0 && !(fl & O_NONBLOCK)) fcntl(s, F_SETFL, fl | O_NONBLOCK); }
+    for (int w = 0; ; w += 10) { int got = (int)recv(s, b, k, 0); if (got > 0) return got; if (got == 0) return -1;
+        if (errno != EAGAIN && errno != EWOULDBLOCK) return -1; if (w >= ms) return 0; net::sleepMs(10); }
+#endif
     fd_set fs; FD_ZERO(&fs); FD_SET(s, &fs); timeval tv; tv.tv_sec = ms / 1000; tv.tv_usec = (ms % 1000) * 1000;
     int r = select(s + 1, &fs, nullptr, nullptr, &tv); if (r < 0) return -1; if (r == 0) return 0;
     int got = (int)recv(s, b, k, 0); return got > 0 ? got : -1;
@@ -83,6 +105,9 @@ static void playList(const std::string& body, int me, int depth) {   // each ent
     std::vector<std::string> us = urlsIn(body); if (us.empty()) { state = 3; return; }
     for (auto& v : us) { if (gen != me) return; played = false; stream(v, me, depth + 1); if (played) return; }
 }
+#ifdef FCF_GFX_XSDK
+static void streamCurl(const std::string&, int, int) { state = 5; }   // (the 360 has no https: an http address, or a relay)
+#else
 #ifdef _WIN32
 // (not _popen: from a window app that starts cmd.exe, and its console flashes up. curl itself, hidden, its output a pipe)
 static HANDLE curlProc = nullptr;
@@ -118,11 +143,12 @@ static void streamCurl(const std::string& u, int me, int depth) {
     while (gen == me && (k = fread(b, 1, 4096, p)) > 0) put((const uint8_t*)b, k);
     FCF_PCLOSE(p); if (gen == me) state = 3;
 }
+#endif
 static void stream(const std::string& u, int me, int depth) {   // until the station is lost or the radio is turned off
     if (u.compare(0, 8, "https://") == 0 || getenv("FCF_CURL")) { streamCurl(u, me, depth); return; }   // (FCF_CURL: the tests, curl on a plain http station)
     std::string host, path; int port; if (!split(u, host, port, path)) { state = 3; return; }
     state = 1; int s = dial(host, port); if (s < 0) { state = 3; return; }
-    std::string req = "GET " + path + " HTTP/1.0\r\nHost: " + host + "\r\nUser-Agent: FogCityFury/2.9.9.6\r\nAccept: */*\r\nIcy-MetaData: 0\r\nConnection: close\r\n\r\n";
+    std::string req = "GET " + path + " HTTP/1.0\r\nHost: " + host + "\r\nUser-Agent: FogCityFury/2.9.9.8\r\nAccept: */*\r\nIcy-MetaData: 0\r\nConnection: close\r\n\r\n";
     send(s, req.data(), (int)req.size(), 0);
     std::string head; char b[8192]; size_t endH = std::string::npos;
     for (int waited = 0; endH == std::string::npos && waited < 8000 && gen == me;) { int k = recvT(s, b, sizeof b, 250); if (k < 0) break; if (k == 0) { waited += 250; continue; }
@@ -152,13 +178,15 @@ static int fetch(void* p) {
     return 0;
 }
 static void init() {
+#ifdef FCF_GFX_XSDK
+    for (const char* n : { "game:\\music\\radio.txt", "game:\\music\\radio.pls", "game:\\music\\radio.m3u" }) { if (!url.empty()) return;
+#else
     for (const char* n : { "music/radio.txt", "music/radio.pls", "music/radio.m3u" }) { if (!url.empty()) return;
+#endif
         FILE* f = fopen(n, "rb"); if (!f) continue; char c[4096]; size_t k = fread(c, 1, sizeof c - 1, f); c[k] = 0; fclose(f); takeStation(c); }
 }
 static void start() { int me = ++gen; plat::runDetached(fetch, new Job{ url, me }, "radio"); }
 static void stop() { ++gen; state = 0; }
-#else
-static void init() {} static void start() { status = "NOT ON THE 360"; } static void stop() {}
 #endif
 
 // the game thread, every frame: is the radio wanted now (a race, the radio chosen, a station known)?
@@ -166,10 +194,14 @@ static void frame(bool race) {
     bool w = race && optRadio == 1 && !url.empty() && snd.musicOn;
     if (w != on) { on = w; want = w; if (w) start(); else stop(); }
 #if defined(__EMSCRIPTEN__)
-    if (on) { webLive = fcfRadioLive() != 0; fcfRadioVol(g * snd.music * snd.musicDuck * snd.master * 1.6f); }   // (g: the cross-fade, from the mixer)
-    else webLive = false;
-#elif !defined(FCF_GFX_XSDK)
-    static const char* ST[5] = { "", "CONNECTING", "PLAYING", "LOST: TRYING AGAIN", "HTTPS: CURL COULD NOT REACH IT" }; status = on ? ST[std::max(0, std::min(4, state.load()))] : "";
+    if (on) { webLive = fcfRadioLive() != 0; fcfRadioVol(g * snd.music * snd.musicDuck * snd.master * 1.6f);   // (g: the cross-fade, from the mixer)
+        static const char* WE[5] = { "", "THE STATION WON'T LET THE WEB GAME READ ITS PLAYLIST: PUT ITS STREAM ADDRESS IN RADIO.TXT", "NO STREAM IN THE PLAYLIST",
+            "THE BROWSER WON'T START IT (CLICK THE GAME FIRST)", "THE BROWSER CAN'T PLAY THAT STREAM (IT MUST BE HTTPS)" };
+        int e = fcfRadioErr(); status = e ? WE[std::max(0, std::min(4, e))] : webLive ? "PLAYING" : "CONNECTING"; }
+    else { webLive = false; status = ""; }
+#else
+    static const char* ST[6] = { "", "CONNECTING", "PLAYING", "LOST: TRYING AGAIN", "HTTPS: CURL COULD NOT REACH IT", "THE 360 NEEDS AN HTTP ADDRESS (NOT HTTPS)" }; status = on ? ST[std::max(0, std::min(5, state.load()))] : "";
+    if (on && state == 2 && junk > 96 * 1024 && frames == 0) status = "THAT STREAM ISN'T MP3 (AAC OR OGG): PICK THE STATION'S MP3 STREAM";   // (2.9.9.8)
 #endif
 }
 }  // namespace radio

@@ -7,6 +7,7 @@ releases keep these milestones only. Full notes for each version are in the READ
 
 | Version | Game | Engine |
 | --- | --- | --- |
+| 2.9.9.8 | The radio on the 360 (http; game:\\music\\radio.txt); RB paused or on the title cycles the music; the radio's status on screen and in the log; the web game reads a .pls address; a non-MP3 stream is named | |
 | 2.9.9.7 | https stations through curl (hidden on Windows); music/radio.pls or .m3u (or the playlist pasted in radio.txt), each entry tried in turn; the built-in G-funk songs off (cfg `gfunk 1`) | Web: the playlist's first entry |
 | 2.9.9.6 | Internet radio in the races (music/radio.txt or --radio URL; ICY/HTTP MP3 streams, .pls/.m3u, redirects; M: RADIO / OWN / OFF) | The menus keep main.mp3; the web game plays https streams in the browser |
 | 2.9.9.5 | Your own music: music/<track>.mp3 per track (main for the menus, showdown, custom tracks by name), or a `music NAME` line in the event file; looped, cross-faded; the web game fetches them beside its page | The lobby's event files pick each track's song for everyone (minimp3, CC0) |

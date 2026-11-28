@@ -479,6 +479,10 @@ static void drawHUD() {
                     netRace ? P("ESC: BACK TO THE RACE     Q: LEAVE THE SERVER", "{B} BACK TO THE RACE     {Y} LEAVE THE SERVER")
                             : P("ESC: RESUME     F1: OPTIONS     Q: QUIT TO MENU", "{START} RESUME     {X} OPTIONS     {Y} QUIT TO MENU"),
                     1);
+            {   // 2.9.9.8 the music, and how to change it (RB on a pad)
+                const char* now = !snd.musicOn ? "OFF" : (!radio::url.empty() && optRadio) ? "RADIO IN THE RACES" : "YOUR OWN";
+                char mb[96]; snprintf(mb, sizeof mb, P("M: MUSIC (%s)", "{RB} MUSIC (%s)"), now); ui.text(Wd / 2, 440, 2.6f, V3(0.75f, 0.75f, 0.75f), mb, 1);
+            }
         }
         if (state == RESULTS && netRace) {   // online standings, live from the server
             bool sd = nc.sdGot && nc.phase == net::RESULTS; float rh = nc.snap.count > 5 ? 26.0f : 40.0f, sy = 250 + rh * nc.snap.count;   // the showdown's order goes under the race standings (rows close up for a big field)

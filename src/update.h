@@ -41,6 +41,8 @@ static void update(float dt) {
         if (mus::want == 0) m = "main"; else if (showdownOn) m = "showdown";
         else { m = director::keyFor(t); if (state != TRACKSEL && !director::music.empty() && director::loadedKey == director::keyFor(W.id)) m = director::music; }
         if (!simMode || getenv("FCF_MP3")) { mp3::frame(m); radio::frame(mus::want != 0 && !showdownOn && state != TRACKSEL); }   // (2.9.9.6 and the radio, in the races)
+        static std::string said; if (radio::status != said) { said = radio::status;   // 2.9.9.8 what the radio is doing, on screen and in the log
+            if (!said.empty()) { if (!simMode) say(("RADIO: " + said).c_str(), SAY_INFO, said == "PLAYING" || said == "CONNECTING" ? 2.5f : 6); fprintf(stderr, "radio: %s (%s)\n", said.c_str(), radio::isList(radio::url) ? "a playlist" : radio::url.c_str()); } }
     }
     if ((state == PAUSED && !netRace) || (state == OPTS && optReturn == PAUSED)) return;   // an online race cannot be paused: the car coasts while the menu is up
 #ifdef FCF_EDITOR
